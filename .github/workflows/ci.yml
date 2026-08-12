@@ -1,0 +1,35 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: python -m pip install ".[test]"
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: pytest -q tests/unit
+      - run: pytest -q tests/runtime -m runtime
+
+  distributed-cpu:
+    runs-on: ubuntu-latest
+    env:
+      XLA_FLAGS: --xla_force_host_platform_device_count=2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install ".[test]"
+      - run: pytest -q tests/distributed -m distributed

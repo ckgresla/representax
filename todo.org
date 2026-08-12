@@ -1,0 +1,133 @@
+#+TITLE: Representax Roadmap
+#+STARTUP: overview
+#+TODO: TODO NEXT WAITING | DONE CANCELED
+#+OPTIONS: toc:nil num:nil
+
+This file is the canonical Representax roadmap and shared source of truth.
+Keep decisions and work items here; record evidence in commits, tests, and
+benchmark artifacts rather than duplicating the roadmap elsewhere.
+
+* DONE Establish =representax= as a standalone Git repository :foundation:
+* DONE Adopt the MIT license and public-project policies :foundation:
+* DONE Use permissive Python and dependency ranges with optional extras :foundation:
+* DONE Keep accelerator-specific JAX and PyTorch out of the base install :foundation:
+* DONE Exclude private history, experiments, Studio, and compiled assets :foundation:
+* DONE Make native Equinox models the supported execution path :architecture:
+* DONE Define a model-neutral task protocol for future task families :architecture:
+* DONE Define one route-aware =encode= API with bound-route convenience :api:
+* DONE Implement direct, symmetric, graded, and Matryoshka MNR :retrieval:
+* DONE Implement a generic compiled Equinox and Optax update step :runtime:
+* DONE Separate scientific requirements from execution choices :planning:
+* DONE Define unit, runtime, parity, distributed, and performance test lanes :testing:
+* DONE Isolate upstream Torch references in the optional =parity= extra :testing:
+* DONE Define lazy artifact recipes and sampling policies for Grain :data:
+* DONE Make Python and Hydra-Zen recipes Git-trackable :data:
+* DONE Treat one dataset as the one-source form of a sampling policy :data:
+* DONE Borrow Levanter's mixture semantics without depending on its LM stack :data:
+
+* DONE Review and land the first clean public commit :release:
+* NEXT Port ModernVBERT as the first production Equinox architecture :models:
+* NEXT Add full upstream parity gates for ModernVBERT :models:testing:
+* NEXT Add Grain resolvers for Hugging Face and local artifacts :data:
+* NEXT Port GradCache without changing global-negative semantics :retrieval:runtime:
+* NEXT Add Orbax checkpointing and exact resume :runtime:
+
+* TODO Reserve the =representax= package and repository names :release:
+* TODO Publish a minimal CPU-first installation and compatibility matrix :release:
+* TODO Audit source provenance and third-party licenses before release :release:
+* TODO Define the stable public API and deprecation policy :release:api:
+* TODO Document what qualifies an architecture as supported :models:testing:
+* TODO Require each architecture port only once per model family :models:
+* TODO Build reusable native transformer and modality components :models:
+* TODO Load Hugging Face configs, safetensors, tokenizers, and processors :models:hf:
+* TODO Export trained models back to Hugging Face-compatible artifacts :models:hf:
+* TODO Test tokenizer and processor parity with upstream Transformers :models:testing:
+* TODO Test layer-level and full-forward FP32 parity :models:testing:
+* TODO Test BF16 parity with explicit numerical tolerances :models:testing:
+* TODO Test parameter gradients and objective gradients against upstream :models:testing:
+* TODO Test one optimizer update against the upstream reference :models:testing:
+* TODO Test safetensor export and upstream reload :models:testing:
+* TODO Keep small golden tensors in ordinary CI :models:testing:
+* TODO Run live upstream parity on a scheduled compatibility lane :models:testing:
+* TODO Run accelerator-specific parity for fused kernels separately :models:testing:
+* WAITING Evaluate TorchAX only as an optional compatibility backend :models:research:
+* TODO Port a legally clean text-image encoder such as SigLIP2 :models:multimodal:
+* TODO Audit Jina and LCO licensing before considering native ports :models:release:
+* TODO Select native audio and video architecture families :models:multimodal:
+
+* TODO Add the host-side =embed= API for preprocessing and batching :api:
+* TODO Keep compiled =encode= arrays-in and arrays-out :api:
+* TODO Support reusable pooling, normalization, projection, and routing modules :api:
+* TODO Add evaluator protocols and standard representation metrics :api:eval:
+* TODO Reach Sentence Transformers functionality parity without copying its API :api:parity:
+* TODO Support =encode_query= and =encode_document= behavior through typed routes :api:retrieval:
+* TODO Add Hugging Face Hub loading, local loading, and model export :api:hf:
+* TODO Add multi-dataset functionality through source sampling policies :api:data:
+* TODO Add LoRA and parameter-selection recipes :api:training:
+
+* TODO Implement cached MNR as a first-class retrieval objective :retrieval:
+* TODO Implement triplet losses :tasks:metric_learning:
+* TODO Implement cosine-similarity losses :tasks:metric_learning:
+* TODO Implement CoSENT losses :tasks:metric_learning:
+* TODO Implement classification tasks and losses :tasks:classification:
+* TODO Implement representation distillation tasks and losses :tasks:distillation:
+* TODO Implement pairwise reward modeling :tasks:reward_modeling:
+* TODO Implement listwise reward modeling :tasks:reward_modeling:
+* TODO Implement pointwise and process reward modeling :tasks:reward_modeling:
+* TODO Implement JEPA-style self-supervised learning :tasks:jepa:
+* TODO Ship reward modeling and JEPA before the first research release :tasks:release:
+
+* TODO Resolve Hugging Face datasets without proprietary intermediate copies :data:hf:
+* TODO Resolve local JSONL, Parquet, Arrow, and WebDataset artifacts :data:local:
+* TODO Resolve S3 and object-store artifacts first-class :data:s3:
+* TODO Let users map upstream records directly into canonical task examples :data:
+* TODO Fingerprint artifact revisions, mapping code, recipes, and Git state :data:reproducibility:
+* TODO Persist sampling policies instead of materialized mixture datasets :data:reproducibility:
+* TODO Support static and scheduled mixture weights :data:sampling:
+* TODO Support deterministic shuffling, sharding, and iterator resume :data:runtime:
+* TODO Add length and modality-aware bucketing :data:performance:
+* TODO Add sequence and multimodal packing where scientifically valid :data:performance:
+* TODO Stream text examples from source through the model forward :data:text:
+* TODO Stream image examples from source through the model forward :data:image:
+* TODO Decode and stream audio efficiently through the model forward :data:audio:
+* TODO Decode, sample, and stream video efficiently through the model forward :data:video:
+* TODO Train mixed text, image, audio, video, and fused batches efficiently :data:multimodal:
+* TODO Avoid uncontrolled recompilation across modality and shape buckets :data:multimodal:
+
+* TODO Use native JAX sharding for multi-device and multi-host training :distributed:
+* TODO Preserve global-negative semantics across hosts :distributed:retrieval:
+* TODO Add model-state sharding in addition to replicated data parallelism :distributed:
+* TODO Add topology-independent checkpoint restore and resharding :distributed:runtime:
+* TODO Preserve the live cross-rank gradient synchronization in GradCache :distributed:retrieval:
+* TODO Make precision policy explicit at parameter, compute, activation, and loss boundaries :runtime:precision:
+* TODO Support activation rematerialization as an execution choice :runtime:memory:
+* TODO Support buffer donation and asynchronous input prefetching :runtime:performance:
+* TODO Cache compiled static-shape signatures deliberately :runtime:performance:
+* TODO Add optional experiment logging without coupling the training core :runtime:logging:
+
+* TODO Create =profilax= as a focused JAX profiling and planning project :profilax:
+* TODO Profile arbitrary compiled JAX programs through a small adapter :profilax:
+* TODO Inventory devices, topology, memory, and compiler versions :profilax:
+* TODO Generate feasible mesh, batch, accumulation, and rematerialization plans :profilax:
+* TODO Measure compilation separately from warmup and steady-state execution :profilax:
+* TODO Reject plans that alter the scientific specification :profilax:
+* TODO Reject plans that violate numerical tolerances :profilax:
+* TODO Report when the experiment probably needs more accelerators :profilax:
+* TODO Select Pareto-optimal plans for throughput, memory, and compile cost :profilax:
+* TODO Cache plans by model, task, shapes, hardware, and JAX/XLA versions :profilax:
+* TODO Integrate Profilax through Representax's =ExecutionPlanner= protocol :profilax:integration:
+
+* TODO Define measurable monotonic-improvement gates over existing trainers :research:
+* TODO Benchmark quality, throughput, peak memory, and model coverage :research:benchmark:
+* TODO Benchmark compile time separately from steady-state step time :research:benchmark:
+* TODO Benchmark direct MNR and GradCache at equal scientific semantics :research:benchmark:
+* TODO Benchmark text retrieval against Sentence Transformers :research:benchmark:
+* TODO Benchmark multimodal retrieval including audio and video :research:benchmark:
+* TODO Benchmark reward modeling and JEPA workloads :research:benchmark:
+* TODO Measure single-device, multi-device, and multi-host scaling :research:benchmark:
+* TODO Measure GPU and TPU behavior where hardware is available :research:benchmark:
+* TODO Publish reproducible configs, manifests, tests, and benchmark artifacts :research:reproducibility:
+* TODO Write the first paper on the state-of-the-art training system :research:paper:
+* TODO Release the systems paper as an arXiv preprint :research:paper:
+* TODO Use the completed trainer to train a state-of-the-art representation model :research:model:
+* TODO Write the subsequent model paper from that training program :research:paper:

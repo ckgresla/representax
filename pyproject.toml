@@ -1,0 +1,73 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "representax"
+version = "0.0.1"
+description = "Task-general representation learning in JAX and Equinox."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.11"
+authors = [{ name = "Representax contributors" }]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "equinox>=0.11",
+    "jax>=0.5",
+    "optax>=0.2",
+]
+
+[project.optional-dependencies]
+config = [
+    "hydra-core>=1.3",
+    "hydra-zen>=0.15",
+]
+data = [
+    "datasets>=3",
+    "grain>=0.2",
+    "huggingface-hub>=0.30",
+    "pyarrow>=18",
+]
+hf = [
+    "huggingface-hub>=0.30",
+    "safetensors>=0.5",
+    "tokenizers>=0.21",
+    "transformers>=5",
+]
+parity = [
+    "sentence-transformers>=5",
+    "torch>=2.5",
+    "transformers>=5",
+]
+test = [
+    "pytest>=8",
+    "ruff>=0.9",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/representax"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/unit"]
+markers = [
+    "runtime: compiled end-to-end training behavior",
+    "parity: numerical comparison with an upstream implementation",
+    "distributed: multi-device or multi-process behavior",
+    "performance: compile-time, throughput, or memory measurement",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+src = ["src", "tests", "examples"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]

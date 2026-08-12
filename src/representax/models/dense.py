@@ -1,0 +1,58 @@
+"""Small native encoder used as an executable reference integration."""
+
+from __future__ import annotations
+
+import equinox as eqx
+import jax
+import jax.numpy as jnp
+
+from representax.core import EncoderMetadata, Modality, Route
+
+
+class DenseEncoder(eqx.Module):
+    """A shared projection encoder for numeric features.
+
+    This model keeps the initial repository end-to-end trainable while the
+    first Hugging Face architecture integration is ported and parity-gated.
+    """
+
+    projection: eqx.nn.Linear
+    metadata: EncoderMetadata
+    normalize: bool = eqx.field(static=True)
+
+    def __init__(
+        self,
+        input_dimension: int,
+        output_dimension: int,
+        *,
+        key: jax.Array,
+        normalize: bool = True,
+    ) -> None:
+        if input_dimension <= 0 or output_dimension <= 0:
+            raise ValueError("input and output dimensions must be positive")
+        self.projection = eqx.nn.Linear(input_dimension, output_dimension, key=key)
+        self.metadata = EncoderMetadata(
+            model_id="representax/dense",
+            revision="1",
+            output_dimension=output_dimension,
+            routes=frozenset(Route),
+            modalities=frozenset(Modality),
+        )
+        self.normalize = normalize
+
+    def encode(
+        self,
+        inputs: jax.Array,
+        *,
+        route: Route,
+        key: jax.Array | None = None,
+    ) -> jax.Array:
+        del route, key
+        values = jnp.asarray(inputs)
+        if values.ndim != 2:
+            raise ValueError("DenseEncoder inputs must have shape [batch, features]")
+        output = jax.vmap(self.projection)(values).astype(jnp.float32)
+        if not self.normalize:
+            return output
+        norm = jnp.linalg.norm(output, axis=-1, keepdims=True)
+        return output / jnp.maximum(norm, jnp.asarray(1e-12, output.dtype))
