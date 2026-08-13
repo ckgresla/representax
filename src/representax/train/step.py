@@ -10,8 +10,9 @@ import jax
 import jax.numpy as jnp
 import optax
 
-from representax.core import Task, evaluate_loss
+from representax.core import Task
 
+from .execution import Direct, LossExecution
 from .state import StepMetrics, StepResult, TrainState
 
 
@@ -85,6 +86,7 @@ def build_train_step(
     optimizer: optax.GradientTransformationExtraArgs,
     *,
     max_grad_norm: float | None = 1.0,
+    execution: LossExecution | None = None,
 ) -> TrainStep:
     """Build a compiled task-generic optimizer update.
 
@@ -94,6 +96,8 @@ def build_train_step(
 
     if max_grad_norm is not None and max_grad_norm <= 0:
         raise ValueError("max_grad_norm must be positive or None")
+    resolved_execution = Direct() if execution is None else execution
+    resolved_execution.validate(task)
 
     @eqx.filter_jit
     def train_step(
@@ -102,7 +106,7 @@ def build_train_step(
         key: jax.Array | None = None,
     ) -> StepResult:
         def loss_fn(model: eqx.Module):
-            output = evaluate_loss(task, model, batch, key=key)
+            output = resolved_execution.evaluate(task, model, batch, key=key)
             return output.loss, output.metrics
 
         (loss, task_metrics), gradients = eqx.filter_value_and_grad(

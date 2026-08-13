@@ -13,6 +13,8 @@ from .checkpoint import (
     training_checkpointables,
     validate_complete_checkpoint,
 )
+from .execution import Direct, LossExecution
+from .grad_cache import GradCache
 from .logging import EventSink, RunLogger, TrainingStepRecord
 from .loop import TrainingLoopConfig, TrainingRunResult, run_training
 from .state import StepMetrics, StepResult, TrainState
@@ -31,8 +33,11 @@ __all__ = [
     "CheckpointRecord",
     "CheckpointTicket",
     "CheckpointWriteError",
+    "Direct",
     "EventSink",
+    "GradCache",
     "IncompleteCheckpointError",
+    "LossExecution",
     "RestoredTrainingState",
     "RunLogger",
     "StepMetrics",

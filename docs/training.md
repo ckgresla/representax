@@ -95,8 +95,12 @@ closures remains part of the deferred full recipe/configuration snapshot.
 
 ## Deliberately deferred
 
-The current loop does not include distributed sharding, GradCache, validation,
-external experiment integrations, full configuration/environment snapshots,
-media preprocessing, or a model registry. Grain owns lazy reading, mapping,
-batching, prefetch, and iterator position. Task-owned collation is the only
-bridge from data examples to the compiled batch contract.
+The current loop does not include distributed sharding, validation, external
+experiment integrations, full configuration/environment snapshots, media
+preprocessing, or a model registry. Grain owns lazy reading, mapping, batching,
+prefetch, and iterator position. Task-owned collation is the only bridge from
+data examples to the compiled batch contract.
+
+Single-device MNR may use [exact GradCache execution](grad-cache.md) by passing a
+step built with `execution=GradCache(...)` to this loop. Distributed GradCache
+remains roadmap work.

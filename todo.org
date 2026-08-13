@@ -103,6 +103,17 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   failure, but this item is complete only when Representax fits every matched
   batch the reference fits and is faster and tighter at steady state. Extend the
   same semantics to global negatives across devices and hosts only afterward.
+** DONE Land the exact single-device native-JAX execution :runtime:correctness:
+   The rematerialized scan, one canonical MNR objective, one optimizer path,
+   explicit stochastic replay keys, partial-chunk padding, Dense update parity,
+   and compiled ModernVBERT integration are covered by fast and runtime tests.
+** NEXT Add the pinned ModernVBERT target-to-beat benchmark :performance:reference:
+   Compare direct Representax, cached Representax, and Sentence Transformers in
+   isolated processes across logical batch and chunk sizes at sequence length
+   512. Persist loss, OOM status, compile-plus-first time, steady-state step time,
+   throughput, allocator peak, process peak, versions, and workload fingerprints.
+** TODO Add a tiled representation-loss implementation when profiling requires it :pallas:
+** TODO Extend exact GradCache to global multi-device and multi-host negatives :distributed:
 
 * TODO Reserve the =representax= package and repository names :release:
 * TODO Publish a minimal CPU-first installation and compatibility matrix :release:

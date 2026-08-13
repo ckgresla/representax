@@ -15,11 +15,11 @@ from representax.models.modernvbert import (
     ModernVBERTVisionConfig,
 )
 from representax.tasks.retrieval import MNRTask, retrieval_batch
-from representax.train import build_train_step, make_train_state
+from representax.train import GradCache, build_train_step, make_train_state
 
 
 @pytest.mark.runtime
-def test_modernvbert_runs_one_compiled_retrieval_update():
+def test_modernvbert_runs_one_compiled_grad_cache_retrieval_update():
     config = ModernVBERTTextConfig(
         vocab_size=19,
         hidden_size=8,
@@ -39,7 +39,11 @@ def test_modernvbert_runs_one_compiled_retrieval_update():
     )
     optimizer = optax.adamw(learning_rate=1e-3, weight_decay=0.0)
     state = make_train_state(model, optimizer)
-    step = build_train_step(MNRTask(scale=5.0, symmetric=True), optimizer)
+    step = build_train_step(
+        MNRTask(scale=5.0, symmetric=True),
+        optimizer,
+        execution=GradCache(query_chunk_size=1, document_chunk_size=1),
+    )
     batch = retrieval_batch(
         query=ModernVBERTTextBatch(
             input_ids=jnp.asarray([[1, 2, 3, 0], [4, 5, 6, 0]]),

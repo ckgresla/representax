@@ -173,6 +173,18 @@ class MNRTask(eqx.Module):
         documents = encode(
             model, batch.document, route=Route.DOCUMENT, key=document_key
         )
+        return self.loss_from_embeddings(queries, documents, batch)
+
+    def loss_from_embeddings(
+        self,
+        query_embeddings: jax.Array,
+        document_embeddings: jax.Array,
+        batch: RetrievalBatch,
+    ) -> LossOutput:
+        """Evaluate the same MNR objective from already-computed representations."""
+
+        queries = jnp.asarray(query_embeddings)
+        documents = jnp.asarray(document_embeddings)
         dimensions = self.dimensions or (queries.shape[1],)
         if dimensions[-1] > queries.shape[1]:
             raise ValueError("Matryoshka dimension exceeds encoder output dimension")
