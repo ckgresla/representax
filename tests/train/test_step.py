@@ -1,3 +1,5 @@
+"""Generic compiled training-step tests."""
+
 import jax
 import jax.numpy as jnp
 import optax

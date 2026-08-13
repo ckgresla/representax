@@ -17,7 +17,7 @@ the optional parity environment:
 
 ```bash
 python -m pip install -e ".[test,parity]"
-pytest tests/parity -m parity
+pytest -m parity
 ```
 
 Distributed and performance evidence lives in dedicated test lanes. Generated

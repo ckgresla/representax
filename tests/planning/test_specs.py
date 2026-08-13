@@ -1,3 +1,5 @@
+"""Scientific specification and execution-plan tests."""
+
 import pytest
 
 from representax.planning import ExecutionPlan, ScientificSpec

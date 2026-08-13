@@ -1,3 +1,5 @@
+"""Compile and steady-state measurements for the generic train step."""
+
 import time
 
 import jax

@@ -19,6 +19,9 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
 * DONE Implement a generic compiled Equinox and Optax update step :runtime:
 * DONE Separate scientific requirements from execution choices :planning:
 * DONE Define unit, runtime, parity, distributed, and performance test lanes :testing:
+* DONE Use pytest with out-of-tree tests mirrored by model, task, and subsystem :testing:
+* DONE Select environment-sensitive test lanes with orthogonal pytest markers :testing:
+* DONE Require every checkpoint-backed model to register numerical and systems gates :testing:models:
 * DONE Isolate upstream Torch references in the optional =parity= extra :testing:
 * DONE Define lazy artifact recipes and sampling policies for Grain :data:
 * DONE Make Python and Hydra-Zen recipes Git-trackable :data:
@@ -26,11 +29,26 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
 * DONE Borrow Levanter's mixture semantics without depending on its LM stack :data:
 
 * DONE Review and land the first clean public commit :release:
-* NEXT Port ModernVBERT as the first production Equinox architecture :models:
-* NEXT Add full upstream parity gates for ModernVBERT :models:testing:
+* DONE Land the verified ModernVBERT port as the second public commit :models:release:
+  Scope: native text, vision, connector, checkpoint adapters, mirrored tests,
+  and public interoperability documentation. Do not add another subsystem.
+  Done when the public diff is reviewed; lint, fast, runtime, pinned parity,
+  and matched performance gates pass; and one =models: ...= commit is created.
+* DONE Port the ModernVBERT text tower and bidirectional HF weight mapping :models:hf:
+* DONE Add pinned ModernVBERT text forward and input-gradient parity :models:testing:
+* DONE Add matched ModernVBERT Transformers speed and peak-memory gates :models:testing:performance:
+* DONE Complete ModernVBERT with its native vision tower and connector :models:multimodal:
+* DONE Add upstream vision, fused, multicrop, and pixel-gradient parity for ModernVBERT :models:testing:
 * NEXT Add Grain resolvers for Hugging Face and local artifacts :data:
-* NEXT Port GradCache without changing global-negative semantics :retrieval:runtime:
-* NEXT Add Orbax checkpointing and exact resume :runtime:
+  Resolve revision-pinned upstream records lazily into Grain and apply the
+  recipe's importable mapper directly. Do not materialize an intermediate copy
+  or expand this slice to S3, media decoding, bucketing, or packing.
+* TODO Port GradCache without changing global-negative semantics :retrieval:runtime:
+  Match the direct MNR objective and gradients before measuring cached
+  execution. Keep distributed and cross-host extensions out of the first port.
+* TODO Add Orbax checkpointing and exact resume :runtime:
+  Restore model, optimizer, step, RNG, and data-iterator state so the first
+  resumed update is numerically identical to uninterrupted training.
 
 * TODO Reserve the =representax= package and repository names :release:
 * TODO Publish a minimal CPU-first installation and compatibility matrix :release:
@@ -39,6 +57,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
 * TODO Document what qualifies an architecture as supported :models:testing:
 * TODO Require each architecture port only once per model family :models:
 * TODO Build reusable native transformer and modality components :models:
+* TODO Evaluate Haliax for named axes, model composition, and sharding ergonomics :models:distributed:research:
 * TODO Load Hugging Face configs, safetensors, tokenizers, and processors :models:hf:
 * TODO Export trained models back to Hugging Face-compatible artifacts :models:hf:
 * TODO Test tokenizer and processor parity with upstream Transformers :models:testing:
@@ -47,6 +66,12 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
 * TODO Test parameter gradients and objective gradients against upstream :models:testing:
 * TODO Test one optimizer update against the upstream reference :models:testing:
 * TODO Test safetensor export and upstream reload :models:testing:
+* DONE Require numerically equivalent model ports to beat matched upstream throughput :models:testing:performance:
+* DONE Measure matched upstream allocator and process peak memory with explicit warnings :models:testing:performance:
+* DONE Run upstream and native performance probes in isolated fresh processes :models:testing:performance:
+* TODO Reduce and amortize ModernVBERT compilation cold-start cost :models:testing:performance:
+* TODO Reduce ModernVBERT multimodal-forward allocator and process peak memory :models:testing:performance:
+* TODO Revisit a maintained fused-attention kernel after profiling standard JAX :models:testing:performance:pallas:
 * TODO Keep small golden tensors in ordinary CI :models:testing:
 * TODO Run live upstream parity on a scheduled compatibility lane :models:testing:
 * TODO Run accelerator-specific parity for fused kernels separately :models:testing:
@@ -103,6 +128,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
 * TODO Support activation rematerialization as an execution choice :runtime:memory:
 * TODO Support buffer donation and asynchronous input prefetching :runtime:performance:
 * TODO Cache compiled static-shape signatures deliberately :runtime:performance:
+* TODO Evaluate Pallas for performance-critical fused kernels :runtime:performance:research:
 * TODO Add optional experiment logging without coupling the training core :runtime:logging:
 
 * TODO Create =profilax= as a focused JAX profiling and planning project :profilax:

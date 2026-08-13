@@ -1,3 +1,5 @@
+"""Native multiple-negatives ranking tests."""
+
 import jax.numpy as jnp
 
 from representax.tasks.retrieval import mnr_loss_terms

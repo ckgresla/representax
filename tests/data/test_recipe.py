@@ -1,3 +1,5 @@
+"""Data recipe contract tests."""
+
 import pytest
 
 from representax import data

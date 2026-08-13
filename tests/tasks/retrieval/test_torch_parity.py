@@ -1,3 +1,5 @@
+"""Numerical parity against a Torch MNR reference."""
+
 import jax.numpy as jnp
 import numpy as np
 import pytest

@@ -8,6 +8,8 @@ the same core boundary.
 The project is pre-alpha. The current slice provides:
 
 - an Equinox-native encoder protocol with typed routes;
+- a native ModernVBERT text-image encoder with bidirectional Hugging Face
+  weight maps for every tensor used by its forward pass;
 - direct multiple-negatives ranking, including symmetric and Matryoshka modes;
 - a compiled Optax training step with finite-update protection and metrics;
 - lazy, source-neutral data recipe contracts designed for Grain;
@@ -38,6 +40,8 @@ capabilities are grouped deliberately:
 ```bash
 python -m pip install -e ".[config,data,hf]"
 python -m pip install -e ".[test,parity]"  # development oracle only
+python -m pip install -e ".[test,parity-modernvbert]"  # pinned model oracle
+python -m pip install -e ".[test,parity-modernvbert,performance]"  # GPU gates
 ```
 
 ## Encoding
@@ -59,6 +63,35 @@ document_embeddings = encode_documents(batch)
 
 Host-side tokenization, media decoding, and batching will be exposed through a
 higher-level `embed` API as production model integrations land.
+
+## ModernVBERT
+
+The first production-family integration loads pinned Hugging Face safetensors
+directly into native Equinox text and SigLIP vision towers:
+
+```python
+import jax.numpy as jnp
+import representax as rx
+
+adapter = rx.models.ModernVBERTCheckpointAdapter()
+model = adapter.load("/path/to/modernvbert-checkpoint")
+image_tokens = jnp.full((1, 64), 50407, dtype=jnp.int32)
+input_ids = jnp.concatenate(
+    (jnp.asarray([[1]]), image_tokens, jnp.asarray([[2]])), axis=1
+)
+batch = rx.models.ModernVBERTBatch(
+    input_ids=input_ids,
+    attention_mask=jnp.ones_like(input_ids),
+    pixel_values=jnp.ones((1, 1, 3, 512, 512), dtype=jnp.float32),
+)
+embeddings = rx.encode(model, batch, route=rx.Route.QUERY)
+```
+
+The real checkpoint uses 64 image tokens per processed 512x512 image. The
+ordinary runtime needs `safetensors` but not PyTorch. An optional pinned
+Transformers environment verifies vision features, fused representations, and
+pixel gradients. Host-side Idefics3-compatible processing remains the next API
+slice.
 
 ## Versioned data recipes
 
@@ -93,15 +126,19 @@ sampling policy.
 
 ```bash
 pytest
-pytest tests/runtime -m runtime
-pytest tests/parity -m parity
-pytest tests/distributed -m distributed
-pytest tests/performance -m performance
+pytest -m runtime
+pytest -m parity
+pytest -m distributed
+pytest -m performance
 ```
 
-The performance lane reports measurements but contains no universal speed
-threshold: results depend on hardware and compiler versions. Reproducible
-benchmarks must record compile time separately from steady-state execution.
+Tests live outside the package and mirror its model, task, data, and runtime
+structure. Pytest markers select orthogonal runtime, parity, distributed, and
+performance lanes. The default command runs fast, dependency-light tests.
+
+Performance acceptance is evaluated against a matched upstream implementation
+on pinned hardware. Compile time, steady-state work, and peak device memory are
+measured separately; see [the test contract](docs/testing.md).
 
 ## Roadmap
 

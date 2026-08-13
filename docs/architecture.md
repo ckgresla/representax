@@ -52,6 +52,11 @@ implement it over arbitrary compiled JAX programs.
 
 ## Test contract
 
+Tests live in an out-of-tree hierarchy that mirrors the source domains. A model
+family therefore keeps its native unit tests, upstream oracle, numerical parity,
+compiled training integration, and performance comparison together. Test lanes
+are orthogonal pytest markers rather than the primary directory structure.
+
 An integration is supported only when the relevant lanes pass:
 
 - `unit`: contracts and numerical building blocks without upstream frameworks;
@@ -62,3 +67,13 @@ An integration is supported only when the relevant lanes pass:
 
 Upstream PyTorch dependencies are confined to the optional parity environment.
 They are not installed in ordinary Representax training environments.
+
+Numerical support is necessary but not sufficient for a production model
+integration. On pinned reference hardware, matched native and upstream programs
+must also compare compile time, synchronized steady-state throughput, and peak
+device memory. The detailed measurement contract is in [Testing](testing.md).
+
+Hugging Face checkpoint handling follows the model-owned adapter design in
+[Hugging Face interoperability](hugging-face.md). Native Equinox modules are
+the runtime; upstream implementations are references used to establish
+numerical support.
