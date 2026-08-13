@@ -65,14 +65,44 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   steady-state step measurements. Runtime acceptance uses eight batch-16
   updates over continuous paired views with independent nuisance features and
   requires the learned retrieval loss to fall by more than half.
-* TODO Improve GradCache as a Pallas-backed execution of one MNR objective :retrieval:runtime:pallas:
-  Start from Lasso's verified cached-gradient and global-negative semantics, but
-  keep one canonical MNR loss function and one numerical oracle rather than
-  maintaining separate objective control flows. Use ordinary JAX compilation
-  for direct MNR and a lower-level Pallas execution path for cached embedding
-  gradients and replay. Require objective, embedding-gradient, parameter-gradient,
-  and optimizer-update parity before demonstrating lower peak memory and better
-  throughput. Extend the same semantics across devices and hosts only afterward.
+* NEXT Implement exact native-JAX GradCache as an execution plan for MNR :retrieval:runtime:
+  Preserve =MNRTask= and =mnr_loss_terms= as the sole scientific definition.
+  GradCache changes only the differentiation schedule: encode fixed-shape chunks
+  while retaining the full logical negative population, differentiate the same
+  MNR loss with respect to the representations, replay one encoder chunk at a
+  time with its cached cotangent, and perform one ordinary optimizer update.
+
+  Start with a small native-JAX transform: =lax.scan= a
+  =jax.checkpoint(..., policy=nothing_saveable)= encoder body and let JAX's
+  transpose synthesize the reverse replay. Keep query and document chunk sizes
+  in =ExecutionPlan=, pad only the execution batch with validity masks, and
+  derive explicit per-role and per-chunk PRNG keys so stochastic forwards replay
+  exactly. Do not add a cached task, a second MNR formula, Python backward hooks,
+  or a second optimizer path.
+
+  Treat Pallas as a later representation-kernel optimization, not as the
+  GradCache orchestrator: an encoder replay must remain ordinary Equinox/JAX.
+  Profile the representation-loss stage first, then consider a tiled Pallas
+  custom VJP for normalized similarity, log-sum-exp, and embedding cotangents
+  only if it is numerically equivalent and beats XLA. Keep a native-JAX tiled
+  fallback for unsupported accelerators.
+
+  Correctness gates compare direct and cached loss, representation cotangents,
+  parameter gradients, clipping, optimizer state, and updated parameters across
+  asymmetric and symmetric MNR, graded positives, Matryoshka dimensions,
+  padding, partial chunks, tied routes, and stochastic dropout. A systems gate
+  must show that peak activation memory follows encoder chunk size rather than
+  logical batch size.
+
+  Use Sentence Transformers' current =CachedMultipleNegativesRankingLoss= as a
+  pinned cross-framework reference and target to beat on the same ModernVBERT
+  weights, inputs, pooling, scale, precision, optimizer, and logical negative
+  population. Report compilation separately from warmup and steady-state time;
+  report OOM boundaries, throughput, and allocator/process peak memory. Relative
+  performance produces an explicit warning rather than a flaky correctness
+  failure, but this item is complete only when Representax fits every matched
+  batch the reference fits and is faster and tighter at steady state. Extend the
+  same semantics to global negatives across devices and hosts only afterward.
 
 * TODO Reserve the =representax= package and repository names :release:
 * TODO Publish a minimal CPU-first installation and compatibility matrix :release:
@@ -114,7 +144,6 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
 * TODO Add multi-dataset functionality through source sampling policies :api:data:
 * TODO Add LoRA and parameter-selection recipes :api:training:
 
-* TODO Implement cached MNR as a first-class retrieval objective :retrieval:
 * TODO Implement triplet losses :tasks:metric_learning:
 * TODO Implement cosine-similarity losses :tasks:metric_learning:
 * TODO Implement CoSENT losses :tasks:metric_learning:
