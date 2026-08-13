@@ -1,0 +1,117 @@
+#+TITLE: ModernVBERT GradCache target-to-beat — 2026-08-13
+#+OPTIONS: toc:2 num:nil
+
+* Decision
+
+The isolated sequence-length-512 benchmark is complete.  Exact native JAX
+GradCache is faster than Sentence Transformers' cached MNR reference at every
+matched chunk-4 batch from 8 through 1,024, and it holds its allocator peak
+nearly flat as the logical batch grows.  It does not yet satisfy Representax's
+full acceptance gate: its fixed memory and compile-plus-first-step costs remain
+higher.  The parent GradCache roadmap item therefore remains open.
+
+* Matched scientific workload
+
+- NVIDIA RTX 4090, one isolated process and one visible GPU per arm;
+- =ModernVBERT/modernvbert-embed= revision
+  =da507113c3fdbc2e49d39c4b0148025c6bd008f9=;
+- FP32 parameters, compute, objective, and highest matmul precision, with TF32
+  disabled in the PyTorch reference;
+- deterministic full-length synthetic token IDs, sequence length 512, mean
+  pooling under an all-valid attention mask, L2 normalization, diagonal cosine
+  MNR, and scale 20;
+- all 149,044,992 text parameters trained with AdamW, zero learning rate and
+  weight decay so every step executes the optimizer without changing the
+  checkpoint;
+- native state donation enabled for this isolated benchmark; production callers
+  retain the safe non-donating default because asynchronous checkpointing may
+  still own the previous state;
+- Sentence Transformers 5.4.1, Transformers 5.3.0, and PyTorch 2.8.0+cu128;
+  Representax 0.0.1 and JAX 0.10.1.
+
+Every JSON records input and scientific-spec SHA-256 fingerprints.  Fingerprints
+match across runtimes for each logical batch.
+
+* Chunk-4 target-to-beat result
+
+Times are steady-state medians.  Allocator and process peaks are GiB.  The
+PyTorch JSON additionally records reserved allocator memory; the table compares
+allocated bytes with JAX =peak_bytes_in_use=.
+
+| Batch | Runtime | Step (s) | Examples/s | Allocator GiB | Process GiB | Compile + first (s) |
+|-------+---------+----------+------------+---------------+-------------+---------------------|
+|     8 | Representax GradCache |   0.3120 |      25.639 |         6.776 |      10.447 |              58.288 |
+|     8 | Sentence Transformers |  0.3727 |      21.464 |         4.819 |       5.695 |               0.879 |
+|    32 | Representax GradCache |   1.1574 |      27.649 |         6.776 |      10.447 |              59.571 |
+|    32 | Sentence Transformers |  1.5006 |      21.325 |         4.819 |       5.697 |               1.991 |
+|   128 | Representax GradCache |   4.5693 |      28.013 |         6.777 |      10.449 |              64.238 |
+|   128 | Sentence Transformers |  5.9040 |      21.680 |         4.821 |       5.697 |               6.360 |
+|   512 | Representax GradCache |  18.5624 |      27.583 |         6.782 |      10.449 |              77.917 |
+|   512 | Sentence Transformers | 25.4139 |      20.146 |         4.830 |       5.695 |              26.617 |
+| 1,024 | Representax GradCache |  39.8643 |      25.687 |         6.790 |      10.449 |             104.165 |
+| 1,024 | Sentence Transformers | 48.6585 |      21.045 |         4.835 |       5.730 |              48.678 |
+
+Representax delivers 19.4% to 36.9% more examples per second across these
+matched points.  At batch 32 it is 29.7% faster by throughput, but consumes
+40.6% more allocator memory and 83.4% more process-visible device memory.
+
+* Numerical result
+
+The loss absolute difference is at most =3.10e-6= across the matched chunk-4
+curve.  The gradient-global-norm relative difference is at most =2.20e-4=.
+These are cross-framework, alternate-microbatch-shape comparisons; native direct
+versus cached correctness tests retain tighter value, representation-gradient,
+parameter-gradient, optimizer-state, and updated-parameter tolerances.
+
+* Capacity and chunking
+
+Direct Representax grows from 3.773 GiB allocator peak at batch 1 to 16.693 GiB
+at batch 8.  Batch 8 is the largest direct run completed in this sweep; probes
+above it spent several minutes compiling and were stopped, so they are not
+misreported as OOM.  Cached Representax and Sentence Transformers both complete
+batch 1,024.  Thus the honest capacity statements are =direct >= 8= and
+=cached >= 1,024=, not claimed maxima.
+
+At batch 32, reducing the cached chunk from four to two lowers Representax's
+allocator peak from 6.776 GiB to 4.831 GiB and process peak from 10.447 GiB to
+6.449 GiB, at the cost of 6.3% throughput.  Sentence Transformers at chunk two
+uses 3.784 GiB allocator and 4.461 GiB process memory, while Representax remains
+60.5% faster by throughput.  Chunk eight does not improve native throughput and
+raises the process peak to 18.453 GiB.
+
+No completed artifact in this matrix OOMed.  Each JSON nevertheless records an
+explicit =oom= field, and the probe persists classified OOM failures rather than
+turning performance regressions into correctness failures.
+
+* Interpretation
+
+The benchmark validates the rematerialized-scan execution idea and the new
+row-tiled canonical MNR objective: encoder activation memory follows chunk size,
+while the logical negative population reaches at least 1,024.  It also locates
+the remaining work precisely.  Native throughput wins, but fixed framework,
+optimizer, attention-workspace, and compilation memory must be tightened before
+the GradCache roadmap item can be called complete.  A Pallas kernel is not yet
+justified by these results: the representation-score tiles are small, while the
+observed gap is dominated by the fixed/encoder side.
+
+* Replay
+
+Run each arm in a fresh process.  Substitute a local snapshot path for
+=CHECKPOINT= and choose one of GPUs 0 or 1.
+
+#+begin_src sh
+CUDA_VISIBLE_DEVICES=0 conda run -n representax \
+  python benchmarks/grad_cache_modernvbert.py \
+  --runtime grad-cache --checkpoint "$CHECKPOINT" \
+  --output /tmp/representax-b32-c4.json \
+  --batch-size 32 --sequence-length 512 --chunk-size 4 \
+  --warmup-steps 1 --measured-steps 2
+
+CUDA_VISIBLE_DEVICES=1 conda run -n modernvbert-tf53-parity \
+  python benchmarks/grad_cache_modernvbert.py \
+  --runtime sentence-transformers --checkpoint "$CHECKPOINT" \
+  --output /tmp/sentence-transformers-b32-c4.json \
+  --batch-size 32 --sequence-length 512 --chunk-size 4 \
+  --warmup-steps 1 --measured-steps 2
+#+end_src
+

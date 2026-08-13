@@ -1,8 +1,10 @@
 """Native multiple-negatives ranking tests."""
 
+import jax
 import jax.numpy as jnp
+import numpy as np
 
-from representax.tasks.retrieval import mnr_loss_terms
+from representax.tasks.retrieval import MNRTask, mnr_loss_terms, retrieval_batch
 
 
 def test_mnr_prefers_aligned_pairs():
@@ -49,3 +51,65 @@ def test_graded_mnr_weights_multiple_positives():
     )
 
     assert graded.loss < uniform.loss
+
+
+def test_tiled_mnr_matches_full_values_and_representation_gradients():
+    queries = jnp.asarray(
+        [[0.8, -0.2, 0.3], [0.1, 0.9, -0.4], [-0.5, 0.2, 0.7]],
+        dtype=jnp.float32,
+    )
+    documents = jnp.asarray(
+        [
+            [0.7, -0.1, 0.2],
+            [0.2, 0.8, -0.3],
+            [-0.4, 0.3, 0.8],
+            [0.5, 0.5, 0.0],
+            [-0.3, -0.6, 0.4],
+        ],
+        dtype=jnp.float32,
+    )
+    positives = jnp.asarray(
+        [
+            [True, False, False, True, False],
+            [False, True, False, False, False],
+            [False, False, True, False, True],
+        ]
+    )
+    weights = jnp.where(positives, 1.0, 0.0).at[0, 0].set(2.0)
+    options = {
+        "positive_weights": weights,
+        "query_valid": jnp.asarray([True, True, False]),
+        "document_valid": jnp.asarray([True, True, True, True, False]),
+        "scale": 7.0,
+        "symmetric": True,
+    }
+    batch = retrieval_batch(
+        query=queries,
+        document=documents,
+        positive_mask=positives,
+        positive_weights=weights,
+        query_valid=options["query_valid"],
+        document_valid=options["document_valid"],
+    )
+    task = MNRTask(scale=options["scale"], symmetric=options["symmetric"])
+
+    def objective(query, document, row_chunk_size):
+        return task.loss_from_embeddings(
+            query,
+            document,
+            batch,
+            row_chunk_size=row_chunk_size,
+        ).loss
+
+    full_value, full_gradients = jax.value_and_grad(
+        lambda query, document: objective(query, document, None),
+        argnums=(0, 1),
+    )(queries, documents)
+    tiled_value, tiled_gradients = jax.value_and_grad(
+        lambda query, document: objective(query, document, 2),
+        argnums=(0, 1),
+    )(queries, documents)
+
+    np.testing.assert_allclose(tiled_value, full_value, rtol=2e-6, atol=2e-7)
+    for tiled, full in zip(tiled_gradients, full_gradients, strict=True):
+        np.testing.assert_allclose(tiled, full, rtol=3e-5, atol=3e-6)

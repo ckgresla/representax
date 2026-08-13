@@ -82,12 +82,18 @@ def test_grad_cache_matches_direct_full_optimizer_update(symmetric: bool):
     optimizer = optax.adamw(learning_rate=1e-3, weight_decay=1e-2)
     state = make_train_state(model, optimizer)
     batch = _nontrivial_batch()
-    direct = build_train_step(task, optimizer, max_grad_norm=0.7)
+    direct = build_train_step(
+        task,
+        optimizer,
+        max_grad_norm=0.7,
+        donate_state=False,
+    )
     cached = build_train_step(
         task,
         optimizer,
         max_grad_norm=0.7,
         execution=GradCache(query_chunk_size=2, document_chunk_size=3),
+        donate_state=False,
     )
 
     direct_result = direct(state, batch, jax.random.key(17))
@@ -189,15 +195,24 @@ def test_grad_cache_rematerialization_replays_stochastic_chunks_exactly():
 
 
 @pytest.mark.parametrize(
-    ("query_chunk_size", "document_chunk_size"),
-    [(0, None), (-1, 2), (2, 0), (2, -1)],
+    ("query_chunk_size", "document_chunk_size", "representation_chunk_size"),
+    [
+        (0, None, None),
+        (-1, 2, None),
+        (2, 0, None),
+        (2, -1, None),
+        (2, 2, 0),
+        (2, 2, -1),
+    ],
 )
 def test_grad_cache_rejects_nonpositive_chunk_sizes(
     query_chunk_size: int,
     document_chunk_size: int | None,
+    representation_chunk_size: int | None,
 ):
     with pytest.raises(ValueError, match="chunk_size must be positive"):
         GradCache(
             query_chunk_size=query_chunk_size,
             document_chunk_size=document_chunk_size,
+            representation_chunk_size=representation_chunk_size,
         )

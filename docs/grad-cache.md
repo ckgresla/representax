@@ -1,9 +1,10 @@
 # Exact GradCache execution
 
 GradCache is an execution schedule for a representation objective. It is not a
-second loss. In Representax, direct and cached MNR both evaluate `MNRTask` and
-`mnr_loss_terms`; the execution choice only determines which encoder
-activations survive until the backward pass.
+second loss. In Representax, direct diagnostics and cached training both
+evaluate `MNRTask` through one shared row-level MNR primitive; the execution
+choice determines which encoder activations and score rows survive until the
+backward pass.
 
 ```python
 from representax.tasks.retrieval import MNRTask
@@ -15,12 +16,17 @@ step = build_train_step(
     execution=GradCache(
         query_chunk_size=16,
         document_chunk_size=8,
+        representation_chunk_size=16,
     ),
 )
 ```
 
 The logical batch and negative population do not change. The query and document
 chunk sizes are topology-dependent execution choices.
+
+`build_train_step` keeps state donation off by default. An isolated loop may set
+`donate_state=True` to reduce peak memory, but only when no observer—including
+an asynchronous checkpoint—is retaining the input state.
 
 ## Algorithm
 
@@ -29,10 +35,11 @@ For each query and document role, the native JAX path:
 1. pads the execution batch to a static number of chunks;
 2. encodes those chunks with `lax.scan`;
 3. wraps the scan body in `jax.checkpoint` with `nothing_saveable`;
-4. evaluates the ordinary full-batch MNR function from the representations; and
+4. evaluates the canonical MNR row formula in bounded score-matrix tiles; and
 5. lets JAX's transposition replay one encoder chunk at a time during backward.
 
-Only the compact representations remain live across the forward scan. Explicit
+Only the compact representations remain live across the encoder scan and only
+one score-row tile remains live across the objective scan. Explicit
 per-role and per-chunk PRNG keys make a replay of a stochastic encoder use the
 same random values as its graphless forward. The resulting parameter gradient
 then enters the same clipping, finite-check, Optax update, and logging path used
@@ -63,14 +70,20 @@ The roadmap item is not complete, however, until Representax fits every matched
 batch the pinned reference fits and has better steady-state throughput and peak
 memory on the primary workload.
 
+The first pinned result is
+[`grad-cache-modernvbert-20260813`](../benchmarks/results/grad-cache-modernvbert-20260813/README.org).
+At sequence length 512 and chunk four, native JAX is faster at every matched
+batch from 8 through 1,024 and keeps its allocator peak nearly flat. It is not
+yet tighter than the reference, so the parent roadmap item remains open.
+
 ## Pallas boundary
 
 Pallas is not used to orchestrate encoder replay: an arbitrary Equinox encoder
 forward and backward remain ordinary JAX. If profiling shows that the
 representation objective becomes material at very large logical batches, a
-later tiled custom VJP may implement normalized similarity, streaming
-log-sum-exp, and representation cotangents in Pallas. That kernel must retain a
-native-JAX fallback and match the canonical MNR oracle before it is benchmarked.
+later custom VJP may fuse normalized similarity, streaming log-sum-exp, and
+representation cotangents in Pallas. The existing row-tiled native-JAX path is
+the fallback and numerical oracle it must beat.
 
 ## Sources
 

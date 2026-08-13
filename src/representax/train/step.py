@@ -87,11 +87,14 @@ def build_train_step(
     *,
     max_grad_norm: float | None = 1.0,
     execution: LossExecution | None = None,
+    donate_state: bool = False,
 ) -> TrainStep:
     """Build a compiled task-generic optimizer update.
 
     The task and optimizer are closed-over static program structure. Model,
-    optimizer state, batch, and random key remain explicit JAX inputs.
+    optimizer state, batch, and random key remain explicit JAX inputs. State
+    donation is opt-in because callers may retain the old state for asynchronous
+    checkpointing, comparisons, or recovery.
     """
 
     if max_grad_norm is not None and max_grad_norm <= 0:
@@ -99,12 +102,15 @@ def build_train_step(
     resolved_execution = Direct() if execution is None else execution
     resolved_execution.validate(task)
 
-    @eqx.filter_jit
-    def train_step(
+    donation = "all-except-first" if donate_state else "none"
+
+    @eqx.filter_jit(donate=donation)
+    def compiled_step(
+        inputs: tuple[Any, jax.Array | None],
         state: TrainState,
-        batch: Any,
-        key: jax.Array | None = None,
     ) -> StepResult:
+        batch, key = inputs
+
         def loss_fn(model: eqx.Module):
             output = resolved_execution.evaluate(task, model, batch, key=key)
             return output.loss, output.metrics
@@ -159,5 +165,12 @@ def build_train_step(
                 skipped_update=~finite,
             ),
         )
+
+    def train_step(
+        state: TrainState,
+        batch: Any,
+        key: jax.Array | None = None,
+    ) -> StepResult:
+        return compiled_step((batch, key), state)
 
     return train_step

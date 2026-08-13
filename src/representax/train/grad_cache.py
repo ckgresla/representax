@@ -80,16 +80,26 @@ class GradCache:
 
     query_chunk_size: int
     document_chunk_size: int | None = None
+    representation_chunk_size: int | None = None
 
     def __post_init__(self) -> None:
         if self.query_chunk_size <= 0:
             raise ValueError("query_chunk_size must be positive")
         if self.document_chunk_size is not None and self.document_chunk_size <= 0:
             raise ValueError("document_chunk_size must be positive when set")
+        if (
+            self.representation_chunk_size is not None
+            and self.representation_chunk_size <= 0
+        ):
+            raise ValueError("representation_chunk_size must be positive when set")
 
     @property
     def resolved_document_chunk_size(self) -> int:
         return self.document_chunk_size or self.query_chunk_size
+
+    @property
+    def resolved_representation_chunk_size(self) -> int:
+        return self.representation_chunk_size or self.query_chunk_size
 
     def validate(self, task: Task[Any]) -> None:
         if not isinstance(task, MNRTask):
@@ -126,4 +136,9 @@ class GradCache:
             chunk_size=self.resolved_document_chunk_size,
             key=document_key,
         )
-        return task.loss_from_embeddings(queries, documents, batch)
+        return task.loss_from_embeddings(
+            queries,
+            documents,
+            batch,
+            row_chunk_size=self.resolved_representation_chunk_size,
+        )

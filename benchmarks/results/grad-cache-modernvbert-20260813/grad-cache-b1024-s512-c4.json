@@ -1,0 +1,47 @@
+{
+  "allocator_peak_device_bytes": 7290781696,
+  "backend": "jax",
+  "backend_version": "0.10.1",
+  "batch_size": 1024,
+  "checkpoint": "/raid/.cache/huggingface/hub/models--ModernVBERT--modernvbert-embed/snapshots/da507113c3fdbc2e49d39c4b0148025c6bd008f9",
+  "checkpoint_revision": "da507113c3fdbc2e49d39c4b0148025c6bd008f9",
+  "chunk_size": 4,
+  "compile_plus_first_seconds": 104.164601479657,
+  "device": "cuda:0",
+  "examples_per_second": 25.687128370049,
+  "framework": "representax",
+  "framework_version": "0.0.1",
+  "gradient_global_norm": 3.0127477645874023,
+  "losses": [
+    7.087892055511475,
+    7.087892055511475
+  ],
+  "measured_steps": 1,
+  "oom": false,
+  "precision_policy": {
+    "compute": "float32",
+    "float32_matmul": "highest",
+    "objective": "float32",
+    "parameters": "float32",
+    "xla_python_client_preallocate": "false"
+  },
+  "process_peak_device_bytes": 11219763200,
+  "python": "3.13.14",
+  "runtime": "grad-cache",
+  "schema_version": "representax-grad-cache-modernvbert-probe-v1",
+  "seed": 1729,
+  "sequence_length": 512,
+  "setup_seconds": 2.1155096907168627,
+  "status": "completed",
+  "steady_state_median_seconds": 39.864323689602315,
+  "steady_state_seconds": [
+    39.864323689602315
+  ],
+  "tokens_per_second": 26303.619450930175,
+  "wall_seconds": 147.62679638899863,
+  "warmup_steps": 0,
+  "workload_fingerprints": {
+    "input_sha256": "96e2f7b484ce92e6cd2130628b00b0cc356ea5bfe8da51e5d1694ebf6d5b021c",
+    "scientific_spec_sha256": "25fbaa6158eb865405b55c57ecc0200c04838d0b004068a3cd429c85407d021b"
+  }
+}

@@ -104,3 +104,8 @@ data examples to the compiled batch contract.
 Single-device MNR may use [exact GradCache execution](grad-cache.md) by passing a
 step built with `execution=GradCache(...)` to this loop. Distributed GradCache
 remains roadmap work.
+
+Compiled state-buffer donation is deliberately opt-in. The generic loop and its
+asynchronous Orbax checkpoints retain the safe non-donating default; a dedicated
+loop may pass `donate_state=True` to `build_train_step` only after ensuring that
+the previous state has no remaining readers.

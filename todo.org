@@ -66,7 +66,8 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   updates over continuous paired views with independent nuisance features and
   requires the learned retrieval loss to fall by more than half.
 * NEXT Implement exact native-JAX GradCache as an execution plan for MNR :retrieval:runtime:
-  Preserve =MNRTask= and =mnr_loss_terms= as the sole scientific definition.
+  Preserve =MNRTask= and one shared row-level MNR primitive as the sole
+  scientific definition.
   GradCache changes only the differentiation schedule: encode fixed-shape chunks
   while retaining the full logical negative population, differentiate the same
   MNR loss with respect to the representations, replay one encoder chunk at a
@@ -107,12 +108,27 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
    The rematerialized scan, one canonical MNR objective, one optimizer path,
    explicit stochastic replay keys, partial-chunk padding, Dense update parity,
    and compiled ModernVBERT integration are covered by fast and runtime tests.
-** NEXT Add the pinned ModernVBERT target-to-beat benchmark :performance:reference:
-   Compare direct Representax, cached Representax, and Sentence Transformers in
-   isolated processes across logical batch and chunk sizes at sequence length
-   512. Persist loss, OOM status, compile-plus-first time, steady-state step time,
-   throughput, allocator peak, process peak, versions, and workload fingerprints.
-** TODO Add a tiled representation-loss implementation when profiling requires it :pallas:
+** DONE Add the pinned ModernVBERT target-to-beat benchmark :performance:reference:
+   The isolated FP32 sequence-512 matrix, raw JSON, fingerprints, replay commands,
+   and analysis live in
+   =benchmarks/results/grad-cache-modernvbert-20260813/=.  At chunk four,
+   Representax is 19.4% to 36.9% faster by throughput from batch 8 through 1,024
+   and both cached runtimes fit every tested batch.  The parent remains open:
+   Representax uses about 40.6% more allocator memory and 83.4% more
+   process-visible device memory than the pinned reference at batch 32, and its
+   compile-plus-first cost is materially higher.
+** DONE Add a native-JAX tiled representation-loss implementation :runtime:memory:
+   Direct diagnostics and cached training share one canonical row formula.  A
+   rematerialized scan bounds live score rows and is the numerical oracle and
+   unsupported-accelerator fallback for any future custom kernel.
+** NEXT Close fixed memory and compilation gaps against the pinned reference :performance:
+   Profile model/optimizer buffers, XLA temporaries, attention workspaces, and
+   compilation separately.  At batch 32, chunk two lowers the native allocator
+   peak to 4.831 GiB and process peak to 6.449 GiB while retaining a 60.5%
+   throughput advantage, but the matched reference remains tighter at 3.784 GiB
+   and 4.461 GiB.  Preserve explicit opt-in state donation for isolated training;
+   asynchronous checkpoints may retain the previous state, so generic training
+   must not donate it until checkpoint snapshots have independent ownership.
 ** TODO Extend exact GradCache to global multi-device and multi-host negatives :distributed:
 
 * TODO Reserve the =representax= package and repository names :release:
