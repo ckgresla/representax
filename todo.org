@@ -54,12 +54,23 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   multiple compiled updates end to end, the public API and import convention are
   documented, fast and runtime tests cover success and failure lifecycles, and
   the resulting run artifacts are inspectable without an external service.
-* TODO Port GradCache without changing global-negative semantics :retrieval:runtime:
-  Match the direct MNR objective and gradients before measuring cached
-  execution. Keep distributed and cross-host extensions out of the first port.
-* TODO Add Orbax checkpointing and exact resume :runtime:
-  Restore model, optimizer, step, RNG, and data-iterator state so the first
-  resumed update is numerically identical to uninterrupted training.
+* NEXT Add non-blocking Orbax checkpointing and exact resume :runtime:
+  Keep training asynchronous with at most one in-flight checkpoint, explicit
+  backpressure only when the writer falls behind, and atomic publication of
+  complete checkpoints. Restore model, optimizer, accepted optimizer step,
+  absolute iteration, RNG, Grain iterator state, and logging cursor so the first
+  resumed update and subsequent records are numerically identical to an
+  uninterrupted run. Done when success, failure, incomplete-checkpoint,
+  retention, and exact-resume tests pass without hiding checkpoint latency in
+  steady-state step measurements.
+* TODO Improve GradCache as a Pallas-backed execution of one MNR objective :retrieval:runtime:pallas:
+  Start from Lasso's verified cached-gradient and global-negative semantics, but
+  keep one canonical MNR loss function and one numerical oracle rather than
+  maintaining separate objective control flows. Use ordinary JAX compilation
+  for direct MNR and a lower-level Pallas execution path for cached embedding
+  gradients and replay. Require objective, embedding-gradient, parameter-gradient,
+  and optimizer-update parity before demonstrating lower peak memory and better
+  throughput. Extend the same semantics across devices and hosts only afterward.
 
 * TODO Reserve the =representax= package and repository names :release:
 * TODO Publish a minimal CPU-first installation and compatibility matrix :release:
