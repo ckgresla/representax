@@ -1,7 +1,6 @@
 """End-to-end single-device training-loop tests."""
 
 import json
-from collections.abc import Sequence
 
 import jax
 import jax.numpy as jnp
@@ -11,7 +10,7 @@ import pytest
 from representax.data import build_grain_iterator, mix, source
 from representax.models import DenseEncoder
 from representax.planning import ScientificSpec
-from representax.tasks.retrieval import MNRTask, retrieval_batch
+from representax.tasks.retrieval import MNRTask
 from representax.train import (
     StepMetrics,
     StepResult,
@@ -20,6 +19,13 @@ from representax.train import (
     build_train_step,
     make_train_state,
     run_training,
+)
+from tests.train.toy_retrieval import (
+    TOY_BATCH_SIZE,
+    TOY_FEATURE_DIMENSION,
+    TOY_OUTPUT_DIMENSION,
+    TOY_STEPS,
+    build_toy_retrieval_batches,
 )
 
 
@@ -231,38 +237,17 @@ def _identity(record):
 
 
 def _resolver(_artifact):
-    return [
-        {
-            "query": [float(index == column) for column in range(4)],
-            "document": [float((index + 1) % 4 == column) for column in range(4)],
-        }
-        for index in range(4)
-    ]
-
-
-def _retrieval_batch(examples: Sequence[dict]):
-    size = len(examples)
-    return retrieval_batch(
-        query=jnp.asarray([example["query"] for example in examples]),
-        document=jnp.asarray([example["document"] for example in examples]),
-        positive_mask=jnp.eye(size, dtype=jnp.bool_),
-    )
+    return [1.0, 2.0]
 
 
 @pytest.mark.runtime
 def test_grain_recipe_drives_compiled_updates_end_to_end(tmp_path):
-    artifact = source("memory://toy", map=_identity)
-    recipe = mix(artifact, shuffle=False, seed=23)
-    batches = build_grain_iterator(
-        recipe,
-        batch_size=2,
-        batch_fn=_retrieval_batch,
-        num_threads=1,
-        prefetch_buffer_size=1,
-        resolvers={"memory": _resolver},
-        mappers={artifact.mapper: _identity},
+    batches = build_toy_retrieval_batches(seed=23)
+    model = DenseEncoder(
+        TOY_FEATURE_DIMENSION,
+        TOY_OUTPUT_DIMENSION,
+        key=jax.random.key(0),
     )
-    model = DenseEncoder(4, 3, key=jax.random.key(0))
     optimizer = optax.adamw(learning_rate=0.03, weight_decay=0.0)
     state = make_train_state(model, optimizer)
     result = run_training(
@@ -274,20 +259,22 @@ def test_grain_recipe_drives_compiled_updates_end_to_end(tmp_path):
         batches=batches,
         science=ScientificSpec(
             task="retrieval/mnr",
-            global_batch_size=2,
-            max_steps=2,
+            global_batch_size=TOY_BATCH_SIZE,
+            max_steps=TOY_STEPS,
             seed=23,
         ),
         run_directory=tmp_path / "grain-run",
-        config=TrainingLoopConfig(console_every=2),
+        config=TrainingLoopConfig(console_every=TOY_STEPS),
     )
 
-    assert result.completed_iterations == 2
-    assert int(result.state.step) == 2
+    assert result.completed_iterations == TOY_STEPS
+    assert int(result.state.step) == TOY_STEPS
     assert not jnp.array_equal(
         result.state.model.projection.weight,
         model.projection.weight,
     )
     metrics = _read_jsonl(tmp_path / "grain-run" / "metrics.jsonl")
-    assert len(metrics) == 2
+    assert len(metrics) == TOY_STEPS
     assert all(row["numeric_finite"] for row in metrics)
+    losses = [row["loss"] for row in metrics]
+    assert losses[-1] < losses[0] * 0.5

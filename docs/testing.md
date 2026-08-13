@@ -24,6 +24,11 @@ model, optimizer, loss, batch position, and random-key trajectories. Snapshot
 and backpressure latency must remain separate lifecycle events rather than
 being reported as compiled-step throughput.
 
+The compiled-training fixture uses eight batches of 16 continuous paired views
+with independent nuisance features and requires the learned retrieval loss to
+fall by more than half. Batch-two fixtures are reserved for focused host-loop
+mechanics where accelerator behavior is not under test.
+
 ## Model-family acceptance
 
 Every supported model family owns a paired upstream reference under its test

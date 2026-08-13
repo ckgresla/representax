@@ -62,7 +62,9 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   resumed update and subsequent records are numerically identical to an
   uninterrupted run. Done when success, failure, incomplete-checkpoint,
   retention, and exact-resume tests pass without hiding checkpoint latency in
-  steady-state step measurements.
+  steady-state step measurements. Runtime acceptance uses eight batch-16
+  updates over continuous paired views with independent nuisance features and
+  requires the learned retrieval loss to fall by more than half.
 * TODO Improve GradCache as a Pallas-backed execution of one MNR objective :retrieval:runtime:pallas:
   Start from Lasso's verified cached-gradient and global-negative semantics, but
   keep one canonical MNR loss function and one numerical oracle rather than

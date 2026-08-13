@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import threading
-from collections.abc import Sequence
 
 import equinox as eqx
 import jax
@@ -13,10 +12,9 @@ import numpy as np
 import optax
 import pytest
 
-from representax.data import build_grain_iterator, mix, source
 from representax.models import DenseEncoder
 from representax.planning import ScientificSpec
-from representax.tasks.retrieval import MNRTask, retrieval_batch
+from representax.tasks.retrieval import MNRTask
 from representax.train import (
     CheckpointConfig,
     CheckpointManager,
@@ -30,6 +28,13 @@ from representax.train import (
     science_fingerprint,
     training_checkpointables,
     validate_complete_checkpoint,
+)
+from tests.train.toy_retrieval import (
+    TOY_BATCH_SIZE,
+    TOY_FEATURE_DIMENSION,
+    TOY_OUTPUT_DIMENSION,
+    TOY_STEPS,
+    build_toy_retrieval_batches,
 )
 
 
@@ -79,10 +84,10 @@ class _ControlledCheckpointer:
         self.closed = True
 
 
-def _state(input_dimension=2, optimizer=None):
+def _state(input_dimension=2, output_dimension=2, optimizer=None):
     model = DenseEncoder(
         input_dimension,
-        2,
+        output_dimension,
         key=jax.random.key(0),
         normalize=False,
     )
@@ -208,44 +213,6 @@ def test_run_logger_truncates_post_checkpoint_tail_on_resume(tmp_path):
     rows = _read_jsonl(run / "events.jsonl")
     assert [row["event"] for row in rows] == ["durable", "training_resumed"]
     assert [row["sequence"] for row in rows] == [0, 1]
-
-
-def _identity(record):
-    return record
-
-
-def _resolver(_artifact):
-    return [
-        {
-            "query": [float(index == column) for column in range(4)],
-            "document": [
-                float((index + 1) % 4 == column) for column in range(4)
-            ],
-        }
-        for index in range(8)
-    ]
-
-
-def _retrieval_batch(examples: Sequence[dict]):
-    size = len(examples)
-    return retrieval_batch(
-        query=jnp.asarray([example["query"] for example in examples]),
-        document=jnp.asarray([example["document"] for example in examples]),
-        positive_mask=jnp.eye(size, dtype=jnp.bool_),
-    )
-
-
-def _batches():
-    artifact = source("memory://checkpoint-toy", map=_identity)
-    return build_grain_iterator(
-        mix(artifact, shuffle=False, seed=29),
-        batch_size=2,
-        batch_fn=_retrieval_batch,
-        num_threads=1,
-        prefetch_buffer_size=1,
-        resolvers={"memory": _resolver},
-        mappers={artifact.mapper: _identity},
-    )
 
 
 def _assert_array_trees_equal(left, right):
@@ -378,12 +345,16 @@ def test_orbax_preserves_mixed_training_dtypes(tmp_path):
 def test_interrupted_grain_training_resumes_exactly(tmp_path):
     science = ScientificSpec(
         task="retrieval/mnr",
-        global_batch_size=2,
-        max_steps=4,
+        global_batch_size=TOY_BATCH_SIZE,
+        max_steps=TOY_STEPS,
         seed=29,
     )
     optimizer = optax.adamw(learning_rate=0.03, weight_decay=0.0)
-    initial = _state(input_dimension=4, optimizer=optimizer)
+    initial = _state(
+        input_dimension=TOY_FEATURE_DIMENSION,
+        output_dimension=TOY_OUTPUT_DIMENSION,
+        optimizer=optimizer,
+    )
     train_step = build_train_step(
         MNRTask(scale=5.0, symmetric=True),
         optimizer,
@@ -391,7 +362,7 @@ def test_interrupted_grain_training_resumes_exactly(tmp_path):
     uninterrupted = run_training(
         state=initial,
         step=train_step,
-        batches=_batches(),
+        batches=build_toy_retrieval_batches(seed=29),
         science=science,
         run_directory=tmp_path / "uninterrupted",
     )
@@ -401,17 +372,17 @@ def test_interrupted_grain_training_resumes_exactly(tmp_path):
     def crash_after_checkpoint(state, batch, key):
         nonlocal calls
         calls += 1
-        if calls == 3:
+        if calls == 5:
             raise RuntimeError("simulated interruption")
         return train_step(state, batch, key)
 
     run = tmp_path / "resumed"
-    checkpoint = CheckpointConfig(every=2, keep=2, asynchronous=True)
+    checkpoint = CheckpointConfig(every=4, keep=2, asynchronous=True)
     with pytest.raises(RuntimeError, match="simulated interruption"):
         run_training(
             state=initial,
             step=crash_after_checkpoint,
-            batches=_batches(),
+            batches=build_toy_retrieval_batches(seed=29),
             science=science,
             run_directory=run,
             checkpoint=checkpoint,
@@ -420,7 +391,7 @@ def test_interrupted_grain_training_resumes_exactly(tmp_path):
     resumed = run_training(
         state=initial,
         step=train_step,
-        batches=_batches(),
+        batches=build_toy_retrieval_batches(seed=29),
         science=science,
         run_directory=run,
         checkpoint=checkpoint,
@@ -428,17 +399,20 @@ def test_interrupted_grain_training_resumes_exactly(tmp_path):
     )
 
     assert resumed.resumed is True
-    assert resumed.completed_iterations == 4
+    assert resumed.completed_iterations == TOY_STEPS
     _assert_array_trees_equal(resumed.state, uninterrupted.state)
     uninterrupted_metrics = _read_jsonl(
         tmp_path / "uninterrupted" / "metrics.jsonl"
     )
     resumed_metrics = _read_jsonl(run / "metrics.jsonl")
-    assert [row["iteration"] for row in resumed_metrics] == [1, 2, 3, 4]
+    assert [row["iteration"] for row in resumed_metrics] == list(
+        range(1, TOY_STEPS + 1)
+    )
     np.testing.assert_array_equal(
         [row["loss"] for row in resumed_metrics],
         [row["loss"] for row in uninterrupted_metrics],
     )
+    assert resumed_metrics[-1]["loss"] < resumed_metrics[0]["loss"] * 0.5
     events = _read_jsonl(run / "events.jsonl")
     assert [row["event"] for row in events].count("training_resumed") == 1
     assert not any(row["event"] == "training_failed" for row in events)
@@ -446,6 +420,6 @@ def test_interrupted_grain_training_resumes_exactly(tmp_path):
     manifest = json.loads((run / "run.json").read_text())
     assert manifest["status"] == "completed"
     assert manifest["resume_count"] == 1
-    assert manifest["checkpoint"]["every"] == 2
+    assert manifest["checkpoint"]["every"] == 4
     assert "error" not in manifest
     assert "error_type" not in manifest
