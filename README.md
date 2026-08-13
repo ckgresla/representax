@@ -134,7 +134,12 @@ import optax
 
 from representax.data import build_grain_iterator
 from representax.planning import ScientificSpec
-from representax.train import build_train_step, make_train_state, run_training
+from representax.train import (
+    CheckpointConfig,
+    build_train_step,
+    make_train_state,
+    run_training,
+)
 
 optimizer = optax.adamw(learning_rate=1e-3)
 state = make_train_state(model, optimizer)
@@ -150,11 +155,15 @@ result = run_training(
         seed=17,
     ),
     run_directory="runs/example",
+    checkpoint=CheckpointConfig(every=1_000, keep=3),
 )
 ```
 
 The loop records every optimizer attempt in `metrics.jsonl`, lifecycle events
-in `events.jsonl`, and final status in `run.json`. See
+in `events.jsonl`, and final status in `run.json`. Checkpoints are written by
+Orbax with at most one asynchronous save in flight. Recreate the same recipe,
+model/state template, task/optimizer program, and batch source and pass
+`resume=True` to continue from the latest complete checkpoint. See
 [the training contract](docs/training.md).
 
 ## Tests

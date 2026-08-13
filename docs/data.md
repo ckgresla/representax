@@ -82,6 +82,9 @@ otherwise-surprising final compilation. Exhausting a finite iterator before
 the scientific step count is a training failure, not silent early completion.
 The returned source also exposes its exact `global_batch_size`, allowing the
 trainer to reject a mismatch with `ScientificSpec` before creating a run.
+Its Grain iterator implements `get_state` and `set_state`; Representax stores
+that state in each training checkpoint so resume returns to the exact next raw
+record even when the input pipeline had prefetched ahead.
 
 ## Extension points
 

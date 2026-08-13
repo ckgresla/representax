@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
@@ -88,26 +89,98 @@ class RunLogger:
         *,
         manifest: Mapping[str, Any],
         sinks: Sequence[EventSink] = (),
+        resume_cursor: Mapping[str, int] | None = None,
     ) -> None:
         self.run_directory = Path(run_directory).expanduser().resolve()
-        self.run_directory.mkdir(parents=True, exist_ok=False)
-        self._events = (self.run_directory / "events.jsonl").open(
-            "x", encoding="utf-8", buffering=1
-        )
-        self._metrics = (self.run_directory / "metrics.jsonl").open(
-            "x", encoding="utf-8", buffering=1
-        )
+        self._events_path = self.run_directory / "events.jsonl"
+        self._metrics_path = self.run_directory / "metrics.jsonl"
         self._sinks = tuple(sinks)
-        self._sequence = 0
+        self._lock = threading.RLock()
         self._closed = False
-        self._manifest = {
-            **_json_value(manifest),
-            "schema_version": "representax-run-v1",
-            "kind": "train",
-            "status": "running",
-            "started_at": _timestamp(),
-        }
+        if resume_cursor is None:
+            self.run_directory.mkdir(parents=True, exist_ok=False)
+            self._events = self._events_path.open(
+                "x", encoding="utf-8", buffering=1
+            )
+            self._metrics = self._metrics_path.open(
+                "x", encoding="utf-8", buffering=1
+            )
+            self._sequence = 0
+            self._manifest = {
+                **_json_value(manifest),
+                "schema_version": "representax-run-v1",
+                "kind": "train",
+                "status": "running",
+                "started_at": _timestamp(),
+            }
+        else:
+            self._manifest = self._resume(manifest, resume_cursor)
         _atomic_write_json(self.run_directory / "run.json", self._manifest)
+
+    def _resume(
+        self,
+        manifest: Mapping[str, Any],
+        cursor: Mapping[str, int],
+    ) -> dict[str, Any]:
+        run_path = self.run_directory / "run.json"
+        if not run_path.is_file():
+            raise FileNotFoundError(f"run manifest is missing: {run_path}")
+        previous = json.loads(run_path.read_text())
+        if (
+            previous.get("schema_version") != "representax-run-v1"
+            or previous.get("kind") != "train"
+        ):
+            raise ValueError(f"run manifest is incompatible: {run_path}")
+        immutable = ("task", "global_batch_size", "max_steps", "seed")
+        for name in immutable:
+            if previous.get(name) != manifest.get(name):
+                raise ValueError(f"resumed run {name} differs")
+        required = {"events_bytes", "metrics_bytes", "sequence"}
+        if set(cursor) != required:
+            raise ValueError(
+                "logging cursor keys differ; "
+                f"expected={sorted(required)}, actual={sorted(cursor)}"
+            )
+        positions = {name: int(value) for name, value in cursor.items()}
+        if any(value < 0 for value in positions.values()):
+            raise ValueError("logging cursor values must be non-negative")
+        self._truncate(self._events_path, positions["events_bytes"])
+        self._truncate(self._metrics_path, positions["metrics_bytes"])
+        self._events = self._events_path.open("a", encoding="utf-8", buffering=1)
+        self._metrics = self._metrics_path.open("a", encoding="utf-8", buffering=1)
+        self._sequence = positions["sequence"]
+        terminal_fields = {
+            "completed_iterations",
+            "error",
+            "error_type",
+            "finished_at",
+            "optimizer_steps",
+        }
+        active = {
+            key: value
+            for key, value in previous.items()
+            if key not in terminal_fields
+        }
+        return {
+            **active,
+            "checkpoint": _json_value(manifest.get("checkpoint")),
+            "status": "running",
+            "resumed_at": _timestamp(),
+            "resume_count": int(previous.get("resume_count", 0)) + 1,
+        }
+
+    @staticmethod
+    def _truncate(path: Path, position: int) -> None:
+        if not path.is_file():
+            raise FileNotFoundError(f"append-only run log is missing: {path}")
+        size = path.stat().st_size
+        if size < position:
+            raise ValueError(
+                f"run log {path} is shorter than its checkpoint cursor: "
+                f"{size} < {position}"
+            )
+        with path.open("r+b") as stream:
+            stream.truncate(position)
 
     def _publish(self, row: Mapping[str, Any], *, metric: bool = False) -> None:
         _write_json_line(self._events, row)
@@ -117,28 +190,30 @@ class RunLogger:
             sink.write(row)
 
     def event(self, event: str, **fields: Any) -> None:
-        row = {
-            **fields,
-            "schema_version": "representax-event-v1",
-            "timestamp": _timestamp(),
-            "sequence": self._sequence,
-            "category": "event",
-            "event": event,
-        }
-        self._sequence += 1
-        self._publish(row)
+        with self._lock:
+            row = {
+                **fields,
+                "schema_version": "representax-event-v1",
+                "timestamp": _timestamp(),
+                "sequence": self._sequence,
+                "category": "event",
+                "event": event,
+            }
+            self._sequence += 1
+            self._publish(row)
 
     def metrics(self, record: TrainingStepRecord) -> None:
-        row = {
-            "schema_version": "representax-metrics-v1",
-            "timestamp": _timestamp(),
-            "sequence": self._sequence,
-            "category": "metric",
-            "event": "training_step",
-            **record.as_dict(),
-        }
-        self._sequence += 1
-        self._publish(row, metric=True)
+        with self._lock:
+            row = {
+                "schema_version": "representax-metrics-v1",
+                "timestamp": _timestamp(),
+                "sequence": self._sequence,
+                "category": "metric",
+                "event": "training_step",
+                **record.as_dict(),
+            }
+            self._sequence += 1
+            self._publish(row, metric=True)
 
     def console_metrics(self, record: TrainingStepRecord) -> None:
         throughput = (
@@ -152,25 +227,39 @@ class RunLogger:
             flush=True,
         )
 
+    def cursor(self) -> dict[str, int]:
+        """Return byte positions that define the durable append-only boundary."""
+
+        with self._lock:
+            self._events.flush()
+            self._metrics.flush()
+            return {
+                "events_bytes": self._events_path.stat().st_size,
+                "metrics_bytes": self._metrics_path.stat().st_size,
+                "sequence": self._sequence,
+            }
+
     def finish(self, status: str, **fields: Any) -> None:
-        self._manifest = {
-            **self._manifest,
-            **_json_value(fields),
-            "status": status,
-            "finished_at": _timestamp(),
-        }
-        _atomic_write_json(self.run_directory / "run.json", self._manifest)
+        with self._lock:
+            self._manifest = {
+                **self._manifest,
+                **_json_value(fields),
+                "status": status,
+                "finished_at": _timestamp(),
+            }
+            _atomic_write_json(self.run_directory / "run.json", self._manifest)
 
     def close(self) -> None:
-        if self._closed:
-            return
-        self._closed = True
-        try:
-            self._events.close()
-            self._metrics.close()
-        finally:
-            for sink in self._sinks:
-                sink.close()
+        with self._lock:
+            if self._closed:
+                return
+            self._closed = True
+            try:
+                self._events.close()
+                self._metrics.close()
+            finally:
+                for sink in self._sinks:
+                    sink.close()
 
 
 __all__ = ["EventSink", "RunLogger", "TrainingStepRecord"]

@@ -15,6 +15,7 @@ The ordinary single-device path adds a deliberately small host boundary:
 Grain recipe -> mapped examples -> static task batches -> device placement
                                                         -> compiled train step
                                                         -> local run records
+                                                        -> async checkpoints
 ```
 
 The trainer does not tokenize, decode media, interpret task examples, construct

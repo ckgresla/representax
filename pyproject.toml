@@ -23,6 +23,7 @@ dependencies = [
     "equinox>=0.11",
     "jax>=0.5",
     "optax>=0.2",
+    "orbax-checkpoint>=0.12,<0.13",
 ]
 
 [project.optional-dependencies]

@@ -13,6 +13,17 @@ Markers describe how a test executes:
 The default `pytest` command excludes the four environment-sensitive lanes.
 Each lane can be selected across the mirrored tree with `pytest -m <marker>`.
 
+## Checkpoint acceptance
+
+Checkpoint mechanics have fast controlled tests for one-in-flight asynchronous
+publication, backpressure, background failure propagation, incomplete markers,
+and byte-accurate log rollback. The `runtime` lane then uses real Orbax and
+Grain to require latest-N retention, science and PyTree compatibility checks,
+mixed-dtype restoration, and exact equality between uninterrupted and resumed
+model, optimizer, loss, batch position, and random-key trajectories. Snapshot
+and backpressure latency must remain separate lifecycle events rather than
+being reported as compiled-step throughput.
+
 ## Model-family acceptance
 
 Every supported model family owns a paired upstream reference under its test

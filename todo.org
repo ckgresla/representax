@@ -54,7 +54,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   multiple compiled updates end to end, the public API and import convention are
   documented, fast and runtime tests cover success and failure lifecycles, and
   the resulting run artifacts are inspectable without an external service.
-* NEXT Add non-blocking Orbax checkpointing and exact resume :runtime:
+* DONE Add non-blocking Orbax checkpointing and exact resume :runtime:
   Keep training asynchronous with at most one in-flight checkpoint, explicit
   backpressure only when the writer falls behind, and atomic publication of
   complete checkpoints. Restore model, optimizer, accepted optimizer step,

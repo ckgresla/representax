@@ -5,8 +5,8 @@ from __future__ import annotations
 import hashlib
 import json
 import time
-from collections.abc import Callable, Iterable
-from dataclasses import dataclass
+from collections.abc import Callable, Iterable, Mapping
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +14,12 @@ import jax
 
 from representax.planning import ScientificSpec
 
+from .checkpoint import (
+    CheckpointConfig,
+    CheckpointManager,
+    science_fingerprint,
+    training_checkpointables,
+)
 from .logging import EventSink, RunLogger, TrainingStepRecord
 from .state import StepResult, TrainState
 from .step import TrainStep
@@ -24,13 +30,10 @@ class TrainingLoopConfig:
     """Mechanics of the host loop, separate from scientific semantics."""
 
     console_every: int = 1
-    start_iteration: int = 0
 
     def __post_init__(self) -> None:
         if self.console_every <= 0:
             raise ValueError("console_every must be positive")
-        if self.start_iteration < 0:
-            raise ValueError("start_iteration must be non-negative")
 
 
 @dataclass(frozen=True)
@@ -40,6 +43,7 @@ class TrainingRunResult:
     state: TrainState
     completed_iterations: int
     run_directory: Path
+    resumed: bool
 
 
 def _float(value: Any) -> float:
@@ -75,6 +79,27 @@ def _close_batches(iterator: Any) -> None:
     close = getattr(iterator, "close", None)
     if close is not None:
         close()
+
+
+def _get_iterator_state(iterator: Any) -> Mapping[str, Any]:
+    get_state = getattr(iterator, "get_state", None)
+    if get_state is None:
+        raise TypeError(
+            "checkpointed training requires an iterator with get_state/set_state"
+        )
+    state = get_state()
+    if not isinstance(state, Mapping):
+        raise TypeError("iterator get_state() must return a mapping")
+    return state
+
+
+def _set_iterator_state(iterator: Any, state: Mapping[str, Any]) -> None:
+    set_state = getattr(iterator, "set_state", None)
+    if set_state is None:
+        raise TypeError(
+            "checkpointed training requires an iterator with get_state/set_state"
+        )
+    set_state(state)
 
 
 def _record(
@@ -128,6 +153,8 @@ def run_training(
     science: ScientificSpec,
     run_directory: str | Path,
     config: TrainingLoopConfig | None = None,
+    checkpoint: CheckpointConfig | None = None,
+    resume: bool = False,
     sinks: tuple[EventSink, ...] = (),
     place_batch: Callable[[Any], Any] = jax.device_put,
 ) -> TrainingRunResult:
@@ -140,8 +167,15 @@ def run_training(
     """
 
     config = TrainingLoopConfig() if config is None else config
-    if config.start_iteration >= science.max_steps:
-        raise ValueError("start_iteration must precede science.max_steps")
+    if resume and checkpoint is None:
+        raise ValueError("resume requires checkpoint configuration")
+    if checkpoint is not None and any(
+        iteration > science.max_steps
+        for iteration in checkpoint.additional_iterations
+    ):
+        raise ValueError(
+            "additional checkpoint iterations cannot exceed science.max_steps"
+        )
     source_batch_size = getattr(batches, "global_batch_size", None)
     if (
         source_batch_size is not None
@@ -152,31 +186,84 @@ def run_training(
             f"specification: {source_batch_size} != {science.global_batch_size}"
         )
     run_path = Path(run_directory).expanduser().resolve()
-    logger = RunLogger(
-        run_path,
-        manifest={
-            "task": science.task,
-            "global_batch_size": science.global_batch_size,
-            "max_steps": science.max_steps,
-            "seed": science.seed,
-            "start_iteration": config.start_iteration,
-        },
-        sinks=sinks,
-    )
+    fingerprint = science_fingerprint(science)
+    manifest = {
+        "task": science.task,
+        "global_batch_size": science.global_batch_size,
+        "max_steps": science.max_steps,
+        "seed": science.seed,
+        "science_fingerprint": fingerprint,
+        "checkpoint": None if checkpoint is None else asdict(checkpoint),
+    }
+    logger = None
+    checkpoint_manager = None
     iterator = None
     iterator_closed = False
     current = state
-    completed = config.start_iteration
+    completed = 0
     base_key = jax.random.key(science.seed)
     seen_signatures: set[str] = set()
     try:
+        restored = None
+        if resume:
+            checkpoint_manager = CheckpointManager(
+                run_path,
+                science_fingerprint=fingerprint,
+                keep=checkpoint.keep,
+                asynchronous=checkpoint.asynchronous,
+            )
+            restore_started = time.perf_counter()
+            restored = checkpoint_manager.restore_training_state(state)
+            restore_seconds = time.perf_counter() - restore_started
+            current = restored.state
+            completed = restored.iteration
+            base_key = restored.rng
+            if completed >= science.max_steps:
+                raise ValueError(
+                    "checkpoint already reached or exceeded science.max_steps"
+                )
+            logger = RunLogger(
+                run_path,
+                manifest=manifest,
+                sinks=sinks,
+                resume_cursor=restored.logging_cursor,
+            )
+            checkpoint_manager.set_event_callback(logger.event)
+            logger.event(
+                "checkpoint_restored",
+                iteration=completed,
+                checkpoint_path=str(restored.record.path),
+                duration_seconds=restore_seconds,
+            )
+            logger.event(
+                "training_resumed",
+                iteration=completed,
+                optimizer_step=_int(current.step),
+                checkpoint_path=str(restored.record.path),
+                checkpoint_fingerprint=restored.record.checkpoint_fingerprint,
+            )
+        else:
+            logger = RunLogger(run_path, manifest=manifest, sinks=sinks)
+            if checkpoint is not None:
+                checkpoint_manager = CheckpointManager(
+                    run_path,
+                    science_fingerprint=fingerprint,
+                    keep=checkpoint.keep,
+                    asynchronous=checkpoint.asynchronous,
+                    event=logger.event,
+                )
         iterator = iter(batches)
-        logger.event(
-            "training_started",
-            iteration=config.start_iteration,
-            end_iteration=science.max_steps,
-        )
-        for iteration_index in range(config.start_iteration, science.max_steps):
+        if checkpoint_manager is not None:
+            _get_iterator_state(iterator)
+        if restored is not None:
+            _set_iterator_state(iterator, restored.data_state)
+        if not resume:
+            logger.event(
+                "training_started",
+                iteration=0,
+                end_iteration=science.max_steps,
+            )
+        for iteration_index in range(completed, science.max_steps):
             wait_started = time.perf_counter()
             try:
                 host_batch = next(iterator)
@@ -231,8 +318,31 @@ def run_training(
             if completed % config.console_every == 0:
                 logger.console_metrics(record)
 
+            final = completed == science.max_steps
+            if (
+                checkpoint_manager is not None
+                and checkpoint.should_save(completed, final=final)
+            ):
+                checkpoint_manager.save(
+                    completed,
+                    training_checkpointables(
+                        state=current,
+                        iteration=completed,
+                        rng=base_key,
+                        data_state=_get_iterator_state(iterator),
+                        logging_cursor=logger.cursor(),
+                    ),
+                    metrics={
+                        "loss": record.loss,
+                        "optimizer_step": record.optimizer_step,
+                    },
+                )
+
         _close_batches(iterator)
         iterator_closed = True
+        if checkpoint_manager is not None:
+            checkpoint_manager.close()
+            checkpoint_manager = None
         logger.event(
             "training_finished",
             iteration=completed,
@@ -247,6 +357,7 @@ def run_training(
             state=current,
             completed_iterations=completed,
             run_directory=run_path,
+            resumed=resume,
         )
     except BaseException as error:
         if iterator is not None and not iterator_closed:
@@ -260,22 +371,36 @@ def run_training(
                     error_type=type(close_error).__name__,
                     error=str(close_error),
                 )
-        logger.event(
-            "training_failed",
-            iteration=completed,
-            error_type=type(error).__name__,
-            error=str(error),
-        )
-        logger.finish(
-            "failed",
-            completed_iterations=completed,
-            optimizer_steps=_int(current.step),
-            error_type=type(error).__name__,
-            error=str(error),
-        )
+        if checkpoint_manager is not None:
+            try:
+                checkpoint_manager.close()
+                checkpoint_manager = None
+            except BaseException as close_error:
+                if logger is not None:
+                    logger.event(
+                        "checkpoint_close_failed",
+                        iteration=completed,
+                        error_type=type(close_error).__name__,
+                        error=str(close_error),
+                    )
+        if logger is not None:
+            logger.event(
+                "training_failed",
+                iteration=completed,
+                error_type=type(error).__name__,
+                error=str(error),
+            )
+            logger.finish(
+                "failed",
+                completed_iterations=completed,
+                optimizer_steps=_int(current.step),
+                error_type=type(error).__name__,
+                error=str(error),
+            )
         raise
     finally:
-        logger.close()
+        if logger is not None:
+            logger.close()
 
 
 __all__ = ["TrainingLoopConfig", "TrainingRunResult", "run_training"]
