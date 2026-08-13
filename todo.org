@@ -109,6 +109,14 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
 * TODO Fingerprint artifact revisions, mapping code, recipes, and Git state :data:reproducibility:
 * TODO Persist sampling policies instead of materialized mixture datasets :data:reproducibility:
 * TODO Support static and scheduled mixture weights :data:sampling:
+* TODO Implement objective-general online joint batch selection from [[https://arxiv.org/abs/2406.17711][JEST]] :data:sampling:runtime:
+  Select a training sub-batch from a larger super-batch using interactions
+  exposed by the task objective, rather than scoring examples independently.
+  Support easy-reference and learner-minus-reference learnability criteria,
+  deterministic sequential chunk sampling without replacement, and arbitrary
+  task-provided score matrices. Match the paper's reference algorithm exactly
+  before adding cached reference scores, approximate scoring, asynchronous
+  selection, distributed selection, or modality-specific accelerations.
 * TODO Support deterministic shuffling, sharding, and iterator resume :data:runtime:
 * TODO Add length and modality-aware bucketing :data:performance:
 * TODO Add sequence and multimodal packing where scientifically valid :data:performance:
