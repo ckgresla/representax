@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import hashlib
+import importlib
 import json
 import math
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from typing import Any
 from urllib.parse import urlparse
+
+from .resolvers import BUILTIN_RESOLVERS, ArtifactResolver
 
 Mapper = str | Callable[[Any], Any]
 
@@ -20,9 +23,38 @@ def _mapper_id(mapper: Mapper) -> str:
         return mapper
     module = getattr(mapper, "__module__", "")
     qualname = getattr(mapper, "__qualname__", "")
-    if not module or not qualname or "<lambda>" in qualname:
+    if not module or not qualname or "<lambda>" in qualname or "<locals>" in qualname:
         raise ValueError("recipe mappers must be named importable callables")
     return f"{module}.{qualname}"
+
+
+def load_mapper(path: str) -> Callable[[Any], Any]:
+    """Import a recipe mapper from its stable dotted path."""
+
+    parts = path.split(".")
+    module = None
+    boundary = 0
+    for boundary in range(len(parts), 0, -1):
+        try:
+            module = importlib.import_module(".".join(parts[:boundary]))
+        except ModuleNotFoundError as error:
+            missing = error.name or ""
+            candidate = ".".join(parts[:boundary])
+            if missing != candidate and not candidate.startswith(f"{missing}."):
+                raise
+        else:
+            break
+    if module is None:
+        raise ImportError(f"could not import mapper {path!r}")
+    value: Any = module
+    try:
+        for attribute in parts[boundary:]:
+            value = getattr(value, attribute)
+    except AttributeError as error:
+        raise ImportError(f"could not import mapper {path!r}") from error
+    if not callable(value):
+        raise TypeError(f"recipe mapper {path!r} is not callable")
+    return value
 
 
 @dataclass(frozen=True)
@@ -33,6 +65,7 @@ class ArtifactSource:
     mapper: str
     revision: str | None = None
     split: str | None = None
+    subset: str | None = None
     name: str | None = None
 
     def __post_init__(self) -> None:
@@ -101,6 +134,7 @@ def source(
     map: Mapper,
     revision: str | None = None,
     split: str | None = None,
+    subset: str | None = None,
     name: str | None = None,
 ) -> ArtifactSource:
     """Declare an upstream artifact without reading or copying it."""
@@ -110,6 +144,7 @@ def source(
         mapper=_mapper_id(map),
         revision=revision,
         split=split,
+        subset=subset,
         name=name,
     )
 
@@ -140,14 +175,13 @@ def mix(
 def build_grain_dataset(
     recipe: MixtureRecipe,
     *,
-    resolvers: Mapping[str, Callable[[ArtifactSource], Sequence[Any]]],
+    resolvers: Mapping[str, ArtifactResolver] | None = None,
     mappers: Mapping[str, Callable[[Any], Any]] | None = None,
 ):
     """Resolve artifacts and compose the recipe as a lazy Grain MapDataset.
 
-    Resolvers own transport-specific behavior for ``hf``, ``s3``, and local
-    artifacts. Representax owns the task mapping and sampling policy. This
-    avoids forcing user artifacts into a framework-specific intermediate form.
+    Representax resolves ``hf://`` and local artifacts by default. Additional
+    schemes can be registered without changing recipe or task semantics.
     """
 
     try:
@@ -157,20 +191,22 @@ def build_grain_dataset(
             "Grain support requires the 'data' extra: pip install representax[data]"
         ) from error
 
+    resolver_registry = dict(BUILTIN_RESOLVERS)
+    if resolvers is not None:
+        resolver_registry.update(resolvers)
     mapper_registry = {} if mappers is None else dict(mappers)
     datasets = []
     for index, artifact in enumerate(recipe.sources):
         try:
-            resolver = resolvers[artifact.scheme]
+            resolver = resolver_registry[artifact.scheme]
         except KeyError as error:
             raise ValueError(
                 f"no resolver registered for source scheme {artifact.scheme!r}"
             ) from error
         raw_source = resolver(artifact)
-        try:
-            mapper = mapper_registry[artifact.mapper]
-        except KeyError as error:
-            raise ValueError(f"no mapper registered for {artifact.mapper!r}") from error
+        mapper = mapper_registry.get(artifact.mapper)
+        if mapper is None:
+            mapper = load_mapper(artifact.mapper)
         dataset = grain.MapDataset.source(raw_source).seed(recipe.seed + index)
         dataset = dataset.map(mapper)
         if recipe.shuffle:

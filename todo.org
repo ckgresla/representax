@@ -39,11 +39,11 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
 * DONE Add matched ModernVBERT Transformers speed and peak-memory gates :models:testing:performance:
 * DONE Complete ModernVBERT with its native vision tower and connector :models:multimodal:
 * DONE Add upstream vision, fused, multicrop, and pixel-gradient parity for ModernVBERT :models:testing:
-* NEXT Add Grain resolvers for Hugging Face and local artifacts :data:
+* DONE Add Grain resolvers for Hugging Face and local artifacts :data:
   Resolve revision-pinned upstream records lazily into Grain and apply the
   recipe's importable mapper directly. Do not materialize an intermediate copy
   or expand this slice to S3, media decoding, bucketing, or packing.
-* TODO Port GradCache without changing global-negative semantics :retrieval:runtime:
+* NEXT Port GradCache without changing global-negative semantics :retrieval:runtime:
   Match the direct MNR objective and gradients before measuring cached
   execution. Keep distributed and cross-host extensions out of the first port.
 * TODO Add Orbax checkpointing and exact resume :runtime:
@@ -102,10 +102,16 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
 * TODO Implement JEPA-style self-supervised learning :tasks:jepa:
 * TODO Ship reward modeling and JEPA before the first research release :tasks:release:
 
-* TODO Resolve Hugging Face datasets without proprietary intermediate copies :data:hf:
-* TODO Resolve local JSONL, Parquet, Arrow, and WebDataset artifacts :data:local:
+* DONE Resolve Hugging Face datasets without proprietary intermediate copies :data:hf:
+* DONE Resolve local JSONL, Parquet, Arrow, and dataset directories :data:local:
+* TODO Resolve local WebDataset artifacts :data:local:
 * TODO Resolve S3 and object-store artifacts first-class :data:s3:
-* TODO Let users map upstream records directly into canonical task examples :data:
+* DONE Let users map upstream records directly into canonical task examples :data:
+* TODO Flesh out post-resolver data execution slices :data:planning:
+  Define implementation contracts and acceptance gates for S3 and object
+  stores, image/audio/video decoding and streaming, length- and modality-aware
+  bucketing, scientifically valid packing, and deterministic distributed
+  iterator resume. Keep JEST as the separate online selection method below.
 * TODO Fingerprint artifact revisions, mapping code, recipes, and Git state :data:reproducibility:
 * TODO Persist sampling policies instead of materialized mixture datasets :data:reproducibility:
 * TODO Support static and scheduled mixture weights :data:sampling:

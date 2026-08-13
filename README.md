@@ -12,7 +12,7 @@ The project is pre-alpha. The current slice provides:
   weight maps for every tensor used by its forward pass;
 - direct multiple-negatives ranking, including symmetric and Matryoshka modes;
 - a compiled Optax training step with finite-update protection and metrics;
-- lazy, source-neutral data recipe contracts designed for Grain;
+- lazy Grain recipes with built-in Hugging Face and local artifact resolvers;
 - separate scientific and execution specifications for future planning; and
 - explicit unit, runtime, parity, distributed, and performance test lanes.
 
@@ -105,22 +105,25 @@ recipe = data.mix(
     data.source(
         "hf://organization/dataset",
         revision="immutable-revision",
+        split="train",
         map="my_project.mappers.to_retrieval_example",
     ),
     data.source(
-        "s3://bucket/corpus/*.parquet",
-        revision="version-id",
+        "file:///data/corpus/train.parquet",
         map="my_project.mappers.to_retrieval_example",
     ),
     weights=(0.7, 0.3),
     seed=17,
 )
+dataset = data.build_grain_dataset(recipe)
 ```
 
 The recipe records artifact identity, mapping code identity, and sampling
 policy. Grain performs lazy mapping, deterministic mixing, shuffling, and
 checkpointable iteration. A single source is the one-element form of the same
-sampling policy.
+sampling policy. Built-in resolvers support revision-pinned Hugging Face splits
+and local JSONL, Parquet, Arrow, or dataset directories. See
+[the data contract](docs/data.md) for cache and extension behavior.
 
 ## Tests
 
