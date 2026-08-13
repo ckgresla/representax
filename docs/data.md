@@ -57,6 +57,32 @@ mapper registry can override it for dependency injection and testing.
 Recipes execute Python imports and should therefore be reviewed like other
 source code rather than loaded from untrusted parties.
 
+## Training iterators
+
+`build_grain_iterator` adds static batching and Grain's native threaded
+prefetch to a recipe. The user-provided `batch_fn` owns collation into the
+task's model-ready batch type; the trainer does not impose a generic example
+schema.
+
+```python
+from representax.data import build_grain_iterator
+
+batches = build_grain_iterator(
+    recipe,
+    batch_size=32,
+    batch_fn=collate_retrieval_examples,
+    drop_remainder=True,
+    num_threads=16,
+    prefetch_buffer_size=2,
+)
+```
+
+Dropping the remainder is the default because a stable batch shape avoids an
+otherwise-surprising final compilation. Exhausting a finite iterator before
+the scientific step count is a training failure, not silent early completion.
+The returned source also exposes its exact `global_batch_size`, allowing the
+trainer to reject a mismatch with `ScientificSpec` before creating a run.
+
 ## Extension points
 
 `build_grain_dataset(..., resolvers={"scheme": resolver})` adds or replaces a

@@ -11,7 +11,7 @@ The project is pre-alpha. The current slice provides:
 - a native ModernVBERT text-image encoder with bidirectional Hugging Face
   weight maps for every tensor used by its forward pass;
 - direct multiple-negatives ranking, including symmetric and Matryoshka modes;
-- a compiled Optax training step with finite-update protection and metrics;
+- an end-to-end Grain-to-compiled-step single-device trainer with local logs;
 - lazy Grain recipes with built-in Hugging Face and local artifact resolvers;
 - separate scientific and execution specifications for future planning; and
 - explicit unit, runtime, parity, distributed, and performance test lanes.
@@ -51,13 +51,13 @@ The compiled primitive has one route-aware operation:
 ```python
 import jax
 import jax.numpy as jnp
-import representax as rx
+import representax as rpx
 
-model = rx.models.DenseEncoder(8, 4, key=jax.random.key(0))
+model = rpx.models.DenseEncoder(8, 4, key=jax.random.key(0))
 batch = jnp.ones((2, 8))
 
-embeddings = rx.encode(model, batch, route=rx.Route.QUERY)
-encode_documents = rx.bind(model, route=rx.Route.DOCUMENT)
+embeddings = rpx.encode(model, batch, route=rpx.Route.QUERY)
+encode_documents = rpx.bind(model, route=rpx.Route.DOCUMENT)
 document_embeddings = encode_documents(batch)
 ```
 
@@ -71,20 +71,20 @@ directly into native Equinox text and SigLIP vision towers:
 
 ```python
 import jax.numpy as jnp
-import representax as rx
+import representax as rpx
 
-adapter = rx.models.ModernVBERTCheckpointAdapter()
+adapter = rpx.models.ModernVBERTCheckpointAdapter()
 model = adapter.load("/path/to/modernvbert-checkpoint")
 image_tokens = jnp.full((1, 64), 50407, dtype=jnp.int32)
 input_ids = jnp.concatenate(
     (jnp.asarray([[1]]), image_tokens, jnp.asarray([[2]])), axis=1
 )
-batch = rx.models.ModernVBERTBatch(
+batch = rpx.models.ModernVBERTBatch(
     input_ids=input_ids,
     attention_mask=jnp.ones_like(input_ids),
     pixel_values=jnp.ones((1, 1, 3, 512, 512), dtype=jnp.float32),
 )
-embeddings = rx.encode(model, batch, route=rx.Route.QUERY)
+embeddings = rpx.encode(model, batch, route=rpx.Route.QUERY)
 ```
 
 The real checkpoint uses 64 image tokens per processed 512x512 image. The
@@ -125,6 +125,38 @@ sampling policy. Built-in resolvers support revision-pinned Hugging Face splits
 and local JSONL, Parquet, Arrow, or dataset directories. See
 [the data contract](docs/data.md) for cache and extension behavior.
 
+## Training
+
+Application code imports concrete operations from their owning modules:
+
+```python
+import optax
+
+from representax.data import build_grain_iterator
+from representax.planning import ScientificSpec
+from representax.train import build_train_step, make_train_state, run_training
+
+optimizer = optax.adamw(learning_rate=1e-3)
+state = make_train_state(model, optimizer)
+batches = build_grain_iterator(recipe, batch_size=32, batch_fn=collate)
+result = run_training(
+    state=state,
+    step=build_train_step(task, optimizer),
+    batches=batches,
+    science=ScientificSpec(
+        task="retrieval/mnr",
+        global_batch_size=32,
+        max_steps=10_000,
+        seed=17,
+    ),
+    run_directory="runs/example",
+)
+```
+
+The loop records every optimizer attempt in `metrics.jsonl`, lifecycle events
+in `events.jsonl`, and final status in `run.json`. See
+[the training contract](docs/training.md).
+
 ## Tests
 
 ```bash
@@ -147,5 +179,5 @@ measured separately; see [the test contract](docs/testing.md).
 
 [`todo.org`](todo.org) is the canonical project roadmap and shared source of
 truth. It tracks the production encoder port, parity gates, GradCache,
-distributed training, task-native audio/video, reward modeling, JEPA, Profilax,
-and the systems-then-model research program.
+distributed training, checkpoint/resume, task-native audio/video, reward
+modeling, JEPA, Profilax, and the systems-then-model research program.

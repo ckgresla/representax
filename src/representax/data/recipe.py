@@ -16,6 +16,17 @@ from .resolvers import BUILTIN_RESOLVERS, ArtifactResolver
 Mapper = str | Callable[[Any], Any]
 
 
+@dataclass(frozen=True)
+class GrainBatchSource:
+    """Iterable Grain batches with an optional exact global-size contract."""
+
+    dataset: Any
+    global_batch_size: int | None
+
+    def __iter__(self):
+        return iter(self.dataset)
+
+
 def _mapper_id(mapper: Mapper) -> str:
     if isinstance(mapper, str):
         if not mapper:
@@ -215,3 +226,49 @@ def build_grain_dataset(
     if len(datasets) == 1:
         return datasets[0]
     return grain.MapDataset.mix(datasets, weights=recipe.normalized_weights)
+
+
+def build_grain_iterator(
+    recipe: MixtureRecipe,
+    *,
+    batch_size: int,
+    batch_fn: Callable[[Sequence[Any]], Any] | None = None,
+    drop_remainder: bool = True,
+    num_threads: int = 16,
+    prefetch_buffer_size: int = 2,
+    resolvers: Mapping[str, ArtifactResolver] | None = None,
+    mappers: Mapping[str, Callable[[Any], Any]] | None = None,
+):
+    """Build a prefetched Grain iterator of static, model-ready batches."""
+
+    if batch_size <= 0:
+        raise ValueError("batch_size must be positive")
+    if num_threads < 0:
+        raise ValueError("num_threads must be non-negative")
+    if prefetch_buffer_size < 0:
+        raise ValueError("prefetch_buffer_size must be non-negative")
+    try:
+        import grain
+    except ImportError as error:  # pragma: no cover - depends on optional extra
+        raise ImportError(
+            "Grain support requires the 'data' extra: pip install representax[data]"
+        ) from error
+    dataset = build_grain_dataset(
+        recipe,
+        resolvers=resolvers,
+        mappers=mappers,
+    ).batch(
+        batch_size,
+        drop_remainder=drop_remainder,
+        batch_fn=batch_fn,
+    )
+    iterator = dataset.to_iter_dataset(
+        grain.ReadOptions(
+            num_threads=num_threads,
+            prefetch_buffer_size=prefetch_buffer_size,
+        )
+    )
+    return GrainBatchSource(
+        dataset=iterator,
+        global_batch_size=batch_size if drop_remainder else None,
+    )

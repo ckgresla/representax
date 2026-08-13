@@ -9,6 +9,19 @@ upstream artifacts -> lazy data recipe -> task -> model capability
 scientific specification -> execution plan -> compiled training step
 ```
 
+The ordinary single-device path adds a deliberately small host boundary:
+
+```text
+Grain recipe -> mapped examples -> static task batches -> device placement
+                                                        -> compiled train step
+                                                        -> local run records
+```
+
+The trainer does not tokenize, decode media, interpret task examples, construct
+models, or select objectives. It consumes model-ready batches and coordinates
+only iteration, deterministic random keys, placement, execution, measurement,
+and observability. See [Training](training.md).
+
 ## Models and tasks
 
 Native model integrations are complete Equinox PyTrees. A model may implement

@@ -5,17 +5,18 @@ import jax.numpy as jnp
 import optax
 import pytest
 
-import representax as rx
+from representax.models import DenseEncoder
 from representax.tasks.retrieval import MNRTask, retrieval_batch
+from representax.train import build_train_step, make_train_state
 
 
 @pytest.mark.runtime
 def test_compiled_retrieval_training_reduces_loss():
-    model = rx.models.DenseEncoder(4, 3, key=jax.random.key(0))
+    model = DenseEncoder(4, 3, key=jax.random.key(0))
     task = MNRTask(scale=5.0, symmetric=True)
     optimizer = optax.adamw(learning_rate=0.03, weight_decay=0.0)
-    state = rx.train.make_train_state(model, optimizer)
-    step = rx.train.build_train_step(task, optimizer, max_grad_norm=1.0)
+    state = make_train_state(model, optimizer)
+    step = build_train_step(task, optimizer, max_grad_norm=1.0)
     batch = retrieval_batch(
         query=jnp.eye(4, dtype=jnp.float32),
         document=jnp.asarray(

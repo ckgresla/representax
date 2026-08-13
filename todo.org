@@ -43,7 +43,18 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   Resolve revision-pinned upstream records lazily into Grain and apply the
   recipe's importable mapper directly. Do not materialize an intermediate copy
   or expand this slice to S3, media decoding, bucketing, or packing.
-* NEXT Port GradCache without changing global-negative semantics :retrieval:runtime:
+* DONE Complete the end-to-end single-device training loop inspired by Lasso :runtime:data:logging:
+  Audit Lasso's trainer, logging, checkpoint, config, and data boundaries, then
+  connect a lazy Grain iterator to the generic compiled Equinox/Optax step.
+  Preserve deterministic per-iteration RNG, metrics on every update, separate
+  console cadence, first-execution versus steady-state timing, structured local
+  JSONL artifacts, failure events, and unconditional iterator/logger cleanup.
+  Keep model registries, Lasso/Wafer schemas, sharding, GradCache, validation,
+  and checkpoint/resume outside this slice. Done when a real Grain recipe drives
+  multiple compiled updates end to end, the public API and import convention are
+  documented, fast and runtime tests cover success and failure lifecycles, and
+  the resulting run artifacts are inspectable without an external service.
+* TODO Port GradCache without changing global-negative semantics :retrieval:runtime:
   Match the direct MNR objective and gradients before measuring cached
   execution. Keep distributed and cross-host extensions out of the first port.
 * TODO Add Orbax checkpointing and exact resume :runtime:
