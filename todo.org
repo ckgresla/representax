@@ -135,7 +135,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
    explicit at the generic callable boundary; the linear loop may combine it
    with Orbax V1 async saves after their blocking device-to-host snapshot
    returns.
-** NEXT Extend exact GradCache to global multi-device and multi-host negatives :distributed:
+** DONE Validate exact GradCache across single-host device and process topologies :distributed:
 *** DONE Verify exact replicated data parallel GradCache on two and four GPUs
     Keep model and optimizer placement separate from GradCache semantics through
     a named =DataParallel= sharding plan.  Shard query and document records over
@@ -183,13 +183,35 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
     =9.43e-4= relative L2 at =0.99999956= cosine.  Median steady-state time is
     =0.630= seconds for global batch 16 at sequence length 512.  See
     =benchmarks/results/multiprocess-grad-cache-modernvbert-20260814/=.
-*** TODO Re-run the accepted multi-process contract on two physical hosts
-    Use a routable coordinator address, record transport and topology, and
-    verify checkpoint publication and failure behavior across the host boundary
-    before calling physical multi-host training accepted.
-
-* TODO Reserve the =representax= package and repository names :release:
+* NEXT Reserve the =representax= package and repository names :release:
+  The public GitHub repository is reserved at
+  =github.com/ckgresla/representax=.  PyPI's official project endpoint returned
+  =404= on 2026-08-14, so the distribution name is available but not reserved.
+  PyPI reservation requires the first legitimate upload; complete the local
+  package, provenance, and release checks below before publishing rather than
+  uploading a placeholder.
 * TODO Publish a minimal CPU-first installation and compatibility matrix :release:
+** DONE Build bounded wheel and source-distribution artifacts
+   The universal wheel contains only =representax=, package metadata, the MIT
+   license, and =THIRD_PARTY.md=.  The sdist retains source, tests, docs,
+   examples, and benchmark programs while excluding raw result bundles, CI
+   internals, and this roadmap.  Both rebuild successfully through isolated
+   Hatch environments.
+** DONE Install and execute the wheel in a fresh CPU-only environment
+   Fresh Python 3.11, 3.12, and 3.13 environments installed the built =0.0.1=
+   wheel outside the source tree and completed the same compiled
+   Dense/MNR/Optax update on CPU.  The resolved JAX versions were 0.10.2,
+   0.11.0, and 0.11.0 respectively.  See =docs/compatibility.md=.
+** TODO Accept the public CPU compatibility workflow
+   Run fast tests on Python 3.11, 3.12, and 3.13; run the generic runtime tree
+   once; exercise two- and four-device sharding through virtual CPU devices;
+   validate wheel/sdist metadata; and smoke-test the installed wheel outside
+   the source checkout.  The workflow is implemented locally and must pass on
+   GitHub before release.
+** TODO Configure trusted PyPI publishing and publish the first release
+   Complete the provenance audit, review the exact artifacts, configure a
+   protected GitHub environment and PyPI trusted publisher, then publish and
+   read back the project metadata before marking the name reserved.
 * TODO Audit source provenance and third-party licenses before release :release:
 * TODO Define the stable public API and deprecation policy :release:api:
 * TODO Document what qualifies an architecture as supported :models:testing:
@@ -280,11 +302,32 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
 * TODO Train mixed text, image, audio, video, and fused batches efficiently :data:multimodal:
 * TODO Avoid uncontrolled recompilation across modality and shape buckets :data:multimodal:
 
-* TODO Use native JAX sharding for multi-device and multi-host training :distributed:
-* TODO Preserve global-negative semantics across hosts :distributed:retrieval:
-* TODO Add model-state sharding in addition to replicated data parallelism :distributed:
-* TODO Add topology-independent checkpoint restore and resharding :distributed:runtime:
-* TODO Preserve the live cross-rank gradient synchronization in GradCache :distributed:retrieval:
+* WAITING Validate fully distributed multi-host training and arbitrary sharding :distributed:
+  This milestone requires at least two physical accelerator hosts with a
+  routable coordinator and is intentionally deferred until those resources are
+  available.  Single-host replicated data parallelism and exact GradCache are
+  already accepted and remain the local numerical oracle.
+** TODO Implement named arbitrary sharding configurations
+   Keep =DataParallel= as the replicated-state standard plan.  Add fully
+   sharded data parallel (FSDP) and hybrid data/model sharding plans without
+   coupling task semantics to one mesh shape.  Users must be able to supply a
+   compatible named mesh and partition rules rather than selecting from only a
+   closed topology registry.
+** TODO Validate model and optimizer-state sharding across hosts
+   Compare complete updates against the replicated oracle, measure collective
+   and resharding costs, and verify that parameter, optimizer, and activation
+   placement match the declared plan.
+** TODO Validate exact GradCache and global negatives across physical hosts
+   Re-run the accepted process-local ModernVBERT contract with positives and
+   negatives crossing the host boundary.  Preserve local encoder replay and
+   exactly one final parameter-gradient synchronization.
+** TODO Validate multi-host checkpoint, restore, and failure behavior
+   Restore into the same and different topologies, publish checkpoints without
+   host races, and fail clearly on coordinator, worker, or storage loss.
+** TODO Record multi-host scaling and transport evidence
+   Record topology, interconnect, compile time, steady-state throughput, peak
+   memory, communication cost, and failure behavior before making a
+   fully-distributed support claim.
 * TODO Make precision policy explicit at parameter, compute, activation, and loss boundaries :runtime:precision:
 * DONE Support activation rematerialization as a measured execution choice :runtime:memory:
   Expose =none=, =selective=, and =full= as topology-dependent policies without
