@@ -202,12 +202,13 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
    wheel outside the source tree and completed the same compiled
    Dense/MNR/Optax update on CPU.  The resolved JAX versions were 0.10.2,
    0.11.0, and 0.11.0 respectively.  See =docs/compatibility.md=.
-** TODO Accept the public CPU compatibility workflow
+** DONE Accept the public CPU compatibility workflow
    Run fast tests on Python 3.11, 3.12, and 3.13; run the generic runtime tree
    once; exercise two- and four-device sharding through virtual CPU devices;
    validate wheel/sdist metadata; and smoke-test the installed wheel outside
-   the source checkout.  The workflow is implemented locally and must pass on
-   GitHub before release.
+   the source checkout.  Accepted on 2026-08-14 in GitHub Actions run
+   =31819008237=: all seven lint, Python 3.11/3.12/3.13, generic runtime,
+   virtual distributed, and release-artifact jobs passed with Node 24 actions.
 ** TODO Configure trusted PyPI publishing and publish the first release
    Complete the provenance audit, review the exact artifacts, configure a
    protected GitHub environment and PyPI trusted publisher, then publish and
