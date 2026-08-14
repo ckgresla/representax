@@ -37,6 +37,10 @@ result is therefore a correct, bounded baseline rather than the final execution
 policy.  Selective residual checkpointing can now be evaluated without changing
 the stacked parameter representation or scan control flow.
 
+That follow-up is complete in =../modernvbert-rematerialization-20260813/=: the
+small selective speed gain nearly doubles matched memory and reduces observed
+batch capacity, so full rematerialization remains the measured default.
+
 * Correctness contract
 
 - the native fast suite asserts one depth-length scan containing one rematerialized

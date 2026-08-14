@@ -59,6 +59,10 @@ requirements. `ExecutionPlan` contains topology-dependent mechanisms: mesh,
 per-device batch, accumulation, GradCache chunks, rematerialization, packing,
 prefetching, and buffer donation.
 
+Activation rematerialization is an explicit three-way execution choice rather
+than a model change. See [Activation rematerialization](rematerialization.md)
+for the policy contract and the measured ModernVBERT default.
+
 An execution planner may search only the latter space and must validate that
 the resulting plan preserves the scientific specification. The protocol is
 intentionally small enough for a future standalone `profilax` package to

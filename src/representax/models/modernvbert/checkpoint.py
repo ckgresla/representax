@@ -15,6 +15,7 @@ from representax.integrations.huggingface import (
     load_hf_config,
     load_safetensor_subset,
 )
+from representax.planning import RematerializationPolicy
 
 from .config import (
     MODERNVBERT_MODEL_ID,
@@ -255,6 +256,7 @@ class ModernVBERTTextCheckpointAdapter:
         parameter_dtype: jnp.dtype = jnp.float32,
         compute_dtype: jnp.dtype = jnp.float32,
         attention_implementation: AttentionImplementation = "xla",
+        rematerialization: RematerializationPolicy = "full",
     ) -> ModernVBERTTextEncoder:
         mapping = modernvbert_text_weight_map(config)
         shapes = _expected_text_shapes(config)
@@ -326,6 +328,7 @@ class ModernVBERTTextCheckpointAdapter:
             ),
             compute_dtype=compute_dtype,
             attention_implementation=attention_implementation,
+            rematerialization=rematerialization,
         )
 
     def load(
@@ -335,6 +338,7 @@ class ModernVBERTTextCheckpointAdapter:
         parameter_dtype: jnp.dtype = jnp.float32,
         compute_dtype: jnp.dtype = jnp.float32,
         attention_implementation: AttentionImplementation = "xla",
+        rematerialization: RematerializationPolicy = "full",
     ) -> ModernVBERTTextEncoder:
         hf_config = load_hf_config(checkpoint)
         config = ModernVBERTTextConfig.from_hf_config(hf_config)
@@ -346,6 +350,7 @@ class ModernVBERTTextCheckpointAdapter:
             parameter_dtype=parameter_dtype,
             compute_dtype=compute_dtype,
             attention_implementation=attention_implementation,
+            rematerialization=rematerialization,
         )
 
     def state_dict(
@@ -452,6 +457,7 @@ class ModernVBERTCheckpointAdapter:
         parameter_dtype: jnp.dtype = jnp.float32,
         compute_dtype: jnp.dtype = jnp.float32,
         attention_implementation: AttentionImplementation = "xla",
+        rematerialization: RematerializationPolicy = "full",
     ) -> ModernVBERTEncoder:
         text = ModernVBERTTextCheckpointAdapter(
             model_id=self.model_id,
@@ -462,6 +468,7 @@ class ModernVBERTCheckpointAdapter:
             parameter_dtype=parameter_dtype,
             compute_dtype=compute_dtype,
             attention_implementation=attention_implementation,
+            rematerialization=rematerialization,
         )
         mapping = modernvbert_vision_weight_map(config.vision)
         shapes = _expected_vision_shapes(config)
@@ -557,6 +564,7 @@ class ModernVBERTCheckpointAdapter:
         parameter_dtype: jnp.dtype = jnp.float32,
         compute_dtype: jnp.dtype = jnp.float32,
         attention_implementation: AttentionImplementation = "xla",
+        rematerialization: RematerializationPolicy = "full",
     ) -> ModernVBERTEncoder:
         hf_config = load_hf_config(checkpoint)
         config = ModernVBERTConfig.from_hf_config(hf_config)
@@ -573,6 +581,7 @@ class ModernVBERTCheckpointAdapter:
             parameter_dtype=parameter_dtype,
             compute_dtype=compute_dtype,
             attention_implementation=attention_implementation,
+            rematerialization=rematerialization,
         )
 
     def state_dict(self, model: ModernVBERTEncoder) -> dict[str, jax.Array]:

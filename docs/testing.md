@@ -77,15 +77,18 @@ the requested outputs and gradients.
 ## Measurement protocol
 
 Pytest orchestrates performance comparisons, but each runtime executes in a
-fresh subprocess. This prevents JAX and PyTorch compilation caches and memory
-allocators from contaminating one another.
+fresh subprocess. This isolates process-local compilation state and memory
+allocators. A fresh process does not isolate JAX's persistent compilation
+cache: cold-start comparisons must also disable that cache or use a unique,
+empty cache directory per probe.
 
 Every comparison must:
 
 1. record hardware, software versions, Git revision, checkpoint revision, and
    a workload fingerprint;
 2. disable broad device-memory preallocation when measuring resident memory;
-3. measure import or initialization and compile-plus-first-execution separately;
+3. record persistent-cache policy and measure import or initialization and
+   compile-plus-first-execution separately;
 4. warm up the exact compiled program before steady-state samples;
 5. explicitly synchronize device results around every timed region;
 6. report a distribution over repeated samples, not one observation;

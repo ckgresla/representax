@@ -90,6 +90,7 @@ def test_config_maps_nested_transformers_values():
 
 def test_native_encoder_is_jittable_differentiable_and_normalized():
     model = ModernVBERTTextEncoder.init(tiny_config(), key=jax.random.key(0))
+    assert model.rematerialization == "full"
     batch = ModernVBERTTextBatch(
         input_ids=jnp.asarray([[1, 2, 3, 0], [4, 5, 0, 0]]),
         attention_mask=jnp.asarray([[1, 1, 1, 0], [1, 1, 0, 0]]),
@@ -121,26 +122,92 @@ def test_native_encoder_is_jittable_differentiable_and_normalized():
     assert jnp.all(jnp.isfinite(gradients))
 
 
-def test_text_depth_lowers_to_one_rematerialized_scan():
-    model = ModernVBERTTextEncoder.init(tiny_config(), key=jax.random.key(3))
-    batch = ModernVBERTTextBatch(
-        input_ids=jnp.asarray([[1, 2, 3, 0]]),
-        attention_mask=jnp.asarray([[1, 1, 1, 0]]),
-    )
-
+def _text_scan(model, batch):
     program = jax.make_jaxpr(lambda candidate: candidate.hidden_states(batch))(model)
     scans = [
         equation
         for equation in program.jaxpr.eqns
         if equation.primitive.name == "scan"
     ]
-
     assert len(scans) == 1
-    assert scans[0].params["length"] == tiny_config().num_hidden_layers
-    assert [
-        equation.primitive.name
-        for equation in scans[0].params["jaxpr"].jaxpr.eqns
-    ] == ["remat2"]
+    return scans[0]
+
+
+def test_text_depth_lowers_to_one_scan_with_explicit_rematerialization():
+    batch = ModernVBERTTextBatch(
+        input_ids=jnp.asarray([[1, 2, 3, 0]]),
+        attention_mask=jnp.asarray([[1, 1, 1, 0]]),
+    )
+
+    full = ModernVBERTTextEncoder.init(
+        tiny_config(),
+        key=jax.random.key(3),
+        rematerialization="full",
+    )
+    scan = _text_scan(full, batch)
+    assert scan.params["length"] == tiny_config().num_hidden_layers
+    remat_equations = scan.params["jaxpr"].jaxpr.eqns
+    assert [equation.primitive.name for equation in remat_equations] == ["remat2"]
+    assert (
+        remat_equations[0].params["policy"]
+        is jax.checkpoint_policies.nothing_saveable
+    )
+
+    selective = ModernVBERTTextEncoder.init(
+        tiny_config(),
+        key=jax.random.key(3),
+        rematerialization="selective",
+    )
+    scan = _text_scan(selective, batch)
+    remat_equations = scan.params["jaxpr"].jaxpr.eqns
+    assert [equation.primitive.name for equation in remat_equations] == ["remat2"]
+    assert (
+        remat_equations[0].params["policy"]
+        is jax.checkpoint_policies.dots_with_no_batch_dims_saveable
+    )
+
+    uncheckpointed = ModernVBERTTextEncoder.init(
+        tiny_config(),
+        key=jax.random.key(3),
+        rematerialization="none",
+    )
+    scan = _text_scan(uncheckpointed, batch)
+    assert "remat2" not in {
+        equation.primitive.name for equation in scan.params["jaxpr"].jaxpr.eqns
+    }
+
+
+def test_rematerialization_policies_preserve_values_and_parameter_gradients():
+    batch = ModernVBERTTextBatch(
+        input_ids=jnp.asarray([[1, 2, 3, 0], [4, 5, 6, 7]]),
+        attention_mask=jnp.asarray([[1, 1, 1, 0], [1, 1, 1, 1]]),
+    )
+
+    def evaluate(policy):
+        model = ModernVBERTTextEncoder.init(
+            tiny_config(),
+            key=jax.random.key(11),
+            rematerialization=policy,
+        )
+        return eqx.filter_value_and_grad(
+            lambda candidate: jnp.sum(
+                candidate.encode(batch, route=Route.DOCUMENT)
+            )
+        )(model)
+
+    expected_value, expected_gradient = evaluate("none")
+    for policy in ("selective", "full"):
+        actual_value, actual_gradient = evaluate(policy)
+        np.testing.assert_allclose(actual_value, expected_value, rtol=1e-6, atol=1e-6)
+        expected_leaves = jax.tree.leaves(
+            eqx.filter(expected_gradient, eqx.is_inexact_array)
+        )
+        actual_leaves = jax.tree.leaves(
+            eqx.filter(actual_gradient, eqx.is_inexact_array)
+        )
+        assert len(actual_leaves) == len(expected_leaves)
+        for actual, expected in zip(actual_leaves, expected_leaves, strict=True):
+            np.testing.assert_allclose(actual, expected, rtol=1e-5, atol=1e-6)
 
 
 def test_local_attention_matches_explicit_dense_value_and_gradient():
@@ -185,9 +252,14 @@ def test_hf_state_dict_mapping_round_trips_the_native_tree():
     )
 
     state_dict = adapter.state_dict(model)
-    restored = adapter.from_state_dict(config, state_dict)
+    restored = adapter.from_state_dict(
+        config,
+        state_dict,
+        rematerialization="selective",
+    )
 
     assert set(state_dict) == set(modernvbert_text_weight_map(config).values())
+    assert restored.rematerialization == "selective"
     assert len(restored.tower.layers) == config.num_hidden_layers
     assert restored.tower.layers[0].attention_norm is None
     assert restored.tower.layers[1].attention_norm is not None

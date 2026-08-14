@@ -9,6 +9,7 @@ import jax
 import jax.numpy as jnp
 
 from representax.core import EncoderMetadata, Modality, Route
+from representax.planning import RematerializationPolicy
 
 from .config import ModernVBERTConfig
 from .model import (
@@ -145,6 +146,7 @@ class ModernVBERTEncoder(eqx.Module):
         parameter_dtype: jnp.dtype = jnp.float32,
         compute_dtype: jnp.dtype = jnp.float32,
         attention_implementation: AttentionImplementation = "xla",
+        rematerialization: RematerializationPolicy = "full",
         model_id: str = "representax/modernvbert",
         revision: str = "random-init",
     ) -> ModernVBERTEncoder:
@@ -155,6 +157,7 @@ class ModernVBERTEncoder(eqx.Module):
             parameter_dtype=parameter_dtype,
             compute_dtype=compute_dtype,
             attention_implementation=attention_implementation,
+            rematerialization=rematerialization,
             model_id=model_id,
             revision=revision,
         )

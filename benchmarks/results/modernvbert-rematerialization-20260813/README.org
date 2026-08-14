@@ -1,0 +1,88 @@
+#+TITLE: ModernVBERT Activation Rematerialization, 2026-08-13
+
+* Outcome
+
+=full= remains the default activation policy.  At the matched direct batch-8,
+=selective= is 5.9% faster in steady state and 3.8% faster through compilation
+plus first execution, but uses 90.8% more JAX allocator memory and 95.2% more
+process-visible device memory.  It completes batch 16 and OOMs at batch 32;
+=full= completes batch 32 with substantially less memory.
+
+The policy changes only autodiff storage.  The scanned model graph, weights,
+forward values, task, optimizer, logical batch, and negative population are
+unchanged.  Native tests compare forward values and every parameter-gradient
+leaf across all three policies, and the pinned Transformers forward and
+input-gradient gate remains required.
+
+* Policies
+
+- =none=: do not wrap the scanned layer body in =jax.checkpoint=.
+- =selective=: use JAX's transformer-oriented
+  =dots_with_no_batch_dims_saveable= policy.
+- =full=: use =nothing_saveable= and replay all layer intermediates in backward.
+
+The public configuration names stable choices; it does not expose JAX's
+internal custom-policy callable contract.
+
+* Matched batch-8 result
+
+All values below come from serial, fresh processes on GPU 0 with the persistent
+JAX compilation cache disabled.  Each process used one warmup and five measured
+updates.
+
+| policy    | compile + first (s) | step median (s) | examples/s | allocator GiB | process GiB |
+|-----------+---------------------+-----------------+------------+---------------+-------------|
+| full      |              39.038 |        0.328394 |      24.36 |         4.259 |       8.402 |
+| selective |              37.558 |        0.309989 |      25.81 |         8.129 |      16.402 |
+
+The input and scientific-spec fingerprints are identical.  Loss differs by
+4.77e-7 and gradient global norm by 3.34e-6, both inside the stricter native and
+pinned upstream tolerances.
+
+* Observed capacity and throughput
+
+These are observed points, not claimed maxima.  The batch-16 full/selective
+processes ran concurrently on separate 4090s, so their steady-state and memory
+measurements are useful but their host-contended compile timings are excluded
+from the comparison.
+
+| policy    | batch | status    | examples/s | allocator GiB | process GiB |
+|-----------+-------+-----------+------------+---------------+-------------|
+| none      |     4 | completed |      20.49 |        14.757 |      20.402 |
+| none      |     8 | OOM       |          - |             - |           - |
+| selective |     8 | completed |      25.81 |         8.129 |      16.402 |
+| selective |    16 | completed |      26.34 |        13.074 |      21.568 |
+| selective |    32 | OOM       |          - |             - |           - |
+| full      |     8 | completed |      24.36 |         4.259 |       8.402 |
+| full      |    16 | completed |      25.07 |         5.390 |       8.402 |
+| full      |    32 | completed |      25.48 |         7.590 |      12.404 |
+
+At batch 4, retaining every activation is already less throughput-efficient
+than full replay at batch 8 while consuming 3.46 times its allocator peak.  The
+small selective speed gain does not compensate for roughly halving observed
+capacity.  Full replay is therefore the strongest general default; selective
+remains available for measured plans with spare memory.
+
+* Protocol
+
+- NVIDIA GeForce RTX 4090, one visible GPU per process;
+- pinned =ModernVBERT/modernvbert-embed= revision
+  =da507113c3fdbc2e49d39c4b0148025c6bd008f9=;
+- Representax 0.0.1, JAX 0.10.1, Python 3.13.14;
+- FP32 parameters, compute, objective, and highest matmul precision;
+- sequence length 512, full-length deterministic token IDs, mean pooling,
+  L2 normalization, diagonal cosine MNR at scale 20;
+- AdamW with zero learning rate and weight decay, state donation enabled; and
+- allocator preallocation disabled.
+
+Example cold-cache replay:
+
+#+begin_src bash
+CUDA_VISIBLE_DEVICES=0 JAX_ENABLE_COMPILATION_CACHE=false \
+  conda run -n representax python benchmarks/grad_cache_modernvbert.py \
+  --runtime direct \
+  --checkpoint /path/to/da507113c3fdbc2e49d39c4b0148025c6bd008f9 \
+  --output /tmp/direct-full-b8-s512.json \
+  --batch-size 8 --sequence-length 512 --chunk-size 4 \
+  --warmup-steps 1 --measured-steps 5 --rematerialization full
+#+end_src

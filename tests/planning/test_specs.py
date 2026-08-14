@@ -23,6 +23,30 @@ def test_execution_plan_preserves_scientific_batch():
     assert plan.effective_batch_size == 64
 
 
+@pytest.mark.parametrize("policy", ["none", "selective", "full"])
+def test_execution_plan_accepts_supported_rematerialization_policies(policy):
+    plan = ExecutionPlan(
+        device_count=1,
+        data_axis_size=1,
+        per_device_batch_size=8,
+        gradient_accumulation_steps=1,
+        rematerialization=policy,
+    )
+
+    assert plan.rematerialization == policy
+
+
+def test_execution_plan_rejects_unknown_rematerialization_policy():
+    with pytest.raises(ValueError, match="rematerialization must be"):
+        ExecutionPlan(
+            device_count=1,
+            data_axis_size=1,
+            per_device_batch_size=8,
+            gradient_accumulation_steps=1,
+            rematerialization="automatic",  # type: ignore[arg-type]
+        )
+
+
 def test_execution_plan_rejects_scientific_drift():
     science = ScientificSpec(
         task="retrieval/mnr",

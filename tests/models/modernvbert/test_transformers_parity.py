@@ -31,12 +31,14 @@ pytestmark = pytest.mark.parity
         "REPRESENTAX_MODERNVBERT_ORACLE for the pinned model gate"
     ),
 )
-def test_pinned_transformers_forward_and_input_gradient_parity():
+@pytest.mark.parametrize("rematerialization", ["none", "selective", "full"])
+def test_pinned_transformers_forward_and_input_gradient_parity(rematerialization):
     reference = np.load(Path(os.environ["REPRESENTAX_MODERNVBERT_ORACLE"]))
     model = ModernVBERTTextCheckpointAdapter().load(
         Path(os.environ["REPRESENTAX_MODERNVBERT_CHECKPOINT"]),
         parameter_dtype=jnp.float32,
         compute_dtype=jnp.float32,
+        rematerialization=rematerialization,
     )
     batch = ModernVBERTTextBatch(
         input_ids=jnp.asarray(reference["input_ids"]),

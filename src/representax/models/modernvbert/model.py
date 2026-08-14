@@ -14,10 +14,33 @@ import jax
 import jax.numpy as jnp
 
 from representax.core import EncoderMetadata, Modality, Route
+from representax.planning import RematerializationPolicy
 
 from .config import ModernVBERTTextConfig
 
 AttentionImplementation = Literal["xla", "cudnn"]
+
+
+def _rematerialize_layer(function: Any, policy: RematerializationPolicy) -> Any:
+    """Apply one stable public rematerialization choice to a scanned layer."""
+
+    if policy == "none":
+        return function
+    if policy == "selective":
+        checkpoint_policy = (
+            jax.checkpoint_policies.dots_with_no_batch_dims_saveable
+        )
+    elif policy == "full":
+        checkpoint_policy = jax.checkpoint_policies.nothing_saveable
+    else:
+        raise ValueError(
+            "rematerialization must be 'none', 'selective', or 'full'"
+        )
+    return jax.checkpoint(
+        function,
+        policy=checkpoint_policy,
+        prevent_cse=False,
+    )
 
 
 @jax.custom_vjp
@@ -528,6 +551,7 @@ class ModernVBERTTextTower(eqx.Module):
         *,
         compute_dtype: jnp.dtype,
         attention_implementation: AttentionImplementation,
+        rematerialization: RematerializationPolicy,
     ) -> jax.Array:
         hidden = (
             self.token_embeddings(batch.input_ids)
@@ -588,13 +612,9 @@ class ModernVBERTTextTower(eqx.Module):
                 output = output + layer.mlp(layer.mlp_norm(output))
                 return output, None
 
-            rematerialized_layer = jax.checkpoint(
-                apply_layer,
-                policy=jax.checkpoint_policies.nothing_saveable,
-                prevent_cse=False,
-            )
+            executed_layer = _rematerialize_layer(apply_layer, rematerialization)
             hidden, _ = jax.lax.scan(
-                rematerialized_layer,
+                executed_layer,
                 hidden,
                 (jnp.arange(self.layers.depth), self.layers.blocks),
             )
@@ -622,6 +642,7 @@ class ModernVBERTTextEncoder(eqx.Module):
     metadata: EncoderMetadata
     compute_dtype: Any = eqx.field(static=True)
     attention_implementation: AttentionImplementation = eqx.field(static=True)
+    rematerialization: RematerializationPolicy = eqx.field(static=True)
 
     @classmethod
     def init(
@@ -632,6 +653,7 @@ class ModernVBERTTextEncoder(eqx.Module):
         parameter_dtype: jnp.dtype = jnp.float32,
         compute_dtype: jnp.dtype = jnp.float32,
         attention_implementation: AttentionImplementation = "xla",
+        rematerialization: RematerializationPolicy = "full",
         model_id: str = "representax/modernvbert-text",
         revision: str = "random-init",
     ) -> ModernVBERTTextEncoder:
@@ -646,6 +668,7 @@ class ModernVBERTTextEncoder(eqx.Module):
             ),
             compute_dtype=compute_dtype,
             attention_implementation=attention_implementation,
+            rematerialization=rematerialization,
         )
 
     def hidden_states(self, inputs: ModernVBERTTextBatch) -> jax.Array:
@@ -655,6 +678,7 @@ class ModernVBERTTextEncoder(eqx.Module):
             inputs,
             compute_dtype=self.compute_dtype,
             attention_implementation=self.attention_implementation,
+            rematerialization=self.rematerialization,
         )
 
     def encode(

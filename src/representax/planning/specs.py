@@ -6,6 +6,8 @@ import math
 from dataclasses import dataclass
 from typing import Literal, Protocol
 
+RematerializationPolicy = Literal["none", "selective", "full"]
+
 
 @dataclass(frozen=True)
 class ScientificSpec:
@@ -42,7 +44,7 @@ class ExecutionPlan:
     model_axis_size: int = 1
     query_microbatch_size: int | None = None
     document_microbatch_size: int | None = None
-    rematerialization: bool = True
+    rematerialization: RematerializationPolicy = "full"
     packing: bool = False
     prefetch_depth: int = 2
     donate_buffers: bool = True
@@ -62,6 +64,10 @@ class ExecutionPlan:
             raise ValueError("mesh axis sizes must multiply to device_count")
         if self.prefetch_depth < 0:
             raise ValueError("prefetch_depth must be non-negative")
+        if self.rematerialization not in {"none", "selective", "full"}:
+            raise ValueError(
+                "rematerialization must be 'none', 'selective', or 'full'"
+            )
         for name, value in (
             ("query_microbatch_size", self.query_microbatch_size),
             ("document_microbatch_size", self.document_microbatch_size),

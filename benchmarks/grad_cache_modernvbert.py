@@ -34,6 +34,12 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument("--warmup-steps", type=int, default=1)
     parser.add_argument("--measured-steps", type=int, default=2)
     parser.add_argument("--seed", type=int, default=1729)
+    parser.add_argument(
+        "--rematerialization",
+        choices=("none", "selective", "full"),
+        default="full",
+        help="Representax text-layer activation policy; ignored by the reference",
+    )
     return parser.parse_args()
 
 
@@ -158,6 +164,7 @@ def _representax(arguments: argparse.Namespace) -> dict[str, Any]:
             arguments.checkpoint,
             parameter_dtype=jnp.float32,
             compute_dtype=jnp.float32,
+            rematerialization=arguments.rematerialization,
         )
         optimizer = optax.adamw(learning_rate=0.0, weight_decay=0.0)
         state = make_train_state(model, optimizer)
@@ -432,6 +439,17 @@ def main() -> None:
             "warmup_steps": arguments.warmup_steps,
             "measured_steps": arguments.measured_steps,
             "seed": arguments.seed,
+            "jax_enable_compilation_cache": os.environ.get(
+                "JAX_ENABLE_COMPILATION_CACHE"
+            ),
+            "jax_compilation_cache_dir": os.environ.get(
+                "JAX_COMPILATION_CACHE_DIR"
+            ),
+            "rematerialization": (
+                arguments.rematerialization
+                if arguments.runtime != "sentence-transformers"
+                else "upstream-managed"
+            ),
             "wall_seconds": time.perf_counter() - started,
             "process_peak_device_bytes": sampler.close(),
             "python": platform.python_version(),

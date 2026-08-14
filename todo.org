@@ -229,7 +229,27 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
 * TODO Add topology-independent checkpoint restore and resharding :distributed:runtime:
 * TODO Preserve the live cross-rank gradient synchronization in GradCache :distributed:retrieval:
 * TODO Make precision policy explicit at parameter, compute, activation, and loss boundaries :runtime:precision:
-* TODO Support activation rematerialization as an execution choice :runtime:memory:
+* DONE Support activation rematerialization as a measured execution choice :runtime:memory:
+  Expose =none=, =selective=, and =full= as topology-dependent policies without
+  changing model parameters or scientific semantics.  =selective= uses JAX's
+  transformer-oriented =dots_with_no_batch_dims_saveable= policy; do not expose
+  unstable custom policy callables as public configuration.
+
+  Complete this slice only when all policies preserve forward and gradient
+  parity, the pinned Transformers oracle still passes, and isolated sequence-512
+  ModernVBERT runs report compile-plus-first time, steady-state throughput,
+  allocator peak, and process peak.  Choose the default from measured evidence,
+  document the tradeoff, and keep any performance shortfall as a warning rather
+  than a numerical failure.
+
+  =full= remains the measured default.  At direct batch 8 and sequence 512,
+  =selective= is 5.9% faster but raises allocator peak from 4.259 to 8.129 GiB
+  and process peak from 8.402 to 16.402 GiB; it OOMs at batch 32, where =full=
+  completes at 7.590 GiB allocator peak.  =none= completes batch 4 at 14.757 GiB
+  and OOMs at batch 8.  Native value/parameter-gradient equivalence, all-policy
+  pinned Transformers forward/input-gradient parity, 53 fast tests, and 9
+  runtime tests pass.  Evidence lives in
+  =benchmarks/results/modernvbert-rematerialization-20260813/=.
 * DONE Verify buffer donation with Orbax V1 asynchronous checkpoint/resume :runtime:performance:
 * TODO Support asynchronous input prefetching :runtime:performance:
 * TODO Cache compiled static-shape signatures deliberately :runtime:performance:
