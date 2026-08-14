@@ -12,7 +12,7 @@ jobs:
         with:
           python-version: "3.11"
       - run: python -m pip install ".[test]"
-      - run: pytest -q -s tests/performance -m performance | tee performance.txt
+      - run: pytest -q -s -m performance | tee performance.txt
       - uses: actions/upload-artifact@v4
         with:
           name: cpu-performance-reference

@@ -31,9 +31,7 @@ def _assert_array_trees_close(
     atol: float = 4e-6,
 ) -> None:
     actual_leaves = [leaf for leaf in jax.tree.leaves(actual) if eqx.is_array(leaf)]
-    expected_leaves = [
-        leaf for leaf in jax.tree.leaves(expected) if eqx.is_array(leaf)
-    ]
+    expected_leaves = [leaf for leaf in jax.tree.leaves(expected) if eqx.is_array(leaf)]
     assert len(actual_leaves) == len(expected_leaves)
     for actual_leaf, expected_leaf in zip(actual_leaves, expected_leaves, strict=True):
         np.testing.assert_allclose(
@@ -79,18 +77,16 @@ def _global_batch():
         positive_mask=positive_mask,
         positive_weights=positive_weights,
         query_valid=jnp.asarray([True, True, True, True, True, True, True, False]),
-        document_valid=jnp.asarray(
-            [True, True, True, True, True, True, False, True]
-        ),
+        document_valid=jnp.asarray([True, True, True, True, True, True, False, True]),
     )
 
 
 @pytest.mark.distributed
 @pytest.mark.parametrize("world_size", [2, 4])
 def test_data_parallel_grad_cache_matches_one_device_global_update(world_size: int):
-    devices = jax.devices("gpu")
+    devices = jax.devices()
     if len(devices) < world_size:
-        pytest.skip(f"requires at least {world_size} GPUs")
+        pytest.skip(f"requires at least {world_size} JAX devices")
 
     model = DenseEncoder(4, 3, key=jax.random.key(5), normalize=False)
     task = MNRTask(

@@ -13,6 +13,13 @@ Markers describe how a test executes:
 The default `pytest` command excludes the four environment-sensitive lanes.
 Each lane can be selected across the mirrored tree with `pytest -m <marker>`.
 
+Ordinary CI runs the fast suite on CPU across Python 3.11, 3.12, and 3.13.  It
+runs the generic training/runtime tree once on Python 3.13, exercises the two-
+and four-device distributed semantics with four virtual CPU devices, and builds
+and installs the wheel in a fresh CPU-only context.  Model-family runtime,
+upstream parity, and matched systems measurements remain their explicit lanes
+rather than multiplying expensive accelerator work across the Python matrix.
+
 The distributed GradCache gate should run with four visible devices so its
 two- and four-device cases share one test invocation:
 

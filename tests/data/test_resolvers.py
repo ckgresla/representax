@@ -16,6 +16,15 @@ pq = pytest.importorskip("pyarrow.parquet")
 MAPPED_RECORDS: list[int] = []
 
 
+@pytest.fixture(autouse=True)
+def _isolated_datasets_cache(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        datasets.config,
+        "HF_DATASETS_CACHE",
+        str(tmp_path / "datasets-cache"),
+    )
+
+
 def project_record(record):
     value = int(record["value"])
     MAPPED_RECORDS.append(value)

@@ -7,7 +7,8 @@ name = "representax"
 version = "0.0.1"
 description = "Task-general representation learning in JAX and Equinox."
 readme = "README.md"
-license = { file = "LICENSE" }
+license = "MIT"
+license-files = ["LICENSE", "THIRD_PARTY.md"]
 requires-python = ">=3.11"
 authors = [{ name = "Representax contributors" }]
 classifiers = [
@@ -25,6 +26,11 @@ dependencies = [
     "optax>=0.2.6",
     "orbax-checkpoint>=0.12,<0.13",
 ]
+
+[project.urls]
+Homepage = "https://github.com/ckgresla/representax"
+Repository = "https://github.com/ckgresla/representax"
+Issues = "https://github.com/ckgresla/representax/issues"
 
 [project.optional-dependencies]
 config = [
@@ -63,6 +69,13 @@ test = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/representax"]
+
+[tool.hatch.build.targets.sdist]
+exclude = [
+    "/.github",
+    "/benchmarks/results",
+    "/todo.org",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

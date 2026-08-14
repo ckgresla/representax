@@ -44,6 +44,10 @@ python -m pip install -e ".[test,parity-modernvbert]"  # pinned model oracle
 python -m pip install -e ".[test,parity-modernvbert,performance]"  # GPU gates
 ```
 
+See the [compatibility matrix](https://github.com/ckgresla/representax/blob/main/docs/compatibility.md) for the locally accepted
+Python/JAX combinations and the distinction between CPU CI and accelerator
+acceptance.
+
 ## Encoding
 
 The compiled primitive has one route-aware operation:
@@ -123,7 +127,8 @@ policy. Grain performs lazy mapping, deterministic mixing, shuffling, and
 checkpointable iteration. A single source is the one-element form of the same
 sampling policy. Built-in resolvers support revision-pinned Hugging Face splits
 and local JSONL, Parquet, Arrow, or dataset directories. See
-[the data contract](docs/data.md) for cache and extension behavior.
+[the data contract](https://github.com/ckgresla/representax/blob/main/docs/data.md)
+for cache and extension behavior.
 
 ## Training
 
@@ -164,7 +169,7 @@ in `events.jsonl`, and final status in `run.json`. Checkpoints are written by
 Orbax with at most one asynchronous save in flight. Recreate the same recipe,
 model/state template, task/optimizer program, and batch source and pass
 `resume=True` to continue from the latest complete checkpoint. See
-[the training contract](docs/training.md).
+[the training contract](https://github.com/ckgresla/representax/blob/main/docs/training.md).
 
 ## Tests
 
@@ -182,11 +187,13 @@ performance lanes. The default command runs fast, dependency-light tests.
 
 Performance acceptance is evaluated against a matched upstream implementation
 on pinned hardware. Compile time, steady-state work, and peak device memory are
-measured separately; see [the test contract](docs/testing.md).
+measured separately; see
+[the test contract](https://github.com/ckgresla/representax/blob/main/docs/testing.md).
 
 ## Roadmap
 
-[`todo.org`](todo.org) is the canonical project roadmap and shared source of
+[`todo.org`](https://github.com/ckgresla/representax/blob/main/todo.org) is the
+canonical project roadmap and shared source of
 truth. It tracks the production encoder port, parity gates, GradCache,
 distributed training, checkpoint/resume, task-native audio/video, reward
 modeling, JEPA, Profilax, and the systems-then-model research program.
