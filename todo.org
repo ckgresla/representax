@@ -11,6 +11,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
 * DONE Adopt the MIT license and public-project policies :foundation:
 * DONE Use permissive Python and dependency ranges with optional extras :foundation:
 * DONE Keep accelerator-specific JAX and PyTorch out of the base install :foundation:
+* DONE Document pip-managed CUDA and =LD_LIBRARY_PATH= conflicts :docs:release:
 * DONE Exclude private history, experiments, Studio, and compiled assets :foundation:
 * DONE Make native Equinox models the supported execution path :architecture:
 * DONE Define a model-neutral task protocol for future task families :architecture:

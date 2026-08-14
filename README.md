@@ -58,6 +58,36 @@ acceptance. Maintainers should follow the
 [release procedure](https://github.com/ckgresla/representax/blob/main/docs/releasing.md)
 for artifact inspection and trusted publication.
 
+## Gotchas
+
+### Pip-managed CUDA can be shadowed by `LD_LIBRARY_PATH`
+
+The `cuda12` and `cuda13` extras use JAX's pip-managed NVIDIA libraries. A
+shell-level `LD_LIBRARY_PATH` that points at another CUDA installation can take
+precedence, producing errors such as `Unable to load cuSPARSE` or leaving JAX
+with only a CPU device despite a working NVIDIA driver.
+
+Compare the ordinary process with one that ignores `LD_LIBRARY_PATH`:
+
+```bash
+python -c 'import jax; print(jax.devices())'
+env -u LD_LIBRARY_PATH python -c 'import jax; print(jax.devices())'
+```
+
+If the second command restores the GPU, launch Representax the same way or
+unset the variable in that environment:
+
+```bash
+env -u LD_LIBRARY_PATH python train.py
+# Or, for the current shell:
+unset LD_LIBRARY_PATH
+```
+
+Do not remove a machine-wide CUDA configuration blindly: JAX's `*-local`
+installations intentionally use a system toolkit. This advice applies to the
+pip-managed extras documented above and follows JAX's
+[NVIDIA installation guidance](https://docs.jax.dev/en/latest/installation.html#pip-installation-nvidia-gpu-cuda-installed-via-pip-easier).
+
 ## Encoding
 
 The compiled primitive has one route-aware operation:
