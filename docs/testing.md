@@ -13,6 +13,20 @@ Markers describe how a test executes:
 The default `pytest` command excludes the four environment-sensitive lanes.
 Each lane can be selected across the mirrored tree with `pytest -m <marker>`.
 
+The distributed GradCache gate should run with four visible devices so its
+two- and four-device cases share one test invocation:
+
+```bash
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+XLA_PYTHON_CLIENT_PREALLOCATE=false \
+JAX_DEFAULT_MATMUL_PRECISION=highest \
+pytest -m distributed tests/train/test_distributed_grad_cache.py
+```
+
+It compares both replicated-data-parallel updates with a one-device global
+batch oracle, including task metrics, gradient and update norms, model and
+optimizer state, and a cross-device hard-negative canary.
+
 ## Checkpoint acceptance
 
 Checkpoint mechanics have fast controlled tests for one-in-flight asynchronous

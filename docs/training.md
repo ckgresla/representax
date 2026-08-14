@@ -104,15 +104,17 @@ closures remains part of the deferred full recipe/configuration snapshot.
 
 ## Deliberately deferred
 
-The current loop does not include distributed sharding, validation, external
-experiment integrations, full configuration/environment snapshots, media
-preprocessing, or a model registry. Grain owns lazy reading, mapping, batching,
-prefetch, and iterator position. Task-owned collation is the only bridge from
-data examples to the compiled batch contract.
+The current host loop does not yet construct distributed placement, validation,
+external experiment integrations, full configuration/environment snapshots,
+media preprocessing, or a model registry. Grain owns lazy reading, mapping,
+batching, prefetch, and iterator position. Task-owned collation is the only
+bridge from data examples to the compiled batch contract.
 
-Single-device MNR may use [exact GradCache execution](grad-cache.md) by passing a
-step built with `execution=GradCache(...)` to this loop. Distributed GradCache
-remains roadmap work.
+MNR may use [exact GradCache execution](grad-cache.md) through either the
+single-device `build_train_step` boundary or the accepted two- and four-device
+`build_data_parallel_train_step` boundary. Wiring the named plan into the host
+loop, multi-host execution, and model-state/FSDP-style sharding remain separate
+roadmap work.
 
 Compiled state-buffer donation is deliberately opt-in because
 `build_train_step` is a generic callable: callers may retain its input for

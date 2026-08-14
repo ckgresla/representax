@@ -24,6 +24,49 @@ step = build_train_step(
 The logical batch and negative population do not change. The query and document
 chunk sizes are topology-dependent execution choices.
 
+## Replicated data parallel execution
+
+`DataParallel` is the standard named sharding configuration for replicated
+model and Optax state with row-sharded examples. It is separate from GradCache:
+future fully sharded and hybrid plans may preserve the same objective and replay
+semantics while placing parameters differently.
+
+```python
+import jax
+
+from representax.tasks.retrieval import MNRTask
+from representax.train import (
+    DataParallel,
+    GradCache,
+    build_data_parallel_train_step,
+)
+
+plan = DataParallel.from_devices(jax.devices("gpu"))
+step = build_data_parallel_train_step(
+    MNRTask(scale=20.0),
+    optimizer,
+    plan,
+    execution=GradCache(query_chunk_size=16),
+)
+state = plan.place_replicated(state)
+batch = plan.place_batch(batch)
+result = step(state, batch, plan.place_replicated(key))
+```
+
+The positive relation is row-sharded with its global document axis intact.
+Each rank encodes only its local query and document records; GradCache gathers
+compact representations, validity vectors, and relation rows to recover the
+exact global negative population. The model is marked data-varying only inside
+rank-local replay. Reverse-mode transposition then performs one final parameter
+gradient sum when it crosses back to replicated model state. Global loss and
+task metrics are explicitly averaged, so `shard_map(check_vma=True)` proves that
+the returned state and measurements are replicated rather than trusting an
+unchecked placement assertion.
+
+Two- and four-GPU acceptance against the same one-device ModernVBERT update is
+recorded in
+[`distributed-grad-cache-modernvbert-20260814`](../benchmarks/results/distributed-grad-cache-modernvbert-20260814/README.org).
+
 `build_train_step` keeps state donation off by default because its generic API
 cannot prevent a caller from comparing, retrying, or branching from the input
 state after an update. A linear training loop may set `donate_state=True` even

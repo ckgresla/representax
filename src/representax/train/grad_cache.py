@@ -12,6 +12,18 @@ import jax.numpy as jnp
 from representax.core import Encoder, LossOutput, Route, Task, encode
 from representax.tasks.retrieval import MNRTask, RetrievalBatch
 
+from .execution import _LOCAL_EXECUTION_CONTEXT, ExecutionContext
+
+
+def _leading_batch_size(inputs: Any, *, role: str) -> int:
+    leaves = [leaf for leaf in jax.tree.leaves(inputs) if eqx.is_array(leaf)]
+    if not leaves:
+        raise ValueError(f"{role} inputs must contain arrays")
+    batch_size = leaves[0].shape[0]
+    if any(leaf.ndim == 0 or leaf.shape[0] != batch_size for leaf in leaves):
+        raise ValueError(f"{role} inputs must be row-major")
+    return batch_size
+
 
 def _pad_and_chunk(inputs: Any, *, batch_size: int, chunk_size: int) -> Any:
     leaves = jax.tree.leaves(inputs)
@@ -112,14 +124,19 @@ class GradCache:
         batch: Any,
         *,
         key: jax.Array | None,
+        context: ExecutionContext = _LOCAL_EXECUTION_CONTEXT,
     ) -> LossOutput:
         if not isinstance(task, MNRTask) or not isinstance(batch, RetrievalBatch):
             raise TypeError("GradCache requires MNRTask and RetrievalBatch")
+        axis_name = context.data_axis_name
+        if axis_name is not None and key is not None:
+            key = jax.random.fold_in(key, jax.lax.axis_index(axis_name))
         if key is None:
             query_key = document_key = None
         else:
             query_key, document_key = jax.random.split(key)
-        query_count, document_count = batch.positive_mask.shape
+        query_count = _leading_batch_size(batch.query, role="query")
+        document_count = _leading_batch_size(batch.document, role="document")
         queries = _rematerialized_encode(
             model,
             batch.query,
@@ -136,9 +153,65 @@ class GradCache:
             chunk_size=self.resolved_document_chunk_size,
             key=document_key,
         )
-        return task.loss_from_embeddings(
+        if axis_name is not None:
+            queries = jax.lax.all_gather(
+                queries,
+                axis_name,
+                axis=0,
+                tiled=True,
+            )
+            documents = jax.lax.all_gather(
+                documents,
+                axis_name,
+                axis=0,
+                tiled=True,
+            )
+            positive_mask = jax.lax.all_gather(
+                batch.positive_mask,
+                axis_name,
+                axis=0,
+                tiled=True,
+            )
+            positive_weights = (
+                None
+                if batch.positive_weights is None
+                else jax.lax.all_gather(
+                    batch.positive_weights,
+                    axis_name,
+                    axis=0,
+                    tiled=True,
+                )
+            )
+            batch = RetrievalBatch(
+                query=queries,
+                document=documents,
+                positive_mask=positive_mask,
+                positive_weights=positive_weights,
+                query_valid=jax.lax.all_gather(
+                    batch.query_valid,
+                    axis_name,
+                    axis=0,
+                    tiled=True,
+                ),
+                document_valid=jax.lax.all_gather(
+                    batch.document_valid,
+                    axis_name,
+                    axis=0,
+                    tiled=True,
+                ),
+            )
+        output = task.loss_from_embeddings(
             queries,
             documents,
             batch,
             row_chunk_size=self.resolved_representation_chunk_size,
+        )
+        if axis_name is None:
+            return output
+        return LossOutput(
+            loss=jax.lax.pmean(output.loss, axis_name),
+            metrics=jax.tree.map(
+                lambda value: jax.lax.pmean(value, axis_name),
+                output.metrics,
+            ),
         )

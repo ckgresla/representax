@@ -136,6 +136,30 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
    with Orbax V1 async saves after their blocking device-to-host snapshot
    returns.
 ** NEXT Extend exact GradCache to global multi-device and multi-host negatives :distributed:
+*** DONE Verify exact replicated data parallel GradCache on two and four GPUs
+    Keep model and optimizer placement separate from GradCache semantics through
+    a named =DataParallel= sharding plan.  Shard query and document records over
+    the =data= mesh axis, gather only compact representations and relation
+    metadata for the global negative pool, replay encoder chunks locally, and
+    synchronize replicated parameter gradients once before the Optax update.
+
+    Acceptance requires the same ModernVBERT checkpoint, global batch, MNR
+    relation, precision, and optimizer update to agree on one, two, and four
+    GPUs.  Compare loss, task metrics, gradient norm, optimizer state, and
+    updated parameters; include a canary whose decisive negative lives on a
+    different device.  Record compile time, steady-state step time, and peak
+    memory separately for each topology on GPUs 0, 1, 2, and 3.
+
+    Accepted on 2026-08-14 with JAX 0.10.1 and four RTX 4090s.  The pinned
+    ModernVBERT checkpoint used global batch 16, sequence length 512, chunk
+    size 2, FP32 highest precision, and one AdamW update.  Both world sizes
+    match the one-device cached update to =4.77e-7= loss absolute, exactly match
+    the reported gradient norm, remain within =1.09e-6= maximum parameter
+    absolute, and keep optimizer-state relative L2 at about =1.02e-6=.  A
+    symmetric Matryoshka test separately proves the complete optimizer update
+    and a cross-device hard-negative canary on both topologies.  See
+    =benchmarks/results/distributed-grad-cache-modernvbert-20260814/=.
+*** TODO Extend the accepted single-host contract to multiple hosts
 
 * TODO Reserve the =representax= package and repository names :release:
 * TODO Publish a minimal CPU-first installation and compatibility matrix :release:

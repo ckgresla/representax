@@ -189,9 +189,12 @@ def _tiled_direction_loss(
         body,
         policy=jax.checkpoint_policies.nothing_saveable,
     )
+    # Derive zero carries from mapped inputs so shard_map's value-mapping
+    # analysis preserves the enclosing axis type without coupling MNR to a
+    # particular mesh-axis name.
     initial = (
-        jnp.asarray(0.0, dtype=jnp.float32),
-        jnp.asarray(0, dtype=jnp.int32),
+        jnp.zeros_like(jnp.sum(row_embeddings, dtype=jnp.float32)),
+        jnp.zeros_like(jnp.sum(row_valid, dtype=jnp.int32)),
     )
     (loss_sum, active_count), loss_chunks = jax.lax.scan(
         rematerialized_body,

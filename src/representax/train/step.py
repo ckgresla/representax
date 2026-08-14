@@ -12,7 +12,12 @@ import optax
 
 from representax.core import Task
 
-from .execution import Direct, LossExecution
+from .execution import (
+    _LOCAL_EXECUTION_CONTEXT,
+    Direct,
+    ExecutionContext,
+    LossExecution,
+)
 from .state import StepMetrics, StepResult, TrainState
 
 
@@ -60,28 +65,18 @@ def make_train_state(
 TrainStep = Callable[[TrainState, Any, jax.Array | None], StepResult]
 
 
-def build_train_step(
+def _build_train_step_body(
     task: Task[Any],
     optimizer: optax.GradientTransformationExtraArgs,
     *,
     max_grad_norm: float | None = 1.0,
     execution: LossExecution | None = None,
-    donate_state: bool = False,
+    context: ExecutionContext = _LOCAL_EXECUTION_CONTEXT,
 ) -> TrainStep:
-    """Build a compiled task-generic optimizer update.
-
-    The task and optimizer are closed-over static program structure. Model,
-    optimizer state, batch, and random key remain explicit JAX inputs. State
-    donation is opt-in because callers may retain the old state for comparison,
-    retry, or branching. Orbax asynchronous checkpointing is compatible with
-    donation: its blocking device-to-host snapshot completes before save returns.
-    """
-
     if max_grad_norm is not None and max_grad_norm <= 0:
         raise ValueError("max_grad_norm must be positive or None")
     resolved_execution = Direct() if execution is None else execution
     resolved_execution.validate(task)
-    donation = "all-except-first" if donate_state else "none"
 
     @eqx.filter_value_and_grad(has_aux=True)
     def loss_fn(
@@ -89,15 +84,30 @@ def build_train_step(
         batch: Any,
         key: jax.Array | None,
     ) -> tuple[jax.Array, Any]:
-        output = resolved_execution.evaluate(task, model, batch, key=key)
+        loss_model = model
+        if context.data_axis_name is not None:
+            # The replicated model participates in rank-local encoder replay.
+            # pvary's transpose performs the one final parameter-gradient sum
+            # after the complete loss has been differentiated.
+            loss_model = jax.lax.pcast(
+                model,
+                context.data_axis_name,
+                to="varying",
+            )
+        output = resolved_execution.evaluate(
+            task,
+            loss_model,
+            batch,
+            key=key,
+            context=context,
+        )
         return output.loss, output.metrics
 
-    @eqx.filter_jit(donate=donation)
-    def compiled_step(
-        inputs: tuple[Any, jax.Array | None],
+    def train_step_body(
         state: TrainState,
+        batch: Any,
+        key: jax.Array | None,
     ) -> StepResult:
-        batch, key = inputs
         (loss, task_metrics), gradients = loss_fn(state.model, batch, key)
         gradient_norm = tree_global_norm(gradients)
         if max_grad_norm is None:
@@ -148,6 +158,42 @@ def build_train_step(
                 skipped_update=~finite,
             ),
         )
+
+    return train_step_body
+
+
+def build_train_step(
+    task: Task[Any],
+    optimizer: optax.GradientTransformationExtraArgs,
+    *,
+    max_grad_norm: float | None = 1.0,
+    execution: LossExecution | None = None,
+    donate_state: bool = False,
+) -> TrainStep:
+    """Build a compiled task-generic optimizer update.
+
+    The task and optimizer are closed-over static program structure. Model,
+    optimizer state, batch, and random key remain explicit JAX inputs. State
+    donation is opt-in because callers may retain the old state for comparison,
+    retry, or branching. Orbax asynchronous checkpointing is compatible with
+    donation: its blocking device-to-host snapshot completes before save returns.
+    """
+
+    train_step_body = _build_train_step_body(
+        task,
+        optimizer,
+        max_grad_norm=max_grad_norm,
+        execution=execution,
+    )
+    donation = "all-except-first" if donate_state else "none"
+
+    @eqx.filter_jit(donate=donation)
+    def compiled_step(
+        inputs: tuple[Any, jax.Array | None],
+        state: TrainState,
+    ) -> StepResult:
+        batch, key = inputs
+        return train_step_body(state, batch, key)
 
     def train_step(
         state: TrainState,
