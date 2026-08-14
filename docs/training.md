@@ -67,11 +67,17 @@ publication, and resume contract. A checkpoint contains:
 - Grain's iterator state; and
 - byte offsets plus sequence position for both append-only JSONL streams.
 
+Representax uses Orbax V1's training `Checkpointer` and its
+`save_checkpointables_async` method. This is the current sequence-oriented API,
+not the legacy synchronous `orbax.checkpoint.Checkpointer`; the older
+`AsyncCheckpointer` name belongs to Orbax's V0 single-checkpoint API.
+
 Only one save may be in flight. Scheduling a checkpoint first waits for an
 older save only when that save is still outstanding, emitting explicit
 `checkpoint_backpressure_started` and `checkpoint_backpressure_finished`
-events. Orbax snapshots the immutable JAX arrays, after which training may
-continue while disk I/O and publication finish on a background thread.
+events. Orbax performs the blocking device-to-host snapshot before returning its
+async response. Training may then donate the snapshotted device state while
+storage I/O and publication finish from the independent host snapshot.
 
 The checkpoint is restorable only after Orbax metadata, a fingerprinted
 `checkpoint.json`, and `REPRESENTAX_COMPLETE` all agree. The `latest` pointer is
@@ -105,7 +111,8 @@ Single-device MNR may use [exact GradCache execution](grad-cache.md) by passing 
 step built with `execution=GradCache(...)` to this loop. Distributed GradCache
 remains roadmap work.
 
-Compiled state-buffer donation is deliberately opt-in. The generic loop and its
-asynchronous Orbax checkpoints retain the safe non-donating default; a dedicated
-loop may pass `donate_state=True` to `build_train_step` only after ensuring that
-the previous state has no remaining readers.
+Compiled state-buffer donation is deliberately opt-in because
+`build_train_step` is a generic callable: callers may retain its input for
+comparison, retry, or branching, and JAX makes a donated buffer invalid after
+the call. The ordinary linear loop may pass `donate_state=True`; asynchronous
+Orbax checkpoints do not prevent donation once their save call has returned.

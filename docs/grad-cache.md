@@ -24,9 +24,12 @@ step = build_train_step(
 The logical batch and negative population do not change. The query and document
 chunk sizes are topology-dependent execution choices.
 
-`build_train_step` keeps state donation off by default. An isolated loop may set
-`donate_state=True` to reduce peak memory, but only when no observer—including
-an asynchronous checkpoint—is retaining the input state.
+`build_train_step` keeps state donation off by default because its generic API
+cannot prevent a caller from comparing, retrying, or branching from the input
+state after an update. A linear training loop may set `donate_state=True` even
+with asynchronous Orbax checkpoints: Orbax V1 completes its blocking
+device-to-host snapshot before the save call returns, then writes that
+independent snapshot in the background.
 
 ## Algorithm
 

@@ -1,4 +1,4 @@
-"""One-in-flight asynchronous Orbax training checkpoints."""
+"""One-in-flight asynchronous checkpoints through Orbax's V1 training API."""
 
 from __future__ import annotations
 
@@ -335,7 +335,13 @@ def validate_complete_checkpoint(
 
 
 class CheckpointManager:
-    """One-in-flight Orbax sequence with explicit publication and failures."""
+    """One-in-flight Orbax V1 sequence with explicit publication and failures.
+
+    ``ocp.training.Checkpointer.save_checkpointables_async`` performs the
+    donation-safe device-to-host snapshot before returning an ``AsyncResponse``.
+    Representax then lets Orbax's storage work and its own durable publication
+    markers finish in the background.
+    """
 
     def __init__(
         self,

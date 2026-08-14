@@ -342,7 +342,7 @@ def test_orbax_preserves_mixed_training_dtypes(tmp_path):
 
 
 @pytest.mark.runtime
-def test_interrupted_grain_training_resumes_exactly(tmp_path):
+def test_donated_training_with_async_orbax_resumes_exactly(tmp_path):
     science = ScientificSpec(
         task="retrieval/mnr",
         global_batch_size=TOY_BATCH_SIZE,
@@ -350,17 +350,20 @@ def test_interrupted_grain_training_resumes_exactly(tmp_path):
         seed=29,
     )
     optimizer = optax.adamw(learning_rate=0.03, weight_decay=0.0)
-    initial = _state(
-        input_dimension=TOY_FEATURE_DIMENSION,
-        output_dimension=TOY_OUTPUT_DIMENSION,
-        optimizer=optimizer,
-    )
+    def fresh_initial():
+        return _state(
+            input_dimension=TOY_FEATURE_DIMENSION,
+            output_dimension=TOY_OUTPUT_DIMENSION,
+            optimizer=optimizer,
+        )
+
     train_step = build_train_step(
         MNRTask(scale=5.0, symmetric=True),
         optimizer,
+        donate_state=True,
     )
     uninterrupted = run_training(
-        state=initial,
+        state=fresh_initial(),
         step=train_step,
         batches=build_toy_retrieval_batches(seed=29),
         science=science,
@@ -372,7 +375,9 @@ def test_interrupted_grain_training_resumes_exactly(tmp_path):
     def crash_after_checkpoint(state, batch, key):
         nonlocal calls
         calls += 1
-        if calls == 5:
+        # Iteration four has been snapshotted asynchronously and iteration five
+        # has donated that state before this simulated process interruption.
+        if calls == 6:
             raise RuntimeError("simulated interruption")
         return train_step(state, batch, key)
 
@@ -380,7 +385,7 @@ def test_interrupted_grain_training_resumes_exactly(tmp_path):
     checkpoint = CheckpointConfig(every=4, keep=2, asynchronous=True)
     with pytest.raises(RuntimeError, match="simulated interruption"):
         run_training(
-            state=initial,
+            state=fresh_initial(),
             step=crash_after_checkpoint,
             batches=build_toy_retrieval_batches(seed=29),
             science=science,
@@ -389,7 +394,9 @@ def test_interrupted_grain_training_resumes_exactly(tmp_path):
         )
 
     resumed = run_training(
-        state=initial,
+        # A real restart constructs a fresh abstract/state template. Reusing the
+        # donated object from the interrupted run is invalid JAX ownership.
+        state=fresh_initial(),
         step=train_step,
         batches=build_toy_retrieval_batches(seed=29),
         science=science,

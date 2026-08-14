@@ -93,8 +93,9 @@ def build_train_step(
 
     The task and optimizer are closed-over static program structure. Model,
     optimizer state, batch, and random key remain explicit JAX inputs. State
-    donation is opt-in because callers may retain the old state for asynchronous
-    checkpointing, comparisons, or recovery.
+    donation is opt-in because callers may retain the old state for comparison,
+    retry, or branching. Orbax asynchronous checkpointing is compatible with
+    donation: its blocking device-to-host snapshot completes before save returns.
     """
 
     if max_grad_norm is not None and max_grad_norm <= 0:
