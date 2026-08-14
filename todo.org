@@ -214,7 +214,9 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
    that the GitHub release tag exactly matches project metadata, smoke-tests the
    installed wheel on CPU, and passes the same artifacts to PyPI with only
    =id-token: write=. The =pypi= environment accepts only =v*= tags and requires
-   approval from =ckgresla=.
+   approval from =ckgresla=. Release-ready commit =e0ebc76= passed all seven
+   public lint, Python, runtime, virtual-distributed, and artifact jobs in
+   GitHub Actions run =31822635802=.
 ** TODO Register the pending PyPI publisher and publish the first release
    In the PyPI account for =ckgresla@gmail.com=, register project =representax=
    against owner/repository =ckgresla/representax=, workflow =release.yml=, and
