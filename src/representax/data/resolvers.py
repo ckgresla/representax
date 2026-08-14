@@ -33,8 +33,9 @@ def _datasets_module():
         import datasets
     except ImportError as error:  # pragma: no cover - depends on optional extra
         raise ImportError(
-            "artifact resolution requires the 'data' extra: "
-            "pip install representax[data]"
+            "artifact resolution through Hugging Face Datasets requires the "
+            "'hf' extra: "
+            "pip install representax[hf]"
         ) from error
     return datasets
 

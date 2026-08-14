@@ -197,9 +197,9 @@ def build_grain_dataset(
 
     try:
         import grain
-    except ImportError as error:  # pragma: no cover - depends on optional extra
+    except ImportError as error:  # pragma: no cover - broken installation
         raise ImportError(
-            "Grain support requires the 'data' extra: pip install representax[data]"
+            "Grain is required for Representax training; reinstall representax"
         ) from error
 
     resolver_registry = dict(BUILTIN_RESOLVERS)
@@ -249,9 +249,9 @@ def build_grain_iterator(
         raise ValueError("prefetch_buffer_size must be non-negative")
     try:
         import grain
-    except ImportError as error:  # pragma: no cover - depends on optional extra
+    except ImportError as error:  # pragma: no cover - broken installation
         raise ImportError(
-            "Grain support requires the 'data' extra: pip install representax[data]"
+            "Grain is required for Representax training; reinstall representax"
         ) from error
     dataset = build_grain_dataset(
         recipe,

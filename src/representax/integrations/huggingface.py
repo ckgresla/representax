@@ -88,9 +88,9 @@ def load_safetensor_subset(
 
     try:
         from safetensors import safe_open
-    except ImportError as error:  # pragma: no cover - optional environment
+    except ImportError as error:  # pragma: no cover - broken installation
         raise ImportError(
-            "Hugging Face weights require the 'hf' extra: pip install representax[hf]"
+            "safetensors is required for checkpoint loading; reinstall representax"
         ) from error
 
     requested = frozenset(names)

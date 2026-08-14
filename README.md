@@ -5,7 +5,7 @@ representation learning. Retrieval is the first working task; classification,
 reward modeling, distillation, and self-supervised objectives are planned on
 the same core boundary.
 
-The project is pre-alpha. The current slice provides:
+The project is alpha. The current slice provides:
 
 - an Equinox-native encoder protocol with typed routes;
 - a native ModernVBERT text-image encoder with bidirectional Hugging Face
@@ -28,8 +28,8 @@ The project is pre-alpha. The current slice provides:
 
 ## Install
 
-The base package installs the ordinary CPU JAX runtime and never installs
-PyTorch:
+The base package installs the ordinary CPU JAX runtime, Grain data pipeline,
+and safetensor checkpoint support. It never installs PyTorch:
 
 ```bash
 python -m pip install representax
@@ -38,13 +38,14 @@ python -m pip install "representax[cuda12]"  # older NVIDIA drivers
 ```
 
 For an editable source checkout, put `-e .` in place of `representax`.
-Optional capabilities are grouped deliberately:
+Optional capabilities are grouped deliberately. Upstream parity oracles are
+repository-only dependency groups rather than published package extras:
 
 ```bash
-python -m pip install -e ".[config,data,hf]"
-python -m pip install -e ".[test,parity]"  # development oracle only
-python -m pip install -e ".[test,parity-modernvbert]"  # pinned model oracle
-python -m pip install -e ".[test,parity-modernvbert,performance]"  # GPU gates
+python -m pip install -e ".[config,hf]"
+python -m pip install -e ".[test]" --group parity
+python -m pip install -e ".[test]" --group parity-modernvbert
+python -m pip install -e ".[test,performance]" --group parity-modernvbert
 ```
 
 The v0 Hugging Face reference is pinned to Transformers 5.3.0. Its complete
@@ -101,10 +102,10 @@ embeddings = rpx.encode(model, batch, route=rpx.Route.QUERY)
 ```
 
 The real checkpoint uses 64 image tokens per processed 512x512 image. The
-ordinary runtime needs `safetensors` but not PyTorch. An optional pinned
-Transformers environment verifies vision features, fused representations, and
-pixel gradients. Host-side Idefics3-compatible processing remains the next API
-slice.
+ordinary runtime includes `safetensors` but not PyTorch. A repository-only
+pinned Transformers environment verifies vision features, fused
+representations, and pixel gradients. Host-side Idefics3-compatible processing
+remains the next API slice.
 
 ## Versioned data recipes
 

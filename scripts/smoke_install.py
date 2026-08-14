@@ -5,9 +5,11 @@ from __future__ import annotations
 import importlib.metadata
 import json
 
+import grain
 import jax
 import jax.numpy as jnp
 import optax
+import safetensors
 
 from representax.models import DenseEncoder
 from representax.tasks.retrieval import MNRTask, retrieval_batch
@@ -15,6 +17,9 @@ from representax.train import build_train_step, make_train_state
 
 
 def main() -> None:
+    package_metadata = importlib.metadata.metadata("representax")
+    extras = sorted(package_metadata.get_all("Provides-Extra", []))
+    assert extras == ["config", "cuda12", "cuda13", "hf", "performance", "test"]
     model = DenseEncoder(4, 3, key=jax.random.key(0))
     optimizer = optax.adamw(learning_rate=1e-3)
     state = make_train_state(model, optimizer)
@@ -34,9 +39,13 @@ def main() -> None:
             {
                 "backend": jax.default_backend(),
                 "device_count": jax.device_count(),
+                "extras": extras,
+                "grain": importlib.metadata.version("grain"),
+                "grain_module": grain.__name__,
                 "jax": jax.__version__,
                 "loss": float(result.metrics.loss),
                 "representax": importlib.metadata.version("representax"),
+                "safetensors": safetensors.__version__,
                 "status": "passed",
             },
             sort_keys=True,

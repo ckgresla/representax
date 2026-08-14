@@ -147,7 +147,7 @@ specific accelerator and software matrix rather than ambient shared runners.
 Run every registered model comparison with:
 
 ```bash
-python -m pip install -e ".[test,parity-modernvbert,performance]"
+python -m pip install -e ".[test,performance]" --group parity-modernvbert
 export REPRESENTAX_MODERNVBERT_TRANSFORMERS_PYTHON=/path/to/tf53/bin/python
 pytest -m performance tests/models
 ```

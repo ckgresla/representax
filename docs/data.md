@@ -15,6 +15,8 @@ code runs only when Grain accesses a record.
 
 An `hf://` URI identifies a dataset repository. Its revision and split must be
 explicit; `subset` selects a named dataset configuration when required.
+Install `representax[hf]` to use this resolver and the built-in local
+JSONL/Parquet/Arrow resolvers backed by Hugging Face Datasets.
 
 ```python
 from representax import data

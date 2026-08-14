@@ -217,11 +217,20 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
    approval from =ckgresla=. Release-ready commit =e0ebc76= passed all seven
    public lint, Python, runtime, virtual-distributed, and artifact jobs in
    GitHub Actions run =31822635802=.
-** TODO Register the pending PyPI publisher and publish the first release
-   In the PyPI account for =ckgresla@gmail.com=, register project =representax=
-   against owner/repository =ckgresla/representax=, workflow =release.yml=, and
-   environment =pypi=. Review the exact artifacts, publish, then read back the
+** NEXT Publish through the registered pending PyPI publisher
+   The pending publisher is registered in the PyPI account for
+   =ckgresla@gmail.com= against owner/repository =ckgresla/representax=,
+   workflow =release.yml=, and environment =pypi=. The accepted release scope is
+   Alpha metadata, mandatory Grain and safetensors, optional =hf= ecosystem
+   dependencies, explicit =cuda12=/=cuda13= extras, and repository-only parity
+   groups. Rebuild and accept the exact artifacts, publish, then read back the
    project metadata before marking the name reserved.
+   The dependency-boundary release candidate passed strict Twine metadata,
+   =58= fast tests, =8= runtime tests, =3= virtual four-device distributed
+   tests, and fresh CPU, CUDA 13, and =hf= installs on 2026-08-14. CPU and GPU
+   produced the same compiled-update loss; both installed Grain and safetensors,
+   the =hf= environment installed Transformers 5.3.0 without PyTorch, and the
+   published wheel metadata exposes no parity extras.
 ** DONE Accept clean CPU and NVIDIA GPU installs from the exact release wheel
    The base wheel must resolve and execute a compiled update on CPU without
    accelerator packages. The =cuda13= extra must resolve JAX's pip-managed CUDA
