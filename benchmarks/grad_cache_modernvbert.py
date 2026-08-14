@@ -188,9 +188,7 @@ def _representax(arguments: argparse.Namespace) -> dict[str, Any]:
         input_ids=jax.device_put(arrays["document_input_ids"], device),
         attention_mask=jax.device_put(arrays["attention_mask"], device),
     )
-    positive_mask = jax.device_put(
-        np.eye(arguments.batch_size, dtype=np.bool_), device
-    )
+    positive_mask = jax.device_put(np.eye(arguments.batch_size, dtype=np.bool_), device)
     batch = retrieval_batch(
         query=query,
         document=document,
@@ -313,9 +311,7 @@ def _sentence_transformers(arguments: argparse.Namespace) -> dict[str, Any]:
             mask = features["attention_mask"].unsqueeze(-1).bool()
             pooled = torch.where(mask, hidden.float(), 0.0).sum(1)
             pooled = pooled / mask.sum(1).clamp_min(1)
-            return {
-                "sentence_embedding": functional.normalize(pooled, p=2, dim=-1)
-            }
+            return {"sentence_embedding": functional.normalize(pooled, p=2, dim=-1)}
 
     setup_started = time.perf_counter()
     transformers.utils.logging.disable_progress_bar()
@@ -482,9 +478,7 @@ def main() -> None:
             "jax_enable_compilation_cache": os.environ.get(
                 "JAX_ENABLE_COMPILATION_CACHE"
             ),
-            "jax_compilation_cache_dir": os.environ.get(
-                "JAX_COMPILATION_CACHE_DIR"
-            ),
+            "jax_compilation_cache_dir": os.environ.get("JAX_COMPILATION_CACHE_DIR"),
             "rematerialization": (
                 arguments.rematerialization
                 if arguments.runtime != "sentence-transformers"

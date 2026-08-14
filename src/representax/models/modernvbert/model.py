@@ -27,15 +27,11 @@ def _rematerialize_layer(function: Any, policy: RematerializationPolicy) -> Any:
     if policy == "none":
         return function
     if policy == "selective":
-        checkpoint_policy = (
-            jax.checkpoint_policies.dots_with_no_batch_dims_saveable
-        )
+        checkpoint_policy = jax.checkpoint_policies.dots_with_no_batch_dims_saveable
     elif policy == "full":
         checkpoint_policy = jax.checkpoint_policies.nothing_saveable
     else:
-        raise ValueError(
-            "rematerialization must be 'none', 'selective', or 'full'"
-        )
+        raise ValueError("rematerialization must be 'none', 'selective', or 'full'")
     return jax.checkpoint(
         function,
         policy=checkpoint_policy,
@@ -273,6 +269,7 @@ class FusedSelfAttention(eqx.Module):
             config.head_dimension,
         )
         query, key, value = (qkv[:, :, index] for index in range(3))
+
         def attend(
             operands: tuple[jax.Array, jax.Array, jax.Array],
             *,

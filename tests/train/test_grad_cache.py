@@ -18,9 +18,7 @@ from representax.train import GradCache, build_train_step, make_train_state
 
 def _assert_array_trees_close(actual: Any, expected: Any) -> None:
     actual_leaves = [leaf for leaf in jax.tree.leaves(actual) if eqx.is_array(leaf)]
-    expected_leaves = [
-        leaf for leaf in jax.tree.leaves(expected) if eqx.is_array(leaf)
-    ]
+    expected_leaves = [leaf for leaf in jax.tree.leaves(expected) if eqx.is_array(leaf)]
     assert len(actual_leaves) == len(expected_leaves)
     for actual_leaf, expected_leaf in zip(actual_leaves, expected_leaves, strict=True):
         assert jnp.allclose(actual_leaf, expected_leaf, rtol=2e-5, atol=2e-6)
@@ -184,9 +182,7 @@ def test_grad_cache_rematerialization_replays_stochastic_chunks_exactly():
     def cached_loss(candidate: _StochasticEncoder) -> jax.Array:
         return execution.evaluate(task, candidate, batch, key=key).loss
 
-    explicit_value, explicit_gradients = eqx.filter_value_and_grad(explicit_loss)(
-        model
-    )
+    explicit_value, explicit_gradients = eqx.filter_value_and_grad(explicit_loss)(model)
     cached_value, cached_gradients = eqx.filter_value_and_grad(cached_loss)(model)
 
     assert jnp.array_equal(cached_value, explicit_value)

@@ -65,9 +65,7 @@ class ExecutionPlan:
         if self.prefetch_depth < 0:
             raise ValueError("prefetch_depth must be non-negative")
         if self.rematerialization not in {"none", "selective", "full"}:
-            raise ValueError(
-                "rematerialization must be 'none', 'selective', or 'full'"
-            )
+            raise ValueError("rematerialization must be 'none', 'selective', or 'full'")
         for name, value in (
             ("query_microbatch_size", self.query_microbatch_size),
             ("document_microbatch_size", self.document_microbatch_size),

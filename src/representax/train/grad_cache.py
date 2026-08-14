@@ -69,9 +69,7 @@ def _rematerialized_encode(
     else:
         keys = jax.random.split(key, chunk_count)
 
-        def body(
-            _: None, values: tuple[Any, jax.Array]
-        ) -> tuple[None, jax.Array]:
+        def body(_: None, values: tuple[Any, jax.Array]) -> tuple[None, jax.Array]:
             chunk, chunk_key = values
             return None, encode(model, chunk, route=route, key=chunk_key)
 

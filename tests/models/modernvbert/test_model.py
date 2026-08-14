@@ -125,9 +125,7 @@ def test_native_encoder_is_jittable_differentiable_and_normalized():
 def _text_scan(model, batch):
     program = jax.make_jaxpr(lambda candidate: candidate.hidden_states(batch))(model)
     scans = [
-        equation
-        for equation in program.jaxpr.eqns
-        if equation.primitive.name == "scan"
+        equation for equation in program.jaxpr.eqns if equation.primitive.name == "scan"
     ]
     assert len(scans) == 1
     return scans[0]
@@ -149,8 +147,7 @@ def test_text_depth_lowers_to_one_scan_with_explicit_rematerialization():
     remat_equations = scan.params["jaxpr"].jaxpr.eqns
     assert [equation.primitive.name for equation in remat_equations] == ["remat2"]
     assert (
-        remat_equations[0].params["policy"]
-        is jax.checkpoint_policies.nothing_saveable
+        remat_equations[0].params["policy"] is jax.checkpoint_policies.nothing_saveable
     )
 
     selective = ModernVBERTTextEncoder.init(
@@ -190,9 +187,7 @@ def test_rematerialization_policies_preserve_values_and_parameter_gradients():
             rematerialization=policy,
         )
         return eqx.filter_value_and_grad(
-            lambda candidate: jnp.sum(
-                candidate.encode(batch, route=Route.DOCUMENT)
-            )
+            lambda candidate: jnp.sum(candidate.encode(batch, route=Route.DOCUMENT))
         )(model)
 
     expected_value, expected_gradient = evaluate("none")
@@ -271,9 +266,7 @@ def test_hf_state_dict_mapping_round_trips_the_native_tree():
         config.hidden_size,
     )
     native_parameter_count = sum(
-        leaf.size
-        for leaf in jax.tree.leaves(model)
-        if eqx.is_inexact_array(leaf)
+        leaf.size for leaf in jax.tree.leaves(model) if eqx.is_inexact_array(leaf)
     )
     upstream_parameter_count = sum(value.size for value in state_dict.values())
     assert native_parameter_count == upstream_parameter_count

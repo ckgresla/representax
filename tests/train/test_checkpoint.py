@@ -91,9 +91,7 @@ def _state(input_dimension=2, output_dimension=2, optimizer=None):
         key=jax.random.key(0),
         normalize=False,
     )
-    optimizer = (
-        optax.adamw(learning_rate=0.01) if optimizer is None else optimizer
-    )
+    optimizer = optax.adamw(learning_rate=0.01) if optimizer is None else optimizer
     return make_train_state(model, optimizer)
 
 
@@ -350,6 +348,7 @@ def test_donated_training_with_async_orbax_resumes_exactly(tmp_path):
         seed=29,
     )
     optimizer = optax.adamw(learning_rate=0.03, weight_decay=0.0)
+
     def fresh_initial():
         return _state(
             input_dimension=TOY_FEATURE_DIMENSION,
@@ -408,9 +407,7 @@ def test_donated_training_with_async_orbax_resumes_exactly(tmp_path):
     assert resumed.resumed is True
     assert resumed.completed_iterations == TOY_STEPS
     _assert_array_trees_equal(resumed.state, uninterrupted.state)
-    uninterrupted_metrics = _read_jsonl(
-        tmp_path / "uninterrupted" / "metrics.jsonl"
-    )
+    uninterrupted_metrics = _read_jsonl(tmp_path / "uninterrupted" / "metrics.jsonl")
     resumed_metrics = _read_jsonl(run / "metrics.jsonl")
     assert [row["iteration"] for row in resumed_metrics] == list(
         range(1, TOY_STEPS + 1)

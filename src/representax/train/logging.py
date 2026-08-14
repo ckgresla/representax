@@ -99,12 +99,8 @@ class RunLogger:
         self._closed = False
         if resume_cursor is None:
             self.run_directory.mkdir(parents=True, exist_ok=False)
-            self._events = self._events_path.open(
-                "x", encoding="utf-8", buffering=1
-            )
-            self._metrics = self._metrics_path.open(
-                "x", encoding="utf-8", buffering=1
-            )
+            self._events = self._events_path.open("x", encoding="utf-8", buffering=1)
+            self._metrics = self._metrics_path.open("x", encoding="utf-8", buffering=1)
             self._sequence = 0
             self._manifest = {
                 **_json_value(manifest),
@@ -157,9 +153,7 @@ class RunLogger:
             "optimizer_steps",
         }
         active = {
-            key: value
-            for key, value in previous.items()
-            if key not in terminal_fields
+            key: value for key, value in previous.items() if key not in terminal_fields
         }
         return {
             **active,

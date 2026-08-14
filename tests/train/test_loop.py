@@ -90,9 +90,7 @@ def _read_jsonl(path):
 
 
 def test_training_loop_writes_every_metric_and_closes_batches(tmp_path, capsys):
-    batches = ClosingBatches(
-        [jnp.asarray([1.0, 3.0]), jnp.asarray([2.0, 4.0])]
-    )
+    batches = ClosingBatches([jnp.asarray([1.0, 3.0]), jnp.asarray([2.0, 4.0])])
     sink = RecordingSink()
     result = run_training(
         state=_state(),
@@ -127,9 +125,7 @@ def test_training_loop_writes_every_metric_and_closes_batches(tmp_path, capsys):
     assert metrics[0]["compiled_step_seconds"] is None
     assert metrics[1]["compilation_and_first_step_seconds"] is None
     assert metrics[1]["compiled_step_seconds"] is not None
-    assert [row["event"] for row in events].count(
-        "executable_first_use_started"
-    ) == 1
+    assert [row["event"] for row in events].count("executable_first_use_started") == 1
     assert events[-1]["event"] == "training_finished"
 
 
@@ -205,9 +201,7 @@ def test_skipped_updates_advance_deterministic_iteration_keys(tmp_path):
         result = run_training(
             state=_state(),
             step=_skipped_step,
-            batches=ClosingBatches(
-                [jnp.asarray([1.0, 3.0]), jnp.asarray([1.0, 3.0])]
-            ),
+            batches=ClosingBatches([jnp.asarray([1.0, 3.0]), jnp.asarray([1.0, 3.0])]),
             science=ScientificSpec(
                 task="test/nonfinite",
                 global_batch_size=2,

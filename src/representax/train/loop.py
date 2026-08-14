@@ -139,9 +139,7 @@ def _record(
             if compiled_step_seconds is None
             else science.global_batch_size / compiled_step_seconds
         ),
-        end_to_end_examples_per_second=(
-            science.global_batch_size / end_to_end_seconds
-        ),
+        end_to_end_examples_per_second=(science.global_batch_size / end_to_end_seconds),
     )
 
 
@@ -170,17 +168,13 @@ def run_training(
     if resume and checkpoint is None:
         raise ValueError("resume requires checkpoint configuration")
     if checkpoint is not None and any(
-        iteration > science.max_steps
-        for iteration in checkpoint.additional_iterations
+        iteration > science.max_steps for iteration in checkpoint.additional_iterations
     ):
         raise ValueError(
             "additional checkpoint iterations cannot exceed science.max_steps"
         )
     source_batch_size = getattr(batches, "global_batch_size", None)
-    if (
-        source_batch_size is not None
-        and source_batch_size != science.global_batch_size
-    ):
+    if source_batch_size is not None and source_batch_size != science.global_batch_size:
         raise ValueError(
             "batch source global_batch_size differs from the scientific "
             f"specification: {source_batch_size} != {science.global_batch_size}"
@@ -319,9 +313,8 @@ def run_training(
                 logger.console_metrics(record)
 
             final = completed == science.max_steps
-            if (
-                checkpoint_manager is not None
-                and checkpoint.should_save(completed, final=final)
+            if checkpoint_manager is not None and checkpoint.should_save(
+                completed, final=final
             ):
                 checkpoint_manager.save(
                     completed,

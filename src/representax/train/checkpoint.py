@@ -322,9 +322,7 @@ def validate_complete_checkpoint(
         )
     iteration = manifest.get("iteration")
     if not isinstance(iteration, int) or iteration < 0:
-        raise IncompleteCheckpointError(
-            f"invalid checkpoint iteration: {directory}"
-        )
+        raise IncompleteCheckpointError(f"invalid checkpoint iteration: {directory}")
     return CheckpointRecord(
         iteration=iteration,
         path=directory,
@@ -424,10 +422,7 @@ class CheckpointManager:
                 f"missing={sorted(missing)}, unexpected={sorted(unexpected)}"
             )
         progress = checkpointables["progress"]
-        if (
-            not isinstance(progress, Mapping)
-            or progress.get("iteration") != iteration
-        ):
+        if not isinstance(progress, Mapping) or progress.get("iteration") != iteration:
             raise ValueError(
                 "checkpoint progress.iteration must equal the save iteration"
             )
@@ -506,8 +501,7 @@ class CheckpointManager:
         try:
             if pending.response.result() is not True:
                 raise CheckpointWriteError(
-                    "Orbax did not publish checkpoint iteration "
-                    f"{pending.iteration}"
+                    f"Orbax did not publish checkpoint iteration {pending.iteration}"
                 )
             if self.process_index == 0:
                 if not (pending.path / ORBAX_MARKER).is_file():
@@ -564,9 +558,7 @@ class CheckpointManager:
         waiting = pending.thread is not None and pending.thread.is_alive()
         started = time.perf_counter()
         if backpressure and waiting:
-            self._emit(
-                "checkpoint_backpressure_started", iteration=pending.iteration
-            )
+            self._emit("checkpoint_backpressure_started", iteration=pending.iteration)
         if pending.thread is not None:
             pending.thread.join()
         if backpressure and waiting:
@@ -599,11 +591,9 @@ class CheckpointManager:
             self.checkpoint_root / path_component,
             expected_science_fingerprint=self.science_fingerprint,
         )
-        if (
-            record.iteration != document.get("iteration")
-            or record.checkpoint_fingerprint
-            != document.get("checkpoint_fingerprint")
-        ):
+        if record.iteration != document.get(
+            "iteration"
+        ) or record.checkpoint_fingerprint != document.get("checkpoint_fingerprint"):
             raise IncompleteCheckpointError(f"latest pointer differs: {pointer}")
         return record
 
@@ -700,9 +690,7 @@ class CheckpointManager:
                 "restored checkpoint has no Grain iterator state"
             )
         if not isinstance(progress.get("logging_cursor"), Mapping):
-            raise IncompleteCheckpointError(
-                "restored checkpoint has no logging cursor"
-            )
+            raise IncompleteCheckpointError("restored checkpoint has no logging cursor")
         return RestoredTrainingState(
             state=TrainState(
                 model=restored["model"],

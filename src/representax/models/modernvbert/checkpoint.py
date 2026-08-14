@@ -297,9 +297,7 @@ class ModernVBERTTextCheckpointAdapter:
                         input=Linear(weight=get(prefix + "mlp.input.weight")),
                         output=Linear(weight=get(prefix + "mlp.output.weight")),
                     ),
-                    sliding_attention=jnp.asarray(
-                        layer_type == "sliding_attention"
-                    ),
+                    sliding_attention=jnp.asarray(layer_type == "sliding_attention"),
                 )
             )
         tower = ModernVBERTTextTower(
