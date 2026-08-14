@@ -1,4 +1,4 @@
-# Representax
+<h1 align="center">Representax</h1>
 
 Representax is a native JAX and Equinox system for efficient, task-general
 representation learning. Retrieval is the first working task; classification,
