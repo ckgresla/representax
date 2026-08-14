@@ -121,6 +121,28 @@ def test_native_encoder_is_jittable_differentiable_and_normalized():
     assert jnp.all(jnp.isfinite(gradients))
 
 
+def test_text_depth_lowers_to_one_rematerialized_scan():
+    model = ModernVBERTTextEncoder.init(tiny_config(), key=jax.random.key(3))
+    batch = ModernVBERTTextBatch(
+        input_ids=jnp.asarray([[1, 2, 3, 0]]),
+        attention_mask=jnp.asarray([[1, 1, 1, 0]]),
+    )
+
+    program = jax.make_jaxpr(lambda candidate: candidate.hidden_states(batch))(model)
+    scans = [
+        equation
+        for equation in program.jaxpr.eqns
+        if equation.primitive.name == "scan"
+    ]
+
+    assert len(scans) == 1
+    assert scans[0].params["length"] == tiny_config().num_hidden_layers
+    assert [
+        equation.primitive.name
+        for equation in scans[0].params["jaxpr"].jaxpr.eqns
+    ] == ["remat2"]
+
+
 def test_local_attention_matches_explicit_dense_value_and_gradient():
     query_key, key_key, value_key = jax.random.split(jax.random.key(9), 3)
     query = jax.random.normal(query_key, (2, 7, 2, 4))
@@ -166,8 +188,23 @@ def test_hf_state_dict_mapping_round_trips_the_native_tree():
     restored = adapter.from_state_dict(config, state_dict)
 
     assert set(state_dict) == set(modernvbert_text_weight_map(config).values())
+    assert len(restored.tower.layers) == config.num_hidden_layers
     assert restored.tower.layers[0].attention_norm is None
     assert restored.tower.layers[1].attention_norm is not None
+    assert not bool(restored.tower.layers[0].sliding_attention)
+    assert bool(restored.tower.layers[1].sliding_attention)
+    assert restored.tower.layers.blocks.attention.qkv.weight.shape == (
+        config.num_hidden_layers,
+        3 * config.hidden_size,
+        config.hidden_size,
+    )
+    native_parameter_count = sum(
+        leaf.size
+        for leaf in jax.tree.leaves(model)
+        if eqx.is_inexact_array(leaf)
+    )
+    upstream_parameter_count = sum(value.size for value in state_dict.values())
+    assert native_parameter_count == upstream_parameter_count
     original_leaves = jax.tree.leaves(model.tower)
     restored_leaves = jax.tree.leaves(restored.tower)
     assert len(original_leaves) == len(restored_leaves)

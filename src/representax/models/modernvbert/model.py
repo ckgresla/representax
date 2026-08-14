@@ -15,7 +15,7 @@ import jax.numpy as jnp
 
 from representax.core import EncoderMetadata, Modality, Route
 
-from .config import AttentionType, ModernVBERTTextConfig
+from .config import ModernVBERTTextConfig
 
 AttentionImplementation = Literal["xla", "cudnn"]
 
@@ -204,13 +204,11 @@ def _scaled_dot_product_attention(
 class FusedSelfAttention(eqx.Module):
     qkv: Linear
     output: Linear
-    layer_type: AttentionType = eqx.field(static=True)
 
     @classmethod
     def init(
         cls,
         config: ModernVBERTTextConfig,
-        layer_type: AttentionType,
         *,
         key: jax.Array,
         dtype: jnp.dtype,
@@ -231,7 +229,6 @@ class FusedSelfAttention(eqx.Module):
                 scale=config.initializer_range,
                 dtype=dtype,
             ),
-            layer_type=layer_type,
         )
 
     def __call__(
@@ -241,6 +238,7 @@ class FusedSelfAttention(eqx.Module):
         config: ModernVBERTTextConfig,
         attention_mask: jax.Array,
         position_ids: jax.Array,
+        sliding_attention: jax.Array,
         implementation: AttentionImplementation,
     ) -> jax.Array:
         batch, sequence, _ = hidden.shape
@@ -252,27 +250,45 @@ class FusedSelfAttention(eqx.Module):
             config.head_dimension,
         )
         query, key, value = (qkv[:, :, index] for index in range(3))
-        cosine, sine = _rotary_frequencies(
-            config.head_dimension,
-            config.rope_theta(self.layer_type),
-            position_ids,
-        )
-        cosine = cosine[:, :, None, :]
-        sine = sine[:, :, None, :]
-        query = _apply_rope(query, cosine, sine)
-        key = _apply_rope(key, cosine, sine)
-        local_radius = (
-            config.local_attention // 2
-            if self.layer_type == "sliding_attention"
-            else None
-        )
-        attended = _scaled_dot_product_attention(
-            query,
-            key,
-            value,
-            attention_mask,
-            local_radius=local_radius,
-            implementation=implementation,
+        def attend(
+            operands: tuple[jax.Array, jax.Array, jax.Array],
+            *,
+            theta: float,
+            local_radius: int | None,
+        ) -> jax.Array:
+            branch_query, branch_key, branch_value = operands
+            cosine, sine = _rotary_frequencies(
+                config.head_dimension,
+                theta,
+                position_ids,
+            )
+            cosine = cosine[:, :, None, :]
+            sine = sine[:, :, None, :]
+            branch_query = _apply_rope(branch_query, cosine, sine)
+            branch_key = _apply_rope(branch_key, cosine, sine)
+            return _scaled_dot_product_attention(
+                branch_query,
+                branch_key,
+                branch_value,
+                attention_mask,
+                local_radius=local_radius,
+                implementation=implementation,
+            )
+
+        operands = (query, key, value)
+        attended = jax.lax.cond(
+            sliding_attention,
+            lambda values: attend(
+                values,
+                theta=config.sliding_attention_rope_theta,
+                local_radius=config.local_attention // 2,
+            ),
+            lambda values: attend(
+                values,
+                theta=config.full_attention_rope_theta,
+                local_radius=None,
+            ),
+            operands,
         )
         return self.output(attended.reshape(batch, sequence, config.hidden_size))
 
@@ -317,6 +333,7 @@ class ModernVBERTTextBlock(eqx.Module):
     attention_norm: LayerNorm | None
     mlp_norm: LayerNorm
     mlp: GatedMLP
+    sliding_attention: jax.Array
 
     @classmethod
     def init(
@@ -331,7 +348,6 @@ class ModernVBERTTextBlock(eqx.Module):
         return cls(
             attention=FusedSelfAttention.init(
                 config,
-                config.layer_types[index],
                 key=attention_key,
                 dtype=dtype,
             ),
@@ -351,6 +367,9 @@ class ModernVBERTTextBlock(eqx.Module):
                 dtype=dtype,
             ),
             mlp=GatedMLP.init(config, key=mlp_key, dtype=dtype),
+            sliding_attention=jnp.asarray(
+                config.layer_types[index] == "sliding_attention"
+            ),
         )
 
     def __call__(
@@ -370,15 +389,94 @@ class ModernVBERTTextBlock(eqx.Module):
             config=config,
             attention_mask=attention_mask,
             position_ids=position_ids,
+            sliding_attention=self.sliding_attention,
             implementation=implementation,
         )
         return hidden + self.mlp(self.mlp_norm(hidden))
 
 
+class _ModernVBERTTextScanBlock(eqx.Module):
+    """The structurally uniform portion of one scanned text block."""
+
+    attention: FusedSelfAttention
+    mlp_norm: LayerNorm
+    mlp: GatedMLP
+    sliding_attention: jax.Array
+
+
+class ModernVBERTTextLayerStack(eqx.Module):
+    """A depth-major PyTree of homogeneous ModernVBERT text blocks."""
+
+    blocks: _ModernVBERTTextScanBlock | None
+    attention_norms: LayerNorm | None
+    depth: int = eqx.field(static=True)
+
+    @classmethod
+    def from_blocks(
+        cls,
+        blocks: tuple[ModernVBERTTextBlock, ...],
+    ) -> ModernVBERTTextLayerStack:
+        if not blocks:
+            return cls(blocks=None, attention_norms=None, depth=0)
+        if blocks[0].attention_norm is not None:
+            raise ValueError("ModernVBERT layer zero must omit attention_norm")
+        if any(block.attention_norm is None for block in blocks[1:]):
+            raise ValueError("ModernVBERT layers after zero require attention_norm")
+        scan_blocks = tuple(
+            _ModernVBERTTextScanBlock(
+                attention=block.attention,
+                mlp_norm=block.mlp_norm,
+                mlp=block.mlp,
+                sliding_attention=block.sliding_attention,
+            )
+            for block in blocks
+        )
+        stacked = jax.tree.map(lambda *leaves: jnp.stack(leaves), *scan_blocks)
+        norms = tuple(block.attention_norm for block in blocks[1:])
+        stacked_norms = (
+            None
+            if not norms
+            else jax.tree.map(lambda *leaves: jnp.stack(leaves), *norms)
+        )
+        return cls(
+            blocks=stacked,
+            attention_norms=stacked_norms,
+            depth=len(blocks),
+        )
+
+    def __len__(self) -> int:
+        return self.depth
+
+    def __getitem__(
+        self,
+        index: int | slice,
+    ) -> ModernVBERTTextBlock | tuple[ModernVBERTTextBlock, ...]:
+        if isinstance(index, slice):
+            positions = range(*index.indices(self.depth))
+            return tuple(self[position] for position in positions)
+        if not 0 <= index < self.depth:
+            raise IndexError(index)
+        if self.blocks is None:
+            raise IndexError(index)
+        block = jax.tree.map(lambda leaf: leaf[index], self.blocks)
+        attention_norm = (
+            None
+            if index == 0
+            else jax.tree.map(lambda leaf: leaf[index - 1], self.attention_norms)
+        )
+        return ModernVBERTTextBlock(
+            attention=block.attention,
+            attention_norm=attention_norm,
+            mlp_norm=block.mlp_norm,
+            mlp=block.mlp,
+            sliding_attention=block.sliding_attention,
+        )
+
+
 class ModernVBERTTextTower(eqx.Module):
     token_embedding: jax.Array
     embedding_norm: LayerNorm
-    layers: tuple[ModernVBERTTextBlock, ...]
+    layers: ModernVBERTTextLayerStack
     final_norm: LayerNorm
     config: ModernVBERTTextConfig = eqx.field(static=True)
 
@@ -415,7 +513,7 @@ class ModernVBERTTextTower(eqx.Module):
                 epsilon=config.norm_epsilon,
                 dtype=dtype,
             ),
-            layers=layers,
+            layers=ModernVBERTTextLayerStack.from_blocks(layers),
             final_norm=LayerNorm.init(
                 config.hidden_size,
                 epsilon=config.norm_epsilon,
@@ -454,13 +552,51 @@ class ModernVBERTTextTower(eqx.Module):
         else:
             position_ids = batch.position_ids
         hidden = self.embedding_norm(hidden)
-        for layer in self.layers:
-            hidden = layer(
+        if self.layers.blocks is not None:
+
+            def apply_layer(
+                carry: jax.Array,
+                values: tuple[jax.Array, _ModernVBERTTextScanBlock],
+            ) -> tuple[jax.Array, None]:
+                index, layer = values
+                if self.layers.attention_norms is None:
+                    attention_input = carry
+                else:
+                    norm_index = jnp.maximum(index - 1, 0)
+                    attention_norm = jax.tree.map(
+                        lambda leaf: jax.lax.dynamic_index_in_dim(
+                            leaf,
+                            norm_index,
+                            keepdims=False,
+                        ),
+                        self.layers.attention_norms,
+                    )
+                    attention_input = jax.lax.cond(
+                        index == 0,
+                        lambda value: value,
+                        lambda value: attention_norm(value),
+                        carry,
+                    )
+                output = carry + layer.attention(
+                    attention_input,
+                    config=self.config,
+                    attention_mask=attention_mask,
+                    position_ids=position_ids,
+                    sliding_attention=layer.sliding_attention,
+                    implementation=attention_implementation,
+                )
+                output = output + layer.mlp(layer.mlp_norm(output))
+                return output, None
+
+            rematerialized_layer = jax.checkpoint(
+                apply_layer,
+                policy=jax.checkpoint_policies.nothing_saveable,
+                prevent_cse=False,
+            )
+            hidden, _ = jax.lax.scan(
+                rematerialized_layer,
                 hidden,
-                config=self.config,
-                attention_mask=attention_mask,
-                position_ids=position_ids,
-                implementation=attention_implementation,
+                (jnp.arange(self.layers.depth), self.layers.blocks),
             )
         return self.final_norm(hidden)
 

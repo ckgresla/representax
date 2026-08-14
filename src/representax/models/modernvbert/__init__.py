@@ -17,6 +17,7 @@ from .model import (
     ModernVBERTTextBatch,
     ModernVBERTTextBlock,
     ModernVBERTTextEncoder,
+    ModernVBERTTextLayerStack,
     ModernVBERTTextTower,
 )
 from .multimodal import ModernVBERTBatch, ModernVBERTEncoder, merge_image_features
@@ -34,6 +35,7 @@ __all__ = [
     "ModernVBERTTextCheckpointAdapter",
     "ModernVBERTTextConfig",
     "ModernVBERTTextEncoder",
+    "ModernVBERTTextLayerStack",
     "ModernVBERTTextTower",
     "ModernVBERTVisionConfig",
     "SigLIPVisionTower",

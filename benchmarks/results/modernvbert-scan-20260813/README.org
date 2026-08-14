@@ -1,0 +1,62 @@
+#+TITLE: ModernVBERT stacked scan follow-up — 2026-08-13
+#+OPTIONS: toc:2 num:nil
+
+* Decision
+
+ModernVBERT text depth now lowers to one =lax.scan= over a depth-major Equinox
+PyTree, with a =jax.checkpoint(..., policy=nothing_saveable)= scan body.  The
+native tree has exactly the upstream trainable parameter count: layer zero has
+no synthetic attention-norm parameter, while the remaining 21 norms are stored
+as their own depth-major stack.  Per-layer scalar leaves retain the checkpoint's
+full/sliding attention schedule.
+
+This removes the pathological direct-training compilation boundary.  Before the
+change, batch 10 at sequence 512 remained in XLA GPU compilation after several
+minutes, its post-rematerialization HLO grew to 103,205 lines, and XLA planned
+20.17 GiB.  The scanned program completes compile plus first execution in 29.18
+seconds with a 4.536 GiB allocator peak.
+
+* Direct-training measurements
+
+All points use the same RTX 4090 workload and scientific settings as the parent
+=grad-cache-modernvbert-20260813= matrix: pinned ModernVBERT revision, FP32,
+highest matmul precision, sequence 512, full-length deterministic tokens, AdamW
+with zero learning rate and weight decay, one warmup, and two measured steps.
+
+| Batch | Compile + first (s) | Step median (s) | Examples/s | Allocator GiB | Process GiB |
+|-------+---------------------+-----------------+------------+---------------+-------------|
+|     8 |              26.443 |          0.3291 |     24.311 |         4.259 |       8.402 |
+|    10 |              29.178 |          0.4109 |     24.337 |         4.536 |       8.402 |
+|    16 |              30.246 |          0.6375 |     25.098 |         5.390 |       8.402 |
+|    32 |              34.330 |          1.2714 |     25.170 |         7.590 |      12.402 |
+
+At the matched batch-8 point, the scan reduces allocator peak by 74.5% and
+compile plus first execution by 51.8%.  Throughput is 24.3% lower because
+=nothing_saveable= rematerializes every transformer block during backward.  The
+result is therefore a correct, bounded baseline rather than the final execution
+policy.  Selective residual checkpointing can now be evaluated without changing
+the stacked parameter representation or scan control flow.
+
+* Correctness contract
+
+- the native fast suite asserts one depth-length scan containing one rematerialized
+  body;
+- Hugging Face load/export round trips every upstream parameter and asserts the
+  native trainable parameter count is exact;
+- pinned Transformers 5.3 forward and input-gradient parity passes in FP32 at
+  highest matmul precision.  Hidden states have max absolute error =2.04e-4= and
+  relative L2 =3.54e-6=; pooled embeddings =7.75e-7= and =3.18e-6=; input
+  gradients =3.95e-5= and =4.16e-5=.  All three cosine similarities report
+  =1.0=; and
+- direct and GradCache compiled training updates remain finite.
+
+* Replay
+
+#+begin_src sh
+CUDA_VISIBLE_DEVICES=0 conda run -n representax \
+  python benchmarks/grad_cache_modernvbert.py \
+  --runtime direct --checkpoint "$CHECKPOINT" \
+  --output /tmp/representax-direct-scan-b10-s512.json \
+  --batch-size 10 --sequence-length 512 --chunk-size 4 \
+  --warmup-steps 1 --measured-steps 2
+#+end_src

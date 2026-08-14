@@ -31,6 +31,7 @@ from .model import (
     Linear,
     ModernVBERTTextBlock,
     ModernVBERTTextEncoder,
+    ModernVBERTTextLayerStack,
     ModernVBERTTextTower,
 )
 from .multimodal import ModernVBERTEncoder
@@ -283,7 +284,6 @@ class ModernVBERTTextCheckpointAdapter:
                     attention=FusedSelfAttention(
                         qkv=Linear(weight=get(prefix + "attention.qkv.weight")),
                         output=Linear(weight=get(prefix + "attention.output.weight")),
-                        layer_type=layer_type,
                     ),
                     attention_norm=attention_norm,
                     mlp_norm=LayerNorm(
@@ -295,6 +295,9 @@ class ModernVBERTTextCheckpointAdapter:
                         input=Linear(weight=get(prefix + "mlp.input.weight")),
                         output=Linear(weight=get(prefix + "mlp.output.weight")),
                     ),
+                    sliding_attention=jnp.asarray(
+                        layer_type == "sliding_attention"
+                    ),
                 )
             )
         tower = ModernVBERTTextTower(
@@ -304,7 +307,7 @@ class ModernVBERTTextCheckpointAdapter:
                 bias=None,
                 epsilon=config.norm_epsilon,
             ),
-            layers=tuple(layers),
+            layers=ModernVBERTTextLayerStack.from_blocks(tuple(layers)),
             final_norm=LayerNorm(
                 weight=get("tower.final_norm.weight"),
                 bias=None,
@@ -372,10 +375,6 @@ class ModernVBERTTextCheckpointAdapter:
                 }
             )
             if index > 0:
-                if layer.attention_norm is None:
-                    raise ValueError(
-                        "ModernVBERT layers after layer zero require attention_norm"
-                    )
                 native[prefix + "attention_norm.weight"] = layer.attention_norm.weight
         if set(native) != set(mapping):
             missing = set(mapping).difference(native)

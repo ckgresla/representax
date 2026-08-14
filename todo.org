@@ -126,9 +126,9 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
    compilation separately.  At batch 32, chunk two lowers the native allocator
    peak to 4.831 GiB and process peak to 6.449 GiB while retaining a 60.5%
    throughput advantage, but the matched reference remains tighter at 3.784 GiB
-   and 4.461 GiB.  Preserve explicit opt-in state donation for isolated training;
-   asynchronous checkpoints may retain the previous state, so generic training
-   must not donate it until checkpoint snapshots have independent ownership.
+   and 4.461 GiB.  State donation remains explicit at the generic callable
+   boundary, while the linear training loop may combine it with Orbax V1 async
+   saves after their blocking device-to-host snapshot returns.
 ** TODO Extend exact GradCache to global multi-device and multi-host negatives :distributed:
 
 * TODO Reserve the =representax= package and repository names :release:
@@ -138,6 +138,16 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
 * TODO Document what qualifies an architecture as supported :models:testing:
 * TODO Require each architecture port only once per model family :models:
 * TODO Build reusable native transformer and modality components :models:
+* DONE Stack homogeneous transformer layers and execute model depth with =scan= :models:runtime:performance:
+  ModernVBERT text parameters are depth-major arrays, with the 21 real
+  post-layer-zero attention norms kept separately so the trainable tree exactly
+  matches the upstream checkpoint.  One rematerialized =lax.scan= preserves the
+  full/sliding attention pattern and first-layer norm exception.  Pinned forward
+  and input-gradient parity passes.  At sequence 512, direct batch 10 now
+  compiles plus executes first use in 29.18 seconds at a 4.536 GiB allocator
+  peak; the unscanned program had not compiled after several minutes and XLA
+  planned 20.17 GiB.  Evidence lives in
+  =benchmarks/results/modernvbert-scan-20260813/=.
 * TODO Evaluate Haliax for named axes, model composition, and sharding ergonomics :models:distributed:research:
 * TODO Load Hugging Face configs, safetensors, tokenizers, and processors :models:hf:
 * TODO Export trained models back to Hugging Face-compatible artifacts :models:hf:
@@ -220,7 +230,8 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
 * TODO Preserve the live cross-rank gradient synchronization in GradCache :distributed:retrieval:
 * TODO Make precision policy explicit at parameter, compute, activation, and loss boundaries :runtime:precision:
 * TODO Support activation rematerialization as an execution choice :runtime:memory:
-* TODO Support buffer donation and asynchronous input prefetching :runtime:performance:
+* DONE Verify buffer donation with Orbax V1 asynchronous checkpoint/resume :runtime:performance:
+* TODO Support asynchronous input prefetching :runtime:performance:
 * TODO Cache compiled static-shape signatures deliberately :runtime:performance:
 * TODO Evaluate Pallas for performance-critical fused kernels :runtime:performance:research:
 * TODO Add optional experiment logging without coupling the training core :runtime:logging:

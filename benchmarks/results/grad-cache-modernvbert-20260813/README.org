@@ -23,9 +23,10 @@ higher.  The parent GradCache roadmap item therefore remains open.
 - all 149,044,992 text parameters trained with AdamW, zero learning rate and
   weight decay so every step executes the optimizer without changing the
   checkpoint;
-- native state donation enabled for this isolated benchmark; production callers
-  retain the safe non-donating default because asynchronous checkpointing may
-  still own the previous state;
+- native state donation enabled for this isolated benchmark; the generic API
+  remains opt-in because callers may retain its input for comparison or retry.
+  Orbax V1 asynchronous saves are compatible because their blocking
+  device-to-host snapshot completes before training resumes;
 - Sentence Transformers 5.4.1, Transformers 5.3.0, and PyTorch 2.8.0+cu128;
   Representax 0.0.1 and JAX 0.10.1.
 
@@ -65,12 +66,22 @@ parameter-gradient, optimizer-state, and updated-parameter tolerances.
 
 * Capacity and chunking
 
-Direct Representax grows from 3.773 GiB allocator peak at batch 1 to 16.693 GiB
-at batch 8.  Batch 8 is the largest direct run completed in this sweep; probes
-above it spent several minutes compiling and were stopped, so they are not
-misreported as OOM.  Cached Representax and Sentence Transformers both complete
-batch 1,024.  Thus the honest capacity statements are =direct >= 8= and
+The original unscanned direct Representax implementation grows from 3.773 GiB
+allocator peak at batch 1 to 16.693 GiB at batch 8.  Batch 8 is the largest
+direct run completed in this sweep; probes above it spent several minutes
+compiling and were stopped, so they are not misreported as OOM.  Cached
+Representax and Sentence Transformers both complete batch 1,024.  Thus the
+historical capacity statements for this frozen matrix are =direct >= 8= and
 =cached >= 1,024=, not claimed maxima.
+
+A subsequent architecture correction stacks ModernVBERT text layers and runs
+one explicitly rematerialized =lax.scan=.  Its separate evidence at
+=../modernvbert-scan-20260813/= completes direct batches 8, 10, 16, and 32.
+At batch 8, allocator peak falls from 16.693 to 4.259 GiB and compile plus first
+execution falls from 54.865 to 26.443 seconds.  Steady-state throughput falls
+from 32.10 to 24.31 examples/s because every block is replayed in backward.
+That tradeoff is explicit and removes the pathological compiler memory search;
+future execution planning can choose a less aggressive rematerialization policy.
 
 At batch 32, reducing the cached chunk from four to two lowers Representax's
 allocator peak from 6.776 GiB to 4.831 GiB and process peak from 10.447 GiB to
@@ -114,4 +125,3 @@ CUDA_VISIBLE_DEVICES=1 conda run -n modernvbert-tf53-parity \
   --batch-size 32 --sequence-length 512 --chunk-size 4 \
   --warmup-steps 1 --measured-steps 2
 #+end_src
-
