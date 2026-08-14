@@ -39,7 +39,8 @@ placement as well.
 An attempted iteration and an accepted optimizer update are distinct. The
 compiled step forms one ordinary Equinox/Optax proposed state, then uses
 Optax's tree-selection primitive to retain the previous state when any forward,
-gradient, update, or proposed-state value is non-finite. Representax increments
+loss-metric, or gradient value is non-finite. Once those values are finite, the
+supplied Optax transformation owns its update semantics. Representax increments
 no accepted-update `TrainState.step`, writes the attempted iteration, and emits a
 `nonfinite_update_skipped` event. Random keys still advance by absolute
 iteration, so a skipped update cannot replay stochastic work.

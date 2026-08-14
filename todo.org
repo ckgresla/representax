@@ -65,7 +65,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   steady-state step measurements. Runtime acceptance uses eight batch-16
   updates over continuous paired views with independent nuisance features and
   requires the learned retrieval loss to fall by more than half.
-* NEXT Implement exact native-JAX GradCache as an execution plan for MNR :retrieval:runtime:
+* DONE Implement exact native-JAX GradCache as an execution plan for MNR :retrieval:runtime:
   Preserve =MNRTask= and one shared row-level MNR primitive as the sole
   scientific definition.
   GradCache changes only the differentiation schedule: encode fixed-shape chunks
@@ -113,29 +113,29 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
    and analysis live in
    =benchmarks/results/grad-cache-modernvbert-20260813/=.  At chunk four,
    Representax is 19.4% to 36.9% faster by throughput from batch 8 through 1,024
-   and both cached runtimes fit every tested batch.  The parent remains open:
-   Representax uses about 40.6% more allocator memory and 83.4% more
-   process-visible device memory than the pinned reference at batch 32, and its
-   compile-plus-first cost is materially higher.
+   and both cached runtimes fit every tested batch.  This historical matrix
+   exposed the fixed-memory and cold-compile gaps that the later scanned,
+   chunk-two acceptance matrix closes.
 ** DONE Add a native-JAX tiled representation-loss implementation :runtime:memory:
    Direct diagnostics and cached training share one canonical row formula.  A
    rematerialized scan bounds live score rows and is the numerical oracle and
    unsupported-accelerator fallback for any future custom kernel.
-** NEXT Close the remaining allocator and compilation gaps against the pinned reference :performance:
+** DONE Close the remaining allocator and compilation gaps against the pinned reference :performance:
    The canonical transaction is now one ordinary Equinox/Optax update followed
    by =optax.tree.where= over a named proposed =TrainState=.  The controlled
-   batch-32, sequence-512, chunk-2 probe in
-   =benchmarks/results/grad-cache-optimizer-20260813/= matches loss to =2.38e-7=
-   absolute and gradient norm to =7.65e-5= relative, runs 10.4% faster than the
-   pinned Sentence Transformers reference, and uses 1.3% less process-visible
-   device memory.  Its 3.823 GiB live allocator peak is still 1.0% above the
-   3.784 GiB reference; compile plus first execution remains 38.527 versus
-   4.352 seconds.  Refresh the capacity sweep for the scanned model, profile the
-   remaining XLA temporary/attention allocation, and reduce or amortize cold
-   compilation before closing the parent item.  Keep state donation explicit at
-   the generic callable boundary; the linear loop may combine it with Orbax V1
-   async saves after their blocking device-to-host snapshot returns.
-** TODO Extend exact GradCache to global multi-device and multi-host negatives :distributed:
+   final sequence-512, chunk-two matrix in
+   =benchmarks/results/grad-cache-final-20260813/= matches loss to =4.77e-7=
+   absolute and gradient norm to =7.64e-5= relative through batch 1,024.
+   Representax fits every declared reference point, is 16.1% to 26.7% faster,
+   and uses 1.27% to 1.36% less process-visible device memory.  Its allocator
+   peak stays within 1.03% of the reference and grows only 14.6 MiB across the
+   matrix.  A second fresh process using the populated persistent compilation
+   cache reduces compile plus first execution from 39.086 to 3.621 seconds,
+   beating the reference's 4.352-second first step.  Keep state donation
+   explicit at the generic callable boundary; the linear loop may combine it
+   with Orbax V1 async saves after their blocking device-to-host snapshot
+   returns.
+** NEXT Extend exact GradCache to global multi-device and multi-host negatives :distributed:
 
 * TODO Reserve the =representax= package and repository names :release:
 * TODO Publish a minimal CPU-first installation and compatibility matrix :release:

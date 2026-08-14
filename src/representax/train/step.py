@@ -112,6 +112,12 @@ def build_train_step(
             clipped_gradients = optax.tree.scale(coefficient, gradients)
             clipped_gradient_norm = gradient_norm * coefficient
 
+        finite = tree_all_finite(
+            loss,
+            task_metrics,
+            gradients,
+            gradient_norm,
+        )
         parameters = eqx.filter(state.model, eqx.is_inexact_array)
         updates, optimizer_state = optimizer.update(
             clipped_gradients,
@@ -123,12 +129,6 @@ def build_train_step(
             model=model,
             optimizer_state=optimizer_state,
             step=state.step + jnp.asarray(1, dtype=jnp.int32),
-        )
-        finite = tree_all_finite(
-            loss,
-            task_metrics,
-            clipped_gradients,
-            proposed_state,
         )
         new_state = optax.tree.where(finite, proposed_state, state)
         update_norm = jnp.where(

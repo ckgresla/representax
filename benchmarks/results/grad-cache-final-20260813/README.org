@@ -1,0 +1,110 @@
+#+TITLE: Final single-device ModernVBERT GradCache acceptance — 2026-08-13
+#+OPTIONS: toc:2 num:nil
+
+* Decision
+
+The exact native-JAX single-device GradCache gate is complete for the declared
+FP32 ModernVBERT target matrix.  At sequence length 512 and encoder/objective
+chunk size two, Representax fits every matched batch through 1,024, is faster at
+every point, and uses less process-visible GPU memory.  Its framework allocator
+peak is within 1.03% of the reference and grows more slowly with logical batch.
+
+The implementation remains ordinary Equinox/JAX encoder replay, one canonical
+MNR objective, one Optax update, and one =optax.tree.where= state transaction.
+The numerical gate now checks the forward result, task metrics, and gradients
+before the optimizer, then trusts the supplied Optax transformation.  This
+removes a redundant traversal of the complete proposed model/optimizer state
+without adding another optimizer path.
+
+* Matched capacity and throughput
+
+All rows use the pinned =ModernVBERT/modernvbert-embed= revision
+=da507113c3fdbc2e49d39c4b0148025c6bd008f9=, FP32 parameters/compute/objective,
+highest matmul precision, sequence length 512, chunk size two, AdamW with zero
+learning rate and weight decay; each matched pair has identical input and
+scientific-spec fingerprints.
+Times are steady-state medians; memory is GiB.
+
+| Batch | Runtime | Examples/s | Allocator | Process | Compile + first (s) |
+|-------+---------+------------+-----------+---------+---------------------|
+|    32 | Representax | 17.926 | 3.823 | 4.404 | 37.082 |
+|    32 | Sentence Transformers | 15.438 | 3.784 | 4.461 | 4.352 |
+|   128 | Representax | 18.121 | 3.825 | 4.404 | 43.559 |
+|   128 | Sentence Transformers | 15.214 | 3.786 | 4.465 | 11.361 |
+|   512 | Representax | 18.393 | 3.830 | 4.404 | 65.099 |
+|   512 | Sentence Transformers | 15.034 | 3.795 | 4.461 | 37.672 |
+| 1,024 | Representax | 18.100 | 3.837 | 4.404 | 92.682 |
+| 1,024 | Sentence Transformers | 14.281 | 3.810 | 4.465 | 75.835 |
+
+Representax's throughput advantage grows from 16.1% at batch 32 to 26.7% at
+batch 1,024.  Its process-visible peak is 1.27% to 1.36% lower.  Native
+allocator usage grows by only 14.6 MiB across the matrix versus 26.7 MiB for the
+reference, so activation memory follows chunk size rather than logical batch.
+The residual allocator difference shrinks from 1.03% to 0.71%.
+
+The maximum loss absolute difference is =4.77e-7= and the maximum
+gradient-global-norm relative difference is =7.64e-5=.  Batches 512 and 1,024
+produce identical displayed FP32 losses across frameworks.
+
+The batch-32 reference JSON is retained in the sibling
+=../grad-cache-optimizer-20260813/= evidence directory; all refreshed larger
+points are local to this directory.
+
+* Compilation amortization
+
+A clean temporary persistent cache was populated by one process, then consumed
+by a second fresh process with the identical executable key.
+
+| Process | Compile + first (s) | Whole process (s) |
+|---------+---------------------+-------------------|
+| Representax cold cache | 39.086 | 46.183 |
+| Representax cache hit | 3.621 | 10.786 |
+| Sentence Transformers first step | 4.352 | — |
+
+The cache hit removes 90.7% of compile-plus-first latency and is 16.8% faster
+than the matched reference's first eager step.  The cache is an execution
+artifact, not part of the scientific recipe; production runs should give JAX a
+durable =JAX_COMPILATION_CACHE_DIR= shared by identical software and topology.
+
+Disabling JAX's automatic rematerialization pass in addition to Representax's
+explicit =jax.checkpoint= policy changed neither allocator nor process memory
+and improved cold compile by less than one second, so the library does not set
+that global compiler option.  JAX's cuDNN attention backend was also rejected
+for this gate because it does not support FP32 inputs; changing precision would
+invalidate the matched acceptance workload.
+
+* Operating point
+
+Chunk one is a valid low-memory native operating point but is not the target:
+it reduces the native allocator peak to 3.740 GiB while throughput falls to
+14.980 examples/s.  The reference loses more throughput but also uses only
+3.252 GiB allocator memory.  Chunk two is the balanced target-to-beat point:
+substantially faster, lower actual process occupancy, and essentially matched
+allocator usage.
+
+* Replay
+
+Run the framework arms in separate fresh processes on GPUs 0 and 1.  Replace
+=BATCH= with =128=, =512=, or =1024=.
+
+#+begin_src sh
+CUDA_VISIBLE_DEVICES=0 JAX_ENABLE_COMPILATION_CACHE=false \
+  conda run --no-capture-output -n representax \
+  python benchmarks/grad_cache_modernvbert.py \
+  --runtime grad-cache --checkpoint "$CHECKPOINT" \
+  --output "/tmp/representax-b${BATCH}.json" \
+  --batch-size "$BATCH" --sequence-length 512 --chunk-size 2 \
+  --warmup-steps 1 --measured-steps 2
+
+CUDA_VISIBLE_DEVICES=1 \
+  conda run --no-capture-output -n modernvbert-tf53-parity \
+  python benchmarks/grad_cache_modernvbert.py \
+  --runtime sentence-transformers --checkpoint "$CHECKPOINT" \
+  --output "/tmp/sentence-transformers-b${BATCH}.json" \
+  --batch-size "$BATCH" --sequence-length 512 --chunk-size 2 \
+  --warmup-steps 1 --measured-steps 2
+#+end_src
+
+For cache amortization, set =JAX_ENABLE_COMPILATION_CACHE=true= and point two
+successive fresh Representax processes at the same empty-then-populated
+=JAX_COMPILATION_CACHE_DIR=.

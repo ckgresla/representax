@@ -69,15 +69,20 @@ warmup and steady-state measurements, along with the OOM boundary, throughput,
 framework allocator peak, and process GPU-memory peak.
 
 Performance regressions warn rather than masquerading as numerical failures.
-The roadmap item is not complete, however, until Representax fits every matched
-batch the pinned reference fits and has better steady-state throughput and peak
-memory on the primary workload.
+Acceptance requires Representax to fit every batch in the declared matched
+matrix, improve steady-state throughput, and avoid a material peak-memory
+regression on the primary workload.
 
 The first pinned result is
 [`grad-cache-modernvbert-20260813`](../benchmarks/results/grad-cache-modernvbert-20260813/README.org).
 At sequence length 512 and chunk four, native JAX is faster at every matched
-batch from 8 through 1,024 and keeps its allocator peak nearly flat. It is not
-yet tighter than the reference, so the parent roadmap item remains open.
+batch from 8 through 1,024 and keeps its allocator peak nearly flat.  The final
+scanned, chunk-two acceptance result is
+[`grad-cache-final-20260813`](../benchmarks/results/grad-cache-final-20260813/README.org):
+Representax is 16.1% to 26.7% faster through batch 1,024, uses less
+process-visible device memory, and remains within 1.03% of the reference's live
+allocator peak.  A persistent compilation-cache hit reduces compile plus first
+execution from 38.5 to 3.6 seconds.
 
 ## Pallas boundary
 

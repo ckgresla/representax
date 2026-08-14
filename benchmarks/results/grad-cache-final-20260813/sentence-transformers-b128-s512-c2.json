@@ -1,0 +1,62 @@
+{
+  "allocator_peak_device_bytes": 4065184256,
+  "allocator_peak_reserved_device_bytes": 4305453056,
+  "backend": "torch",
+  "backend_version": "2.8.0+cu128",
+  "batch_size": 128,
+  "checkpoint": "/raid/.cache/huggingface/hub/models--ModernVBERT--modernvbert-embed/snapshots/da507113c3fdbc2e49d39c4b0148025c6bd008f9",
+  "checkpoint_revision": "da507113c3fdbc2e49d39c4b0148025c6bd008f9",
+  "chunk_size": 2,
+  "compile_plus_first_seconds": 11.360549270175397,
+  "device": "NVIDIA GeForce RTX 4090",
+  "examples_per_second": 15.21408403349969,
+  "framework": "sentence-transformers",
+  "framework_version": "5.4.1",
+  "gradient_global_norm": 1.8339543342590332,
+  "jax_compilation_cache_dir": "/raid/.cache/jax",
+  "jax_enable_compilation_cache": null,
+  "losses": [
+    4.926189422607422,
+    4.926189422607422,
+    4.926189422607422,
+    4.926189422607422
+  ],
+  "measured_steps": 2,
+  "oom": false,
+  "precision_policy": {
+    "compute": "float32",
+    "cuda_matmul_allow_tf32": false,
+    "cudnn_allow_tf32": false,
+    "float32_matmul": "highest",
+    "objective": "float32",
+    "parameters": "float32"
+  },
+  "process_peak_device_bytes": 4794089472,
+  "python": "3.12.13",
+  "rematerialization": "upstream-managed",
+  "resident_bytes": {
+    "batch": 2097152,
+    "gradients": 596179968,
+    "model_parameters": 1008009216,
+    "optimizer_state": 1192360472
+  },
+  "runtime": "sentence-transformers",
+  "schema_version": "representax-grad-cache-modernvbert-probe-v1",
+  "seed": 1729,
+  "sequence_length": 512,
+  "setup_seconds": 0.6190360793843865,
+  "status": "completed",
+  "steady_state_median_seconds": 8.41325706616044,
+  "steady_state_seconds": [
+    8.390946359373629,
+    8.435567772947252
+  ],
+  "tokens_per_second": 15579.222050303682,
+  "transformers_version": "5.3.0",
+  "wall_seconds": 42.013248211704195,
+  "warmup_steps": 1,
+  "workload_fingerprints": {
+    "input_sha256": "bc0a56ad44d6f9ff6d5b36039e71454183306f6ac233d5dae2060b13f51cda37",
+    "scientific_spec_sha256": "6aae85fc119fbbc847bbfe8b9159611c5a81448a53911c0f6016059713b811c5"
+  }
+}

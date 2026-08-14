@@ -1,0 +1,62 @@
+{
+  "allocator_peak_device_bytes": 4091009024,
+  "allocator_peak_reserved_device_bytes": 4305453056,
+  "backend": "torch",
+  "backend_version": "2.8.0+cu128",
+  "batch_size": 1024,
+  "checkpoint": "/raid/.cache/huggingface/hub/models--ModernVBERT--modernvbert-embed/snapshots/da507113c3fdbc2e49d39c4b0148025c6bd008f9",
+  "checkpoint_revision": "da507113c3fdbc2e49d39c4b0148025c6bd008f9",
+  "chunk_size": 2,
+  "compile_plus_first_seconds": 75.83491158112884,
+  "device": "NVIDIA GeForce RTX 4090",
+  "examples_per_second": 14.281185559215103,
+  "framework": "sentence-transformers",
+  "framework_version": "5.4.1",
+  "gradient_global_norm": 3.0128071308135986,
+  "jax_compilation_cache_dir": "/raid/.cache/jax",
+  "jax_enable_compilation_cache": null,
+  "losses": [
+    7.087891101837158,
+    7.087891101837158,
+    7.087891101837158,
+    7.087891101837158
+  ],
+  "measured_steps": 2,
+  "oom": false,
+  "precision_policy": {
+    "compute": "float32",
+    "cuda_matmul_allow_tf32": false,
+    "cudnn_allow_tf32": false,
+    "float32_matmul": "highest",
+    "objective": "float32",
+    "parameters": "float32"
+  },
+  "process_peak_device_bytes": 4794089472,
+  "python": "3.12.13",
+  "rematerialization": "upstream-managed",
+  "resident_bytes": {
+    "batch": 16777216,
+    "gradients": 596179968,
+    "model_parameters": 1008009216,
+    "optimizer_state": 1192360472
+  },
+  "runtime": "sentence-transformers",
+  "schema_version": "representax-grad-cache-modernvbert-probe-v1",
+  "seed": 1729,
+  "sequence_length": 512,
+  "setup_seconds": 0.6639654897153378,
+  "status": "completed",
+  "steady_state_median_seconds": 71.70273054391146,
+  "steady_state_seconds": [
+    71.56912678852677,
+    71.83633429929614
+  ],
+  "tokens_per_second": 14623.934012636266,
+  "transformers_version": "5.3.0",
+  "wall_seconds": 296.8412783322856,
+  "warmup_steps": 1,
+  "workload_fingerprints": {
+    "input_sha256": "96e2f7b484ce92e6cd2130628b00b0cc356ea5bfe8da51e5d1694ebf6d5b021c",
+    "scientific_spec_sha256": "25fbaa6158eb865405b55c57ecc0200c04838d0b004068a3cd429c85407d021b"
+  }
+}
