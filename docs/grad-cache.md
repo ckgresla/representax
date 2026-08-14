@@ -67,6 +67,40 @@ Two- and four-GPU acceptance against the same one-device ModernVBERT update is
 recorded in
 [`distributed-grad-cache-modernvbert-20260814`](../benchmarks/results/distributed-grad-cache-modernvbert-20260814/README.org).
 
+### Process-local input across JAX processes
+
+Initialize JAX distributed before any device query or computation. Each process
+then constructs only its local query and document payload rows. The relation
+retains one local query axis and the complete global document axis, so a
+positive may live on another process without replicating token or media
+payloads:
+
+```python
+from representax.tasks.retrieval import process_local_retrieval_batch
+
+local_batch = process_local_retrieval_batch(
+    query=local_queries,
+    document=local_documents,
+    positive_mask=local_queries_to_global_documents,
+)
+batch = plan.place_process_local_batch(local_batch)
+state = plan.place_replicated(state)
+key = plan.place_replicated(key)
+result = step(state, batch, key)
+```
+
+`place_process_local_batch` uses
+`jax.make_array_from_process_local_data`; no process needs another process's
+input records on its host. Replicated state and keys use the same constructor
+when the mesh is not fully addressable from one process. The compiled GradCache
+program itself is unchanged.
+
+The accepted process-boundary result uses two JAX processes with two RTX 4090s
+each and includes a query whose only positive is owned by the other process:
+[`multiprocess-grad-cache-modernvbert-20260814`](../benchmarks/results/multiprocess-grad-cache-modernvbert-20260814/README.org).
+This is a one-physical-host validation of process-local construction and JAX
+collectives, not evidence for inter-host transport or failure behavior.
+
 `build_train_step` keeps state donation off by default because its generic API
 cannot prevent a caller from comparing, retrying, or branching from the input
 state after an update. A linear training loop may set `donate_state=True` even

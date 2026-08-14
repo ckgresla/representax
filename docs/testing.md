@@ -27,6 +27,22 @@ It compares both replicated-data-parallel updates with a one-device global
 batch oracle, including task metrics, gradient and update norms, model and
 optimizer state, and a cross-device hard-negative canary.
 
+The process-boundary acceptance is one parent job that launches two coordinated
+JAX workers, each with two of GPUs 0–3:
+
+```bash
+python benchmarks/launch_multiprocess_grad_cache_modernvbert.py \
+  --checkpoint /immutable/path/to/modernvbert-snapshot \
+  --output-directory benchmarks/results/multiprocess-grad-cache-modernvbert
+```
+
+Each worker receives only its process-local token rows, retains global relation
+columns, and compares the same four-device update with a full-batch one-device
+oracle. Passing this on one machine validates process boundaries and
+collectives. A physical multi-host claim additionally requires a run over a
+routable coordinator plus transport, checkpoint-publication, and failure
+evidence.
+
 ## Checkpoint acceptance
 
 Checkpoint mechanics have fast controlled tests for one-in-flight asynchronous

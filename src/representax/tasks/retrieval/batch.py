@@ -46,6 +46,51 @@ class RetrievalBatch(eqx.Module):
             raise ValueError("document payloads must be row-major")
 
 
+class ProcessLocalRetrievalBatch(eqx.Module):
+    """Process-local payload rows with query relations to all global documents."""
+
+    query: Any
+    document: Any
+    positive_mask: jax.Array
+    positive_weights: jax.Array | None
+    query_valid: jax.Array
+    document_valid: jax.Array
+
+    def __post_init__(self) -> None:
+        if self.positive_mask.ndim != 2 or self.positive_mask.dtype != jnp.bool_:
+            raise TypeError("positive_mask must be a boolean matrix")
+        local_query_count, global_document_count = self.positive_mask.shape
+        if self.positive_weights is not None:
+            if self.positive_weights.shape != self.positive_mask.shape:
+                raise ValueError("positive_weights must match positive_mask")
+            if not jnp.issubdtype(self.positive_weights.dtype, jnp.floating):
+                raise TypeError("positive_weights must be floating point")
+        if self.query_valid.shape != (local_query_count,):
+            raise ValueError("query_valid must match the local query dimension")
+        if self.query_valid.dtype != jnp.bool_:
+            raise TypeError("query_valid must be boolean")
+
+        query_leaves = [x for x in jax.tree.leaves(self.query) if eqx.is_array(x)]
+        document_leaves = [x for x in jax.tree.leaves(self.document) if eqx.is_array(x)]
+        if not query_leaves or not document_leaves:
+            raise ValueError("query and document payloads must contain arrays")
+        if any(x.ndim == 0 or x.shape[0] != local_query_count for x in query_leaves):
+            raise ValueError("query payloads must contain process-local rows")
+        local_document_count = document_leaves[0].shape[0]
+        if any(
+            x.ndim == 0 or x.shape[0] != local_document_count for x in document_leaves
+        ):
+            raise ValueError("document payloads must contain process-local rows")
+        if self.document_valid.shape != (local_document_count,):
+            raise ValueError("document_valid must match the local document dimension")
+        if self.document_valid.dtype != jnp.bool_:
+            raise TypeError("document_valid must be boolean")
+        if global_document_count < local_document_count:
+            raise ValueError(
+                "positive_mask must address at least the local document rows"
+            )
+
+
 def retrieval_batch(
     *,
     query: Any,
@@ -64,6 +109,41 @@ def retrieval_batch(
     if document_valid is None:
         document_valid = jnp.ones((document_count,), dtype=jnp.bool_)
     return RetrievalBatch(
+        query=query,
+        document=document,
+        positive_mask=positive_mask,
+        positive_weights=(
+            None if positive_weights is None else jnp.asarray(positive_weights)
+        ),
+        query_valid=jnp.asarray(query_valid, dtype=jnp.bool_),
+        document_valid=jnp.asarray(document_valid, dtype=jnp.bool_),
+    )
+
+
+def process_local_retrieval_batch(
+    *,
+    query: Any,
+    document: Any,
+    positive_mask: jax.Array,
+    positive_weights: jax.Array | None = None,
+    query_valid: jax.Array | None = None,
+    document_valid: jax.Array | None = None,
+) -> ProcessLocalRetrievalBatch:
+    """Build process-local rows that retain the global document relation axis."""
+
+    positive_mask = jnp.asarray(positive_mask, dtype=jnp.bool_)
+    local_query_count = positive_mask.shape[0]
+    document_leaves = [
+        value for value in jax.tree.leaves(document) if eqx.is_array(value)
+    ]
+    if not document_leaves:
+        raise ValueError("document payloads must contain arrays")
+    local_document_count = document_leaves[0].shape[0]
+    if query_valid is None:
+        query_valid = jnp.ones((local_query_count,), dtype=jnp.bool_)
+    if document_valid is None:
+        document_valid = jnp.ones((local_document_count,), dtype=jnp.bool_)
+    return ProcessLocalRetrievalBatch(
         query=query,
         document=document,
         positive_mask=positive_mask,

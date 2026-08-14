@@ -112,9 +112,10 @@ bridge from data examples to the compiled batch contract.
 
 MNR may use [exact GradCache execution](grad-cache.md) through either the
 single-device `build_train_step` boundary or the accepted two- and four-device
-`build_data_parallel_train_step` boundary. Wiring the named plan into the host
-loop, multi-host execution, and model-state/FSDP-style sharding remain separate
-roadmap work.
+`build_data_parallel_train_step` boundary. Process-local input construction and
+global negatives are also accepted across two JAX processes on one physical
+host. Wiring the named plan into the host loop, physical multi-host execution,
+and model-state/FSDP-style sharding remain separate roadmap work.
 
 Compiled state-buffer donation is deliberately opt-in because
 `build_train_step` is a generic callable: callers may retain its input for

@@ -14,6 +14,7 @@ from jax.sharding import Mesh, NamedSharding
 from jax.sharding import PartitionSpec as P
 
 from representax.core import Task
+from representax.tasks.retrieval import ProcessLocalRetrievalBatch, RetrievalBatch
 
 from .execution import ExecutionContext, LossExecution
 from .grad_cache import GradCache
@@ -65,18 +66,25 @@ class DataParallel:
     def place_replicated(self, tree: Any) -> Any:
         """Place every array leaf as a replica over the data mesh."""
 
+        def place(value: Any) -> Any:
+            if not eqx.is_array(value):
+                return value
+            if self.replicated_sharding.is_fully_addressable:
+                return jax.device_put(value, self.replicated_sharding)
+            return jax.make_array_from_process_local_data(
+                self.replicated_sharding,
+                value,
+                global_shape=value.shape,
+            )
+
         return jax.tree.map(
-            lambda value: (
-                jax.device_put(value, self.replicated_sharding)
-                if eqx.is_array(value)
-                else value
-            ),
+            place,
             tree,
             is_leaf=lambda value: value is None,
         )
 
     def place_batch(self, batch: Any) -> Any:
-        """Shard every row-major batch leaf on its leading record axis."""
+        """Shard a globally available batch on its leading record axis."""
 
         return jax.tree.map(
             lambda value: (
@@ -86,6 +94,39 @@ class DataParallel:
             ),
             batch,
             is_leaf=lambda value: value is None,
+        )
+
+    def place_process_local_batch(
+        self,
+        batch: ProcessLocalRetrievalBatch,
+    ) -> RetrievalBatch:
+        """Assemble one global retrieval batch from process-local row shards."""
+
+        def global_rows(tree: Any) -> Any:
+            return jax.tree.map(
+                lambda value: (
+                    jax.make_array_from_process_local_data(
+                        self.batch_sharding,
+                        value,
+                    )
+                    if eqx.is_array(value)
+                    else value
+                ),
+                tree,
+                is_leaf=lambda value: value is None,
+            )
+
+        return RetrievalBatch(
+            query=global_rows(batch.query),
+            document=global_rows(batch.document),
+            positive_mask=global_rows(batch.positive_mask),
+            positive_weights=(
+                None
+                if batch.positive_weights is None
+                else global_rows(batch.positive_weights)
+            ),
+            query_valid=global_rows(batch.query_valid),
+            document_valid=global_rows(batch.document_valid),
         )
 
 

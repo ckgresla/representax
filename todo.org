@@ -159,7 +159,34 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
     symmetric Matryoshka test separately proves the complete optimizer update
     and a cross-device hard-negative canary on both topologies.  See
     =benchmarks/results/distributed-grad-cache-modernvbert-20260814/=.
-*** TODO Extend the accepted single-host contract to multiple hosts
+*** DONE Accept process-local data and global negatives across JAX processes
+    Construct globally sharded batches with
+    =jax.make_array_from_process_local_data= so each process supplies only its
+    local query/document records and validity vectors.  A process-local
+    retrieval relation owns local query rows against the complete global
+    document axis, preserving arbitrary cross-process positives as well as
+    negatives without replicating token payloads.
+
+    Acceptance uses two JAX processes with two GPUs each on GPUs 0, 1, 2, and
+    3.  The same ModernVBERT checkpoint, global batch, sequence length,
+    precision, MNR relation, and optimizer update must match a one-process
+    global oracle on both processes.  This validates the process boundary and
+    collective semantics on available hardware, but is not evidence about a
+    physical inter-host network.
+
+    Accepted on 2026-08-14 with two JAX processes, two RTX 4090s per process,
+    and one physical host.  The process-local ModernVBERT batch includes a query
+    whose sole positive document belongs to the other process.  Both workers
+    produce the same distributed result.  Against their one-device global
+    oracle, loss differs by =2.38e-7= absolute, gradient norm by =1.07e-5=
+    relative, updated parameters by =1.77e-6= relative L2, and Adam state by
+    =9.43e-4= relative L2 at =0.99999956= cosine.  Median steady-state time is
+    =0.630= seconds for global batch 16 at sequence length 512.  See
+    =benchmarks/results/multiprocess-grad-cache-modernvbert-20260814/=.
+*** TODO Re-run the accepted multi-process contract on two physical hosts
+    Use a routable coordinator address, record transport and topology, and
+    verify checkpoint publication and failure behavior across the host boundary
+    before calling physical multi-host training accepted.
 
 * TODO Reserve the =representax= package and repository names :release:
 * TODO Publish a minimal CPU-first installation and compatibility matrix :release:

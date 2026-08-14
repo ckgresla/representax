@@ -1,0 +1,74 @@
+{
+  "checkpoint": "ModernVBERT/modernvbert-embed",
+  "checkpoint_revision": "da507113c3fdbc2e49d39c4b0148025c6bd008f9",
+  "chunk_size": 2,
+  "compilation_cache": {
+    "cold_start_claimed": false,
+    "policy": "ambient"
+  },
+  "cross_process_positive": {
+    "document_index": 8,
+    "query_index": 0
+  },
+  "devices": [
+    "cuda:0",
+    "cuda:1",
+    "cuda:2",
+    "cuda:3"
+  ],
+  "differences": {
+    "gradient_norm_relative": 1.0691407885170846e-05,
+    "loss_absolute": 2.384185791015625e-07,
+    "model": {
+      "cosine_similarity": 0.9999999999979556,
+      "error_l2": 0.002291453578346576,
+      "maximum_absolute": 1.9963830709457397e-05,
+      "reference_l2": 1293.0259269082787,
+      "relative_l2": 1.7721636748813012e-06
+    },
+    "optimizer_state": {
+      "cosine_similarity": 0.9999995571944406,
+      "error_l2": 0.00028800461559484237,
+      "maximum_absolute": 2.9377639293670654e-05,
+      "reference_l2": 0.3055103870776512,
+      "relative_l2": 0.0009426999139038784
+    }
+  },
+  "distributed": {
+    "allocator_peak_bytes_by_device": {
+      "cuda:2": 10881263104,
+      "cuda:3": 7303973376
+    },
+    "compile_plus_first_seconds": 3.000359097495675,
+    "examples_per_second": 25.375967854058157,
+    "gradient_global_norm": 3.0550696849823,
+    "loss": 2.795571804046631,
+    "steady_state_median_seconds": 0.6305178226903081,
+    "steady_state_seconds": [
+      0.6308695171028376,
+      0.6301661282777786
+    ]
+  },
+  "framework_version": "0.0.1",
+  "global_batch_size": 16,
+  "jax_version": "0.10.1",
+  "local_batch_size": 4,
+  "local_devices": [
+    "cuda:2",
+    "cuda:3"
+  ],
+  "precision": "float32-highest-no-tf32",
+  "process_count": 2,
+  "process_id": 1,
+  "process_local_batch_size": 8,
+  "python": "3.13.14",
+  "reference": {
+    "compile_plus_first_seconds": 2.773650599643588,
+    "gradient_global_norm": 3.0551023483276367,
+    "loss": 2.79557204246521
+  },
+  "schema_version": "representax-distributed-grad-cache-modernvbert-v1",
+  "sequence_length": 512,
+  "status": "accepted",
+  "world_size": 4
+}
