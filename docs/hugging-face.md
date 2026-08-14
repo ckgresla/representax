@@ -5,6 +5,25 @@ its model runtime. Native Equinox modules remain the trainable source of truth.
 PyTorch and upstream Transformers implementations are confined to optional
 parity tooling.
 
+## Versioned architecture catalog
+
+The v0 catalog freezes every configuration model type and task-neutral
+`AutoModel` mapping exposed by Transformers 5.3.0. The generated catalog is
+Torch-free and lets configuration dispatch fail deterministically instead of
+changing when an ambient Transformers installation changes.
+
+Catalog coverage is not a native-support claim. Each definition has an explicit
+support state:
+
+- `catalogued`: the upstream architecture identity is known;
+- `native`: a native Equinox definition exists but has not completed acceptance;
+- `verified`: the native definition passes the required numerical and systems
+  gates.
+
+ModernVBERT is the first `verified` architecture. New model types are added by
+updating the pinned Transformers reference and regenerating the catalog; native
+forwards are implemented once per reusable architecture family.
+
 Each model family owns one bidirectional checkpoint adapter with three explicit
 parts:
 

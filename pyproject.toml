@@ -10,7 +10,8 @@ readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE", "THIRD_PARTY.md"]
 requires-python = ">=3.11"
-authors = [{ name = "Representax contributors" }]
+authors = [{ name = "Chris Kerwell Gresla", email = "ckgresla@gmail.com" }]
+maintainers = [{ name = "Chris Kerwell Gresla", email = "ckgresla@gmail.com" }]
 classifiers = [
     "Development Status :: 2 - Pre-Alpha",
     "License :: OSI Approved :: MIT License",
@@ -43,16 +44,22 @@ data = [
     "huggingface-hub>=0.30",
     "pyarrow>=18",
 ]
+cuda12 = [
+    "jax[cuda12]>=0.5",
+]
+cuda13 = [
+    "jax[cuda13]>=0.5",
+]
 hf = [
     "huggingface-hub>=0.30",
     "safetensors>=0.5",
     "tokenizers>=0.21",
-    "transformers>=5",
+    "transformers==5.3.0",
 ]
 parity = [
     "sentence-transformers>=5",
     "torch>=2.5",
-    "transformers>=5",
+    "transformers==5.3.0",
 ]
 parity-modernvbert = [
     "safetensors>=0.5",

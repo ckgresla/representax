@@ -183,7 +183,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
     =9.43e-4= relative L2 at =0.99999956= cosine.  Median steady-state time is
     =0.630= seconds for global batch 16 at sequence length 512.  See
     =benchmarks/results/multiprocess-grad-cache-modernvbert-20260814/=.
-* NEXT Reserve the =representax= package and repository names :release:
+* NEXT Publish =representax= 0.0.1 and reserve the package name :release:
   The public GitHub repository is reserved at
   =github.com/ckgresla/representax=.  PyPI's official project endpoint returned
   =404= on 2026-08-14, so the distribution name is available but not reserved.
@@ -209,13 +209,46 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
    the source checkout.  Accepted on 2026-08-14 in GitHub Actions run
    =31819008237=: all seven lint, Python 3.11/3.12/3.13, generic runtime,
    virtual distributed, and release-artifact jobs passed with Node 24 actions.
-** TODO Configure trusted PyPI publishing and publish the first release
-   Complete the provenance audit, review the exact artifacts, configure a
-   protected GitHub environment and PyPI trusted publisher, then publish and
-   read back the project metadata before marking the name reserved.
-* TODO Audit source provenance and third-party licenses before release :release:
+** DONE Configure the protected GitHub OIDC release workflow
+   The dedicated =release.yml= builds and validates one artifact set, verifies
+   that the GitHub release tag exactly matches project metadata, smoke-tests the
+   installed wheel on CPU, and passes the same artifacts to PyPI with only
+   =id-token: write=. The =pypi= environment accepts only =v*= tags and requires
+   approval from =ckgresla=.
+** TODO Register the pending PyPI publisher and publish the first release
+   In the PyPI account for =ckgresla@gmail.com=, register project =representax=
+   against owner/repository =ckgresla/representax=, workflow =release.yml=, and
+   environment =pypi=. Review the exact artifacts, publish, then read back the
+   project metadata before marking the name reserved.
+** DONE Accept clean CPU and NVIDIA GPU installs from the exact release wheel
+   The base wheel must resolve and execute a compiled update on CPU without
+   accelerator packages. The =cuda13= extra must resolve JAX's pip-managed CUDA
+   runtime and execute the same update on an RTX 4090. Keep =cuda12= available
+   for older drivers; defer TPU until suitable hardware is available.
+   Accepted on 2026-08-14 from the rebuilt =0.0.1= wheel in fresh Python
+   3.13.14 environments. Both paths resolved JAX 0.11.0 and produced the same
+   compiled-update loss. The base environment contained no CUDA/NVIDIA package;
+   the =cuda13= environment used GPU 0, driver 580.159.03, and JAX's pip-managed
+   CUDA 13 runtime.
+* DONE Audit source provenance and third-party licenses before release :release:
+  The standalone history contains only commits authored by Chris Kerwell Gresla
+  and no private monorepo history. The wheel contains only the public package,
+  MIT license, and third-party notice; the sdist excludes benchmark result
+  bundles, CI internals, and this roadmap. No checkpoints, datasets, private
+  paths, or vendored dependency/model source are present. The mechanically
+  generated Transformers 5.3.0 identifier catalog is attributed under Apache
+  2.0 in =THIRD_PARTY.md=.
 * TODO Define the stable public API and deprecation policy :release:api:
-* TODO Document what qualifies an architecture as supported :models:testing:
+* DONE Freeze every Transformers 5.3.0 architecture definition for v0 :models:hf:
+  Mechanically snapshot every config model type and task-neutral =AutoModel=
+  mapping into a Torch-free catalog. Keep =catalogued=, =native=, and =verified=
+  as distinct states: a catalog row is not a model-support claim. Verify the
+  complete snapshot against the exact optional Transformers environment and
+  regenerate it only when deliberately advancing the reference version.
+  Accepted with 475 configuration model types and 441 task-neutral =AutoModel=
+  registrations. A fresh installed-wheel environment matched every model type,
+  module, config class, and base-model class against Transformers 5.3.0.
+* DONE Document what qualifies an architecture as supported :models:testing:
 * TODO Require each architecture port only once per model family :models:
 * TODO Build reusable native transformer and modality components :models:
 * DONE Stack homogeneous transformer layers and execute model depth with =scan= :models:runtime:performance:

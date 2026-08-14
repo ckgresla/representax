@@ -1,0 +1,54 @@
+name: release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - run: python -m pip install build twine
+      - name: Require the release tag to match package metadata
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: >-
+          python -c "import os, tomllib;
+          version=tomllib.load(open('pyproject.toml','rb'))['project']['version'];
+          expected=f'v{version}';
+          assert os.environ['RELEASE_TAG'] == expected,
+          f'release tag {os.environ[\"RELEASE_TAG\"]!r} must equal {expected!r}'"
+      - run: python -m build
+      - run: twine check --strict dist/*
+      - run: python -m pip install dist/*.whl
+      - run: python scripts/smoke_install.py
+        env:
+          CUDA_VISIBLE_DEVICES: ""
+          JAX_PLATFORMS: cpu
+      - uses: actions/upload-artifact@v7
+        with:
+          name: python-package-distributions
+          path: dist/*
+          retention-days: 7
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/representax/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: python-package-distributions
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@release/v1

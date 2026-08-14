@@ -28,14 +28,17 @@ The project is pre-alpha. The current slice provides:
 
 ## Install
 
-The base package does not install PyTorch or an accelerator-specific JAX wheel:
+The base package installs the ordinary CPU JAX runtime and never installs
+PyTorch:
 
 ```bash
-python -m pip install -e .
+python -m pip install representax
+python -m pip install "representax[cuda13]"  # NVIDIA GPU, recommended
+python -m pip install "representax[cuda12]"  # older NVIDIA drivers
 ```
 
-Choose the appropriate JAX accelerator installation separately. Optional
-capabilities are grouped deliberately:
+For an editable source checkout, put `-e .` in place of `representax`.
+Optional capabilities are grouped deliberately:
 
 ```bash
 python -m pip install -e ".[config,data,hf]"
@@ -44,9 +47,15 @@ python -m pip install -e ".[test,parity-modernvbert]"  # pinned model oracle
 python -m pip install -e ".[test,parity-modernvbert,performance]"  # GPU gates
 ```
 
+The v0 Hugging Face reference is pinned to Transformers 5.3.0. Its complete
+architecture catalog is distinct from native support: ModernVBERT is currently
+the only architecture carrying the verified native-support claim.
+
 See the [compatibility matrix](https://github.com/ckgresla/representax/blob/main/docs/compatibility.md) for the locally accepted
 Python/JAX combinations and the distinction between CPU CI and accelerator
-acceptance.
+acceptance. Maintainers should follow the
+[release procedure](https://github.com/ckgresla/representax/blob/main/docs/releasing.md)
+for artifact inspection and trusted publication.
 
 ## Encoding
 

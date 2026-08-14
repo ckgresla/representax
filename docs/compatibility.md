@@ -32,3 +32,23 @@ The base dependency contract intentionally excludes PyTorch, Transformers,
 CUDA-specific JAX wheels, model checkpoints, and datasets. Optional extras add
 data, Hugging Face, parity, and performance tooling without changing the base
 import namespace.
+
+The base install is the CPU path. The `cuda13` and `cuda12` extras select JAX's
+official pip-managed NVIDIA runtimes; they do not depend on a system CUDA
+toolkit. CUDA 13 is the preferred v0 GPU path and requires a sufficiently recent
+NVIDIA driver. TPU remains an explicit future compatibility gate.
+
+## Pre-release wheel acceptance
+
+The exact rebuilt `0.0.1` wheel was installed outside the source checkout on
+2026-08-14 in two new Python 3.13.14 environments:
+
+| Install | Resolved runtime | Hardware | Result |
+|---|---|---|---|
+| base wheel | JAX/JAXlib 0.11.0, no CUDA or NVIDIA packages | one CPU device | passed |
+| `wheel[cuda13]` | JAX/JAXlib and CUDA 13 plugin 0.11.0 | RTX 4090, driver 580.159.03 | passed |
+
+Both environments compiled and accepted the same Dense/MNR/Optax update and
+reported loss `2.3512461185455322`. The GPU environment resolved JAX's
+pip-managed CUDA, cuDNN, NCCL, and related NVIDIA packages without using the
+system CUDA toolkit.
