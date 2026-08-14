@@ -13,7 +13,6 @@ import optax
 import pytest
 
 from representax.models import DenseEncoder
-from representax.planning import ScientificConfig, TrainingConfig
 from representax.tasks.retrieval import MNRTask
 from representax.train import (
     CheckpointConfig,
@@ -30,11 +29,11 @@ from representax.train import (
     validate_complete_checkpoint,
 )
 from tests.train.toy_retrieval import (
-    TOY_BATCH_SIZE,
     TOY_FEATURE_DIMENSION,
     TOY_OUTPUT_DIMENSION,
     TOY_STEPS,
     build_toy_retrieval_batches,
+    toy_job_config,
 )
 
 
@@ -227,8 +226,7 @@ def _assert_array_trees_equal(left, right):
 
 @pytest.mark.runtime
 def test_orbax_retains_latest_complete_checkpoints_and_restores_state(tmp_path):
-    scientific = ScientificConfig(
-        task="retrieval/mnr",
+    job = toy_job_config(
         global_batch_size=2,
         max_steps=3,
         seed=29,
@@ -236,7 +234,7 @@ def test_orbax_retains_latest_complete_checkpoints_and_restores_state(tmp_path):
     initial = _state(input_dimension=4)
     manager = CheckpointManager(
         tmp_path / "run",
-        scientific_fingerprint=scientific_fingerprint(scientific),
+        scientific_fingerprint=scientific_fingerprint(job),
         data_fingerprint="sha256:data",
         keep=2,
         asynchronous=True,
@@ -252,7 +250,7 @@ def test_orbax_retains_latest_complete_checkpoints_and_restores_state(tmp_path):
 
     resumed = CheckpointManager(
         tmp_path / "run",
-        scientific_fingerprint=scientific_fingerprint(scientific),
+        scientific_fingerprint=scientific_fingerprint(job),
         data_fingerprint="sha256:data",
         keep=2,
     )
@@ -274,7 +272,7 @@ def test_orbax_retains_latest_complete_checkpoints_and_restores_state(tmp_path):
     )
     incompatible_structure = CheckpointManager(
         tmp_path / "run",
-        scientific_fingerprint=scientific_fingerprint(scientific),
+        scientific_fingerprint=scientific_fingerprint(job),
         data_fingerprint="sha256:data",
         keep=2,
     )
@@ -294,7 +292,7 @@ def test_orbax_retains_latest_complete_checkpoints_and_restores_state(tmp_path):
 
     incompatible_data = CheckpointManager(
         tmp_path / "run",
-        scientific_fingerprint=scientific_fingerprint(scientific),
+        scientific_fingerprint=scientific_fingerprint(job),
         data_fingerprint="sha256:different-data",
         keep=2,
     )
@@ -315,15 +313,14 @@ def test_orbax_preserves_mixed_training_dtypes(tmp_path):
         optimizer_state={"moment": jnp.ones_like(model.trainable_master)},
         step=jnp.asarray(5, dtype=jnp.int32),
     )
-    scientific = ScientificConfig(
-        task="test/mixed-precision",
+    job = toy_job_config(
         global_batch_size=2,
         max_steps=6,
         seed=31,
     )
     manager = CheckpointManager(
         tmp_path / "mixed-run",
-        scientific_fingerprint=scientific_fingerprint(scientific),
+        scientific_fingerprint=scientific_fingerprint(job),
         data_fingerprint="sha256:data",
         keep=1,
         asynchronous=False,
@@ -347,7 +344,7 @@ def test_orbax_preserves_mixed_training_dtypes(tmp_path):
 
     resumed = CheckpointManager(
         tmp_path / "mixed-run",
-        scientific_fingerprint=scientific_fingerprint(scientific),
+        scientific_fingerprint=scientific_fingerprint(job),
         data_fingerprint="sha256:data",
         keep=1,
     )
@@ -362,12 +359,7 @@ def test_orbax_preserves_mixed_training_dtypes(tmp_path):
 
 @pytest.mark.runtime
 def test_donated_training_with_async_orbax_resumes_exactly(tmp_path):
-    scientific = ScientificConfig(
-        task="retrieval/mnr",
-        global_batch_size=TOY_BATCH_SIZE,
-        max_steps=TOY_STEPS,
-        seed=29,
-    )
+    job = toy_job_config(seed=29)
     optimizer = optax.adamw(learning_rate=0.03, weight_decay=0.0)
 
     def fresh_initial():
@@ -386,7 +378,7 @@ def test_donated_training_with_async_orbax_resumes_exactly(tmp_path):
         state=fresh_initial(),
         step=train_step,
         batches=build_toy_retrieval_batches(seed=29),
-        training=TrainingConfig(scientific=scientific),
+        job=job,
         run_directory=tmp_path / "uninterrupted",
     )
 
@@ -403,15 +395,13 @@ def test_donated_training_with_async_orbax_resumes_exactly(tmp_path):
 
     run = tmp_path / "resumed"
     checkpoint = CheckpointConfig(every=4, keep=2, asynchronous=True)
+    checkpoint_job = toy_job_config(seed=29, checkpointing=checkpoint)
     with pytest.raises(RuntimeError, match="simulated interruption"):
         run_training(
             state=fresh_initial(),
             step=crash_after_checkpoint,
             batches=build_toy_retrieval_batches(seed=29),
-            training=TrainingConfig(
-                scientific=scientific,
-                checkpoint=checkpoint,
-            ),
+            job=checkpoint_job,
             run_directory=run,
         )
 
@@ -421,10 +411,7 @@ def test_donated_training_with_async_orbax_resumes_exactly(tmp_path):
         state=fresh_initial(),
         step=train_step,
         batches=build_toy_retrieval_batches(seed=29),
-        training=TrainingConfig(
-            scientific=scientific,
-            checkpoint=checkpoint,
-        ),
+        job=checkpoint_job,
         run_directory=run,
         resume=True,
     )
@@ -452,6 +439,6 @@ def test_donated_training_with_async_orbax_resumes_exactly(tmp_path):
     manifest = json.loads((run / "run.json").read_text())
     assert manifest["status"] == "completed"
     assert manifest["resume_count"] == 1
-    assert manifest["checkpoint"]["every"] == 4
+    assert manifest["config"]["checkpointing"]["every"] == 4
     assert "error" not in manifest
     assert "error_type" not in manifest

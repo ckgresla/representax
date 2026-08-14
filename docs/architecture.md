@@ -53,26 +53,38 @@ fingerprint covering resolved mapper/resolver module digests, batch collation,
 batching semantics, and the Grain version. The recipe and mapper code remain
 Git-tracked without duplicating source data.
 
-## Scientific and execution configuration
+## Domain configuration and parameter roles
 
-`TrainingConfig` contains four validated configuration groups.
-`ScientificConfig` owns trajectory-defining task identity, global batch, negative
-scope, limits, seed, and numerical requirements. `ExecutionConfig` owns
-topology-dependent mechanisms: mesh, per-device batch, accumulation, GradCache
-chunks, rematerialization, packing, prefetching, and buffer donation.
-`RuntimeConfig` and `CheckpointConfig` own host mechanics and persistence.
+`JobConfig` is organized by model, task, loss, optimization, data, training,
+logging, and checkpointing. `TrainingConfig` unifies global training semantics
+with the efficiency parameters that realize them. Values or nested config sets
+are annotated `Scientific[T]` or `Execution[T]`; generic projections form the
+resume fingerprint and future Profilax search space without duplicating a
+second scientific/execution object tree.
 
-`TrainingConfig.scientific` is the single training-level scientific object;
-there is no duplicated semantics or study-metadata config. Model, optimizer,
-task, and data definitions remain explicit on `RunConfig`.
+The immutable task registry associates each task identity with its Pydantic
+config and batch type. A separate immutable loss registry associates loss
+identity with its config, runtime builder, compatible task kinds, and supported
+training strategies. This keeps retrieval semantics distinct from MNR and lets
+`training.grad_cache` be optional but capability-gated.
+
+Logical mesh config mirrors the serializable `jax.make_mesh` arguments: axis
+shapes and names unpack directly into JAX, while concrete topology-bound devices
+remain runtime state. Mesh names alone do not define array placement;
+actual batch and state `PartitionSpec` configs remain part of the arbitrary
+sharding roadmap. The current loop validates global batch against its model-ready
+Grain source instead of inferring it from names such as `fsdp` or `tensor`.
+Packing remains deferred until its segment IDs, position handling, attention
+masking, and example-boundary preservation are implemented for compatible data,
+models, and tasks.
 
 Activation rematerialization is an explicit three-way execution choice rather
 than a model change. See [Activation rematerialization](rematerialization.md)
 for the policy contract and the measured ModernVBERT default.
 
-An execution planner may search only the execution space and must validate that
-the resulting configuration preserves the scientific configuration. The protocol is
-intentionally small enough for a future standalone `profilax` package to
+An execution planner may search only the execution-annotated paths and must
+validate that the resulting configuration preserves the scientific projection. The
+protocol is intentionally small enough for a future standalone `profilax` package to
 implement it over arbitrary compiled JAX programs.
 
 ## Test contract

@@ -191,7 +191,7 @@ def test_grad_cache_rematerialization_replays_stochastic_chunks_exactly():
 
 
 @pytest.mark.parametrize(
-    ("query_chunk_size", "document_chunk_size", "representation_chunk_size"),
+    ("query_chunk_size", "document_chunk_size", "loss_row_chunk_size"),
     [
         (0, None, None),
         (-1, 2, None),
@@ -204,11 +204,11 @@ def test_grad_cache_rematerialization_replays_stochastic_chunks_exactly():
 def test_grad_cache_rejects_nonpositive_chunk_sizes(
     query_chunk_size: int,
     document_chunk_size: int | None,
-    representation_chunk_size: int | None,
+    loss_row_chunk_size: int | None,
 ):
     with pytest.raises(ValueError, match="chunk_size must be positive"):
         GradCache(
             query_chunk_size=query_chunk_size,
             document_chunk_size=document_chunk_size,
-            representation_chunk_size=representation_chunk_size,
+            loss_row_chunk_size=loss_row_chunk_size,
         )

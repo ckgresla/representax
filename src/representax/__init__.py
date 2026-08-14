@@ -1,7 +1,7 @@
 """Representax: task-general representation learning in JAX."""
 
 from . import data, integrations, models, planning, tasks, train
-from .config import RunConfig, ScientificConfig
+from .config import JobConfig
 from .core import (
     BoundEncoder,
     Encoder,
@@ -22,8 +22,7 @@ __all__ = [
     "LossOutput",
     "Modality",
     "Route",
-    "RunConfig",
-    "ScientificConfig",
+    "JobConfig",
     "Task",
     "bind",
     "data",

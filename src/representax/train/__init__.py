@@ -1,6 +1,6 @@
 """Generic training state and compiled update construction."""
 
-from representax.config import CheckpointConfig, RuntimeConfig
+from representax.config import CheckpointConfig, LoggingConfig
 
 from .checkpoint import (
     CheckpointError,
@@ -14,6 +14,7 @@ from .checkpoint import (
     training_checkpointables,
     validate_complete_checkpoint,
 )
+from .config import build_loss_execution
 from .execution import Direct, ExecutionContext, LossExecution
 from .grad_cache import GradCache
 from .logging import MetricRecord, Reporter, RunLogger
@@ -49,9 +50,10 @@ __all__ = [
     "StepResult",
     "TrainState",
     "TrainStep",
-    "RuntimeConfig",
+    "LoggingConfig",
     "TrainingRunResult",
     "build_train_step",
+    "build_loss_execution",
     "build_data_parallel_train_step",
     "make_train_state",
     "run_training",

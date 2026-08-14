@@ -201,7 +201,7 @@ def _representax(arguments: argparse.Namespace) -> dict[str, Any]:
         else GradCache(
             query_chunk_size=arguments.chunk_size,
             document_chunk_size=arguments.chunk_size,
-            representation_chunk_size=arguments.chunk_size,
+            loss_row_chunk_size=arguments.chunk_size,
         )
     )
     step = build_train_step(

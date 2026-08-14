@@ -101,7 +101,7 @@ def test_data_parallel_grad_cache_matches_one_device_global_update(world_size: i
     execution = GradCache(
         query_chunk_size=2,
         document_chunk_size=2,
-        representation_chunk_size=2,
+        loss_row_chunk_size=2,
     )
     reference_step = build_train_step(
         task,

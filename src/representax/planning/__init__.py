@@ -1,18 +1,18 @@
-"""Scientific-config-preserving execution planning contracts."""
+"""Scientific-parameter-preserving execution planning contracts."""
 
 from representax.config import (
-    ExecutionConfig,
+    JobConfig,
+    ParameterRole,
     RematerializationPolicy,
-    ScientificConfig,
     TrainingConfig,
 )
 
 from .specs import ExecutionPlanner
 
 __all__ = [
-    "ExecutionConfig",
     "ExecutionPlanner",
+    "JobConfig",
+    "ParameterRole",
     "RematerializationPolicy",
-    "ScientificConfig",
     "TrainingConfig",
 ]

@@ -7,8 +7,22 @@ from collections.abc import Sequence
 
 import jax.numpy as jnp
 
+from representax.config import (
+    BatchConfig,
+    CheckpointConfig,
+    ComponentConfig,
+    JobConfig,
+    LoggingConfig,
+    ModelConfig,
+    OptimizationConfig,
+    TrainingConfig,
+)
 from representax.data import build_grain_iterator, mix, source
-from representax.tasks.retrieval import retrieval_batch
+from representax.tasks.retrieval import (
+    MNRConfig,
+    RetrievalConfig,
+    retrieval_batch,
+)
 
 TOY_BATCH_SIZE = 16
 TOY_FEATURE_DIMENSION = 16
@@ -76,11 +90,52 @@ def build_toy_retrieval_batches(*, seed: int = 23):
     )
 
 
+def toy_job_config(
+    *,
+    global_batch_size: int = TOY_BATCH_SIZE,
+    max_steps: int = TOY_STEPS,
+    seed: int = 23,
+    logging: LoggingConfig | None = None,
+    checkpointing: CheckpointConfig | None = None,
+) -> JobConfig:
+    """Build the complete declarative contract used by training-loop tests."""
+
+    artifact = source("memory://nontrivial-retrieval", map=identity)
+    return JobConfig(
+        name="toy-retrieval",
+        model=ModelConfig(
+            target="representax.models.DenseEncoder",
+            parameters={
+                "input_dimension": TOY_FEATURE_DIMENSION,
+                "output_dimension": TOY_OUTPUT_DIMENSION,
+            },
+        ),
+        task=RetrievalConfig(),
+        loss=MNRConfig(scale=5.0, symmetric=True),
+        optimization=OptimizationConfig(
+            optimizer=ComponentConfig(
+                target="optax.adamw",
+                parameters={"learning_rate": 0.03, "weight_decay": 0.0},
+            )
+        ),
+        data=mix(artifact, shuffle=False, seed=seed),
+        training=TrainingConfig(
+            global_batch_size=global_batch_size,
+            max_steps=max_steps,
+            seed=seed,
+            batch=BatchConfig(micro_batch_size=global_batch_size),
+        ),
+        logging=LoggingConfig() if logging is None else logging,
+        checkpointing=checkpointing,
+    )
+
+
 __all__ = [
     "TOY_BATCH_SIZE",
     "TOY_FEATURE_DIMENSION",
     "TOY_OUTPUT_DIMENSION",
     "TOY_STEPS",
     "build_toy_retrieval_batches",
+    "toy_job_config",
     "toy_retrieval_records",
 ]

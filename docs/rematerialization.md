@@ -1,11 +1,14 @@
 # Activation rematerialization
 
-Activation rematerialization is an execution choice. It changes which forward
-intermediates reverse-mode autodiff retains, but it does not change model
-parameters, the forward function, the task, or the logical batch.
+Activation rematerialization is an execution choice. It is also commonly called
+activation checkpointing or gradient checkpointing; JAX names the underlying
+`jax.checkpoint` / `jax.remat` transformation rematerialization. It changes
+which forward intermediates reverse-mode autodiff retains, but it does not
+change model parameters, the forward function, the task, or the logical batch.
 
-Representax exposes three stable values through `ExecutionConfig` and the native
-ModernVBERT constructors and checkpoint adapters:
+Representax exposes three stable values through
+`TrainingConfig.activation_rematerialization` and the native ModernVBERT
+constructors and checkpoint adapters:
 
 - `"none"` leaves the scanned layer body uncheckpointed;
 - `"selective"` applies JAX's transformer-oriented
@@ -20,18 +23,21 @@ the named policies are its supported surface. See the official
 
 ```python
 from representax.models.modernvbert import ModernVBERTTextCheckpointAdapter
-from representax.planning import ExecutionConfig
+from representax.config import (
+    BatchConfig,
+    TrainingConfig,
+)
 
-plan = ExecutionConfig(
-    device_count=1,
-    data_axis_size=1,
-    per_device_batch_size=8,
-    gradient_accumulation_steps=1,
-    rematerialization="full",
+training = TrainingConfig(
+    global_batch_size=8,
+    max_steps=1_000,
+    seed=17,
+    batch=BatchConfig(micro_batch_size=8),
+    activation_rematerialization="full",
 )
 model = ModernVBERTTextCheckpointAdapter().load(
     checkpoint,
-    rematerialization=plan.rematerialization,
+    rematerialization=training.activation_rematerialization,
 )
 ```
 

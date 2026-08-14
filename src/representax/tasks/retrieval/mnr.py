@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 from numbers import Real
+from typing import Literal
 
 import equinox as eqx
 import jax
@@ -361,6 +362,10 @@ class MNRTask(eqx.Module):
     symmetric: bool = eqx.field(static=True, default=False)
     dimensions: tuple[int, ...] | None = eqx.field(static=True, default=None)
     dimension_weights: tuple[float, ...] | None = eqx.field(static=True, default=None)
+    negative_scope: Literal["local", "global"] = eqx.field(
+        static=True,
+        default="global",
+    )
 
     def __post_init__(self) -> None:
         if not math.isfinite(self.scale) or self.scale <= 0:
@@ -377,6 +382,8 @@ class MNRTask(eqx.Module):
                     raise ValueError("dimension weights must be finite and positive")
         elif self.dimension_weights is not None:
             raise ValueError("dimension weights require Matryoshka dimensions")
+        if self.negative_scope not in {"local", "global"}:
+            raise ValueError("negative_scope must be 'local' or 'global'")
 
     def loss(
         self,

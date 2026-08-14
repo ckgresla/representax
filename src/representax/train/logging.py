@@ -218,21 +218,25 @@ class RunLogger:
         self._metrics = self._metrics_path.open("a", encoding="utf-8", buffering=1)
         self._sequence = positions["sequence"]
         terminal_fields = {
+            "checkpoint",
             "completed_iterations",
+            "config",
             "error",
             "error_type",
+            "execution",
             "finished_at",
             "optimizer_steps",
+            "runtime",
+            "scientific",
         }
         active = {
             key: value for key, value in previous.items() if key not in terminal_fields
         }
         return {
             **active,
+            "config": normalized.get("config"),
             "execution": normalized.get("execution"),
             "scientific": normalized.get("scientific"),
-            "runtime": normalized.get("runtime"),
-            "checkpoint": normalized.get("checkpoint"),
             "status": "running",
             "resumed_at": _timestamp(),
             "resume_count": int(previous.get("resume_count", 0)) + 1,

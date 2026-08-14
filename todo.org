@@ -69,10 +69,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
 * DONE Validate configuration, data-compatible resume, and async reporting :runtime:config:data:logging:
   Use frozen Pydantic models as the serializable Python and Hydra-Zen boundary;
   keep those objects outside compiled JAX programs and let builders consume
-  them.  Make =TrainingConfig= own one =ScientificConfig=, plus execution,
-  runtime, and checkpoint settings; do not duplicate scientific values in a
-  second semantics or study-metadata object.  Resume
-  must fingerprint the pinned recipe, mapper/resolver implementations, batch
+  them.  Resume must fingerprint the pinned recipe, mapper/resolver implementations, batch
   collation and batching contract, and Grain version.  Dispatch one ordered,
   bounded reporter stream with W&B-ready =train/=, =valid/=, and =perf/= metric
   namespaces; local JSONL remains the durable source of truth.  Done when Hydra
@@ -82,6 +79,34 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   Validated with a real Hydra-Zen CLI override, 61 fast tests, 10 GPU runtime
   tests on GPUs 0 and 1, the two-GPU distributed contract, and all three
   distributed cases over a four-device virtual CPU topology.
+* DONE Organize job configuration by domain and annotate parameter roles :config:tasks:runtime:
+  Make =JobConfig= own first-class model, task, loss, optimization, data,
+  training, logging, and checkpointing configs.  Unify execution values beneath
+  =TrainingConfig= and mark individual values or nested sets as =Scientific[T]=
+  or =Execution[T]= rather than maintaining parallel object trees.  Keep task
+  and loss registries immutable; capability-gate optional
+  =training.grad_cache=.  Serialize portable =jax.make_mesh= shapes and names
+  that unpack directly into JAX while keeping topology-bound devices at runtime.
+  State explicitly that a mesh alone enables no parallelism: batch, parameter,
+  optimizer, and output partition specs remain the arbitrary-sharding milestone.
+  Done when role projections and resume fingerprints are tested, configs
+  round-trip through Pydantic and Hydra-Zen, builders produce task and loss
+  execution objects, mesh configs unpack directly into JAX, and all relevant
+  test lanes and package checks pass.  These annotations are the future
+  Profilax search boundary.
+  Accepted with =69= fast tests, =10= GPU runtime tests on GPUs 0 and 1, the
+  two-device distributed lane, all three four-device virtual topology tests, a
+  real Hydra-Zen CLI override, checked wheel and sdist artifacts, and a
+  one-device CPU training smoke from the installed wheel.  A concrete 2x2 JAX
+  probe also verifies that =P("fsdp", None)= shards batch rows over =fsdp= and
+  replicates them over =tensor=; the mesh config itself assigns no sharding.
+* TODO Adopt =jaxtyping= at stable numerical boundaries :typing:models:tasks:
+  Declare it directly and annotate model forwards, encoder/task protocols,
+  retrieval relations, scalar losses, PRNG keys, and compiled-step boundaries
+  with symbolic axes.  Do not annotate host configuration and orchestration for
+  decoration's sake, and do not enable a production-wide runtime import hook.
+  Preserve explicit domain validation and add focused trace-time checks only
+  where they improve errors without changing compiled performance.
 * DONE Implement exact native-JAX GradCache as an execution plan for MNR :retrieval:runtime:
   Preserve =MNRTask= and one shared row-level MNR primitive as the sole
   scientific definition.
@@ -93,10 +118,10 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   Start with a small native-JAX transform: =lax.scan= a
   =jax.checkpoint(..., policy=nothing_saveable)= encoder body and let JAX's
   transpose synthesize the reverse replay. Keep query and document chunk sizes
-  in =ExecutionConfig=, pad only the execution batch with validity masks, and
-  derive explicit per-role and per-chunk PRNG keys so stochastic forwards replay
-  exactly. Do not add a cached task, a second MNR formula, Python backward hooks,
-  or a second optimizer path.
+  in =training.grad_cache=, pad only the execution batch with validity masks,
+  and derive explicit per-role and per-chunk PRNG keys so stochastic forwards
+  replay exactly. Do not add a cached task, a second MNR formula, Python
+  backward hooks, or a second optimizer path.
 
   Treat Pallas as a later representation-kernel optimization, not as the
   GradCache orchestrator: an encoder replay must remain ordinary Equinox/JAX.
@@ -357,6 +382,10 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
 * TODO Support deterministic shuffling, sharding, and iterator resume :data:runtime:
 * TODO Add length and modality-aware bucketing :data:performance:
 * TODO Add sequence and multimodal packing where scientifically valid :data:performance:
+  Packing concatenates variable-length examples into fixed physical tensors to
+  reduce padding.  Define segment IDs, reset positions, block cross-example
+  attention, and preserve task loss/example boundaries before exposing a config;
+  register compatibility explicitly for each data, model, and task family.
 * TODO Stream text examples from source through the model forward :data:text:
 * TODO Stream image examples from source through the model forward :data:image:
 * TODO Decode and stream audio efficiently through the model forward :data:audio:
@@ -431,9 +460,9 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
 * TODO Create =profilax= as a focused JAX profiling and planning project :profilax:
 * TODO Profile arbitrary compiled JAX programs through a small adapter :profilax:
 * TODO Inventory devices, topology, memory, and compiler versions :profilax:
-* TODO Generate feasible mesh, batch, accumulation, and rematerialization plans :profilax:
+* TODO Search only =Execution[T]= mesh, batch, GradCache, prefetch, donation, and activation-rematerialization paths :profilax:
 * TODO Measure compilation separately from warmup and steady-state execution :profilax:
-* TODO Reject plans that alter the scientific configuration :profilax:
+* TODO Reject plans that alter the =Scientific[T]= projection or fingerprint :profilax:
 * TODO Reject plans that violate numerical tolerances :profilax:
 * TODO Report when the experiment probably needs more accelerators :profilax:
 * TODO Select Pareto-optimal plans for throughput, memory, and compile cost :profilax:

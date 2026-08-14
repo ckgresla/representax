@@ -16,13 +16,20 @@ step = build_train_step(
     execution=GradCache(
         query_chunk_size=16,
         document_chunk_size=8,
-        representation_chunk_size=16,
+        loss_row_chunk_size=16,
     ),
 )
 ```
 
-The logical batch and negative population do not change. The query and document
-chunk sizes are topology-dependent execution choices.
+The logical batch and negative population do not change. Query and document
+chunk sizes bound separate encoder replay passes. `loss_row_chunk_size` instead
+tiles rows of the representation-level similarity loss after both encoders have
+run; it bounds score-matrix memory without encoding another microbatch.
+
+The user-facing `GradCacheConfig.micro_batch_size` supplies the default for all
+three bounds. Optional query and document overrides exist for asymmetric or
+multimodal towers whose encoder costs differ; `loss_row_chunk_size` is an
+orthogonal override for the shared representation-level loss.
 
 ## Replicated data parallel execution
 

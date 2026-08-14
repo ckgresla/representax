@@ -13,7 +13,7 @@ from typing import Any
 
 import jax
 
-from representax.config import RuntimeConfig, TrainingConfig
+from representax.config import JobConfig, ParameterRole
 
 from .checkpoint import (
     CheckpointManager,
@@ -125,7 +125,7 @@ def run_training(
     state: TrainState,
     step: TrainStep,
     batches: Iterable[Any],
-    training: TrainingConfig,
+    job: JobConfig,
     run_directory: str | Path,
     resume: bool = False,
     reporters: tuple[Reporter, ...] = (),
@@ -135,24 +135,23 @@ def run_training(
 
     ``batches`` may be a Grain ``IterDataset`` or any iterator with the same
     model-ready batch contract. The loop owns and closes the iterator it creates.
-    Step count, batch size, and seed come from ``training.scientific``. The
-    topology-specific ``training.execution`` is validated and recorded, while
-    host-loop logging cadence remains a separate runtime concern.
+    Step count, scientific batch size, execution choices, logging, and
+    checkpointing come from the validated ``job`` configuration.
     """
 
-    scientific = training.scientific
-    runtime = training.runtime
-    checkpoint = training.checkpoint
+    training = job.training
+    logging = job.logging
+    checkpoint = job.checkpointing
     if resume and checkpoint is None:
         raise ValueError("resume requires checkpoint configuration")
     source_batch_size = getattr(batches, "global_batch_size", None)
     if (
         source_batch_size is not None
-        and source_batch_size != scientific.global_batch_size
+        and source_batch_size != training.global_batch_size
     ):
         raise ValueError(
-            "batch source global_batch_size differs from scientific config: "
-            f"{source_batch_size} != {scientific.global_batch_size}"
+            "batch source global_batch_size differs from training config: "
+            f"{source_batch_size} != {training.global_batch_size}"
         )
     data_contract = getattr(batches, "data_contract", None)
     data_fingerprint = getattr(batches, "data_fingerprint", None)
@@ -166,23 +165,16 @@ def run_training(
             "data_contract and data_fingerprint"
         )
     run_path = Path(run_directory).expanduser().resolve()
-    fingerprint = scientific_fingerprint(scientific)
+    fingerprint = scientific_fingerprint(job)
     initial_optimizer_step = _int(state.step)
     manifest = {
-        "scientific": scientific.model_dump(mode="json"),
+        "config": job.model_dump(mode="json"),
+        "scientific": job.parameters(ParameterRole.SCIENTIFIC),
         "scientific_fingerprint": fingerprint,
+        "execution": job.parameters(ParameterRole.EXECUTION),
         "data_contract": data_contract,
         "data_fingerprint": data_fingerprint,
         "initial_optimizer_step": initial_optimizer_step,
-        "execution": (
-            None
-            if training.execution is None
-            else training.execution.model_dump(mode="json")
-        ),
-        "runtime": runtime.model_dump(mode="json"),
-        "checkpoint": (
-            None if checkpoint is None else checkpoint.model_dump(mode="json")
-        ),
     }
     logger = None
     checkpoint_manager = None
@@ -190,7 +182,7 @@ def run_training(
     iterator_closed = False
     current = state
     completed = 0
-    base_key = jax.random.key(scientific.seed)
+    base_key = jax.random.key(training.seed)
     seen_signatures: set[str] = set()
     pending_metric: MetricRecord | None = None
     run_failed = False
@@ -210,16 +202,16 @@ def run_training(
             current = restored.state
             completed = restored.iteration
             base_key = restored.rng
-            if completed >= scientific.max_steps:
+            if completed >= training.max_steps:
                 raise ValueError(
-                    "checkpoint already reached or exceeded scientific.max_steps"
+                    "checkpoint already reached or exceeded training.max_steps"
                 )
             logger = RunLogger(
                 run_path,
                 manifest=manifest,
                 reporters=reporters,
                 resume_cursor=restored.logging_cursor,
-                queue_size=runtime.reporter_queue_size,
+                queue_size=logging.reporter_queue_size,
                 initial_optimizer_step=_int(current.step),
             )
             checkpoint_manager.set_event_callback(logger.event)
@@ -241,7 +233,7 @@ def run_training(
                 run_path,
                 manifest=manifest,
                 reporters=reporters,
-                queue_size=runtime.reporter_queue_size,
+                queue_size=logging.reporter_queue_size,
                 initial_optimizer_step=initial_optimizer_step,
             )
             if checkpoint is not None:
@@ -262,15 +254,15 @@ def run_training(
             logger.event(
                 "training_started",
                 iteration=0,
-                end_iteration=scientific.max_steps,
+                end_iteration=training.max_steps,
             )
-        for iteration_index in range(completed, scientific.max_steps):
+        for iteration_index in range(completed, training.max_steps):
             wait_started = time.perf_counter()
             try:
                 host_batch = next(iterator)
             except StopIteration as error:
                 raise RuntimeError(
-                    "batch source exhausted before scientific.max_steps"
+                    "batch source exhausted before training.max_steps"
                 ) from error
             data_wait_seconds = time.perf_counter() - wait_started
 
@@ -316,17 +308,17 @@ def run_training(
             if pending_metric is not None:
                 logger.metrics(
                     pending_metric,
-                    console=pending_metric.iteration % runtime.console_every == 0,
+                    console=pending_metric.iteration % logging.console_every == 0,
                 )
             pending_metric = record
 
-            final = completed == scientific.max_steps
+            final = completed == training.max_steps
             if checkpoint_manager is not None and checkpoint.should_save(
                 completed, final=final
             ):
                 logger.metrics(
                     pending_metric,
-                    console=pending_metric.iteration % runtime.console_every == 0,
+                    console=pending_metric.iteration % logging.console_every == 0,
                 )
                 pending_metric = None
                 checkpoint_manager.save(
@@ -343,7 +335,7 @@ def run_training(
         if pending_metric is not None:
             logger.metrics(
                 pending_metric,
-                console=pending_metric.iteration % runtime.console_every == 0,
+                console=pending_metric.iteration % logging.console_every == 0,
             )
             pending_metric = None
         _close_batches(iterator)
@@ -373,7 +365,7 @@ def run_training(
             with suppress(BaseException):
                 logger.metrics(
                     pending_metric,
-                    console=pending_metric.iteration % runtime.console_every == 0,
+                    console=pending_metric.iteration % logging.console_every == 0,
                 )
             pending_metric = None
         if iterator is not None and not iterator_closed:
@@ -429,4 +421,4 @@ def run_training(
                     raise
 
 
-__all__ = ["RuntimeConfig", "TrainingRunResult", "run_training"]
+__all__ = ["TrainingRunResult", "run_training"]

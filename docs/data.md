@@ -81,9 +81,10 @@ batches = build_grain_iterator(
 
 Dropping the remainder is the default because a stable batch shape avoids an
 otherwise-surprising final compilation. Exhausting a finite iterator before
-`ScientificConfig.max_steps` is a training failure, not silent early completion.
-The returned source exposes its exact `global_batch_size`, allowing the trainer
-to reject a mismatch with `ScientificConfig` before creating a run.
+`JobConfig.training.max_steps` is a training failure, not silent early
+completion. The returned source exposes its exact `global_batch_size`, allowing
+the trainer to reject a mismatch with `JobConfig.training` before creating a
+run.
 
 It also exposes a complete `data_contract` and `data_fingerprint`. The contract
 contains the artifact recipe and revisions, declared mapper paths, digests of

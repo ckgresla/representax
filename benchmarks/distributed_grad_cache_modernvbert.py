@@ -225,7 +225,7 @@ def main() -> None:
     execution = GradCache(
         query_chunk_size=arguments.chunk_size,
         document_chunk_size=arguments.chunk_size,
-        representation_chunk_size=arguments.chunk_size,
+        loss_row_chunk_size=arguments.chunk_size,
     )
     task = MNRTask(scale=20.0)
     reference_step = build_train_step(

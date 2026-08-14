@@ -21,26 +21,39 @@ than enqueueing incidental `jax.numpy` work outside the train step.
 
 ## Configuration boundary
 
-User-facing configurations are frozen Pydantic models. `TrainingConfig` is the
-single argument consumed by the host loop and contains:
+User-facing configurations are frozen Pydantic models organized by the domains
+users actually configure. `JobConfig` owns model, task, loss, optimization,
+data, training, logging, and checkpointing configs. `TrainingConfig` combines
+the scientific training values and their efficiency-only realization: global
+batch, maximum steps, seed, logical mesh, physical batch decomposition,
+optional GradCache, activation rematerialization, donation, and input prefetch.
 
-- `ScientificConfig`: trajectory-defining task identity, global batch, maximum
-  steps, random seed, negative scope, and numerical tolerance;
-- `ExecutionConfig`: topology-dependent mechanisms such as mesh axes,
-  per-device batch, accumulation, GradCache chunks, rematerialization, packing,
-  prefetch, and donation;
-- `RuntimeConfig`: host mechanics such as console cadence and reporter queue
-  capacity; and
-- `CheckpointConfig`: cadence, retention, final-save policy, and asynchronous
-  publication.
+Scientific and execution are field roles rather than parallel configuration
+trees. `Scientific[T]` and `Execution[T]` metadata can mark one value or a whole
+nested config. Generic projection code derives the scientific fingerprint and
+the execution search space without duplicating values. Logging and
+checkpointing are persisted operational contracts but are not hyperparameter
+roles. Study-specific labels such as tuned, fixed, or nuisance remain a future
+overlay over parameter paths; they are not intrinsic field properties.
 
-There is no second semantics object: `TrainingConfig.scientific` is the single
-training-level scientific contract. Model, optimizer, task, and data choices
-remain explicit sibling members of `RunConfig`; execution may change only when
-it preserves the scientific contract.
+Task and loss are distinct registered configs. `RetrievalConfig` selects the
+query/document batch semantics; `MNRConfig` owns scale, symmetry, Matryoshka
+dimensions, and local versus global negative scope. The loss registry declares
+compatible tasks and training strategies. A populated `training.grad_cache`
+therefore selects exact cached differentiation only when the configured loss
+advertises that capability; `None` selects direct differentiation.
+
+`MeshConfig` stores the portable logical axis shapes and names accepted by
+`jax.make_mesh(**config.model_dump())`. Concrete JAX `Device` objects are never
+serialized. Mesh axis names do not themselves assign array sharding semantics;
+a future sharding config will store the actual batch and state partition specs.
+Until then, the host loop validates the scientific global batch against the
+model-ready Grain source rather than guessing a replica count. Packing remains
+absent until a task-, data-, and model-compatible segment/masking contract is
+implemented.
 
 These models are declarative, validated, serializable, and compatible with
-Hydra-Zen composition and CLI overrides. They contain no live Equinox model,
+Hydra-Zen composition and CLI overrides. They contain no live JAX mesh, Equinox model,
 Optax transformation, Grain iterator, or arbitrary runtime object. Builders
 read them while constructing those objects. Configurations do not pass through
 `jax.jit` and do not need an Equinox mirror.
@@ -127,10 +140,10 @@ state while storage and publication finish in the background.
 
 A checkpoint is restorable only after Orbax metadata, a fingerprinted
 `checkpoint.json`, and `REPRESENTAX_COMPLETE` agree. The `latest` pointer moves
-only after publication is complete. Resume validates the scientific configuration, the
-data contract, and model/optimizer structures; restores training and iterator
-state; truncates post-checkpoint log rows; and continues with the same next batch
-and random key as an uninterrupted run.
+only after publication is complete. Resume validates the scientific parameter
+projection, the data contract, and model/optimizer structures; restores training
+and iterator state; truncates post-checkpoint log rows; and continues with the
+same next batch and random key as an uninterrupted run.
 
 ## Deliberately deferred
 
@@ -147,8 +160,8 @@ arbitrary sharding configurations remain separately scoped roadmap work.
 The existing `DataParallel` plan already uses a named mesh, replicated state,
 batch-axis sharding, `jax.make_array_from_process_local_data` for process-local
 rows, and explicit collective semantics. Completing the cookbook's high-
-performance sharding picture means wiring `ExecutionConfig` into placement and
-step construction, initializing state directly into its declared sharding, and
+performance sharding picture means wiring the annotated training mesh and batch
+fields into placement and step construction, initializing state directly into its declared sharding, and
 adding measured FSDP and tensor/hybrid plans. Representax will also benchmark
 JAX `Ref`-based state mutation against canonical functional Equinox/Optax plus
 buffer donation before changing the model-state contract.

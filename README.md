@@ -13,7 +13,7 @@ The project is alpha. The current slice provides:
 - direct multiple-negatives ranking, including symmetric and Matryoshka modes;
 - an end-to-end Grain-to-compiled-step trainer with asynchronous reporting;
 - lazy Grain recipes with built-in Hugging Face and local artifact resolvers;
-- validated scientific, execution, runtime, and checkpoint configurations; and
+- validated domain configs with annotated scientific and execution parameters; and
 - explicit unit, runtime, parity, distributed, and performance test lanes.
 
 ## Principles
@@ -64,10 +64,17 @@ for artifact inspection and trusted publication.
 
 The `cuda12` and `cuda13` extras use JAX's pip-managed NVIDIA libraries. A
 shell-level `LD_LIBRARY_PATH` that points at another CUDA installation can take
-precedence, producing errors such as `Unable to load cuSPARSE` or leaving JAX
-with only a CPU device despite a working NVIDIA driver.
+precedence.
 
-Compare the ordinary process with one that ignores `LD_LIBRARY_PATH`:
+Did you see this?
+
+```text
+Jax plugin configuration error: Exception when calling jax_plugins.xla_cuda12.initialize()
+RuntimeError: Unable to load cuSPARSE. Is it installed?
+```
+
+Or did `jax.devices()` return only `CpuDevice` despite a working NVIDIA driver?
+Then compare the ordinary process with one that ignores `LD_LIBRARY_PATH`:
 
 ```bash
 python -c 'import jax; print(jax.devices())'
@@ -180,31 +187,50 @@ Application code imports concrete operations from their owning modules:
 import optax
 
 from representax.config import (
+    BatchConfig,
     CheckpointConfig,
-    RuntimeConfig,
-    ScientificConfig,
+    ComponentConfig,
+    JobConfig,
+    LoggingConfig,
+    ModelConfig,
+    OptimizationConfig,
     TrainingConfig,
 )
 from representax.data import build_grain_iterator
+from representax.tasks import build_task
+from representax.tasks.retrieval import MNRConfig, RetrievalConfig
 from representax.train import build_train_step, make_train_state, run_training
 
 optimizer = optax.adamw(learning_rate=1e-3)
+job = JobConfig(
+    name="example",
+    model=ModelConfig(target="my_project.Model"),
+    task=RetrievalConfig(),
+    loss=MNRConfig(scale=20.0, symmetric=True, negative_scope="global"),
+    optimization=OptimizationConfig(
+        optimizer=ComponentConfig(
+            target="optax.adamw",
+            parameters={"learning_rate": 1e-3},
+        ),
+    ),
+    data=recipe,
+    training=TrainingConfig(
+        global_batch_size=32,
+        max_steps=10_000,
+        seed=17,
+        batch=BatchConfig(micro_batch_size=32),
+    ),
+    logging=LoggingConfig(console_every=100),
+    checkpointing=CheckpointConfig(every=1_000, keep=3),
+)
+task = build_task(job.task, job.loss)
 state = make_train_state(model, optimizer)
-batches = build_grain_iterator(recipe, batch_size=32, batch_fn=collate)
+batches = build_grain_iterator(job.data, batch_size=32, batch_fn=collate)
 result = run_training(
     state=state,
     step=build_train_step(task, optimizer),
     batches=batches,
-    training=TrainingConfig(
-        scientific=ScientificConfig(
-            task="retrieval/mnr",
-            global_batch_size=32,
-            max_steps=10_000,
-            seed=17,
-        ),
-        runtime=RuntimeConfig(console_every=100),
-        checkpoint=CheckpointConfig(every=1_000, keep=3),
-    ),
+    job=job,
     run_directory="runs/example",
 )
 ```

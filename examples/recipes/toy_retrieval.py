@@ -1,17 +1,20 @@
-"""A Git-trackable, CLI-overridable Hydra-Zen run configuration."""
+"""A Git-trackable, CLI-overridable Hydra-Zen job configuration."""
 
 from hydra_zen import builds, make_config, store, zen
 
 from representax.config import (
+    BatchConfig,
     CheckpointConfig,
     ComponentConfig,
-    ExecutionConfig,
-    RunConfig,
-    RuntimeConfig,
-    ScientificConfig,
+    JobConfig,
+    LoggingConfig,
+    MeshConfig,
+    ModelConfig,
+    OptimizationConfig,
     TrainingConfig,
 )
 from representax.data import mix, source
+from representax.tasks.retrieval import MNRConfig, RetrievalConfig
 
 
 def to_features(record):
@@ -31,56 +34,62 @@ Data = builds(
     seed=17,
     populate_full_signature=True,
 )
-Scientific = builds(
-    ScientificConfig,
-    task="retrieval/mnr",
-    global_batch_size=32,
-    max_steps=100,
-    seed=17,
+Model = builds(
+    ModelConfig,
+    target="representax.models.DenseEncoder",
+    parameters={"input_dimension": 8, "output_dimension": 4},
 )
-Execution = builds(
-    ExecutionConfig,
-    device_count=1,
-    data_axis_size=1,
-    per_device_batch_size=8,
-    gradient_accumulation_steps=4,
+Task = builds(RetrievalConfig)
+Loss = builds(
+    MNRConfig,
+    scale=20.0,
+    symmetric=True,
+    negative_scope="global",
 )
-Training = builds(
-    TrainingConfig,
-    scientific=Scientific,
-    execution=Execution,
-    runtime=builds(RuntimeConfig, console_every=10),
-    checkpoint=builds(CheckpointConfig, every=25, keep=3),
-)
-Run = builds(
-    RunConfig,
-    name="toy-retrieval",
-    model=builds(
-        ComponentConfig,
-        target="representax.models.DenseEncoder",
-        parameters={"input_dimension": 8, "output_dimension": 4},
-    ),
+Optimization = builds(
+    OptimizationConfig,
     optimizer=builds(
         ComponentConfig,
         target="optax.adamw",
         parameters={"learning_rate": 0.001},
     ),
-    task=builds(
-        ComponentConfig,
-        target="representax.tasks.retrieval.MNRTask",
-        parameters={"scale": 20.0, "symmetric": True},
+)
+Training = builds(
+    TrainingConfig,
+    global_batch_size=32,
+    max_steps=100,
+    seed=17,
+    mesh=builds(
+        MeshConfig,
+        axis_shapes=(1, 1),
+        axis_names=("fsdp", "tensor"),
     ),
+    batch=builds(
+        BatchConfig,
+        micro_batch_size=8,
+        gradient_accumulation_steps=4,
+    ),
+)
+Job = builds(
+    JobConfig,
+    name="toy-retrieval",
+    model=Model,
+    task=Task,
+    loss=Loss,
+    optimization=Optimization,
     data=Data,
     training=Training,
+    logging=builds(LoggingConfig, console_every=10),
+    checkpointing=builds(CheckpointConfig, every=25, keep=3),
 )
-Config = make_config(run=Run)
+Config = make_config(job=Job)
 store(Config, name="toy_retrieval")
 
 
-def show(run: RunConfig) -> None:
+def show(job: JobConfig) -> None:
     """Validate the composed user configuration before building JAX objects."""
 
-    print(run.model_dump_json(indent=2))
+    print(job.model_dump_json(indent=2))
 
 
 if __name__ == "__main__":

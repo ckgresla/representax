@@ -1,5 +1,26 @@
-"""Task families."""
+"""Task families and their explicit construction registry."""
 
 from . import retrieval
+from .config import LossConfig, TaskConfig
+from .registry import (
+    BUILTIN_LOSSES,
+    BUILTIN_TASKS,
+    LossDefinition,
+    LossRegistry,
+    TaskDefinition,
+    TaskRegistry,
+    build_task,
+)
 
-__all__ = ["retrieval"]
+__all__ = [
+    "BUILTIN_LOSSES",
+    "BUILTIN_TASKS",
+    "LossConfig",
+    "LossDefinition",
+    "LossRegistry",
+    "TaskDefinition",
+    "TaskConfig",
+    "TaskRegistry",
+    "build_task",
+    "retrieval",
+]

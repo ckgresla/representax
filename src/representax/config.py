@@ -2,16 +2,31 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Literal, Self
+import math
+from typing import Literal, Self
 
-from pydantic import Field, NonNegativeInt, PositiveInt, model_validator
+from pydantic import (
+    Field,
+    NonNegativeInt,
+    PositiveInt,
+    SerializeAsAny,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
 from typing_extensions import TypeAliasType
 
-from ._config import FrozenConfig
+from ._config import (
+    Execution,
+    FrozenConfig,
+    NonEmptyString,
+    ParameterRole,
+    Scientific,
+    project_parameters,
+)
 from .data.recipe import MixtureRecipe
+from .tasks.config import LossConfig, TaskConfig
 
-NonEmptyString = Annotated[str, Field(min_length=1)]
-FinitePositiveFloat = Annotated[float, Field(gt=0, allow_inf_nan=False)]
 RematerializationPolicy = Literal["none", "selective", "full"]
 JsonScalar = str | int | float | bool | None
 JsonValue = TypeAliasType(
@@ -20,56 +35,121 @@ JsonValue = TypeAliasType(
 )
 
 
-class ScientificConfig(FrozenConfig):
-    """Trajectory-defining scientific values that execution may not change."""
+class ComponentConfig(FrozenConfig):
+    """Serializable reference to one registry/build target and its parameters."""
 
-    task: NonEmptyString
-    global_batch_size: PositiveInt
-    max_steps: PositiveInt
-    seed: NonNegativeInt
-    negative_scope: Literal["local", "global"] = "global"
-    numerical_tolerance: FinitePositiveFloat = 1e-5
+    target: NonEmptyString
+    parameters: dict[str, JsonValue] = Field(default_factory=dict)
 
 
-class ExecutionConfig(FrozenConfig):
-    """A measured, topology-specific realization of a scientific config."""
+class ModelConfig(ComponentConfig):
+    """Model definition consumed by a model registry or builder."""
 
-    device_count: PositiveInt
-    per_device_batch_size: PositiveInt
-    gradient_accumulation_steps: PositiveInt
-    data_axis_size: PositiveInt
-    model_axis_size: PositiveInt = 1
-    query_microbatch_size: PositiveInt | None = None
-    document_microbatch_size: PositiveInt | None = None
-    rematerialization: RematerializationPolicy = "full"
-    packing: bool = False
-    prefetch_depth: NonNegativeInt = 2
-    donate_buffers: bool = True
+
+class OptimizationConfig(FrozenConfig):
+    """Optimizer transformation and its scientific hyperparameters."""
+
+    optimizer: ComponentConfig
+
+
+class MeshConfig(FrozenConfig):
+    """Serializable arguments that unpack directly into ``jax.make_mesh``."""
+
+    axis_shapes: tuple[PositiveInt, ...] = (1,)
+    axis_names: tuple[NonEmptyString, ...] = ("data",)
 
     @model_validator(mode="after")
-    def validate_mesh(self) -> Self:
-        if self.data_axis_size * self.model_axis_size != self.device_count:
-            raise ValueError("mesh axis sizes must multiply to device_count")
+    def validate_axes(self) -> Self:
+        if len(self.axis_shapes) != len(self.axis_names):
+            raise ValueError("mesh axis_shapes and axis_names must have equal length")
+        if not self.axis_names:
+            raise ValueError("a mesh must contain at least one logical axis")
+        if len(set(self.axis_names)) != len(self.axis_names):
+            raise ValueError("mesh axis names must be unique")
         return self
 
     @property
-    def effective_batch_size(self) -> int:
-        return (
-            self.data_axis_size
-            * self.per_device_batch_size
-            * self.gradient_accumulation_steps
-        )
+    def device_count(self) -> int:
+        return math.prod(self.axis_shapes)
 
-    def validate_scientific(self, scientific: ScientificConfig) -> None:
-        if self.effective_batch_size != scientific.global_batch_size:
-            raise ValueError(
-                "execution configuration changes the scientific global batch size: "
-                f"{self.effective_batch_size} != {scientific.global_batch_size}"
-            )
+    def axis_size(self, name: str) -> int:
+        try:
+            index = self.axis_names.index(name)
+        except ValueError as error:
+            raise KeyError(f"mesh axis {name!r} is not defined") from error
+        return self.axis_shapes[index]
 
 
-class RuntimeConfig(FrozenConfig):
-    """Host-loop mechanics that do not define the scientific trajectory."""
+class BatchConfig(FrozenConfig):
+    """Per-data-replica batch size and optimizer accumulation."""
+
+    micro_batch_size: PositiveInt
+    gradient_accumulation_steps: PositiveInt = 1
+
+
+class GradCacheConfig(FrozenConfig):
+    """Memory bounds for exact cached differentiation of representation losses."""
+
+    micro_batch_size: PositiveInt = Field(
+        description="Default number of examples encoded by each replayed forward pass."
+    )
+    query_micro_batch_size: PositiveInt | None = Field(
+        default=None,
+        description=(
+            "Optional query-encoder override for asymmetric or multimodal towers; "
+            "defaults to micro_batch_size."
+        ),
+    )
+    document_micro_batch_size: PositiveInt | None = Field(
+        default=None,
+        description=(
+            "Optional document-encoder override for asymmetric or multimodal towers; "
+            "defaults to micro_batch_size."
+        ),
+    )
+    loss_row_chunk_size: PositiveInt | None = Field(
+        default=None,
+        description=(
+            "Rows evaluated at once in the representation-level similarity loss; "
+            "defaults to micro_batch_size and does not rerun either encoder."
+        ),
+    )
+
+    @property
+    def resolved_query_micro_batch_size(self) -> int:
+        return self.query_micro_batch_size or self.micro_batch_size
+
+    @property
+    def resolved_document_micro_batch_size(self) -> int:
+        return self.document_micro_batch_size or self.micro_batch_size
+
+    @property
+    def resolved_loss_row_chunk_size(self) -> int:
+        return self.loss_row_chunk_size or self.micro_batch_size
+
+
+class TrainingConfig(FrozenConfig):
+    """Scientific and efficiency parameters governing the training process."""
+
+    global_batch_size: Scientific[PositiveInt]
+    max_steps: Scientific[PositiveInt]
+    seed: Scientific[NonNegativeInt]
+    mesh: Execution[MeshConfig] = MeshConfig()
+    batch: Execution[BatchConfig]
+    grad_cache: Execution[GradCacheConfig | None] = None
+    activation_rematerialization: Execution[RematerializationPolicy] = Field(
+        default="full",
+        description=(
+            "Activation checkpointing policy (also called gradient checkpointing); "
+            "JAX calls this rematerialization."
+        ),
+    )
+    donate_buffers: Execution[bool] = True
+    prefetch_depth: Execution[NonNegativeInt] = 2
+
+
+class LoggingConfig(FrozenConfig):
+    """Asynchronous local and downstream reporting mechanics."""
 
     console_every: PositiveInt = 1
     reporter_queue_size: PositiveInt = 16
@@ -98,54 +178,100 @@ class CheckpointConfig(FrozenConfig):
         )
 
 
-class TrainingConfig(FrozenConfig):
-    """Complete host and accelerator contract for one training run."""
+class JobConfig(FrozenConfig):
+    """Fully serializable configuration for one reproducible training job."""
 
-    scientific: ScientificConfig
-    execution: ExecutionConfig | None = None
-    runtime: RuntimeConfig = RuntimeConfig()
-    checkpoint: CheckpointConfig | None = None
+    name: NonEmptyString
+    model: Scientific[ModelConfig]
+    task: Scientific[SerializeAsAny[TaskConfig]]
+    loss: Scientific[SerializeAsAny[LossConfig]]
+    optimization: Scientific[OptimizationConfig]
+    data: Scientific[MixtureRecipe]
+    training: TrainingConfig
+    checkpointing: CheckpointConfig | None = None
+    logging: LoggingConfig = LoggingConfig()
+
+    @field_validator("task", mode="before")
+    @classmethod
+    def validate_registered_task(
+        cls,
+        value: object,
+        info: ValidationInfo,
+    ) -> TaskConfig:
+        from .tasks.registry import BUILTIN_TASKS, TaskRegistry
+
+        registry = None if info.context is None else info.context.get("task_registry")
+        if registry is None:
+            registry = BUILTIN_TASKS
+        if not isinstance(registry, TaskRegistry):
+            raise TypeError("task_registry validation context must be a TaskRegistry")
+        return registry.parse(value)
+
+    @field_validator("loss", mode="before")
+    @classmethod
+    def validate_registered_loss(
+        cls,
+        value: object,
+        info: ValidationInfo,
+    ) -> LossConfig:
+        from .tasks.registry import BUILTIN_LOSSES, LossRegistry
+
+        registry = None if info.context is None else info.context.get("loss_registry")
+        if registry is None:
+            registry = BUILTIN_LOSSES
+        if not isinstance(registry, LossRegistry):
+            raise TypeError("loss_registry validation context must be a LossRegistry")
+        return registry.parse(value)
 
     @model_validator(mode="after")
-    def validate_execution(self) -> Self:
-        if self.execution is not None:
-            self.execution.validate_scientific(self.scientific)
-        if self.checkpoint is not None and any(
-            iteration > self.scientific.max_steps
-            for iteration in self.checkpoint.additional_iterations
-        ):
+    def validate_loss_capabilities(self, info: ValidationInfo) -> Self:
+        from .tasks.registry import BUILTIN_LOSSES, LossRegistry
+
+        registered = None if info.context is None else info.context.get("loss_registry")
+        losses = BUILTIN_LOSSES if registered is None else registered
+        if not isinstance(losses, LossRegistry):
+            raise TypeError("loss_registry validation context must be a LossRegistry")
+        definition = losses.definition(self.loss.kind)
+        if self.task.kind not in definition.task_kinds:
             raise ValueError(
-                "additional checkpoint iterations cannot exceed scientific.max_steps"
+                f"loss {self.loss.kind!r} does not support task {self.task.kind!r}"
+            )
+        strategy = "grad_cache" if self.training.grad_cache is not None else "direct"
+        if strategy not in definition.training_strategies:
+            raise ValueError(
+                f"loss {self.loss.kind!r} does not support training strategy "
+                f"{strategy!r}"
             )
         return self
 
+    @model_validator(mode="after")
+    def validate_checkpoint_schedule(self) -> Self:
+        if self.checkpointing is not None and any(
+            iteration > self.training.max_steps
+            for iteration in self.checkpointing.additional_iterations
+        ):
+            raise ValueError(
+                "additional checkpoint iterations cannot exceed training.max_steps"
+            )
+        return self
 
-class ComponentConfig(FrozenConfig):
-    """Serializable reference to one registry/build target and its parameters."""
+    def parameters(self, role: ParameterRole) -> dict[str, object]:
+        """Return the role-selected job projection used by planners and resume."""
 
-    target: NonEmptyString
-    parameters: dict[str, JsonValue] = Field(default_factory=dict)
-
-
-class RunConfig(FrozenConfig):
-    """Fully serializable configuration for one reproducible training run."""
-
-    name: NonEmptyString
-    model: ComponentConfig
-    optimizer: ComponentConfig
-    task: ComponentConfig
-    data: MixtureRecipe
-    training: TrainingConfig
+        return project_parameters(self, role)
 
 
 __all__ = [
+    "BatchConfig",
     "CheckpointConfig",
     "ComponentConfig",
-    "ExecutionConfig",
-    "FrozenConfig",
+    "GradCacheConfig",
+    "JobConfig",
+    "LoggingConfig",
+    "MeshConfig",
+    "ModelConfig",
+    "OptimizationConfig",
+    "ParameterRole",
     "RematerializationPolicy",
-    "RunConfig",
-    "RuntimeConfig",
-    "ScientificConfig",
     "TrainingConfig",
 ]

@@ -16,7 +16,7 @@ import jax
 import numpy as np
 from orbax.checkpoint import v1 as ocp
 
-from representax.config import CheckpointConfig, ScientificConfig
+from representax.config import CheckpointConfig, JobConfig, ParameterRole
 
 from .state import TrainState
 
@@ -137,10 +137,10 @@ def _fingerprint(value: Any) -> str:
     return "sha256:" + hashlib.sha256(payload).hexdigest()
 
 
-def scientific_fingerprint(scientific: ScientificConfig) -> str:
-    """Fingerprint the scientific configuration that resume may not change."""
+def scientific_fingerprint(job: JobConfig) -> str:
+    """Fingerprint scientific parameters that exact resume may not change."""
 
-    return _fingerprint(scientific.model_dump(mode="json"))
+    return _fingerprint(job.parameters(ParameterRole.SCIENTIFIC))
 
 
 def tree_structure_fingerprint(tree: PyTree) -> str:

@@ -11,12 +11,11 @@ import pytest
 
 from representax.data import build_grain_iterator, mix, source
 from representax.models import DenseEncoder
-from representax.planning import ScientificConfig, TrainingConfig
 from representax.tasks.retrieval import MNRTask
 from representax.train import (
+    LoggingConfig,
     MetricRecord,
     RunLogger,
-    RuntimeConfig,
     StepMetrics,
     StepResult,
     TrainState,
@@ -30,6 +29,7 @@ from tests.train.toy_retrieval import (
     TOY_OUTPUT_DIMENSION,
     TOY_STEPS,
     build_toy_retrieval_batches,
+    toy_job_config,
 )
 
 
@@ -72,11 +72,11 @@ def _state() -> TrainState:
     )
 
 
-def _training(*, runtime=None, checkpoint=None, **kwargs) -> TrainingConfig:
-    return TrainingConfig(
-        scientific=ScientificConfig(**kwargs),
-        runtime=RuntimeConfig() if runtime is None else runtime,
-        checkpoint=checkpoint,
+def _job(*, logging=None, checkpointing=None, **kwargs):
+    return toy_job_config(
+        logging=LoggingConfig() if logging is None else logging,
+        checkpointing=checkpointing,
+        **kwargs,
     )
 
 
@@ -111,12 +111,11 @@ def test_training_loop_writes_every_metric_and_closes_batches(tmp_path, capsys):
         state=_state(),
         step=_step,
         batches=batches,
-        training=_training(
-            task="test/mean",
+        job=_job(
             global_batch_size=2,
             max_steps=2,
             seed=17,
-            runtime=RuntimeConfig(console_every=2),
+            logging=LoggingConfig(console_every=2),
         ),
         run_directory=tmp_path / "run",
         reporters=(reporter,),
@@ -133,9 +132,12 @@ def test_training_loop_writes_every_metric_and_closes_batches(tmp_path, capsys):
     events = _read_jsonl(tmp_path / "run" / "events.jsonl")
     assert run["status"] == "completed"
     assert run["completed_iterations"] == 2
-    assert run["scientific"]["global_batch_size"] == 2
-    assert run["execution"] is None
-    assert run["runtime"] == {"console_every": 2, "reporter_queue_size": 16}
+    assert run["scientific"]["training"]["global_batch_size"] == 2
+    assert run["execution"]["training"]["prefetch_depth"] == 2
+    assert run["config"]["logging"] == {
+        "console_every": 2,
+        "reporter_queue_size": 16,
+    }
     assert [row["iteration"] for row in metrics] == [1, 2]
     assert metrics == [row for row in events if row["category"] == "metric"]
     assert len(reporter.rows) == len(events)
@@ -154,8 +156,7 @@ def test_training_loop_records_exhaustion_as_a_real_failure(tmp_path):
             state=_state(),
             step=_step,
             batches=batches,
-            training=_training(
-                task="test/mean",
+            job=_job(
                 global_batch_size=2,
                 max_steps=2,
                 seed=17,
@@ -186,8 +187,7 @@ def test_training_loop_rejects_grain_batch_size_drift(tmp_path):
             state=_state(),
             step=_step,
             batches=batches,
-            training=_training(
-                task="test/mismatch",
+            job=_job(
                 global_batch_size=4,
                 max_steps=1,
                 seed=17,
@@ -220,12 +220,11 @@ def test_skipped_updates_advance_deterministic_iteration_keys(tmp_path):
             state=_state(),
             step=_skipped_step,
             batches=ClosingBatches([jnp.asarray([1.0, 3.0]), jnp.asarray([1.0, 3.0])]),
-            training=_training(
-                task="test/nonfinite",
+            job=_job(
                 global_batch_size=2,
                 max_steps=2,
                 seed=19,
-                runtime=RuntimeConfig(console_every=10),
+                logging=LoggingConfig(console_every=10),
             ),
             run_directory=tmp_path / name,
         )
@@ -269,12 +268,11 @@ def test_grain_recipe_drives_compiled_updates_end_to_end(tmp_path):
             optimizer,
         ),
         batches=batches,
-        training=_training(
-            task="retrieval/mnr",
+        job=_job(
             global_batch_size=TOY_BATCH_SIZE,
             max_steps=TOY_STEPS,
             seed=23,
-            runtime=RuntimeConfig(console_every=TOY_STEPS),
+            logging=LoggingConfig(console_every=TOY_STEPS),
         ),
         run_directory=tmp_path / "grain-run",
     )

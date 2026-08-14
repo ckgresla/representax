@@ -86,30 +86,27 @@ def _rematerialized_encode(
 
 @dataclass(frozen=True)
 class GradCache:
-    """Bound encoder-activation memory without changing MNR semantics."""
+    """Bound encoder and similarity-loss memory without changing MNR semantics."""
 
     query_chunk_size: int
     document_chunk_size: int | None = None
-    representation_chunk_size: int | None = None
+    loss_row_chunk_size: int | None = None
 
     def __post_init__(self) -> None:
         if self.query_chunk_size <= 0:
             raise ValueError("query_chunk_size must be positive")
         if self.document_chunk_size is not None and self.document_chunk_size <= 0:
             raise ValueError("document_chunk_size must be positive when set")
-        if (
-            self.representation_chunk_size is not None
-            and self.representation_chunk_size <= 0
-        ):
-            raise ValueError("representation_chunk_size must be positive when set")
+        if self.loss_row_chunk_size is not None and self.loss_row_chunk_size <= 0:
+            raise ValueError("loss_row_chunk_size must be positive when set")
 
     @property
     def resolved_document_chunk_size(self) -> int:
         return self.document_chunk_size or self.query_chunk_size
 
     @property
-    def resolved_representation_chunk_size(self) -> int:
-        return self.representation_chunk_size or self.query_chunk_size
+    def resolved_loss_row_chunk_size(self) -> int:
+        return self.loss_row_chunk_size or self.query_chunk_size
 
     def validate(self, task: Task[Any]) -> None:
         if not isinstance(task, MNRTask):
@@ -127,6 +124,10 @@ class GradCache:
         if not isinstance(task, MNRTask) or not isinstance(batch, RetrievalBatch):
             raise TypeError("GradCache requires MNRTask and RetrievalBatch")
         axis_name = context.data_axis_name
+        if axis_name is not None and task.negative_scope != "global":
+            raise NotImplementedError(
+                "distributed GradCache currently implements global negatives only"
+            )
         if axis_name is not None and key is not None:
             key = jax.random.fold_in(key, jax.lax.axis_index(axis_name))
         if key is None:
@@ -202,7 +203,7 @@ class GradCache:
             queries,
             documents,
             batch,
-            row_chunk_size=self.resolved_representation_chunk_size,
+            row_chunk_size=self.resolved_loss_row_chunk_size,
         )
         if axis_name is None:
             return output
