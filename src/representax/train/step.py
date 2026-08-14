@@ -43,27 +43,6 @@ def tree_all_finite(*trees: Any) -> jax.Array:
     return jnp.all(jnp.stack(checks))
 
 
-def _scale_arrays(tree: Any, scale: jax.Array) -> Any:
-    return jax.tree.map(
-        lambda leaf: leaf * scale if eqx.is_inexact_array(leaf) else leaf,
-        tree,
-        is_leaf=lambda value: value is None,
-    )
-
-
-def _select_arrays(condition: jax.Array, proposed: Any, previous: Any) -> Any:
-    return jax.tree.map(
-        lambda new, old: (
-            jnp.where(condition, new, old)
-            if eqx.is_array(new) and eqx.is_array(old)
-            else new
-        ),
-        proposed,
-        previous,
-        is_leaf=lambda value: value is None,
-    )
-
-
 def make_train_state(
     model: eqx.Module,
     optimizer: optax.GradientTransformationExtraArgs,
@@ -102,8 +81,16 @@ def build_train_step(
         raise ValueError("max_grad_norm must be positive or None")
     resolved_execution = Direct() if execution is None else execution
     resolved_execution.validate(task)
-
     donation = "all-except-first" if donate_state else "none"
+
+    @eqx.filter_value_and_grad(has_aux=True)
+    def loss_fn(
+        model: eqx.Module,
+        batch: Any,
+        key: jax.Array | None,
+    ) -> tuple[jax.Array, Any]:
+        output = resolved_execution.evaluate(task, model, batch, key=key)
+        return output.loss, output.metrics
 
     @eqx.filter_jit(donate=donation)
     def compiled_step(
@@ -111,48 +98,43 @@ def build_train_step(
         state: TrainState,
     ) -> StepResult:
         batch, key = inputs
-
-        def loss_fn(model: eqx.Module):
-            output = resolved_execution.evaluate(task, model, batch, key=key)
-            return output.loss, output.metrics
-
-        (loss, task_metrics), gradients = eqx.filter_value_and_grad(
-            loss_fn, has_aux=True
-        )(state.model)
+        (loss, task_metrics), gradients = loss_fn(state.model, batch, key)
         gradient_norm = tree_global_norm(gradients)
         if max_grad_norm is None:
-            coefficient = jnp.asarray(1.0, dtype=jnp.float32)
+            clipped_gradients = gradients
+            clipped_gradient_norm = gradient_norm
         else:
             coefficient = jnp.minimum(
                 jnp.asarray(1.0, dtype=jnp.float32),
                 jnp.asarray(max_grad_norm, dtype=jnp.float32)
                 / (gradient_norm + jnp.asarray(1e-6, dtype=jnp.float32)),
             )
-        clipped_gradients = _scale_arrays(gradients, coefficient)
-        clipped_gradient_norm = tree_global_norm(clipped_gradients)
+            clipped_gradients = optax.tree.scale(coefficient, gradients)
+            clipped_gradient_norm = gradient_norm * coefficient
+
         parameters = eqx.filter(state.model, eqx.is_inexact_array)
-        updates, proposed_optimizer_state = optimizer.update(
+        updates, optimizer_state = optimizer.update(
             clipped_gradients,
             state.optimizer_state,
             parameters,
         )
-        proposed_model = eqx.apply_updates(state.model, updates)
+        model = eqx.apply_updates(state.model, updates)
+        proposed_state = TrainState(
+            model=model,
+            optimizer_state=optimizer_state,
+            step=state.step + jnp.asarray(1, dtype=jnp.int32),
+        )
         finite = tree_all_finite(
             loss,
             task_metrics,
             clipped_gradients,
-            updates,
-            proposed_model,
-            proposed_optimizer_state,
+            proposed_state,
         )
-        model = _select_arrays(finite, proposed_model, state.model)
-        optimizer_state = _select_arrays(
-            finite, proposed_optimizer_state, state.optimizer_state
-        )
-        new_state = TrainState(
-            model=model,
-            optimizer_state=optimizer_state,
-            step=state.step + finite.astype(jnp.int32),
+        new_state = optax.tree.where(finite, proposed_state, state)
+        update_norm = jnp.where(
+            finite,
+            tree_global_norm(updates),
+            jnp.asarray(0.0, dtype=jnp.float32),
         )
         return StepResult(
             state=new_state,
@@ -161,7 +143,7 @@ def build_train_step(
                 task=task_metrics,
                 gradient_global_norm=gradient_norm,
                 clipped_gradient_global_norm=clipped_gradient_norm,
-                update_global_norm=tree_global_norm(updates),
+                update_global_norm=update_norm,
                 numeric_finite=finite,
                 skipped_update=~finite,
             ),

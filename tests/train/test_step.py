@@ -1,7 +1,9 @@
 """Generic compiled training-step tests."""
 
+import equinox as eqx
 import jax
 import jax.numpy as jnp
+import numpy as np
 import optax
 import pytest
 
@@ -38,3 +40,42 @@ def test_compiled_retrieval_training_reduces_loss():
     assert result.metrics.loss < first.metrics.loss
     assert bool(result.metrics.numeric_finite)
     assert int(result.state.step) == 40
+
+
+@pytest.mark.runtime
+def test_nonfinite_forward_keeps_model_and_optimizer_state():
+    model = DenseEncoder(2, 2, key=jax.random.key(7), normalize=False)
+    optimizer = optax.adamw(learning_rate=1e-3)
+    state = make_train_state(model, optimizer)
+    step = build_train_step(
+        MNRTask(scale=5.0),
+        optimizer,
+        max_grad_norm=None,
+        donate_state=False,
+    )
+    batch = retrieval_batch(
+        query=jnp.asarray([[jnp.nan, 0.0]], dtype=jnp.float32),
+        document=jnp.asarray([[1.0, 0.0]], dtype=jnp.float32),
+        positive_mask=jnp.ones((1, 1), dtype=jnp.bool_),
+    )
+
+    result = step(state, batch, jax.random.key(8))
+
+    assert not bool(result.metrics.numeric_finite)
+    assert bool(result.metrics.skipped_update)
+    assert float(result.metrics.update_global_norm) == 0.0
+    assert int(result.state.step) == 0
+    for actual, expected in zip(
+        jax.tree.leaves(result.state.model),
+        jax.tree.leaves(state.model),
+        strict=True,
+    ):
+        if eqx.is_array(actual):
+            np.testing.assert_array_equal(actual, expected)
+    for actual, expected in zip(
+        jax.tree.leaves(result.state.optimizer_state),
+        jax.tree.leaves(state.optimizer_state),
+        strict=True,
+    ):
+        if eqx.is_array(actual):
+            np.testing.assert_array_equal(actual, expected)

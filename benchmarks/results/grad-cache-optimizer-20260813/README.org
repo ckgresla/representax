@@ -1,0 +1,81 @@
+#+TITLE: Canonical Equinox/Optax GradCache step — 2026-08-13
+#+OPTIONS: toc:2 num:nil
+
+* Decision
+
+Keep the compiled update in canonical Equinox/Optax form: decorate the loss
+with =eqx.filter_value_and_grad=, decorate the step with =eqx.filter_jit=, call
+the supplied Optax transformation once, and apply its updates with
+=eqx.apply_updates=.  Representax adds only its numerical acceptance predicate.
+It forms one named proposed =TrainState= and commits it with the public
+=optax.tree.where= primitive.  There is no local tree-selection helper,
+=eqx.partition=/=eqx.combine= transaction, second optimizer path, or custom
+=lax.cond=.
+
+Do not wrap the optimizer in =optax.conditionally_mask= for this transaction.
+A same-device, serial probe of that design raised the allocator peak from
+4,104,905,216 to 4,545,367,552 bytes and the process peak from 4,729,077,760 to
+9,024,045,056 bytes.  The wrapper's conditional optimizer branch, not a
+materialized copy implied by =tree.where=, caused the regression.
+
+| Transaction | Examples/s | Allocator GiB | Process GiB | Compile + first (s) |
+|-------------+------------+---------------+-------------+---------------------|
+| Previous local tree selection | 16.882 | 3.823 | 4.404 | 38.592 |
+| Final =optax.tree.where= | 17.043 | 3.823 | 4.404 | 38.527 |
+| =optax.conditionally_mask= | 17.497 | 4.233 | 8.404 | 38.254 |
+
+The first two rows are allocation-equivalent; their small timing difference is
+ordinary run noise.  The third is retained as a rejected design probe.
+
+* Matched result
+
+The two matched JSON files use the same pinned ModernVBERT checkpoint, input
+fingerprint, scientific-spec fingerprint, FP32/highest-precision policy,
+batch 32, sequence length 512, chunk size 2, one warmup, and five measured
+steps.  Each arm ran in an isolated process on an RTX 4090.
+
+| Runtime | Loss | Gradient norm | Step (s) | Examples/s | Allocator GiB | Process GiB | Compile + first (s) |
+|---------+------+---------------+----------+------------+---------------+-------------+---------------------|
+| Representax | 3.4791555405 | 1.9073973894 | 1.8777 | 17.043 | 3.823 | 4.404 | 38.527 |
+| Sentence Transformers | 3.4791557789 | 1.9075433016 | 2.0727 | 15.438 | 3.784 | 4.461 | 4.352 |
+
+The loss absolute difference is =2.38e-7= and the gradient-norm relative
+difference is =7.65e-5=.  Representax is 10.4% faster by steady-state
+throughput and uses 1.3% less process-visible device memory.  Its live allocator
+peak remains 1.0% higher.  Compilation plus first execution remains 34.2 seconds
+slower and is now the dominant open systems gap.
+
+The native resident-state accounting is 596,179,990 bytes of model parameters,
+1,192,359,940 bytes of Optax state, and 1,788,539,934 bytes for their complete
+=TrainState=.  The benchmark reports resident buffers separately from allocator
+and process peaks so fixed state is not confused with executable temporaries or
+allocator retention.
+
+* Acceptance
+
+The focused runtime/checkpoint lane passes seven tests, including an invalid
+forward that retains the exact model and optimizer state with accepted step
+zero.  The full default pytest lane also passes.  The GradCache parent remains
+open: the current scanned implementation still needs a refreshed capacity
+sweep and its cold-compile cost must be reduced before the target-to-beat item
+is complete.
+
+* Replay
+
+#+begin_src sh
+CUDA_VISIBLE_DEVICES=0 JAX_ENABLE_COMPILATION_CACHE=false \
+  conda run --no-capture-output -n representax \
+  python benchmarks/grad_cache_modernvbert.py \
+  --runtime grad-cache --checkpoint "$CHECKPOINT" \
+  --output /tmp/representax-b32-s512-c2.json \
+  --batch-size 32 --sequence-length 512 --chunk-size 2 \
+  --warmup-steps 1 --measured-steps 5
+
+CUDA_VISIBLE_DEVICES=1 \
+  conda run --no-capture-output -n modernvbert-tf53-parity \
+  python benchmarks/grad_cache_modernvbert.py \
+  --runtime sentence-transformers --checkpoint "$CHECKPOINT" \
+  --output /tmp/sentence-transformers-b32-s512-c2.json \
+  --batch-size 32 --sequence-length 512 --chunk-size 2 \
+  --warmup-steps 1 --measured-steps 5
+#+end_src

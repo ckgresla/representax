@@ -137,6 +137,16 @@ def _workload_fingerprints(
     }
 
 
+def _array_tree_bytes(tree: Any) -> int:
+    import jax
+
+    return sum(
+        int(leaf.size * leaf.dtype.itemsize)
+        for leaf in jax.tree.leaves(tree)
+        if hasattr(leaf, "dtype") and hasattr(leaf, "size")
+    )
+
+
 def _representax(arguments: argparse.Namespace) -> dict[str, Any]:
     import jax
     import jax.numpy as jnp
@@ -204,6 +214,12 @@ def _representax(arguments: argparse.Namespace) -> dict[str, Any]:
         donate_state=True,
     )
     jax.block_until_ready(state)
+    resident_bytes = {
+        "model_parameters": _array_tree_bytes(state.model),
+        "optimizer_state": _array_tree_bytes(state.optimizer_state),
+        "training_state": _array_tree_bytes(state),
+        "batch": _array_tree_bytes(batch),
+    }
     setup_seconds = time.perf_counter() - setup_started
 
     key = jax.device_put(jax.random.key(arguments.seed), device)
@@ -242,6 +258,7 @@ def _representax(arguments: argparse.Namespace) -> dict[str, Any]:
         "steady_state_seconds": samples,
         "losses": losses,
         "gradient_global_norm": float(result.metrics.gradient_global_norm),
+        "resident_bytes": resident_bytes,
         "allocator_peak_device_bytes": int(
             memory.get("peak_bytes_in_use", memory.get("bytes_in_use", 0))
         ),
@@ -365,6 +382,28 @@ def _sentence_transformers(arguments: argparse.Namespace) -> dict[str, Any]:
         loss, gradient_norm = update()
         samples.append(time.perf_counter() - started)
         losses.append(loss)
+    resident_bytes = {
+        "model_parameters": sum(
+            parameter.numel() * parameter.element_size()
+            for parameter in model.parameters()
+        ),
+        "optimizer_state": sum(
+            value.numel() * value.element_size()
+            for state in optimizer.state.values()
+            for value in state.values()
+            if isinstance(value, torch.Tensor)
+        ),
+        "gradients": sum(
+            parameter.grad.numel() * parameter.grad.element_size()
+            for parameter in model.parameters()
+            if parameter.grad is not None
+        ),
+        "batch": sum(
+            value.numel() * value.element_size()
+            for item in features
+            for value in item.values()
+        ),
+    }
     return {
         "framework": "sentence-transformers",
         "framework_version": _version("sentence-transformers"),
@@ -377,6 +416,7 @@ def _sentence_transformers(arguments: argparse.Namespace) -> dict[str, Any]:
         "steady_state_seconds": samples,
         "losses": losses,
         "gradient_global_norm": gradient_norm,
+        "resident_bytes": resident_bytes,
         "allocator_peak_device_bytes": int(torch.cuda.max_memory_allocated(device)),
         "allocator_peak_reserved_device_bytes": int(
             torch.cuda.max_memory_reserved(device)

@@ -121,14 +121,20 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
    Direct diagnostics and cached training share one canonical row formula.  A
    rematerialized scan bounds live score rows and is the numerical oracle and
    unsupported-accelerator fallback for any future custom kernel.
-** NEXT Close fixed memory and compilation gaps against the pinned reference :performance:
-   Profile model/optimizer buffers, XLA temporaries, attention workspaces, and
-   compilation separately.  At batch 32, chunk two lowers the native allocator
-   peak to 4.831 GiB and process peak to 6.449 GiB while retaining a 60.5%
-   throughput advantage, but the matched reference remains tighter at 3.784 GiB
-   and 4.461 GiB.  State donation remains explicit at the generic callable
-   boundary, while the linear training loop may combine it with Orbax V1 async
-   saves after their blocking device-to-host snapshot returns.
+** NEXT Close the remaining allocator and compilation gaps against the pinned reference :performance:
+   The canonical transaction is now one ordinary Equinox/Optax update followed
+   by =optax.tree.where= over a named proposed =TrainState=.  The controlled
+   batch-32, sequence-512, chunk-2 probe in
+   =benchmarks/results/grad-cache-optimizer-20260813/= matches loss to =2.38e-7=
+   absolute and gradient norm to =7.65e-5= relative, runs 10.4% faster than the
+   pinned Sentence Transformers reference, and uses 1.3% less process-visible
+   device memory.  Its 3.823 GiB live allocator peak is still 1.0% above the
+   3.784 GiB reference; compile plus first execution remains 38.527 versus
+   4.352 seconds.  Refresh the capacity sweep for the scanned model, profile the
+   remaining XLA temporary/attention allocation, and reduce or amortize cold
+   compilation before closing the parent item.  Keep state donation explicit at
+   the generic callable boundary; the linear loop may combine it with Orbax V1
+   async saves after their blocking device-to-host snapshot returns.
 ** TODO Extend exact GradCache to global multi-device and multi-host negatives :distributed:
 
 * TODO Reserve the =representax= package and repository names :release:

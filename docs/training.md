@@ -36,9 +36,11 @@ steady-state throughput. Later executions use `compiled_step_seconds` and
 `examples_per_second`; end-to-end measurements include input wait and device
 placement as well.
 
-An attempted iteration and an accepted optimizer update are distinct. A
-non-finite update leaves the model and Optax state unchanged, increments no
-`TrainState.step`, writes the attempted iteration, and emits a
+An attempted iteration and an accepted optimizer update are distinct. The
+compiled step forms one ordinary Equinox/Optax proposed state, then uses
+Optax's tree-selection primitive to retain the previous state when any forward,
+gradient, update, or proposed-state value is non-finite. Representax increments
+no accepted-update `TrainState.step`, writes the attempted iteration, and emits a
 `nonfinite_update_skipped` event. Random keys still advance by absolute
 iteration, so a skipped update cannot replay stochastic work.
 
