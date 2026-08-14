@@ -4,12 +4,18 @@ from __future__ import annotations
 
 import hashlib
 import importlib
+import inspect
 import json
 import math
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import asdict, dataclass
-from typing import Any
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Self
 from urllib.parse import urlparse
+
+from pydantic import model_validator
+
+from representax._config import FrozenConfig
 
 from .resolvers import BUILTIN_RESOLVERS, ArtifactResolver
 
@@ -22,9 +28,19 @@ class GrainBatchSource:
 
     dataset: Any
     global_batch_size: int | None
+    data_contract: Mapping[str, Any]
 
     def __iter__(self):
         return iter(self.dataset)
+
+    @property
+    def data_fingerprint(self) -> str:
+        return _json_fingerprint(self.data_contract)
+
+
+def _json_fingerprint(value: Any) -> str:
+    encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
 def _mapper_id(mapper: Mapper) -> str:
@@ -34,9 +50,79 @@ def _mapper_id(mapper: Mapper) -> str:
         return mapper
     module = getattr(mapper, "__module__", "")
     qualname = getattr(mapper, "__qualname__", "")
-    if not module or not qualname or "<lambda>" in qualname or "<locals>" in qualname:
+    if (
+        not module
+        or module == "__main__"
+        or not qualname
+        or "<lambda>" in qualname
+        or "<locals>" in qualname
+    ):
         raise ValueError("recipe mappers must be named importable callables")
     return f"{module}.{qualname}"
+
+
+def _implementation_contract(function: Callable[..., Any]) -> dict[str, str]:
+    """Identify callable code strongly enough to reject changed preprocessing."""
+
+    module = getattr(function, "__module__", "")
+    qualname = getattr(function, "__qualname__", "")
+    if not module or not qualname:
+        raise ValueError("data callables must expose a stable module and qualname")
+    source_path = inspect.getsourcefile(function)
+    if source_path is not None:
+        implementation = Path(source_path).read_bytes()
+        digest_kind = "module_file_sha256"
+    else:
+        try:
+            implementation = inspect.getsource(function).encode()
+        except (OSError, TypeError) as error:
+            raise ValueError(
+                f"cannot fingerprint data callable {module}.{qualname}"
+            ) from error
+        digest_kind = "callable_source_sha256"
+    return {
+        "callable": f"{module}.{qualname}",
+        digest_kind: hashlib.sha256(implementation).hexdigest(),
+    }
+
+
+def _data_implementations(
+    recipe: MixtureRecipe,
+    *,
+    batch_fn: Callable[[Sequence[Any]], Any] | None,
+    resolvers: Mapping[str, ArtifactResolver] | None,
+    mappers: Mapping[str, Callable[[Any], Any]] | None,
+) -> dict[str, Any]:
+    resolver_registry = dict(BUILTIN_RESOLVERS)
+    if resolvers is not None:
+        resolver_registry.update(resolvers)
+    mapper_registry = {} if mappers is None else dict(mappers)
+    resolver_contracts = {}
+    mapper_contracts = {}
+    for artifact in recipe.sources:
+        try:
+            resolver = resolver_registry[artifact.scheme]
+        except KeyError as error:
+            raise ValueError(
+                f"no resolver registered for source scheme {artifact.scheme!r}"
+            ) from error
+        resolver_contracts[artifact.scheme] = _implementation_contract(resolver)
+        mapper = mapper_registry.get(artifact.mapper)
+        if mapper is None:
+            mapper = load_mapper(artifact.mapper)
+        mapper_contracts[artifact.mapper] = _implementation_contract(mapper)
+    return {
+        "resolvers": resolver_contracts,
+        "mappers": mapper_contracts,
+        "batch_mapper": (
+            None
+            if batch_fn is None
+            else {
+                "declared": _mapper_id(batch_fn),
+                "implementation": _implementation_contract(batch_fn),
+            }
+        ),
+    }
 
 
 def load_mapper(path: str) -> Callable[[Any], Any]:
@@ -68,8 +154,7 @@ def load_mapper(path: str) -> Callable[[Any], Any]:
     return value
 
 
-@dataclass(frozen=True)
-class ArtifactSource:
+class ArtifactSource(FrozenConfig):
     """One upstream artifact and the code mapping its records into a task."""
 
     uri: str
@@ -79,10 +164,12 @@ class ArtifactSource:
     subset: str | None = None
     name: str | None = None
 
-    def __post_init__(self) -> None:
+    @model_validator(mode="after")
+    def validate_source(self) -> Self:
         if not self.uri:
             raise ValueError("source uri must be non-empty")
         _mapper_id(self.mapper)
+        return self
 
     @property
     def scheme(self) -> str:
@@ -93,8 +180,7 @@ class ArtifactSource:
         return self.mapper
 
 
-@dataclass(frozen=True)
-class MixtureRecipe:
+class MixtureRecipe(FrozenConfig):
     """A deterministic sampling policy over one or more artifact sources."""
 
     sources: tuple[ArtifactSource, ...]
@@ -102,7 +188,8 @@ class MixtureRecipe:
     seed: int = 0
     shuffle: bool = True
 
-    def __post_init__(self) -> None:
+    @model_validator(mode="after")
+    def validate_mixture(self) -> Self:
         if not self.sources:
             raise ValueError("a recipe must contain at least one source")
         if len(self.sources) != len(self.weights):
@@ -114,6 +201,7 @@ class MixtureRecipe:
         names = [source.name for source in self.sources if source.name is not None]
         if len(names) != len(set(names)):
             raise ValueError("named sources must be unique")
+        return self
 
     @property
     def normalized_weights(self) -> tuple[float, ...]:
@@ -123,20 +211,7 @@ class MixtureRecipe:
     def fingerprint(self) -> str:
         """Hash the reproducibility-relevant recipe, excluding data contents."""
 
-        payload = {
-            "sources": [
-                {
-                    **asdict(source),
-                    "mapper": source.mapper_id,
-                }
-                for source in self.sources
-            ],
-            "weights": self.weights,
-            "seed": self.seed,
-            "shuffle": self.shuffle,
-        }
-        encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
-        return hashlib.sha256(encoded).hexdigest()
+        return _json_fingerprint(self.model_dump(mode="json"))
 
 
 def source(
@@ -169,7 +244,9 @@ def mix(
     """Declare a sampling policy; one source is the ordinary dataset case."""
 
     resolved_sources = tuple(
-        item if isinstance(item, ArtifactSource) else ArtifactSource(**dict(item))
+        item
+        if isinstance(item, ArtifactSource)
+        else ArtifactSource.model_validate(item)
         for item in sources
     )
     resolved_weights = (
@@ -271,4 +348,19 @@ def build_grain_iterator(
     return GrainBatchSource(
         dataset=iterator,
         global_batch_size=batch_size if drop_remainder else None,
+        data_contract={
+            "schema_version": "representax-grain-data-v1",
+            "loader": "grain-map-dataset",
+            "grain_version": grain.__version__,
+            "recipe": recipe.model_dump(mode="json"),
+            "recipe_fingerprint": recipe.fingerprint(),
+            "batch_size": batch_size,
+            "drop_remainder": drop_remainder,
+            "implementations": _data_implementations(
+                recipe,
+                batch_fn=batch_fn,
+                resolvers=resolvers,
+                mappers=mappers,
+            ),
+        },
     )

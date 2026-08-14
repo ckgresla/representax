@@ -13,7 +13,7 @@ import optax
 import pytest
 
 from representax.models import DenseEncoder
-from representax.planning import ScientificSpec
+from representax.planning import ScientificConfig, TrainingConfig
 from representax.tasks.retrieval import MNRTask
 from representax.train import (
     CheckpointConfig,
@@ -25,7 +25,7 @@ from representax.train import (
     build_train_step,
     make_train_state,
     run_training,
-    science_fingerprint,
+    scientific_fingerprint,
     training_checkpointables,
     validate_complete_checkpoint,
 )
@@ -97,6 +97,7 @@ def _state(input_dimension=2, output_dimension=2, optimizer=None):
 
 def _checkpointables(iteration, state=None):
     state = _state() if state is None else state
+    optimizer_step = int(jax.device_get(state.step))
     return training_checkpointables(
         state=state,
         iteration=iteration,
@@ -105,6 +106,7 @@ def _checkpointables(iteration, state=None):
         logging_cursor={
             "events_bytes": iteration * 10,
             "metrics_bytes": iteration * 5,
+            "optimizer_step": optimizer_step,
             "sequence": iteration,
         },
     )
@@ -119,7 +121,8 @@ def test_checkpoint_manager_keeps_one_save_in_flight_and_backpressures(tmp_path)
     checkpointer = _ControlledCheckpointer(tmp_path / "run" / "checkpoints")
     manager = CheckpointManager(
         tmp_path / "run",
-        science_fingerprint="sha256:test",
+        scientific_fingerprint="sha256:test",
+        data_fingerprint="sha256:data",
         asynchronous=True,
         event=lambda name, **fields: events.append((name, fields)),
         checkpointer=checkpointer,
@@ -168,7 +171,8 @@ def test_checkpoint_manager_surfaces_background_write_failure(tmp_path):
     )
     manager = CheckpointManager(
         tmp_path / "run",
-        science_fingerprint="sha256:test",
+        scientific_fingerprint="sha256:test",
+        data_fingerprint="sha256:data",
         asynchronous=True,
         checkpointer=checkpointer,
     )
@@ -223,7 +227,7 @@ def _assert_array_trees_equal(left, right):
 
 @pytest.mark.runtime
 def test_orbax_retains_latest_complete_checkpoints_and_restores_state(tmp_path):
-    science = ScientificSpec(
+    scientific = ScientificConfig(
         task="retrieval/mnr",
         global_batch_size=2,
         max_steps=3,
@@ -232,7 +236,8 @@ def test_orbax_retains_latest_complete_checkpoints_and_restores_state(tmp_path):
     initial = _state(input_dimension=4)
     manager = CheckpointManager(
         tmp_path / "run",
-        science_fingerprint=science_fingerprint(science),
+        scientific_fingerprint=scientific_fingerprint(scientific),
+        data_fingerprint="sha256:data",
         keep=2,
         asynchronous=True,
     )
@@ -247,7 +252,8 @@ def test_orbax_retains_latest_complete_checkpoints_and_restores_state(tmp_path):
 
     resumed = CheckpointManager(
         tmp_path / "run",
-        science_fingerprint=science_fingerprint(science),
+        scientific_fingerprint=scientific_fingerprint(scientific),
+        data_fingerprint="sha256:data",
         keep=2,
     )
     restored = resumed.restore_training_state(initial)
@@ -268,7 +274,8 @@ def test_orbax_retains_latest_complete_checkpoints_and_restores_state(tmp_path):
     )
     incompatible_structure = CheckpointManager(
         tmp_path / "run",
-        science_fingerprint=science_fingerprint(science),
+        scientific_fingerprint=scientific_fingerprint(scientific),
+        data_fingerprint="sha256:data",
         keep=2,
     )
     with pytest.raises(IncompleteCheckpointError, match="structure differs"):
@@ -277,12 +284,23 @@ def test_orbax_retains_latest_complete_checkpoints_and_restores_state(tmp_path):
 
     incompatible = CheckpointManager(
         tmp_path / "run",
-        science_fingerprint="sha256:different-science",
+        scientific_fingerprint="sha256:different-scientific",
+        data_fingerprint="sha256:data",
         keep=2,
     )
-    with pytest.raises(IncompleteCheckpointError, match="scientific specification"):
+    with pytest.raises(IncompleteCheckpointError, match="scientific configuration"):
         incompatible.restore_training_state(initial)
     incompatible.close()
+
+    incompatible_data = CheckpointManager(
+        tmp_path / "run",
+        scientific_fingerprint=scientific_fingerprint(scientific),
+        data_fingerprint="sha256:different-data",
+        keep=2,
+    )
+    with pytest.raises(IncompleteCheckpointError, match="data contract"):
+        incompatible_data.restore_training_state(initial)
+    incompatible_data.close()
 
 
 @pytest.mark.runtime
@@ -297,7 +315,7 @@ def test_orbax_preserves_mixed_training_dtypes(tmp_path):
         optimizer_state={"moment": jnp.ones_like(model.trainable_master)},
         step=jnp.asarray(5, dtype=jnp.int32),
     )
-    science = ScientificSpec(
+    scientific = ScientificConfig(
         task="test/mixed-precision",
         global_batch_size=2,
         max_steps=6,
@@ -305,7 +323,8 @@ def test_orbax_preserves_mixed_training_dtypes(tmp_path):
     )
     manager = CheckpointManager(
         tmp_path / "mixed-run",
-        science_fingerprint=science_fingerprint(science),
+        scientific_fingerprint=scientific_fingerprint(scientific),
+        data_fingerprint="sha256:data",
         keep=1,
         asynchronous=False,
     )
@@ -319,6 +338,7 @@ def test_orbax_preserves_mixed_training_dtypes(tmp_path):
             logging_cursor={
                 "events_bytes": 100,
                 "metrics_bytes": 80,
+                "optimizer_step": 5,
                 "sequence": 5,
             },
         ),
@@ -327,7 +347,8 @@ def test_orbax_preserves_mixed_training_dtypes(tmp_path):
 
     resumed = CheckpointManager(
         tmp_path / "mixed-run",
-        science_fingerprint=science_fingerprint(science),
+        scientific_fingerprint=scientific_fingerprint(scientific),
+        data_fingerprint="sha256:data",
         keep=1,
     )
     restored = resumed.restore_training_state(state)
@@ -341,7 +362,7 @@ def test_orbax_preserves_mixed_training_dtypes(tmp_path):
 
 @pytest.mark.runtime
 def test_donated_training_with_async_orbax_resumes_exactly(tmp_path):
-    science = ScientificSpec(
+    scientific = ScientificConfig(
         task="retrieval/mnr",
         global_batch_size=TOY_BATCH_SIZE,
         max_steps=TOY_STEPS,
@@ -365,7 +386,7 @@ def test_donated_training_with_async_orbax_resumes_exactly(tmp_path):
         state=fresh_initial(),
         step=train_step,
         batches=build_toy_retrieval_batches(seed=29),
-        science=science,
+        training=TrainingConfig(scientific=scientific),
         run_directory=tmp_path / "uninterrupted",
     )
 
@@ -387,9 +408,11 @@ def test_donated_training_with_async_orbax_resumes_exactly(tmp_path):
             state=fresh_initial(),
             step=crash_after_checkpoint,
             batches=build_toy_retrieval_batches(seed=29),
-            science=science,
+            training=TrainingConfig(
+                scientific=scientific,
+                checkpoint=checkpoint,
+            ),
             run_directory=run,
-            checkpoint=checkpoint,
         )
 
     resumed = run_training(
@@ -398,9 +421,11 @@ def test_donated_training_with_async_orbax_resumes_exactly(tmp_path):
         state=fresh_initial(),
         step=train_step,
         batches=build_toy_retrieval_batches(seed=29),
-        science=science,
+        training=TrainingConfig(
+            scientific=scientific,
+            checkpoint=checkpoint,
+        ),
         run_directory=run,
-        checkpoint=checkpoint,
         resume=True,
     )
 
@@ -413,10 +438,13 @@ def test_donated_training_with_async_orbax_resumes_exactly(tmp_path):
         range(1, TOY_STEPS + 1)
     )
     np.testing.assert_array_equal(
-        [row["loss"] for row in resumed_metrics],
-        [row["loss"] for row in uninterrupted_metrics],
+        [row["metrics"]["train/loss"] for row in resumed_metrics],
+        [row["metrics"]["train/loss"] for row in uninterrupted_metrics],
     )
-    assert resumed_metrics[-1]["loss"] < resumed_metrics[0]["loss"] * 0.5
+    assert (
+        resumed_metrics[-1]["metrics"]["train/loss"]
+        < resumed_metrics[0]["metrics"]["train/loss"] * 0.5
+    )
     events = _read_jsonl(run / "events.jsonl")
     assert [row["event"] for row in events].count("training_resumed") == 1
     assert not any(row["event"] == "training_failed" for row in events)

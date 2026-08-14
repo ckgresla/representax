@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping
-from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, Self
+
+from pydantic import model_validator
+
+from representax._config import FrozenConfig
 
 AttentionType = Literal["full_attention", "sliding_attention"]
 
@@ -13,8 +16,7 @@ MODERNVBERT_MODEL_ID = "ModernVBERT/modernvbert-embed"
 MODERNVBERT_REVISION = "da507113c3fdbc2e49d39c4b0148025c6bd008f9"
 
 
-@dataclass(frozen=True)
-class ModernVBERTTextConfig:
+class ModernVBERTTextConfig(FrozenConfig):
     """Architecture values required by the native text implementation."""
 
     vocab_size: int
@@ -30,7 +32,8 @@ class ModernVBERTTextConfig:
     max_position_embeddings: int
     initializer_range: float = 0.02
 
-    def __post_init__(self) -> None:
+    @model_validator(mode="after")
+    def validate_architecture(self) -> Self:
         positive = {
             "vocab_size": self.vocab_size,
             "hidden_size": self.hidden_size,
@@ -62,6 +65,7 @@ class ModernVBERTTextConfig:
         ):
             if not math.isfinite(value) or value <= 0:
                 raise ValueError(f"{name} must be finite and positive")
+        return self
 
     @property
     def head_dimension(self) -> int:
@@ -113,8 +117,7 @@ class ModernVBERTTextConfig:
         )
 
 
-@dataclass(frozen=True)
-class ModernVBERTVisionConfig:
+class ModernVBERTVisionConfig(FrozenConfig):
     """Architecture values for ModernVBERT's SigLIP vision tower."""
 
     hidden_size: int
@@ -127,7 +130,8 @@ class ModernVBERTVisionConfig:
     norm_epsilon: float
     hidden_activation: str = "gelu_pytorch_tanh"
 
-    def __post_init__(self) -> None:
+    @model_validator(mode="after")
+    def validate_architecture(self) -> Self:
         positive = {
             "hidden_size": self.hidden_size,
             "intermediate_size": self.intermediate_size,
@@ -150,6 +154,7 @@ class ModernVBERTVisionConfig:
             raise ValueError("vision norm_epsilon must be finite and positive")
         if self.hidden_activation != "gelu_pytorch_tanh":
             raise ValueError("only the checkpoint's tanh GELU is supported")
+        return self
 
     @property
     def head_dimension(self) -> int:
@@ -181,8 +186,7 @@ class ModernVBERTVisionConfig:
         )
 
 
-@dataclass(frozen=True)
-class ModernVBERTConfig:
+class ModernVBERTConfig(FrozenConfig):
     """Complete native ModernVBERT architecture configuration."""
 
     text: ModernVBERTTextConfig
@@ -190,7 +194,8 @@ class ModernVBERTConfig:
     image_token_id: int
     pixel_shuffle_factor: int
 
-    def __post_init__(self) -> None:
+    @model_validator(mode="after")
+    def validate_architecture(self) -> Self:
         if self.image_token_id < 0 or self.image_token_id >= self.text.vocab_size:
             raise ValueError("image_token_id must be inside the text vocabulary")
         if self.pixel_shuffle_factor <= 0:
@@ -200,6 +205,7 @@ class ModernVBERTConfig:
         connector_input = self.vision.hidden_size * self.pixel_shuffle_factor**2
         if connector_input <= 0 or self.text.hidden_size <= 0:
             raise ValueError("connector dimensions must be positive")
+        return self
 
     @property
     def image_sequence_length(self) -> int:

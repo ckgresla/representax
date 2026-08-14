@@ -31,6 +31,14 @@ def project_record(record):
     return {"value": value * 10}
 
 
+def alternative_project_record(record):
+    return {"value": int(record["value"]) * 100}
+
+
+def collate_records(records):
+    return {"values": [record["value"] for record in records]}
+
+
 def _write_local_artifact(path, kind: str) -> None:
     rows = [{"value": 1}, {"value": 2}, {"value": 3}]
     if kind == "jsonl":
@@ -169,3 +177,59 @@ def test_local_resolver_rejects_unknown_formats(tmp_path):
 
     with pytest.raises(ValueError, match="unsupported local artifact"):
         data.resolve_local(artifact)
+
+
+def test_grain_batch_source_fingerprints_the_resume_data_contract(tmp_path):
+    path = tmp_path / "records.jsonl"
+    _write_local_artifact(path, "jsonl")
+    recipe = data.mix(
+        data.source(path.as_uri(), revision="v1", map=project_record),
+        shuffle=False,
+        seed=11,
+    )
+
+    first = data.build_grain_iterator(
+        recipe,
+        batch_size=2,
+        batch_fn=collate_records,
+        num_threads=0,
+        prefetch_buffer_size=0,
+    )
+    same = data.build_grain_iterator(
+        recipe,
+        batch_size=2,
+        batch_fn=collate_records,
+        num_threads=0,
+        prefetch_buffer_size=0,
+    )
+    different_batching = data.build_grain_iterator(
+        recipe,
+        batch_size=3,
+        batch_fn=collate_records,
+        num_threads=0,
+        prefetch_buffer_size=0,
+    )
+    different_mapper = data.build_grain_iterator(
+        recipe,
+        batch_size=2,
+        batch_fn=collate_records,
+        num_threads=0,
+        prefetch_buffer_size=0,
+        mappers={recipe.sources[0].mapper: alternative_project_record},
+    )
+
+    assert first.data_contract["loader"] == "grain-map-dataset"
+    assert first.data_contract["grain_version"] == grain.__version__
+    assert first.data_contract["recipe_fingerprint"] == recipe.fingerprint()
+    assert first.data_contract["recipe"]["sources"][0]["mapper"].endswith(
+        ".project_record"
+    )
+    implementations = first.data_contract["implementations"]
+    assert implementations["batch_mapper"]["declared"].endswith(".collate_records")
+    assert implementations["mappers"][recipe.sources[0].mapper]["callable"].endswith(
+        ".project_record"
+    )
+    assert implementations["resolvers"]["file"]["callable"].endswith(".resolve_local")
+    assert first.data_fingerprint == same.data_fingerprint
+    assert first.data_fingerprint != different_batching.data_fingerprint
+    assert first.data_fingerprint != different_mapper.data_fingerprint

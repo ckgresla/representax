@@ -1,15 +1,18 @@
-"""Semantics-preserving execution planning contracts."""
+"""Scientific-config-preserving execution planning contracts."""
 
-from .specs import (
-    ExecutionPlan,
-    ExecutionPlanner,
+from representax.config import (
+    ExecutionConfig,
     RematerializationPolicy,
-    ScientificSpec,
+    ScientificConfig,
+    TrainingConfig,
 )
 
+from .specs import ExecutionPlanner
+
 __all__ = [
-    "ExecutionPlan",
+    "ExecutionConfig",
     "ExecutionPlanner",
     "RematerializationPolicy",
-    "ScientificSpec",
+    "ScientificConfig",
+    "TrainingConfig",
 ]

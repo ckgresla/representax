@@ -8,7 +8,7 @@ import os
 import threading
 import time
 from collections.abc import Callable, Mapping
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -16,7 +16,7 @@ import jax
 import numpy as np
 from orbax.checkpoint import v1 as ocp
 
-from representax.planning import ScientificSpec
+from representax.config import CheckpointConfig, ScientificConfig
 
 from .state import TrainState
 
@@ -73,39 +73,12 @@ class CheckpointWriteError(CheckpointError):
 
 
 @dataclass(frozen=True)
-class CheckpointConfig:
-    """Checkpoint cadence and bounded retention."""
-
-    every: int
-    keep: int = 3
-    additional_iterations: tuple[int, ...] = ()
-    save_final: bool = True
-    asynchronous: bool = True
-
-    def __post_init__(self) -> None:
-        if self.every <= 0:
-            raise ValueError("checkpoint every must be positive")
-        if self.keep <= 0:
-            raise ValueError("checkpoint keep must be positive")
-        if any(iteration <= 0 for iteration in self.additional_iterations):
-            raise ValueError("additional checkpoint iterations must be positive")
-        if len(set(self.additional_iterations)) != len(self.additional_iterations):
-            raise ValueError("additional checkpoint iterations must be unique")
-
-    def should_save(self, iteration: int, *, final: bool) -> bool:
-        return (
-            iteration % self.every == 0
-            or iteration in self.additional_iterations
-            or (final and self.save_final)
-        )
-
-
-@dataclass(frozen=True)
 class CheckpointRecord:
     iteration: int
     path: Path
     checkpoint_fingerprint: str
-    science_fingerprint: str
+    scientific_fingerprint: str
+    data_fingerprint: str
     manifest: Mapping[str, Any]
 
 
@@ -164,10 +137,10 @@ def _fingerprint(value: Any) -> str:
     return "sha256:" + hashlib.sha256(payload).hexdigest()
 
 
-def science_fingerprint(science: ScientificSpec) -> str:
-    """Fingerprint the scientific values that a resume may not change."""
+def scientific_fingerprint(scientific: ScientificConfig) -> str:
+    """Fingerprint the scientific configuration that resume may not change."""
 
-    return _fingerprint(asdict(science))
+    return _fingerprint(scientific.model_dump(mode="json"))
 
 
 def tree_structure_fingerprint(tree: PyTree) -> str:
@@ -202,8 +175,22 @@ def training_checkpointables(
     if iteration < 0:
         raise ValueError("checkpoint iteration must be non-negative")
     cursor = {str(name): int(value) for name, value in logging_cursor.items()}
+    required_cursor = {
+        "events_bytes",
+        "metrics_bytes",
+        "optimizer_step",
+        "sequence",
+    }
+    if set(cursor) != required_cursor:
+        raise ValueError(
+            "logging cursor keys differ; "
+            f"expected={sorted(required_cursor)}, actual={sorted(cursor)}"
+        )
     if any(value < 0 for value in cursor.values()):
         raise ValueError("logging cursor values must be non-negative")
+    optimizer_step = int(jax.device_get(state.step))
+    if cursor["optimizer_step"] != optimizer_step:
+        raise ValueError("logging cursor optimizer_step differs from training state")
     return {
         "model": state.model,
         "optimizer": state.optimizer_state,
@@ -212,7 +199,7 @@ def training_checkpointables(
         "progress": {
             "schema_version": PROGRESS_SCHEMA,
             "iteration": iteration,
-            "optimizer_step": int(jax.device_get(state.step)),
+            "optimizer_step": optimizer_step,
             "data_state": _json_value(data_state),
             "logging_cursor": cursor,
         },
@@ -277,7 +264,8 @@ def _manifest_fingerprint(manifest: Mapping[str, Any]) -> str:
 def validate_complete_checkpoint(
     path: str | Path,
     *,
-    expected_science_fingerprint: str | None = None,
+    expected_scientific_fingerprint: str | None = None,
+    expected_data_fingerprint: str | None = None,
 ) -> CheckpointRecord:
     """Accept only a complete Orbax checkpoint finalized by Representax."""
 
@@ -308,17 +296,29 @@ def validate_complete_checkpoint(
         raise IncompleteCheckpointError(
             f"checkpoint completion marker differs: {directory}"
         )
-    fingerprint_science = manifest.get("science_fingerprint")
-    if not isinstance(fingerprint_science, str):
+    fingerprint_scientific = manifest.get("scientific_fingerprint")
+    if not isinstance(fingerprint_scientific, str):
         raise IncompleteCheckpointError(
-            f"checkpoint science fingerprint is missing: {directory}"
+            f"checkpoint scientific fingerprint is missing: {directory}"
         )
     if (
-        expected_science_fingerprint is not None
-        and fingerprint_science != expected_science_fingerprint
+        expected_scientific_fingerprint is not None
+        and fingerprint_scientific != expected_scientific_fingerprint
     ):
         raise IncompleteCheckpointError(
-            f"checkpoint scientific specification differs: {directory}"
+            f"checkpoint scientific configuration differs: {directory}"
+        )
+    fingerprint_data = manifest.get("data_fingerprint")
+    if not isinstance(fingerprint_data, str):
+        raise IncompleteCheckpointError(
+            f"checkpoint data fingerprint is missing: {directory}"
+        )
+    if (
+        expected_data_fingerprint is not None
+        and fingerprint_data != expected_data_fingerprint
+    ):
+        raise IncompleteCheckpointError(
+            f"checkpoint data contract differs: {directory}"
         )
     iteration = manifest.get("iteration")
     if not isinstance(iteration, int) or iteration < 0:
@@ -327,7 +327,8 @@ def validate_complete_checkpoint(
         iteration=iteration,
         path=directory,
         checkpoint_fingerprint=fingerprint,
-        science_fingerprint=fingerprint_science,
+        scientific_fingerprint=fingerprint_scientific,
+        data_fingerprint=fingerprint_data,
         manifest=manifest,
     )
 
@@ -345,7 +346,8 @@ class CheckpointManager:
         self,
         run_directory: str | Path,
         *,
-        science_fingerprint: str,
+        scientific_fingerprint: str,
+        data_fingerprint: str,
         keep: int = 3,
         asynchronous: bool = True,
         event: EventCallback | None = None,
@@ -354,12 +356,15 @@ class CheckpointManager:
     ) -> None:
         if keep <= 0:
             raise ValueError("checkpoint retention must be positive")
-        if not science_fingerprint:
-            raise ValueError("science_fingerprint must be non-empty")
+        if not scientific_fingerprint:
+            raise ValueError("scientific_fingerprint must be non-empty")
+        if not data_fingerprint:
+            raise ValueError("data_fingerprint must be non-empty")
         self.run_directory = Path(run_directory).expanduser().resolve()
         self.checkpoint_root = self.run_directory / "checkpoints"
         self.checkpoint_root.mkdir(parents=True, exist_ok=True)
-        self.science_fingerprint = science_fingerprint
+        self.scientific_fingerprint = scientific_fingerprint
+        self.data_fingerprint = data_fingerprint
         self.keep = keep
         self.asynchronous = asynchronous
         self._event = event
@@ -393,7 +398,8 @@ class CheckpointManager:
         return {
             "schema_version": CHECKPOINT_SCHEMA,
             "iteration": iteration,
-            "science_fingerprint": self.science_fingerprint,
+            "scientific_fingerprint": self.scientific_fingerprint,
+            "data_fingerprint": self.data_fingerprint,
             "checkpointables": sorted(checkpointables),
             "structure_fingerprints": {
                 name: tree_structure_fingerprint(value)
@@ -443,7 +449,8 @@ class CheckpointManager:
                 custom_metadata={
                     "schema_version": CHECKPOINT_SCHEMA,
                     "iteration": iteration,
-                    "science_fingerprint": self.science_fingerprint,
+                    "scientific_fingerprint": self.scientific_fingerprint,
+                    "data_fingerprint": self.data_fingerprint,
                 },
             )
         except BaseException as error:
@@ -589,7 +596,8 @@ class CheckpointManager:
             raise IncompleteCheckpointError(f"invalid latest path: {pointer}")
         record = validate_complete_checkpoint(
             self.checkpoint_root / path_component,
-            expected_science_fingerprint=self.science_fingerprint,
+            expected_scientific_fingerprint=self.scientific_fingerprint,
+            expected_data_fingerprint=self.data_fingerprint,
         )
         if record.iteration != document.get(
             "iteration"
@@ -605,7 +613,8 @@ class CheckpointManager:
             return self.latest()
         return validate_complete_checkpoint(
             self._iteration_path(iteration),
-            expected_science_fingerprint=self.science_fingerprint,
+            expected_scientific_fingerprint=self.scientific_fingerprint,
+            expected_data_fingerprint=self.data_fingerprint,
         )
 
     def restore(
@@ -676,7 +685,12 @@ class CheckpointManager:
             iteration=0,
             rng=jax.random.key(0),
             data_state={},
-            logging_cursor={"events_bytes": 0, "metrics_bytes": 0, "sequence": 0},
+            logging_cursor={
+                "events_bytes": 0,
+                "metrics_bytes": 0,
+                "optimizer_step": int(jax.device_get(state_like.step)),
+                "sequence": 0,
+            },
         )
         restored, record = self.restore(like, iteration=iteration)
         progress = restored["progress"]
@@ -691,6 +705,10 @@ class CheckpointManager:
             )
         if not isinstance(progress.get("logging_cursor"), Mapping):
             raise IncompleteCheckpointError("restored checkpoint has no logging cursor")
+        if progress["logging_cursor"].get("optimizer_step") != optimizer_step:
+            raise IncompleteCheckpointError(
+                "restored logging cursor differs from optimizer step"
+            )
         return RestoredTrainingState(
             state=TrainState(
                 model=restored["model"],
@@ -728,7 +746,7 @@ __all__ = [
     "CheckpointWriteError",
     "IncompleteCheckpointError",
     "RestoredTrainingState",
-    "science_fingerprint",
+    "scientific_fingerprint",
     "training_checkpointables",
     "validate_complete_checkpoint",
 ]

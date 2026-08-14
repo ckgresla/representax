@@ -11,9 +11,9 @@ The project is alpha. The current slice provides:
 - a native ModernVBERT text-image encoder with bidirectional Hugging Face
   weight maps for every tensor used by its forward pass;
 - direct multiple-negatives ranking, including symmetric and Matryoshka modes;
-- an end-to-end Grain-to-compiled-step single-device trainer with local logs;
+- an end-to-end Grain-to-compiled-step trainer with asynchronous reporting;
 - lazy Grain recipes with built-in Hugging Face and local artifact resolvers;
-- separate scientific and execution specifications for future planning; and
+- validated scientific, execution, runtime, and checkpoint configurations; and
 - explicit unit, runtime, parity, distributed, and performance test lanes.
 
 ## Principles
@@ -133,10 +133,12 @@ dataset = data.build_grain_dataset(recipe)
 ```
 
 The recipe records artifact identity, mapping code identity, and sampling
-policy. Grain performs lazy mapping, deterministic mixing, shuffling, and
-checkpointable iteration. A single source is the one-element form of the same
-sampling policy. Built-in resolvers support revision-pinned Hugging Face splits
-and local JSONL, Parquet, Arrow, or dataset directories. See
+policy. A training iterator additionally fingerprints the resolved mapper and
+resolver implementations, batch mapper, batching contract, and Grain version.
+Grain performs lazy mapping, deterministic mixing, shuffling, and checkpointable
+iteration. A single source is the one-element form of the same sampling policy.
+Built-in resolvers support revision-pinned Hugging Face splits and local JSONL,
+Parquet, Arrow, or dataset directories. See
 [the data contract](https://github.com/ckgresla/representax/blob/main/docs/data.md)
 for cache and extension behavior.
 
@@ -147,14 +149,14 @@ Application code imports concrete operations from their owning modules:
 ```python
 import optax
 
-from representax.data import build_grain_iterator
-from representax.planning import ScientificSpec
-from representax.train import (
+from representax.config import (
     CheckpointConfig,
-    build_train_step,
-    make_train_state,
-    run_training,
+    RuntimeConfig,
+    ScientificConfig,
+    TrainingConfig,
 )
+from representax.data import build_grain_iterator
+from representax.train import build_train_step, make_train_state, run_training
 
 optimizer = optax.adamw(learning_rate=1e-3)
 state = make_train_state(model, optimizer)
@@ -163,21 +165,27 @@ result = run_training(
     state=state,
     step=build_train_step(task, optimizer),
     batches=batches,
-    science=ScientificSpec(
-        task="retrieval/mnr",
-        global_batch_size=32,
-        max_steps=10_000,
-        seed=17,
+    training=TrainingConfig(
+        scientific=ScientificConfig(
+            task="retrieval/mnr",
+            global_batch_size=32,
+            max_steps=10_000,
+            seed=17,
+        ),
+        runtime=RuntimeConfig(console_every=100),
+        checkpoint=CheckpointConfig(every=1_000, keep=3),
     ),
     run_directory="runs/example",
-    checkpoint=CheckpointConfig(every=1_000, keep=3),
 )
 ```
 
-The loop records every optimizer attempt in `metrics.jsonl`, lifecycle events
-in `events.jsonl`, and final status in `run.json`. Checkpoints are written by
-Orbax with at most one asynchronous save in flight. Recreate the same recipe,
-model/state template, task/optimizer program, and batch source and pass
+The loop records W&B-ready metric names such as `train/loss`, `valid/loss`, and
+`perf/...` in `metrics.jsonl`, lifecycle events in `events.jsonl`, and final
+status in `run.json`. A bounded reporter worker performs the device-to-host
+metric transfer and fans the same ordered rows out to optional consumers without
+placing a synchronization barrier in every training iteration. Checkpoints are
+written by Orbax with at most one asynchronous save in flight. Recreate the same
+recipe, model/state template, task/optimizer program, and batch source and pass
 `resume=True` to continue from the latest complete checkpoint. See
 [the training contract](https://github.com/ckgresla/representax/blob/main/docs/training.md).
 

@@ -46,7 +46,7 @@ def tiny_config() -> ModernVBERTTextConfig:
 
 def tiny_multimodal_config() -> ModernVBERTConfig:
     return ModernVBERTConfig(
-        text=replace(tiny_config(), vocab_size=18),
+        text=tiny_config().model_copy(update={"vocab_size": 18}),
         vision=ModernVBERTVisionConfig(
             hidden_size=8,
             intermediate_size=12,

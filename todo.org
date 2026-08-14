@@ -17,7 +17,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
 * DONE Define one route-aware =encode= API with bound-route convenience :api:
 * DONE Implement direct, symmetric, graded, and Matryoshka MNR :retrieval:
 * DONE Implement a generic compiled Equinox and Optax update step :runtime:
-* DONE Separate scientific requirements from execution choices :planning:
+* DONE Separate scientific configuration from execution choices :planning:
 * DONE Define unit, runtime, parity, distributed, and performance test lanes :testing:
 * DONE Use pytest with out-of-tree tests mirrored by model, task, and subsystem :testing:
 * DONE Select environment-sensitive test lanes with orthogonal pytest markers :testing:
@@ -65,6 +65,22 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   steady-state step measurements. Runtime acceptance uses eight batch-16
   updates over continuous paired views with independent nuisance features and
   requires the learned retrieval loss to fall by more than half.
+* DONE Validate configuration, data-compatible resume, and async reporting :runtime:config:data:logging:
+  Use frozen Pydantic models as the serializable Python and Hydra-Zen boundary;
+  keep those objects outside compiled JAX programs and let builders consume
+  them.  Make =TrainingConfig= own one =ScientificConfig=, plus execution,
+  runtime, and checkpoint settings; do not duplicate scientific values in a
+  second semantics or study-metadata object.  Resume
+  must fingerprint the pinned recipe, mapper/resolver implementations, batch
+  collation and batching contract, and Grain version.  Dispatch one ordered,
+  bounded reporter stream with W&B-ready =train/=, =valid/=, and =perf/= metric
+  namespaces; local JSONL remains the durable source of truth.  Done when Hydra
+  CLI overrides validate, changed preprocessing rejects an old cursor, normal
+  reporting adds no per-step device barrier, checkpoint cursors fsync queued
+  records, documentation matches the implementation, and fast/runtime tests pass.
+  Validated with a real Hydra-Zen CLI override, 61 fast tests, 10 GPU runtime
+  tests on GPUs 0 and 1, the two-GPU distributed contract, and all three
+  distributed cases over a four-device virtual CPU topology.
 * DONE Implement exact native-JAX GradCache as an execution plan for MNR :retrieval:runtime:
   Preserve =MNRTask= and one shared row-level MNR primitive as the sole
   scientific definition.
@@ -76,7 +92,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   Start with a small native-JAX transform: =lax.scan= a
   =jax.checkpoint(..., policy=nothing_saveable)= encoder body and let JAX's
   transpose synthesize the reverse replay. Keep query and document chunk sizes
-  in =ExecutionPlan=, pad only the execution batch with validity masks, and
+  in =ExecutionConfig=, pad only the execution batch with validity masks, and
   derive explicit per-role and per-chunk PRNG keys so stochastic forwards replay
   exactly. Do not add a cached task, a second MNR formula, Python backward hooks,
   or a second optimizer path.
@@ -357,7 +373,10 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
    sharded data parallel (FSDP) and hybrid data/model sharding plans without
    coupling task semantics to one mesh shape.  Users must be able to supply a
    compatible named mesh and partition rules rather than selecting from only a
-   closed topology registry.
+   closed topology registry.  Follow the JAX Training Cookbook's named-mesh and
+   =jax.P= contracts, initialize parameter and optimizer shards directly in
+   their destination layouts, and inspect the expected AllReduce, AllGather,
+   and ReduceScatter collectives in compiled traces.
 ** TODO Validate model and optimizer-state sharding across hosts
    Compare complete updates against the replicated oracle, measure collective
    and resharding costs, and verify that parameter, optimizer, and activation
@@ -396,8 +415,15 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   runtime tests pass.  Evidence lives in
   =benchmarks/results/modernvbert-rematerialization-20260813/=.
 * DONE Verify buffer donation with Orbax V1 asynchronous checkpoint/resume :runtime:performance:
-* TODO Support asynchronous input prefetching :runtime:performance:
+* TODO Overlap device placement with Grain input prefetching :runtime:performance:
+  Build device-ready iterators with non-blocking =jax.device_put= on one host and
+  =jax.make_array_from_process_local_data= for process-local distributed input,
+  then verify from traces that loading and transfer do not create step bubbles.
 * TODO Cache compiled static-shape signatures deliberately :runtime:performance:
+* TODO Benchmark JAX =Ref= state against functional Equinox/Optax donation :runtime:performance:research:
+  Keep the canonical functional update unless measured memory or throughput
+  evidence shows that mutable =Ref= state from the JAX Training Cookbook is a
+  monotonic improvement without weakening checkpoint or model ergonomics.
 * TODO Evaluate Pallas for performance-critical fused kernels :runtime:performance:research:
 * TODO Add optional experiment logging without coupling the training core :runtime:logging:
 
@@ -406,7 +432,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
 * TODO Inventory devices, topology, memory, and compiler versions :profilax:
 * TODO Generate feasible mesh, batch, accumulation, and rematerialization plans :profilax:
 * TODO Measure compilation separately from warmup and steady-state execution :profilax:
-* TODO Reject plans that alter the scientific specification :profilax:
+* TODO Reject plans that alter the scientific configuration :profilax:
 * TODO Reject plans that violate numerical tolerances :profilax:
 * TODO Report when the experiment probably needs more accelerators :profilax:
 * TODO Select Pareto-optimal plans for throughput, memory, and compile cost :profilax:

@@ -1,124 +1,154 @@
 # Training
 
-Representax has two training boundaries:
+Representax keeps the compiled numerical program small and the orchestration
+explicit:
 
 1. `build_train_step` closes over a task and Optax transformation and returns
    one compiled, model-neutral Equinox update;
-2. `run_training` consumes model-ready batches and owns the ordinary
-   single-device host loop.
+2. `run_training` owns Grain iteration, device-placement dispatch, reporting,
+   checkpointing, and failure cleanup on the host.
 
-This split is inspired by the parts of Lasso that held up well under real
-training: the loop remains topology-neutral, its dependencies are narrow, and
-logging describes the same update stream that actually ran.
+This is the ordinary JAX boundary. Python is useful for I/O and lifecycle work;
+the repeated forward, backward, finite-update gate, and optimizer update belong
+inside the compiled step.
 
-## Loop contract
+The design follows JAX's
+[Training Cookbook](https://docs.jax.dev/en/latest/the-training-cookbook.html):
+JIT calls and `jax.device_put` remain asynchronously dispatched, Grain prefetch
+can overlap accelerator execution, telemetry from iteration N is consumed only
+after iteration N+1 has been dispatched, and host-only timing uses Python rather
+than enqueueing incidental `jax.numpy` work outside the train step.
 
-`ScientificSpec` owns semantics the runtime must not alter: task identity,
-global batch size, total iterations, and random seed. `TrainingLoopConfig` owns
-only host mechanics, currently console cadence. `CheckpointConfig` owns save
-cadence, retention, final-save policy, and whether publication is asynchronous.
-Grain batch sources expose their exact global batch size, which must match the
-scientific value before the run directory is created.
+## Configuration boundary
 
-For every iteration, the loop:
+User-facing configurations are frozen Pydantic models. `TrainingConfig` is the
+single argument consumed by the host loop and contains:
 
-1. waits for the next already-collated batch;
-2. places it on the default device and waits for placement to complete;
-3. derives a deterministic key by folding the absolute iteration into the
-   scientific seed;
-4. calls the compiled task step and synchronizes before measuring it;
-5. writes one structured metric record; and
-6. optionally prints the same record at a separately configured cadence.
+- `ScientificConfig`: trajectory-defining task identity, global batch, maximum
+  steps, random seed, negative scope, and numerical tolerance;
+- `ExecutionConfig`: topology-dependent mechanisms such as mesh axes,
+  per-device batch, accumulation, GradCache chunks, rematerialization, packing,
+  prefetch, and donation;
+- `RuntimeConfig`: host mechanics such as console cadence and reporter queue
+  capacity; and
+- `CheckpointConfig`: cadence, retention, final-save policy, and asynchronous
+  publication.
 
-The first execution of every new batch shape/dtype signature is recorded as
-`compilation_and_first_step_seconds`. It is deliberately not reported as
-steady-state throughput. Later executions use `compiled_step_seconds` and
-`examples_per_second`; end-to-end measurements include input wait and device
-placement as well.
+There is no second semantics object: `TrainingConfig.scientific` is the single
+training-level scientific contract. Model, optimizer, task, and data choices
+remain explicit sibling members of `RunConfig`; execution may change only when
+it preserves the scientific contract.
+
+These models are declarative, validated, serializable, and compatible with
+Hydra-Zen composition and CLI overrides. They contain no live Equinox model,
+Optax transformation, Grain iterator, or arbitrary runtime object. Builders
+read them while constructing those objects. Configurations do not pass through
+`jax.jit` and do not need an Equinox mirror.
+
+## Host loop and synchronization
+
+For every iteration, the host loop:
+
+1. requests the next already-collated Grain batch;
+2. enqueues device placement;
+3. derives a deterministic key by folding the absolute iteration into the run
+   seed;
+4. dispatches the compiled update; and
+5. queues its metrics for asynchronous reporting.
+
+The loop deliberately does not call `block_until_ready` for placement or every
+step. It synchronizes the first execution of each new shape/dtype signature so
+compilation plus first execution is recorded honestly. Thereafter, the reporter
+worker requests all metric leaves for an iteration in one `jax.device_get` while
+the host continues dispatching later work. This follows JAX's asynchronous
+execution model and lets host reporting overlap accelerator work.
+
+`perf/placement_enqueue_seconds` and `perf/step_dispatch_seconds` measure host
+enqueue cost, not device execution. Exact steady-state throughput and memory are
+measured by the dedicated performance lane with explicit synchronization.
 
 An attempted iteration and an accepted optimizer update are distinct. The
-compiled step forms one ordinary Equinox/Optax proposed state, then uses
-Optax's tree-selection primitive to retain the previous state when any forward,
-loss-metric, or gradient value is non-finite. Once those values are finite, the
-supplied Optax transformation owns its update semantics. Representax increments
-no accepted-update `TrainState.step`, writes the attempted iteration, and emits a
-`nonfinite_update_skipped` event. Random keys still advance by absolute
-iteration, so a skipped update cannot replay stochastic work.
+compiled step forms one ordinary Equinox/Optax proposed state, then uses Optax's
+tree-selection primitive to retain the previous state when any forward,
+loss-metric, or gradient value is non-finite. A skipped update still advances
+the absolute iteration and therefore its random key, but not `TrainState.step`.
 
-## Run artifacts
+## Run artifacts and reporters
 
-Local files are the source of truth; external services are optional mirrors
-through the small `EventSink` protocol.
+Local files are the source of truth:
 
-- `run.json` contains the scientific loop inputs and terminal status;
+- `run.json` contains configuration, data contracts, fingerprints, and terminal
+  status;
 - `events.jsonl` is the complete ordered lifecycle and metric stream; and
 - `metrics.jsonl` is the exact metric-row projection of that stream.
 
-Each row is flushed immediately. Successful runs end with `training_finished`;
-exceptions, including premature iterator exhaustion, end with
-`training_failed`, update `run.json` to `failed`, close the iterator and logger,
-and are re-raised.
+Metric values use service-neutral W&B-style namespaces: `train/loss`,
+`valid/loss`, and `perf/...`. A metric row contains `iteration`,
+`optimizer_step`, and a `metrics` mapping, so a future W&B reporter can call
+`wandb.log(row["metrics"], step=row["optimizer_step"])` without renaming fields.
+
+`RunLogger` owns one bounded, ordered worker queue. That worker materializes
+device metrics once, appends the local JSONL source of truth, and fans the same
+row out through the small `Reporter` protocol. Disk reporting is implemented;
+tests exercise another reporter; W&B and TensorBoard adapters are deferred. A
+full queue applies bounded backpressure instead of allowing unbounded host
+memory growth.
+
+At a checkpoint boundary, `RunLogger.cursor()` drains the queue, flushes and
+fsyncs both local streams, flushes downstream reporters, and returns byte and
+sequence offsets. Normal metric reporting remains asynchronous; checkpoint
+durability is the intentional synchronization boundary.
 
 ## Asynchronous checkpoints and exact resume
 
 Orbax owns array snapshotting and storage. Representax owns the training-state,
-publication, and resume contract. A checkpoint contains:
+publication, and compatibility contract. A checkpoint contains:
 
 - the Equinox model and Optax state;
 - the accepted optimizer step and absolute attempted iteration;
 - the base random key used for per-iteration `fold_in`;
-- Grain's iterator state; and
-- byte offsets plus sequence position for both append-only JSONL streams.
+- Grain's native iterator state; and
+- durable byte offsets plus sequence position for both append-only logs.
 
-Representax uses Orbax V1's training `Checkpointer` and its
-`save_checkpointables_async` method. This is the current sequence-oriented API,
-not the legacy synchronous `orbax.checkpoint.Checkpointer`; the older
-`AsyncCheckpointer` name belongs to Orbax's V0 single-checkpoint API.
+The associated data fingerprint covers the complete artifact recipe and source
+revisions, declared mapper paths, digests of the resolved mapper and resolver
+modules, the batch mapper implementation, batch size and remainder policy, and
+the Grain version. Changing one of these values rejects resume before restoring
+the saved iterator cursor. This prevents an old cursor from being interpreted
+under changed preprocessing. Grain's native `set_state` seeks to the saved
+iterator position; Representax does not spin through or repeat earlier batches.
 
-Only one save may be in flight. Scheduling a checkpoint first waits for an
-older save only when that save is still outstanding, emitting explicit
-`checkpoint_backpressure_started` and `checkpoint_backpressure_finished`
-events. Orbax performs the blocking device-to-host snapshot before returning its
-async response. Training may then donate the snapshotted device state while
-storage I/O and publication finish from the independent host snapshot.
+Representax uses Orbax V1's sequence-oriented training `Checkpointer` and
+`save_checkpointables_async`. Only one save may be in flight. A newer save waits
+only if its predecessor is still outstanding, emitting explicit backpressure
+events. Orbax takes a donation-safe host snapshot before its asynchronous
+response returns, so a linear training loop can donate the snapshotted device
+state while storage and publication finish in the background.
 
-The checkpoint is restorable only after Orbax metadata, a fingerprinted
-`checkpoint.json`, and `REPRESENTAX_COMPLETE` all agree. The `latest` pointer is
-atomically replaced only after that complete marker is durable. Background
-write failures surface on the training thread at the next save or close.
-
-Checkpoint snapshot and backpressure durations are lifecycle events; they are
-not folded into `compiled_step_seconds` or reported as accelerator throughput.
-This keeps compute timing honest without making checkpoint overhead invisible.
-
-To resume, construct the same `ScientificSpec`, model/Optax state template, and
-Grain source, task, and optimizer program, then call
-`run_training(..., checkpoint=config, resume=True)`. Representax validates the
-scientific fingerprint and state structures, restores all training and iterator
-state, truncates log rows newer than the checkpoint cursor, and emits
-`checkpoint_restored` followed by `training_resumed`. The next update therefore
-uses the same batch and random key as uninterrupted training. Shape-dependent
-compilation is measured again after process restart rather than misclassified
-as steady-state work. Fingerprinting arbitrary Python task and optimizer
-closures remains part of the deferred full recipe/configuration snapshot.
+A checkpoint is restorable only after Orbax metadata, a fingerprinted
+`checkpoint.json`, and `REPRESENTAX_COMPLETE` agree. The `latest` pointer moves
+only after publication is complete. Resume validates the scientific configuration, the
+data contract, and model/optimizer structures; restores training and iterator
+state; truncates post-checkpoint log rows; and continues with the same next batch
+and random key as an uninterrupted run.
 
 ## Deliberately deferred
 
-The current host loop does not yet construct distributed placement, validation,
-external experiment integrations, full configuration/environment snapshots,
-media preprocessing, or a model registry. Grain owns lazy reading, mapping,
-batching, prefetch, and iterator position. Task-owned collation is the only
-bridge from data examples to the compiled batch contract.
+The current host loop does not yet construct arbitrary named sharding plans,
+run validation, or provide concrete W&B/TensorBoard adapters. Grain owns lazy
+reading, mapping, batching, prefetch, and iterator state. Task-owned collation
+is the bridge from data examples to the compiled batch contract.
 
-MNR may use [exact GradCache execution](grad-cache.md) through either the
-single-device `build_train_step` boundary or the accepted two- and four-device
-`build_data_parallel_train_step` boundary. Process-local input construction and
-global negatives are also accepted across two JAX processes on one physical
-host. Wiring the named plan into the host loop, physical multi-host execution,
-and model-state/FSDP-style sharding remain separate roadmap work.
+MNR can use exact GradCache execution through the single-device
+`build_train_step` boundary or the accepted two- and four-device data-parallel
+boundary. Physical multi-host execution, FSDP-style model-state sharding, and
+arbitrary sharding configurations remain separately scoped roadmap work.
 
-Compiled state-buffer donation is deliberately opt-in because
-`build_train_step` is a generic callable: callers may retain its input for
-comparison, retry, or branching, and JAX makes a donated buffer invalid after
-the call. The ordinary linear loop may pass `donate_state=True`; asynchronous
-Orbax checkpoints do not prevent donation once their save call has returned.
+The existing `DataParallel` plan already uses a named mesh, replicated state,
+batch-axis sharding, `jax.make_array_from_process_local_data` for process-local
+rows, and explicit collective semantics. Completing the cookbook's high-
+performance sharding picture means wiring `ExecutionConfig` into placement and
+step construction, initializing state directly into its declared sharding, and
+adding measured FSDP and tensor/hybrid plans. Representax will also benchmark
+JAX `Ref`-based state mutation against canonical functional Equinox/Optax plus
+buffer donation before changing the model-state contract.

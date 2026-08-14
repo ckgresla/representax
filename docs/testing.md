@@ -55,7 +55,7 @@ evidence.
 Checkpoint mechanics have fast controlled tests for one-in-flight asynchronous
 publication, backpressure, background failure propagation, incomplete markers,
 and byte-accurate log rollback. The `runtime` lane then uses real Orbax and
-Grain to require latest-N retention, science and PyTree compatibility checks,
+Grain to require latest-N retention, semantics, data-contract, and PyTree checks,
 mixed-dtype restoration, and exact equality between uninterrupted and resumed
 model, optimizer, loss, batch position, and random-key trajectories. Snapshot
 and backpressure latency must remain separate lifecycle events rather than

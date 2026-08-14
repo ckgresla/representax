@@ -4,7 +4,7 @@ Activation rematerialization is an execution choice. It changes which forward
 intermediates reverse-mode autodiff retains, but it does not change model
 parameters, the forward function, the task, or the logical batch.
 
-Representax exposes three stable values through `ExecutionPlan` and the native
+Representax exposes three stable values through `ExecutionConfig` and the native
 ModernVBERT constructors and checkpoint adapters:
 
 - `"none"` leaves the scanned layer body uncheckpointed;
@@ -20,9 +20,9 @@ the named policies are its supported surface. See the official
 
 ```python
 from representax.models.modernvbert import ModernVBERTTextCheckpointAdapter
-from representax.planning import ExecutionPlan
+from representax.planning import ExecutionConfig
 
-plan = ExecutionPlan(
+plan = ExecutionConfig(
     device_count=1,
     data_axis_size=1,
     per_device_batch_size=8,

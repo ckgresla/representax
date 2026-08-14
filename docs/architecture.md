@@ -42,29 +42,36 @@ A data recipe points at immutable upstream artifacts and names the mapping code
 that converts each raw record to a task example. A mixture is a sampling policy
 over sources; one source is the one-element form of the same policy.
 
-Hydra-Zen composes recipe values in Python. Grain will provide lazy random
-access, deterministic mapping and mixing, sharding, packing, batching,
-prefetching, and iterator checkpointing. Representax does not require users to
-materialize an intermediate framework-specific dataset.
+Hydra-Zen composes frozen Pydantic configuration values in Python and applies
+typed CLI overrides. Grain provides lazy random access, deterministic mapping
+and mixing, batching, prefetching, and native iterator checkpointing.
+Representax does not require users to materialize an intermediate
+framework-specific dataset.
 
-The run manifest will record the recipe fingerprint and source revisions. The
-recipe and mapper code remain Git-tracked, so a repository revision identifies
-the complete mapping program without duplicating source data.
+The run manifest records the complete recipe and source revisions plus a data
+fingerprint covering resolved mapper/resolver module digests, batch collation,
+batching semantics, and the Grain version. The recipe and mapper code remain
+Git-tracked without duplicating source data.
 
-## Scientific and execution specifications
+## Scientific and execution configuration
 
-`ScientificSpec` contains experiment semantics: objective, global batch,
-negative scope, data mixture, limits, optimizer schedule, and numerical
-requirements. `ExecutionPlan` contains topology-dependent mechanisms: mesh,
-per-device batch, accumulation, GradCache chunks, rematerialization, packing,
-prefetching, and buffer donation.
+`TrainingConfig` contains four validated configuration groups.
+`ScientificConfig` owns trajectory-defining task identity, global batch, negative
+scope, limits, seed, and numerical requirements. `ExecutionConfig` owns
+topology-dependent mechanisms: mesh, per-device batch, accumulation, GradCache
+chunks, rematerialization, packing, prefetching, and buffer donation.
+`RuntimeConfig` and `CheckpointConfig` own host mechanics and persistence.
+
+`TrainingConfig.scientific` is the single training-level scientific object;
+there is no duplicated semantics or study-metadata config. Model, optimizer,
+task, and data definitions remain explicit on `RunConfig`.
 
 Activation rematerialization is an explicit three-way execution choice rather
 than a model change. See [Activation rematerialization](rematerialization.md)
 for the policy contract and the measured ModernVBERT default.
 
-An execution planner may search only the latter space and must validate that
-the resulting plan preserves the scientific specification. The protocol is
+An execution planner may search only the execution space and must validate that
+the resulting configuration preserves the scientific configuration. The protocol is
 intentionally small enough for a future standalone `profilax` package to
 implement it over arbitrary compiled JAX programs.
 

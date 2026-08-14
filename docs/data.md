@@ -81,17 +81,26 @@ batches = build_grain_iterator(
 
 Dropping the remainder is the default because a stable batch shape avoids an
 otherwise-surprising final compilation. Exhausting a finite iterator before
-the scientific step count is a training failure, not silent early completion.
-The returned source also exposes its exact `global_batch_size`, allowing the
-trainer to reject a mismatch with `ScientificSpec` before creating a run.
-Its Grain iterator implements `get_state` and `set_state`; Representax stores
-that state in each training checkpoint so resume returns to the exact next raw
-record even when the input pipeline had prefetched ahead.
+`ScientificConfig.max_steps` is a training failure, not silent early completion.
+The returned source exposes its exact `global_batch_size`, allowing the trainer
+to reject a mismatch with `ScientificConfig` before creating a run.
+
+It also exposes a complete `data_contract` and `data_fingerprint`. The contract
+contains the artifact recipe and revisions, declared mapper paths, digests of
+the resolved mapper and resolver modules, the batch mapper implementation,
+batch size and remainder policy, and the Grain version. Checkpoint resume
+requires an exact fingerprint match, so edited preprocessing cannot interpret
+an old cursor under a different record stream.
+
+The Grain iterator implements `get_state` and `set_state`; Representax stores
+that native state in each training checkpoint. Restore seeks directly to the
+next record instead of iterating through or repeating earlier preprocessing,
+including when the input pipeline had prefetched ahead.
 
 ## Extension points
 
 `build_grain_dataset(..., resolvers={"scheme": resolver})` adds or replaces a
-resolver. A resolver accepts an `ArtifactSpec` and returns a random-access
+resolver. A resolver accepts an `ArtifactSource` and returns a random-access
 source implementing `__len__` and `__getitem__`. S3, streaming sources, media
 decoding, shape-aware batching, and distributed iterator state are deliberately
 left to later scoped work.
