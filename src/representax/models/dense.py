@@ -5,6 +5,7 @@ from __future__ import annotations
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+from jaxtyping import Array, Float, PRNGKeyArray
 
 from representax.core import EncoderMetadata, Modality, Route
 
@@ -25,7 +26,7 @@ class DenseEncoder(eqx.Module):
         input_dimension: int,
         output_dimension: int,
         *,
-        key: jax.Array,
+        key: PRNGKeyArray,
         normalize: bool = True,
     ) -> None:
         if input_dimension <= 0 or output_dimension <= 0:
@@ -42,11 +43,11 @@ class DenseEncoder(eqx.Module):
 
     def encode(
         self,
-        inputs: jax.Array,
+        inputs: Float[Array, "batch input"],
         *,
         route: Route,
-        key: jax.Array | None = None,
-    ) -> jax.Array:
+        key: PRNGKeyArray | None = None,
+    ) -> Float[Array, "batch representation"]:
         del route, key
         values = jnp.asarray(inputs)
         if values.ndim != 2:

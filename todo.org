@@ -100,13 +100,19 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   one-device CPU training smoke from the installed wheel.  A concrete 2x2 JAX
   probe also verifies that =P("fsdp", None)= shards batch rows over =fsdp= and
   replicates them over =tensor=; the mesh config itself assigns no sharding.
-* TODO Adopt =jaxtyping= at stable numerical boundaries :typing:models:tasks:
+* DONE Adopt =jaxtyping= at stable numerical boundaries :typing:models:tasks:
   Declare it directly and annotate model forwards, encoder/task protocols,
   retrieval relations, scalar losses, PRNG keys, and compiled-step boundaries
   with symbolic axes.  Do not annotate host configuration and orchestration for
   decoration's sake, and do not enable a production-wide runtime import hook.
   Preserve explicit domain validation and add focused trace-time checks only
   where they improve errors without changing compiled performance.
+  Accepted with direct, introspectable dtype and symbolic-shape annotations on
+  encoder/model forwards, text and multimodal batches, attention, RoPE, pooling,
+  vision patching, MNR relations and losses, PRNG keys, train state, GradCache,
+  and compiled-step boundaries.  No decorator or runtime import hook is
+  installed.  Explicit semantic validation remains authoritative.  Ruff and
+  formatting pass, annotation contracts pass, and all 78 fast tests pass.
 * DONE Implement exact native-JAX GradCache as an execution plan for MNR :retrieval:runtime:
   Preserve =MNRTask= and one shared row-level MNR primitive as the sole
   scientific definition.

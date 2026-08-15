@@ -8,6 +8,7 @@ from typing import Any
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+from jaxtyping import Array, Float, PRNGKeyArray
 
 from representax.core import Encoder, LossOutput, Route, Task, encode
 from representax.tasks.retrieval import MNRTask, RetrievalBatch
@@ -38,7 +39,7 @@ def _pad_and_chunk(inputs: Any, *, batch_size: int, chunk_size: int) -> Any:
     padded_size = chunk_count * chunk_size
     padding = padded_size - batch_size
 
-    def chunk(leaf: jax.Array) -> jax.Array:
+    def chunk(leaf: Array) -> Array:
         widths = ((0, padding),) + ((0, 0),) * (leaf.ndim - 1)
         padded = jnp.pad(leaf, widths)
         return padded.reshape((chunk_count, chunk_size, *leaf.shape[1:]))
@@ -53,8 +54,8 @@ def _rematerialized_encode(
     route: Route,
     batch_size: int,
     chunk_size: int,
-    key: jax.Array | None,
-) -> jax.Array:
+    key: PRNGKeyArray | None,
+) -> Float[Array, "batch representation"]:
     """Encode chunks while retaining only representations across the forward scan."""
 
     chunks = _pad_and_chunk(inputs, batch_size=batch_size, chunk_size=chunk_size)
@@ -62,14 +63,19 @@ def _rematerialized_encode(
 
     if key is None:
 
-        def body(_: None, chunk: Any) -> tuple[None, jax.Array]:
+        def body(
+            _: None, chunk: Any
+        ) -> tuple[None, Float[Array, "chunk representation"]]:
             return None, encode(model, chunk, route=route)
 
         scan_inputs = chunks
     else:
         keys = jax.random.split(key, chunk_count)
 
-        def body(_: None, values: tuple[Any, jax.Array]) -> tuple[None, jax.Array]:
+        def body(
+            _: None,
+            values: tuple[Any, PRNGKeyArray],
+        ) -> tuple[None, Float[Array, "chunk representation"]]:
             chunk, chunk_key = values
             return None, encode(model, chunk, route=route, key=chunk_key)
 
@@ -118,7 +124,7 @@ class GradCache:
         model: eqx.Module,
         batch: Any,
         *,
-        key: jax.Array | None,
+        key: PRNGKeyArray | None,
         context: ExecutionContext = _LOCAL_EXECUTION_CONTEXT,
     ) -> LossOutput:
         if not isinstance(task, MNRTask) or not isinstance(batch, RetrievalBatch):

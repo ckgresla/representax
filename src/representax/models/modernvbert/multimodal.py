@@ -7,6 +7,7 @@ from typing import Any
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+from jaxtyping import Array, Bool, Float, Int, PRNGKeyArray
 
 from representax.core import EncoderMetadata, Modality, Route
 from representax.planning import RematerializationPolicy
@@ -26,13 +27,17 @@ from .vision import SigLIPVisionTower, pixel_shuffle
 class ModernVBERTBatch(eqx.Module):
     """Fixed-shape text, image, or fused inputs for ModernVBERT."""
 
-    attention_mask: jax.Array
-    input_ids: jax.Array | None = None
-    inputs_embeds: jax.Array | None = None
-    position_ids: jax.Array | None = None
-    pixel_values: jax.Array | None = None
-    pixel_attention_mask: jax.Array | None = None
-    image_valid: jax.Array | None = None
+    attention_mask: Bool[Array, "batch sequence"] | Int[Array, "batch sequence"]
+    input_ids: Int[Array, "batch sequence"] | None = None
+    inputs_embeds: Float[Array, "batch sequence hidden"] | None = None
+    position_ids: Int[Array, "#batch sequence"] | None = None
+    pixel_values: Float[Array, "batch image channel height width"] | None = None
+    pixel_attention_mask: (
+        Bool[Array, "batch image height width"]
+        | Int[Array, "batch image height width"]
+        | None
+    ) = None
+    image_valid: Bool[Array, "batch image"] | None = None
 
     def __post_init__(self) -> None:
         text = ModernVBERTTextBatch(
@@ -66,7 +71,9 @@ class ModernVBERTBatch(eqx.Module):
                 raise TypeError("image_valid must be boolean")
 
     def text_batch(
-        self, *, inputs_embeds: jax.Array | None = None
+        self,
+        *,
+        inputs_embeds: Float[Array, "batch sequence hidden"] | None = None,
     ) -> ModernVBERTTextBatch:
         return ModernVBERTTextBatch(
             attention_mask=self.attention_mask,
@@ -79,13 +86,13 @@ class ModernVBERTBatch(eqx.Module):
 
 
 def merge_image_features(
-    input_ids: jax.Array,
-    token_embeddings: jax.Array,
-    image_features: jax.Array,
+    input_ids: Int[Array, "batch sequence"],
+    token_embeddings: Float[Array, "batch sequence hidden"],
+    image_features: Float[Array, "batch image image_token hidden"],
     *,
     image_token_id: int,
-    image_valid: jax.Array | None = None,
-) -> jax.Array:
+    image_valid: Bool[Array, "batch image"] | None = None,
+) -> Float[Array, "batch sequence hidden"]:
     """Scatter record-major image features into image-token positions."""
 
     if image_features.ndim != 4:
@@ -142,7 +149,7 @@ class ModernVBERTEncoder(eqx.Module):
         cls,
         config: ModernVBERTConfig,
         *,
-        key: jax.Array,
+        key: PRNGKeyArray,
         parameter_dtype: jnp.dtype = jnp.float32,
         compute_dtype: jnp.dtype = jnp.float32,
         attention_implementation: AttentionImplementation = "xla",
@@ -188,7 +195,10 @@ class ModernVBERTEncoder(eqx.Module):
             attention_implementation=attention_implementation,
         )
 
-    def image_features(self, pixel_values: jax.Array) -> jax.Array:
+    def image_features(
+        self,
+        pixel_values: Float[Array, "batch image channel height width"],
+    ) -> Float[Array, "batch image image_token hidden"]:
         """Encode record-major image slots into connector token sequences."""
 
         if pixel_values.ndim != 5:
@@ -212,7 +222,10 @@ class ModernVBERTEncoder(eqx.Module):
             self.config.text.hidden_size,
         )
 
-    def hidden_states(self, inputs: ModernVBERTBatch) -> jax.Array:
+    def hidden_states(
+        self,
+        inputs: ModernVBERTBatch,
+    ) -> Float[Array, "batch sequence hidden"]:
         if not isinstance(inputs, ModernVBERTBatch):
             raise TypeError("ModernVBERT inputs must be ModernVBERTBatch")
         if inputs.pixel_values is None:
@@ -237,8 +250,8 @@ class ModernVBERTEncoder(eqx.Module):
         inputs: ModernVBERTBatch,
         *,
         route: Route,
-        key: jax.Array | None = None,
-    ) -> jax.Array:
+        key: PRNGKeyArray | None = None,
+    ) -> Float[Array, "batch representation"]:
         del route, key
         hidden = self.hidden_states(inputs)
         return _l2_normalize(_mean_pool(hidden, inputs.attention_mask))

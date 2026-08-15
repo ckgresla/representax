@@ -238,6 +238,11 @@ result = run_training(
 )
 ```
 
+Array-facing APIs use `jaxtyping` to state dtype and symbolic shape contracts
+directly on model forwards, tasks, losses, and compiled-step keys. Representax
+does not install a runtime type-checking hook; explicit domain validation remains
+responsible for semantic requirements that shapes and dtypes cannot express.
+
 The loop records W&B-ready metric names such as `train/loss`, `valid/loss`, and
 `perf/...` in `metrics.jsonl`, lifecycle events in `events.jsonl`, and final
 status in `run.json`. A bounded reporter worker performs the device-to-host

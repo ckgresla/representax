@@ -9,6 +9,7 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 import optax
+from jaxtyping import Array, Bool, Float, PRNGKeyArray
 
 from representax.core import Task
 
@@ -21,7 +22,7 @@ from .execution import (
 from .state import StepMetrics, StepResult, TrainState
 
 
-def tree_global_norm(tree: Any) -> jax.Array:
+def tree_global_norm(tree: Any) -> Float[Array, ""]:
     """Compute an FP32 L2 norm across every inexact array leaf."""
 
     squares = [
@@ -34,7 +35,7 @@ def tree_global_norm(tree: Any) -> jax.Array:
     return jnp.sqrt(jnp.sum(jnp.stack(squares), dtype=jnp.float32))
 
 
-def tree_all_finite(*trees: Any) -> jax.Array:
+def tree_all_finite(*trees: Any) -> Bool[Array, ""]:
     """Return one scalar finite check over all inexact leaves."""
 
     checks = [
@@ -67,7 +68,7 @@ def init_train_state(
 make_train_state = init_train_state
 
 
-TrainStep = Callable[[TrainState, Any, jax.Array | None], StepResult]
+TrainStep = Callable[[TrainState, Any, PRNGKeyArray | None], StepResult]
 
 
 def _build_train_step_body(
@@ -87,8 +88,8 @@ def _build_train_step_body(
     def loss_fn(
         model: eqx.Module,
         batch: Any,
-        key: jax.Array | None,
-    ) -> tuple[jax.Array, Any]:
+        key: PRNGKeyArray | None,
+    ) -> tuple[Float[Array, ""], Any]:
         loss_model = model
         if context.data_axis_name is not None:
             # The replicated model participates in rank-local encoder replay.
@@ -111,7 +112,7 @@ def _build_train_step_body(
     def train_step_body(
         state: TrainState,
         batch: Any,
-        key: jax.Array | None,
+        key: PRNGKeyArray | None,
     ) -> StepResult:
         (loss, task_metrics), gradients = loss_fn(state.model, batch, key)
         gradient_norm = tree_global_norm(gradients)
@@ -194,7 +195,7 @@ def build_train_step(
 
     @eqx.filter_jit(donate=donation)
     def compiled_step(
-        inputs: tuple[Any, jax.Array | None],
+        inputs: tuple[Any, PRNGKeyArray | None],
         state: TrainState,
     ) -> StepResult:
         batch, key = inputs
@@ -203,7 +204,7 @@ def build_train_step(
     def train_step(
         state: TrainState,
         batch: Any,
-        key: jax.Array | None = None,
+        key: PRNGKeyArray | None = None,
     ) -> StepResult:
         return compiled_step((batch, key), state)
 

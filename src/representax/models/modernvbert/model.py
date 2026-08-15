@@ -12,6 +12,7 @@ from typing import Any, Literal
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+from jaxtyping import Array, Bool, Float, Int, PRNGKeyArray
 
 from representax.core import EncoderMetadata, Modality, Route
 from representax.planning import RematerializationPolicy
@@ -40,23 +41,32 @@ def _rematerialize_layer(function: Any, policy: RematerializationPolicy) -> Any:
 
 
 @jax.custom_vjp
-def _embedding_lookup(table: jax.Array, indices: jax.Array) -> jax.Array:
+def _embedding_lookup(
+    table: Float[Array, "vocabulary hidden"],
+    indices: Int[Array, "*batch"],
+) -> Float[Array, "*batch hidden"]:
     """Gather embeddings while completing each table-gradient scatter."""
 
     return table[indices]
 
 
 def _embedding_lookup_forward(
-    table: jax.Array,
-    indices: jax.Array,
-) -> tuple[jax.Array, tuple[jax.Array, jax.Array]]:
+    table: Float[Array, "vocabulary hidden"],
+    indices: Int[Array, "*batch"],
+) -> tuple[
+    Float[Array, "*batch hidden"],
+    tuple[Float[Array, "vocabulary hidden"], Int[Array, "*batch"]],
+]:
     return table[indices], (table, indices)
 
 
 def _embedding_lookup_backward(
-    residual: tuple[jax.Array, jax.Array],
-    cotangent: jax.Array,
-) -> tuple[jax.Array, None]:
+    residual: tuple[
+        Float[Array, "vocabulary hidden"],
+        Int[Array, "*batch"],
+    ],
+    cotangent: Float[Array, "*batch hidden"],
+) -> tuple[Float[Array, "vocabulary hidden"], None]:
     table, indices = residual
     gradient = jnp.zeros_like(table).at[indices].add(cotangent)
     return jax.lax.optimization_barrier(gradient), None
@@ -68,10 +78,10 @@ _embedding_lookup.defvjp(_embedding_lookup_forward, _embedding_lookup_backward)
 class ModernVBERTTextBatch(eqx.Module):
     """Token IDs or input embeddings plus their valid-token mask."""
 
-    attention_mask: jax.Array
-    input_ids: jax.Array | None = None
-    inputs_embeds: jax.Array | None = None
-    position_ids: jax.Array | None = None
+    attention_mask: Bool[Array, "batch sequence"] | Int[Array, "batch sequence"]
+    input_ids: Int[Array, "batch sequence"] | None = None
+    inputs_embeds: Float[Array, "batch sequence hidden"] | None = None
+    position_ids: Int[Array, "#batch sequence"] | None = None
 
     def __post_init__(self) -> None:
         if (self.input_ids is None) == (self.inputs_embeds is None):
@@ -111,8 +121,8 @@ class ModernVBERTTextBatch(eqx.Module):
 class Linear(eqx.Module):
     """Batched linear projection with Hugging Face weight orientation."""
 
-    weight: jax.Array
-    bias: jax.Array | None = None
+    weight: Float[Array, "output input"]
+    bias: Float[Array, " output"] | None = None
 
     @classmethod
     def init(
@@ -120,7 +130,7 @@ class Linear(eqx.Module):
         input_size: int,
         output_size: int,
         *,
-        key: jax.Array,
+        key: PRNGKeyArray,
         scale: float,
         dtype: jnp.dtype,
         bias: bool = False,
@@ -131,7 +141,10 @@ class Linear(eqx.Module):
             bias=jnp.zeros((output_size,), dtype=dtype) if bias else None,
         )
 
-    def __call__(self, value: jax.Array) -> jax.Array:
+    def __call__(
+        self,
+        value: Float[Array, "*batch input"],
+    ) -> Float[Array, "*batch output"]:
         output = value @ self.weight.T
         return output if self.bias is None else output + self.bias
 
@@ -139,8 +152,8 @@ class Linear(eqx.Module):
 class LayerNorm(eqx.Module):
     """ModernBERT LayerNorm with FP32 statistics."""
 
-    weight: jax.Array
-    bias: jax.Array | None
+    weight: Float[Array, " hidden"]
+    bias: Float[Array, " hidden"] | None
     epsilon: float = eqx.field(static=True)
 
     @classmethod
@@ -158,7 +171,10 @@ class LayerNorm(eqx.Module):
             epsilon=epsilon,
         )
 
-    def __call__(self, value: jax.Array) -> jax.Array:
+    def __call__(
+        self,
+        value: Float[Array, "*batch hidden"],
+    ) -> Float[Array, "*batch hidden"]:
         source_dtype = value.dtype
         value = value.astype(jnp.float32)
         mean = jnp.mean(value, axis=-1, keepdims=True)
@@ -173,8 +189,11 @@ class LayerNorm(eqx.Module):
 def _rotary_frequencies(
     head_dimension: int,
     theta: float,
-    position_ids: jax.Array,
-) -> tuple[jax.Array, jax.Array]:
+    position_ids: Int[Array, "#batch sequence"],
+) -> tuple[
+    Float[Array, "#batch sequence head"],
+    Float[Array, "#batch sequence head"],
+]:
     inverse_frequency = 1.0 / (
         theta ** (jnp.arange(0, head_dimension, 2, dtype=jnp.float32) / head_dimension)
     )
@@ -183,30 +202,32 @@ def _rotary_frequencies(
     return jnp.cos(embedding), jnp.sin(embedding)
 
 
-def _rotate_half(value: jax.Array) -> jax.Array:
+def _rotate_half(
+    value: Float[Array, "*batch head"],
+) -> Float[Array, "*batch head"]:
     first, second = jnp.split(value, 2, axis=-1)
     return jnp.concatenate((-second, first), axis=-1)
 
 
 def _apply_rope(
-    value: jax.Array,
-    cosine: jax.Array,
-    sine: jax.Array,
-) -> jax.Array:
+    value: Float[Array, "batch sequence heads head"],
+    cosine: Float[Array, "#batch sequence 1 head"],
+    sine: Float[Array, "#batch sequence 1 head"],
+) -> Float[Array, "batch sequence heads head"]:
     value32 = value.astype(jnp.float32)
     rotated = value32 * cosine + _rotate_half(value32) * sine
     return rotated.astype(value.dtype)
 
 
 def _scaled_dot_product_attention(
-    query: jax.Array,
-    key: jax.Array,
-    value: jax.Array,
-    attention_mask: jax.Array,
+    query: Float[Array, "batch target_sequence heads head"],
+    key: Float[Array, "batch source_sequence heads head"],
+    value: Float[Array, "batch source_sequence heads head"],
+    attention_mask: Bool[Array, "batch source_sequence"],
     *,
     local_radius: int | None,
     implementation: AttentionImplementation,
-) -> jax.Array:
+) -> Float[Array, "batch target_sequence heads head"]:
     """Run exact full or symmetric local attention through JAX's primitive."""
 
     local_window = None if local_radius is None else (local_radius, local_radius)
@@ -229,7 +250,7 @@ class FusedSelfAttention(eqx.Module):
         cls,
         config: ModernVBERTTextConfig,
         *,
-        key: jax.Array,
+        key: PRNGKeyArray,
         dtype: jnp.dtype,
     ) -> FusedSelfAttention:
         qkv_key, output_key = jax.random.split(key)
@@ -252,14 +273,14 @@ class FusedSelfAttention(eqx.Module):
 
     def __call__(
         self,
-        hidden: jax.Array,
+        hidden: Float[Array, "batch sequence hidden"],
         *,
         config: ModernVBERTTextConfig,
-        attention_mask: jax.Array,
-        position_ids: jax.Array,
-        sliding_attention: jax.Array,
+        attention_mask: Bool[Array, "batch sequence"],
+        position_ids: Int[Array, "#batch sequence"],
+        sliding_attention: Bool[Array, ""],
         implementation: AttentionImplementation,
-    ) -> jax.Array:
+    ) -> Float[Array, "batch sequence hidden"]:
         batch, sequence, _ = hidden.shape
         qkv = self.qkv(hidden).reshape(
             batch,
@@ -271,11 +292,15 @@ class FusedSelfAttention(eqx.Module):
         query, key, value = (qkv[:, :, index] for index in range(3))
 
         def attend(
-            operands: tuple[jax.Array, jax.Array, jax.Array],
+            operands: tuple[
+                Float[Array, "batch sequence heads head"],
+                Float[Array, "batch sequence heads head"],
+                Float[Array, "batch sequence heads head"],
+            ],
             *,
             theta: float,
             local_radius: int | None,
-        ) -> jax.Array:
+        ) -> Float[Array, "batch sequence heads head"]:
             branch_query, branch_key, branch_value = operands
             cosine, sine = _rotary_frequencies(
                 config.head_dimension,
@@ -322,7 +347,7 @@ class GatedMLP(eqx.Module):
         cls,
         config: ModernVBERTTextConfig,
         *,
-        key: jax.Array,
+        key: PRNGKeyArray,
         dtype: jnp.dtype,
     ) -> GatedMLP:
         input_key, output_key = jax.random.split(key)
@@ -343,7 +368,10 @@ class GatedMLP(eqx.Module):
             ),
         )
 
-    def __call__(self, hidden: jax.Array) -> jax.Array:
+    def __call__(
+        self,
+        hidden: Float[Array, "batch sequence hidden"],
+    ) -> Float[Array, "batch sequence hidden"]:
         value, gate = jnp.split(self.input(hidden), 2, axis=-1)
         return self.output(jax.nn.gelu(value, approximate=False) * gate)
 
@@ -353,7 +381,7 @@ class ModernVBERTTextBlock(eqx.Module):
     attention_norm: LayerNorm | None
     mlp_norm: LayerNorm
     mlp: GatedMLP
-    sliding_attention: jax.Array
+    sliding_attention: Bool[Array, ""]
 
     @classmethod
     def init(
@@ -361,7 +389,7 @@ class ModernVBERTTextBlock(eqx.Module):
         config: ModernVBERTTextConfig,
         index: int,
         *,
-        key: jax.Array,
+        key: PRNGKeyArray,
         dtype: jnp.dtype,
     ) -> ModernVBERTTextBlock:
         attention_key, mlp_key = jax.random.split(key)
@@ -394,13 +422,13 @@ class ModernVBERTTextBlock(eqx.Module):
 
     def __call__(
         self,
-        hidden: jax.Array,
+        hidden: Float[Array, "batch sequence hidden"],
         *,
         config: ModernVBERTTextConfig,
-        attention_mask: jax.Array,
-        position_ids: jax.Array,
+        attention_mask: Bool[Array, "batch sequence"],
+        position_ids: Int[Array, "#batch sequence"],
         implementation: AttentionImplementation,
-    ) -> jax.Array:
+    ) -> Float[Array, "batch sequence hidden"]:
         attention_input = (
             hidden if self.attention_norm is None else self.attention_norm(hidden)
         )
@@ -421,7 +449,7 @@ class _ModernVBERTTextScanBlock(eqx.Module):
     attention: FusedSelfAttention
     mlp_norm: LayerNorm
     mlp: GatedMLP
-    sliding_attention: jax.Array
+    sliding_attention: Bool[Array, ""]
 
 
 class ModernVBERTTextLayerStack(eqx.Module):
@@ -494,13 +522,16 @@ class ModernVBERTTextLayerStack(eqx.Module):
 
 
 class ModernVBERTTextTower(eqx.Module):
-    token_embedding: jax.Array
+    token_embedding: Float[Array, "vocabulary hidden"]
     embedding_norm: LayerNorm
     layers: ModernVBERTTextLayerStack
     final_norm: LayerNorm
     config: ModernVBERTTextConfig = eqx.field(static=True)
 
-    def token_embeddings(self, input_ids: jax.Array) -> jax.Array:
+    def token_embeddings(
+        self,
+        input_ids: Int[Array, "batch sequence"],
+    ) -> Float[Array, "batch sequence hidden"]:
         """Gather token embeddings with a complete table-gradient scatter."""
 
         return _embedding_lookup(self.token_embedding, input_ids)
@@ -510,7 +541,7 @@ class ModernVBERTTextTower(eqx.Module):
         cls,
         config: ModernVBERTTextConfig,
         *,
-        key: jax.Array,
+        key: PRNGKeyArray,
         dtype: jnp.dtype = jnp.float32,
     ) -> ModernVBERTTextTower:
         keys = jax.random.split(key, config.num_hidden_layers + 1)
@@ -549,7 +580,7 @@ class ModernVBERTTextTower(eqx.Module):
         compute_dtype: jnp.dtype,
         attention_implementation: AttentionImplementation,
         rematerialization: RematerializationPolicy,
-    ) -> jax.Array:
+    ) -> Float[Array, "batch sequence hidden"]:
         hidden = (
             self.token_embeddings(batch.input_ids)
             if batch.input_ids is not None
@@ -576,9 +607,9 @@ class ModernVBERTTextTower(eqx.Module):
         if self.layers.blocks is not None:
 
             def apply_layer(
-                carry: jax.Array,
-                values: tuple[jax.Array, _ModernVBERTTextScanBlock],
-            ) -> tuple[jax.Array, None]:
+                carry: Float[Array, "batch sequence hidden"],
+                values: tuple[Array, _ModernVBERTTextScanBlock],
+            ) -> tuple[Float[Array, "batch sequence hidden"], None]:
                 index, layer = values
                 if self.layers.attention_norms is None:
                     attention_input = carry
@@ -618,7 +649,10 @@ class ModernVBERTTextTower(eqx.Module):
         return self.final_norm(hidden)
 
 
-def _mean_pool(hidden: jax.Array, attention_mask: jax.Array) -> jax.Array:
+def _mean_pool(
+    hidden: Float[Array, "batch sequence hidden"],
+    attention_mask: Bool[Array, "batch sequence"] | Int[Array, "batch sequence"],
+) -> Float[Array, "batch hidden"]:
     hidden = hidden.astype(jnp.float32)
     mask = attention_mask.astype(bool)[..., None]
     total = jnp.sum(jnp.where(mask, hidden, 0.0), axis=1)
@@ -626,7 +660,9 @@ def _mean_pool(hidden: jax.Array, attention_mask: jax.Array) -> jax.Array:
     return total / count
 
 
-def _l2_normalize(value: jax.Array) -> jax.Array:
+def _l2_normalize(
+    value: Float[Array, "*batch hidden"],
+) -> Float[Array, "*batch hidden"]:
     value = value.astype(jnp.float32)
     norm = jnp.linalg.norm(value, axis=-1, keepdims=True)
     return value / jnp.maximum(norm, jnp.asarray(1e-12, value.dtype))
@@ -646,7 +682,7 @@ class ModernVBERTTextEncoder(eqx.Module):
         cls,
         config: ModernVBERTTextConfig,
         *,
-        key: jax.Array,
+        key: PRNGKeyArray,
         parameter_dtype: jnp.dtype = jnp.float32,
         compute_dtype: jnp.dtype = jnp.float32,
         attention_implementation: AttentionImplementation = "xla",
@@ -668,7 +704,10 @@ class ModernVBERTTextEncoder(eqx.Module):
             rematerialization=rematerialization,
         )
 
-    def hidden_states(self, inputs: ModernVBERTTextBatch) -> jax.Array:
+    def hidden_states(
+        self,
+        inputs: ModernVBERTTextBatch,
+    ) -> Float[Array, "batch sequence hidden"]:
         if not isinstance(inputs, ModernVBERTTextBatch):
             raise TypeError("ModernVBERT text inputs must be ModernVBERTTextBatch")
         return self.tower(
@@ -683,8 +722,8 @@ class ModernVBERTTextEncoder(eqx.Module):
         inputs: ModernVBERTTextBatch,
         *,
         route: Route,
-        key: jax.Array | None = None,
-    ) -> jax.Array:
+        key: PRNGKeyArray | None = None,
+    ) -> Float[Array, "batch representation"]:
         del route, key
         hidden = self.hidden_states(inputs)
         return _l2_normalize(_mean_pool(hidden, inputs.attention_mask))

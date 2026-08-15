@@ -7,6 +7,7 @@ from typing import Any
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+from jaxtyping import Array, Bool, Float
 
 
 class RetrievalBatch(eqx.Module):
@@ -14,10 +15,10 @@ class RetrievalBatch(eqx.Module):
 
     query: Any
     document: Any
-    positive_mask: jax.Array
-    positive_weights: jax.Array | None
-    query_valid: jax.Array
-    document_valid: jax.Array
+    positive_mask: Bool[Array, "query document"]
+    positive_weights: Float[Array, "query document"] | None
+    query_valid: Bool[Array, " query"]
+    document_valid: Bool[Array, " document"]
 
     def __post_init__(self) -> None:
         query_count, document_count = self.positive_mask.shape
@@ -51,10 +52,10 @@ class ProcessLocalRetrievalBatch(eqx.Module):
 
     query: Any
     document: Any
-    positive_mask: jax.Array
-    positive_weights: jax.Array | None
-    query_valid: jax.Array
-    document_valid: jax.Array
+    positive_mask: Bool[Array, "local_query global_document"]
+    positive_weights: Float[Array, "local_query global_document"] | None
+    query_valid: Bool[Array, " local_query"]
+    document_valid: Bool[Array, " local_document"]
 
     def __post_init__(self) -> None:
         if self.positive_mask.ndim != 2 or self.positive_mask.dtype != jnp.bool_:
@@ -95,10 +96,10 @@ def retrieval_batch(
     *,
     query: Any,
     document: Any,
-    positive_mask: jax.Array,
-    positive_weights: jax.Array | None = None,
-    query_valid: jax.Array | None = None,
-    document_valid: jax.Array | None = None,
+    positive_mask: Bool[Array, "query document"],
+    positive_weights: Float[Array, "query document"] | None = None,
+    query_valid: Bool[Array, " query"] | None = None,
+    document_valid: Bool[Array, " document"] | None = None,
 ) -> RetrievalBatch:
     """Build a fixed-shape retrieval batch with sensible validity defaults."""
 
@@ -124,10 +125,10 @@ def process_local_retrieval_batch(
     *,
     query: Any,
     document: Any,
-    positive_mask: jax.Array,
-    positive_weights: jax.Array | None = None,
-    query_valid: jax.Array | None = None,
-    document_valid: jax.Array | None = None,
+    positive_mask: Bool[Array, "local_query global_document"],
+    positive_weights: Float[Array, "local_query global_document"] | None = None,
+    query_valid: Bool[Array, " local_query"] | None = None,
+    document_valid: Bool[Array, " local_document"] | None = None,
 ) -> ProcessLocalRetrievalBatch:
     """Build process-local rows that retain the global document relation axis."""
 

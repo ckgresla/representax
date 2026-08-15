@@ -14,6 +14,7 @@ from typing import Any, Protocol
 
 import jax
 import numpy as np
+from jaxtyping import PRNGKeyArray
 from orbax.checkpoint import v1 as ocp
 
 from representax.config import CheckpointConfig, JobConfig, ParameterRole
@@ -97,7 +98,7 @@ class RestoredTrainingState:
 
     state: TrainState
     iteration: int
-    rng: jax.Array
+    rng: PRNGKeyArray
     data_state: Mapping[str, Any]
     logging_cursor: Mapping[str, int]
     record: CheckpointRecord
@@ -166,7 +167,7 @@ def training_checkpointables(
     *,
     state: TrainState,
     iteration: int,
-    rng: jax.Array,
+    rng: PRNGKeyArray,
     data_state: Mapping[str, Any],
     logging_cursor: Mapping[str, int],
 ) -> dict[str, Any]:

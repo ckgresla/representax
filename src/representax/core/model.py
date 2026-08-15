@@ -6,8 +6,8 @@ from enum import StrEnum
 from typing import Any, Protocol, runtime_checkable
 
 import equinox as eqx
-import jax
 import jax.numpy as jnp
+from jaxtyping import Array, Float, PRNGKeyArray
 
 
 class Route(StrEnum):
@@ -61,8 +61,8 @@ class Encoder(Protocol):
         inputs: Any,
         *,
         route: Route,
-        key: jax.Array | None = None,
-    ) -> jax.Array: ...
+        key: PRNGKeyArray | None = None,
+    ) -> Float[Array, "batch representation"]: ...
 
 
 def _metadata(model: Any) -> EncoderMetadata:
@@ -81,8 +81,8 @@ def encode(
     inputs: Any,
     *,
     route: Route = Route.GENERIC,
-    key: jax.Array | None = None,
-) -> jax.Array:
+    key: PRNGKeyArray | None = None,
+) -> Float[Array, "batch representation"]:
     """Encode an array PyTree and enforce the shared representation contract."""
 
     metadata = _metadata(model)
@@ -112,8 +112,8 @@ class BoundEncoder(eqx.Module):
         self,
         inputs: Any,
         *,
-        key: jax.Array | None = None,
-    ) -> jax.Array:
+        key: PRNGKeyArray | None = None,
+    ) -> Float[Array, "batch representation"]:
         return encode(self.model, inputs, route=self.route, key=key)
 
 

@@ -7,6 +7,7 @@ import math
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+from jaxtyping import Array, Float, PRNGKeyArray
 
 from .config import ModernVBERTVisionConfig
 from .model import AttentionImplementation, LayerNorm, Linear
@@ -15,8 +16,8 @@ from .model import AttentionImplementation, LayerNorm, Linear
 class PatchEmbedding(eqx.Module):
     """Stride-equals-kernel image patch projection in HF weight layout."""
 
-    weight: jax.Array
-    bias: jax.Array
+    weight: Float[Array, "hidden channel patch_height patch_width"]
+    bias: Float[Array, " hidden"]
     patch_size: int = eqx.field(static=True)
 
     @classmethod
@@ -24,7 +25,7 @@ class PatchEmbedding(eqx.Module):
         cls,
         config: ModernVBERTVisionConfig,
         *,
-        key: jax.Array,
+        key: PRNGKeyArray,
         dtype: jnp.dtype,
     ) -> PatchEmbedding:
         shape = (
@@ -41,7 +42,10 @@ class PatchEmbedding(eqx.Module):
             patch_size=config.patch_size,
         )
 
-    def __call__(self, pixel_values: jax.Array) -> jax.Array:
+    def __call__(
+        self,
+        pixel_values: Float[Array, "image channel height width"],
+    ) -> Float[Array, "image grid_height grid_width hidden"]:
         pixels = jnp.transpose(pixel_values, (0, 2, 3, 1))
         kernel = jnp.transpose(self.weight, (2, 3, 1, 0))
         patches = jax.lax.conv_general_dilated(
@@ -65,7 +69,7 @@ class SigLIPVisionAttention(eqx.Module):
         cls,
         config: ModernVBERTVisionConfig,
         *,
-        key: jax.Array,
+        key: PRNGKeyArray,
         dtype: jnp.dtype,
     ) -> SigLIPVisionAttention:
         keys = jax.random.split(key, 4)
@@ -85,14 +89,16 @@ class SigLIPVisionAttention(eqx.Module):
 
     def __call__(
         self,
-        hidden: jax.Array,
+        hidden: Float[Array, "batch sequence hidden"],
         *,
         config: ModernVBERTVisionConfig,
         implementation: AttentionImplementation,
-    ) -> jax.Array:
+    ) -> Float[Array, "batch sequence hidden"]:
         batch, sequence, _ = hidden.shape
 
-        def project(projection: Linear) -> jax.Array:
+        def project(
+            projection: Linear,
+        ) -> Float[Array, "batch sequence heads head"]:
             return projection(hidden).reshape(
                 batch,
                 sequence,
@@ -118,7 +124,7 @@ class SigLIPVisionMLP(eqx.Module):
         cls,
         config: ModernVBERTVisionConfig,
         *,
-        key: jax.Array,
+        key: PRNGKeyArray,
         dtype: jnp.dtype,
     ) -> SigLIPVisionMLP:
         input_key, output_key = jax.random.split(key)
@@ -141,7 +147,10 @@ class SigLIPVisionMLP(eqx.Module):
             ),
         )
 
-    def __call__(self, hidden: jax.Array) -> jax.Array:
+    def __call__(
+        self,
+        hidden: Float[Array, "batch sequence hidden"],
+    ) -> Float[Array, "batch sequence hidden"]:
         return self.output(jax.nn.gelu(self.input(hidden), approximate=True))
 
 
@@ -156,7 +165,7 @@ class SigLIPVisionLayer(eqx.Module):
         cls,
         config: ModernVBERTVisionConfig,
         *,
-        key: jax.Array,
+        key: PRNGKeyArray,
         dtype: jnp.dtype,
     ) -> SigLIPVisionLayer:
         attention_key, mlp_key = jax.random.split(key)
@@ -183,11 +192,11 @@ class SigLIPVisionLayer(eqx.Module):
 
     def __call__(
         self,
-        hidden: jax.Array,
+        hidden: Float[Array, "batch sequence hidden"],
         *,
         config: ModernVBERTVisionConfig,
         implementation: AttentionImplementation,
-    ) -> jax.Array:
+    ) -> Float[Array, "batch sequence hidden"]:
         hidden = hidden + self.attention(
             self.attention_norm(hidden),
             config=config,
@@ -198,7 +207,7 @@ class SigLIPVisionLayer(eqx.Module):
 
 class SigLIPVisionTower(eqx.Module):
     patch_embedding: PatchEmbedding
-    position_embedding: jax.Array
+    position_embedding: Float[Array, "sequence hidden"]
     layers: tuple[SigLIPVisionLayer, ...]
     final_norm: LayerNorm
     config: ModernVBERTVisionConfig = eqx.field(static=True)
@@ -208,7 +217,7 @@ class SigLIPVisionTower(eqx.Module):
         cls,
         config: ModernVBERTVisionConfig,
         *,
-        key: jax.Array,
+        key: PRNGKeyArray,
         dtype: jnp.dtype = jnp.float32,
     ) -> SigLIPVisionTower:
         keys = jax.random.split(key, config.num_hidden_layers + 2)
@@ -239,11 +248,11 @@ class SigLIPVisionTower(eqx.Module):
 
     def __call__(
         self,
-        pixel_values: jax.Array,
+        pixel_values: Float[Array, "image channel height width"],
         *,
         compute_dtype: jnp.dtype,
         attention_implementation: AttentionImplementation,
-    ) -> jax.Array:
+    ) -> Float[Array, "image sequence hidden"]:
         if pixel_values.ndim != 4:
             raise ValueError("pixel_values must have shape [images, channels, H, W]")
         expected = (
@@ -266,7 +275,11 @@ class SigLIPVisionTower(eqx.Module):
         return self.final_norm(hidden)
 
 
-def pixel_shuffle(hidden: jax.Array, *, factor: int) -> jax.Array:
+def pixel_shuffle(
+    hidden: Float[Array, "batch sequence channels"],
+    *,
+    factor: int,
+) -> Float[Array, "batch shuffled_sequence shuffled_channels"]:
     """Apply ModernVBERT's exact connector token ordering."""
 
     batch, sequence, channels = hidden.shape

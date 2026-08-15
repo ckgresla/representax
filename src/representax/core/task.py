@@ -6,8 +6,8 @@ from collections.abc import Mapping
 from typing import Any, Generic, Protocol, TypeVar, runtime_checkable
 
 import equinox as eqx
-import jax
 import jax.numpy as jnp
+from jaxtyping import Array, Float, PRNGKeyArray
 
 ModelT = TypeVar("ModelT")
 
@@ -15,8 +15,8 @@ ModelT = TypeVar("ModelT")
 class LossOutput(eqx.Module):
     """Scalar optimization target plus stable, named metric leaves."""
 
-    loss: jax.Array
-    metrics: Mapping[str, jax.Array]
+    loss: Float[Array, ""]
+    metrics: Mapping[str, Array]
 
 
 @runtime_checkable
@@ -28,7 +28,7 @@ class Task(Protocol, Generic[ModelT]):
         model: ModelT,
         batch: Any,
         *,
-        key: jax.Array | None = None,
+        key: PRNGKeyArray | None = None,
     ) -> LossOutput: ...
 
 
@@ -37,7 +37,7 @@ def evaluate_loss(
     model: ModelT,
     batch: Any,
     *,
-    key: jax.Array | None = None,
+    key: PRNGKeyArray | None = None,
 ) -> LossOutput:
     """Evaluate a task while validating the optimization boundary."""
 

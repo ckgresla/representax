@@ -9,6 +9,7 @@ from typing import Literal
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+from jaxtyping import Array, Bool, Float, PRNGKeyArray
 
 from representax.core import Encoder, LossOutput, Route, encode
 
@@ -18,47 +19,49 @@ from .batch import RetrievalBatch
 class MNRLossTerms(eqx.Module):
     """Auditable intermediates for direct and Matryoshka MNR."""
 
-    loss: jax.Array
-    forward_loss: jax.Array
-    reverse_loss: jax.Array
-    row_losses: jax.Array
-    reverse_row_losses: jax.Array
-    cosine_similarity: jax.Array
-    scaled_logits: jax.Array
+    loss: Float[Array, ""]
+    forward_loss: Float[Array, ""]
+    reverse_loss: Float[Array, ""]
+    row_losses: Float[Array, " query"]
+    reverse_row_losses: Float[Array, " document"]
+    cosine_similarity: Float[Array, "query document"]
+    scaled_logits: Float[Array, "query document"]
 
 
 class _MNRLossValues(eqx.Module):
     """Training-facing MNR values without diagnostic similarity matrices."""
 
-    loss: jax.Array
-    forward_loss: jax.Array
-    reverse_loss: jax.Array
-    row_losses: jax.Array
-    reverse_row_losses: jax.Array
+    loss: Float[Array, ""]
+    forward_loss: Float[Array, ""]
+    reverse_loss: Float[Array, ""]
+    row_losses: Float[Array, " query"]
+    reverse_row_losses: Float[Array, " document"]
 
 
-def _normalize(values: jax.Array) -> jax.Array:
+def _normalize(
+    values: Float[Array, "batch representation"],
+) -> Float[Array, "batch representation"]:
     values = values.astype(jnp.float32)
     norm = jnp.linalg.norm(values, ord=2, axis=1, keepdims=True)
     return values / jnp.maximum(norm, jnp.asarray(1e-12, dtype=values.dtype))
 
 
 def _prepare_mnr_inputs(
-    query_embeddings: jax.Array,
-    document_embeddings: jax.Array,
-    positive_mask: jax.Array,
+    query_embeddings: Float[Array, "query representation"],
+    document_embeddings: Float[Array, "document representation"],
+    positive_mask: Bool[Array, "query document"],
     *,
-    positive_weights: jax.Array | None,
-    query_valid: jax.Array | None,
-    document_valid: jax.Array | None,
+    positive_weights: Float[Array, "query document"] | None,
+    query_valid: Bool[Array, " query"] | None,
+    document_valid: Bool[Array, " document"] | None,
     scale: float,
 ) -> tuple[
-    jax.Array,
-    jax.Array,
-    jax.Array,
-    jax.Array,
-    jax.Array,
-    jax.Array,
+    Float[Array, "query representation"],
+    Float[Array, "document representation"],
+    Bool[Array, "query document"],
+    Float[Array, "query document"],
+    Bool[Array, " query"],
+    Bool[Array, " document"],
 ]:
     """Validate and canonicalize inputs for every MNR execution schedule."""
 
@@ -111,15 +114,20 @@ def _prepare_mnr_inputs(
 
 
 def _direction_row_terms(
-    row_embeddings: jax.Array,
-    candidate_embeddings: jax.Array,
-    positive_mask: jax.Array,
-    positive_weights: jax.Array,
-    row_valid: jax.Array,
-    candidate_valid: jax.Array,
+    row_embeddings: Float[Array, "row representation"],
+    candidate_embeddings: Float[Array, "candidate representation"],
+    positive_mask: Bool[Array, "row candidate"],
+    positive_weights: Float[Array, "row candidate"],
+    row_valid: Bool[Array, " row"],
+    candidate_valid: Bool[Array, " candidate"],
     *,
     scale: float,
-) -> tuple[jax.Array, jax.Array, jax.Array, jax.Array]:
+) -> tuple[
+    Float[Array, "row candidate"],
+    Float[Array, "row candidate"],
+    Float[Array, " row"],
+    Bool[Array, " row"],
+]:
     """Canonical MNR formula for one contiguous block of objective rows."""
 
     cosine = _normalize(row_embeddings) @ _normalize(candidate_embeddings).T
@@ -138,16 +146,16 @@ def _direction_row_terms(
 
 
 def _tiled_direction_loss(
-    row_embeddings: jax.Array,
-    candidate_embeddings: jax.Array,
-    positive_mask: jax.Array,
-    positive_weights: jax.Array,
-    row_valid: jax.Array,
-    candidate_valid: jax.Array,
+    row_embeddings: Float[Array, "row representation"],
+    candidate_embeddings: Float[Array, "candidate representation"],
+    positive_mask: Bool[Array, "row candidate"],
+    positive_weights: Float[Array, "row candidate"],
+    row_valid: Bool[Array, " row"],
+    candidate_valid: Bool[Array, " candidate"],
     *,
     scale: float,
     row_chunk_size: int,
-) -> tuple[jax.Array, jax.Array]:
+) -> tuple[Float[Array, ""], Float[Array, " row"]]:
     """Evaluate and differentiate MNR with only one score-row tile live."""
 
     row_count = row_embeddings.shape[0]
@@ -155,7 +163,7 @@ def _tiled_direction_loss(
     padded_count = chunk_count * row_chunk_size
     padding = padded_count - row_count
 
-    def pad_rows(value: jax.Array, fill_value: int | float = 0) -> jax.Array:
+    def pad_rows(value: Array, fill_value: int | float = 0) -> Array:
         widths = ((0, padding),) + ((0, 0),) * (value.ndim - 1)
         return jnp.pad(value, widths, constant_values=fill_value).reshape(
             chunk_count, row_chunk_size, *value.shape[1:]
@@ -167,9 +175,9 @@ def _tiled_direction_loss(
     valid_chunks = pad_rows(row_valid)
 
     def body(
-        totals: tuple[jax.Array, jax.Array],
-        values: tuple[jax.Array, jax.Array, jax.Array, jax.Array],
-    ) -> tuple[tuple[jax.Array, jax.Array], jax.Array]:
+        totals: tuple[Array, Array],
+        values: tuple[Array, Array, Array, Array],
+    ) -> tuple[tuple[Array, Array], Array]:
         rows, mask, weights, valid = values
         _, _, row_losses, active_rows = _direction_row_terms(
             rows,
@@ -207,13 +215,13 @@ def _tiled_direction_loss(
 
 
 def _mnr_loss_values(
-    query_embeddings: jax.Array,
-    document_embeddings: jax.Array,
-    positive_mask: jax.Array,
+    query_embeddings: Float[Array, "query representation"],
+    document_embeddings: Float[Array, "document representation"],
+    positive_mask: Bool[Array, "query document"],
     *,
-    positive_weights: jax.Array | None = None,
-    query_valid: jax.Array | None = None,
-    document_valid: jax.Array | None = None,
+    positive_weights: Float[Array, "query document"] | None = None,
+    query_valid: Bool[Array, " query"] | None = None,
+    document_valid: Bool[Array, " document"] | None = None,
     scale: float = 20.0,
     symmetric: bool = False,
     row_chunk_size: int | None = None,
@@ -289,13 +297,13 @@ def _mnr_loss_values(
 
 
 def mnr_loss_terms(
-    query_embeddings: jax.Array,
-    document_embeddings: jax.Array,
-    positive_mask: jax.Array,
+    query_embeddings: Float[Array, "query representation"],
+    document_embeddings: Float[Array, "document representation"],
+    positive_mask: Bool[Array, "query document"],
     *,
-    positive_weights: jax.Array | None = None,
-    query_valid: jax.Array | None = None,
-    document_valid: jax.Array | None = None,
+    positive_weights: Float[Array, "query document"] | None = None,
+    query_valid: Bool[Array, " query"] | None = None,
+    document_valid: Bool[Array, " document"] | None = None,
     scale: float = 20.0,
     symmetric: bool = False,
 ) -> MNRLossTerms:
@@ -390,7 +398,7 @@ class MNRTask(eqx.Module):
         model: Encoder,
         batch: RetrievalBatch,
         *,
-        key: jax.Array | None = None,
+        key: PRNGKeyArray | None = None,
     ) -> LossOutput:
         if key is None:
             query_key = document_key = None
@@ -404,8 +412,8 @@ class MNRTask(eqx.Module):
 
     def loss_from_embeddings(
         self,
-        query_embeddings: jax.Array,
-        document_embeddings: jax.Array,
+        query_embeddings: Float[Array, "query representation"],
+        document_embeddings: Float[Array, "document representation"],
         batch: RetrievalBatch,
         *,
         row_chunk_size: int | None = None,
