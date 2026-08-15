@@ -225,14 +225,12 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
     =9.43e-4= relative L2 at =0.99999956= cosine.  Median steady-state time is
     =0.630= seconds for global batch 16 at sequence length 512.  See
     =benchmarks/results/multiprocess-grad-cache-modernvbert-20260814/=.
-* NEXT Publish =representax= 0.0.1 and reserve the package name :release:
-  The public GitHub repository is reserved at
-  =github.com/ckgresla/representax=.  PyPI's official project endpoint returned
-  =404= on 2026-08-14, so the distribution name is available but not reserved.
-  PyPI reservation requires the first legitimate upload; complete the local
-  package, provenance, and release checks below before publishing rather than
-  uploading a placeholder.
-* TODO Publish a minimal CPU-first installation and compatibility matrix :release:
+* DONE Publish =representax= 0.0.1 and reserve the package name :release:
+  Published from signed tag =v0.0.1= at commit =8a9bcf6= through GitHub Actions
+  run =31852459601=.  The registered pending publisher created and reserved
+  [[https://pypi.org/project/representax/0.0.1/][representax on PyPI]], and the workflow created the corresponding GitHub
+  [[https://github.com/ckgresla/representax/releases/tag/v0.0.1][Release]] from the same accepted artifact bundle.
+* DONE Publish a minimal CPU-first installation and compatibility matrix :release:
 ** DONE Build bounded wheel and source-distribution artifacts
    The universal wheel contains only =representax=, package metadata, the MIT
    license, and =THIRD_PARTY.md=.  The sdist retains source, tests, docs,
@@ -260,22 +258,29 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
    Packages is deliberately unused. The =pypi= environment accepts only =v*=
    tags and requires approval from =ckgresla=. Release-ready commit =e0ebc76=
    passed all seven public lint, Python, runtime, virtual-distributed, and
-   artifact jobs in GitHub Actions run =31822635802=; the first tagged release
-   is the acceptance test for the tag-driven revision.
-** NEXT Publish through the registered pending PyPI publisher
-   The pending publisher is registered in the PyPI account for
+   artifact jobs in GitHub Actions run =31822635802=.  The tag-driven revision
+   was accepted end to end in release run =31852459601=: build, exact-version
+   validation, CPU smoke, OIDC publish, and GitHub Release creation all passed.
+** DONE Publish through the registered PyPI trusted publisher
+   The trusted publisher is registered in the PyPI account for
    =ckgresla@gmail.com= against owner/repository =ckgresla/representax=,
-   workflow =release.yml=, and environment =pypi=. The accepted release scope is
+   workflow =release.yml=, and environment =pypi=. The accepted release scope was
    Alpha metadata, mandatory Grain and safetensors, optional =hf= ecosystem
    dependencies, explicit =cuda12=/=cuda13= extras, and repository-only parity
-   groups. Rebuild and accept the exact artifacts, publish, then read back the
-   project metadata before marking the name reserved.
+   groups.
    The dependency-boundary release candidate passed strict Twine metadata,
    =58= fast tests, =8= runtime tests, =3= virtual four-device distributed
    tests, and fresh CPU, CUDA 13, and =hf= installs on 2026-08-14. CPU and GPU
    produced the same compiled-update loss; both installed Grain and safetensors,
    the =hf= environment installed Transformers 5.3.0 without PyTorch, and the
    published wheel metadata exposes no parity extras.
+   Published on 2026-08-14.  PyPI and GitHub independently report the same
+   wheel SHA-256 =f51a7cc8cc81044897bb14b9a780c36ce7219ca22fa4f16412da8767b78b930b=
+   and sdist SHA-256
+   =56f68c804a734bb2dd41f70d24d8ef966dfc13c155fb612d438408237d6b0efe=.
+   A fresh Python 3.13 environment installed =representax==0.0.1= from PyPI,
+   resolved JAX 0.11.0 on CPU, and passed the compiled update smoke with loss
+   =2.3512461185455322=.
 ** DONE Accept clean CPU and NVIDIA GPU installs from the exact release wheel
    The base wheel must resolve and execute a compiled update on CPU without
    accelerator packages. The =cuda13= extra must resolve JAX's pip-managed CUDA
