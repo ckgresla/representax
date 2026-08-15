@@ -24,6 +24,18 @@ ModernVBERT is the first `verified` architecture. New model types are added by
 updating the pinned Transformers reference and regenerating the catalog; native
 forwards are implemented once per reusable architecture family.
 
+The separate semantic family manifest is reviewed Python data. Each entry owns
+one or more pinned model types and names its modalities, reusable numerical
+components, configuration adapter, accepted input and output contracts,
+checkpoint layout, implementation module, and completed acceptance gates. The
+generator rejects stale catalogue fingerprints, unknown or multiply owned model
+types, and unearned support claims, then emits the immutable Torch-free runtime
+index. It does not inspect or translate upstream forward source.
+
+This makes generation useful without pretending architecture ports are
+mechanical: codegen owns dispatch and acceptance scaffolding, while humans own
+the semantic decomposition and native Equinox implementation.
+
 Each model family owns one bidirectional checkpoint adapter with three explicit
 parts:
 

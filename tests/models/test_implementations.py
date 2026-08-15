@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pytest
 
+from representax.integrations import MODEL_FAMILIES, AcceptanceGate
+
 from .acceptance import MODEL_IMPLEMENTATIONS, compare_model_performance
 
 
@@ -18,6 +20,12 @@ def test_every_checkpoint_backed_model_has_an_acceptance_registration():
     }
     registered = {case.package for case in MODEL_IMPLEMENTATIONS}
     assert registered == checkpoint_backed
+    performance_claims = {
+        family.name
+        for family in MODEL_FAMILIES.values()
+        if AcceptanceGate.PERFORMANCE in family.acceptance_gates
+    }
+    assert registered == performance_claims
     for case in MODEL_IMPLEMENTATIONS:
         tests = Path("tests/models") / case.package
         assert (tests / "test_model.py").is_file()

@@ -12,6 +12,7 @@ from ._transformers_5_3_0 import (
     CATALOG_SHA256,
     TRANSFORMERS_VERSION,
 )
+from .families import get_model_type_family
 
 
 class ArchitectureSupport(StrEnum):
@@ -31,6 +32,7 @@ class HuggingFaceArchitecture:
     config_class: str
     auto_model_classes: tuple[str, ...]
     support: ArchitectureSupport
+    family: str | None
 
     @property
     def has_auto_model(self) -> bool:
@@ -39,18 +41,35 @@ class HuggingFaceArchitecture:
         return bool(self.auto_model_classes)
 
 
-_NATIVE_SUPPORT = {
-    "modernvbert": ArchitectureSupport.VERIFIED,
-}
+def _architecture(
+    model_type: str,
+    module: str,
+    config_class: str,
+    auto_model_classes: tuple[str, ...],
+) -> HuggingFaceArchitecture:
+    family = get_model_type_family(model_type)
+    support = (
+        ArchitectureSupport.CATALOGUED
+        if family is None
+        else ArchitectureSupport(family.support.value)
+    )
+    return HuggingFaceArchitecture(
+        model_type=model_type,
+        module=module,
+        config_class=config_class,
+        auto_model_classes=auto_model_classes,
+        support=support,
+        family=None if family is None else family.name,
+    )
+
 
 HUGGING_FACE_ARCHITECTURES: Mapping[str, HuggingFaceArchitecture] = MappingProxyType(
     {
-        model_type: HuggingFaceArchitecture(
-            model_type=model_type,
-            module=module,
-            config_class=config_class,
-            auto_model_classes=auto_model_classes,
-            support=_NATIVE_SUPPORT.get(model_type, ArchitectureSupport.CATALOGUED),
+        model_type: _architecture(
+            model_type,
+            module,
+            config_class,
+            auto_model_classes,
         )
         for model_type, module, config_class, auto_model_classes in ARCHITECTURE_ROWS
     }

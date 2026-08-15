@@ -331,7 +331,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   =AutoModel= dispatch is not the reuse boundary: 441 registrations contain 439
   distinct model classes and roughly 379 pretrained base classes.  Reuse must
   therefore occur through semantic components and family specifications.
-** NEXT Generate a semantic model-family implementation manifest :models:codegen:
+** DONE Generate a semantic model-family implementation manifest :models:codegen:
    Maintain one reviewed family specification that names its pinned model
    types, modalities, reusable components, configuration mapping, input/output
    contract, and checkpoint layout.  Generate Torch-free registry entries,
@@ -339,7 +339,12 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
    not transpile or copy Transformers forward source.  Fail generation on an
    unknown model type, overlapping family ownership, stale pinned metadata, or
    a support claim without its required numerical and systems gates.
-** TODO Build reusable native transformer and modality components :models:
+   Accepted with a reviewed Python manifest and generated Torch-free runtime
+   index.  ModernVBERT proves the complete contract.  Generation is tested to
+   reject stale catalogue fingerprints, unknown or multiply owned model types,
+   and verified status without configuration, checkpoint, forward,
+   input-gradient, and performance evidence.
+** NEXT Build reusable native transformer and modality components :models:
 ** TODO Port encoder-only text families :models:text:
 ** TODO Port decoder-only, state-space, and mixture-of-experts text families :models:text:
 ** TODO Port encoder-decoder text families :models:text:
