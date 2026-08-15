@@ -112,7 +112,9 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   vision patching, MNR relations and losses, PRNG keys, train state, GradCache,
   and compiled-step boundaries.  No decorator or runtime import hook is
   installed.  Explicit semantic validation remains authoritative.  Ruff and
-  formatting pass, annotation contracts pass, and all 78 fast tests pass.
+  formatting pass, annotation contracts pass, all 78 fast tests pass, and the
+  public Python 3.11-3.13, runtime, distributed, and wheel-install CI matrix is
+  green.
 * DONE Implement exact native-JAX GradCache as an execution plan for MNR :retrieval:runtime:
   Preserve =MNRTask= and one shared row-level MNR primitive as the sole
   scientific definition.
@@ -322,8 +324,30 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   registrations. A fresh installed-wheel environment matched every model type,
   module, config class, and base-model class against Transformers 5.3.0.
 * DONE Document what qualifies an architecture as supported :models:testing:
-* TODO Require each architecture port only once per model family :models:
-* TODO Build reusable native transformer and modality components :models:
+* TODO Implement every pinned Transformers 5.3.0 =AutoModel= architecture natively :models:hf:
+  The target is all 441 task-neutral registrations in the pinned catalog, not
+  task-specific prediction heads.  The 34 config-only types remain catalogued
+  until they expose a task-neutral representation-bearing model.  Upstream
+  =AutoModel= dispatch is not the reuse boundary: 441 registrations contain 439
+  distinct model classes and roughly 379 pretrained base classes.  Reuse must
+  therefore occur through semantic components and family specifications.
+** NEXT Generate a semantic model-family implementation manifest :models:codegen:
+   Maintain one reviewed family specification that names its pinned model
+   types, modalities, reusable components, configuration mapping, input/output
+   contract, and checkpoint layout.  Generate Torch-free registry entries,
+   configuration/checkpoint scaffolding, and acceptance-test parameters.  Do
+   not transpile or copy Transformers forward source.  Fail generation on an
+   unknown model type, overlapping family ownership, stale pinned metadata, or
+   a support claim without its required numerical and systems gates.
+** TODO Build reusable native transformer and modality components :models:
+** TODO Port encoder-only text families :models:text:
+** TODO Port decoder-only, state-space, and mixture-of-experts text families :models:text:
+** TODO Port encoder-decoder text families :models:text:
+** TODO Port vision and image-representation families :models:vision:
+** TODO Port audio and speech representation families :models:audio:
+** TODO Port video representation families :models:video:
+** TODO Port multimodal and composite families :models:multimodal:
+** TODO Port remaining time-series, graph, table, and specialist families :models:
 * DONE Stack homogeneous transformer layers and execute model depth with =scan= :models:runtime:performance:
   ModernVBERT text parameters are depth-major arrays, with the 21 real
   post-layer-zero attention norms kept separately so the trainable tree exactly
