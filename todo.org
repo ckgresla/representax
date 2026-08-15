@@ -253,12 +253,15 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
    virtual distributed, and release-artifact jobs passed with Node 24 actions.
 ** DONE Configure the protected GitHub OIDC release workflow
    The dedicated =release.yml= builds and validates one artifact set, verifies
-   that the GitHub release tag exactly matches project metadata, smoke-tests the
+   that a pushed =v*= tag exactly matches project metadata, smoke-tests the
    installed wheel on CPU, and passes the same artifacts to PyPI with only
-   =id-token: write=. The =pypi= environment accepts only =v*= tags and requires
-   approval from =ckgresla=. Release-ready commit =e0ebc76= passed all seven
-   public lint, Python, runtime, virtual-distributed, and artifact jobs in
-   GitHub Actions run =31822635802=.
+   =id-token: write=. After PyPI succeeds, it creates the corresponding GitHub
+   Release and attaches that exact wheel and source distribution. GitHub
+   Packages is deliberately unused. The =pypi= environment accepts only =v*=
+   tags and requires approval from =ckgresla=. Release-ready commit =e0ebc76=
+   passed all seven public lint, Python, runtime, virtual-distributed, and
+   artifact jobs in GitHub Actions run =31822635802=; the first tagged release
+   is the acceptance test for the tag-driven revision.
 ** NEXT Publish through the registered pending PyPI publisher
    The pending publisher is registered in the PyPI account for
    =ckgresla@gmail.com= against owner/repository =ckgresla/representax=,
