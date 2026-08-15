@@ -10,16 +10,14 @@ import jax.numpy as jnp
 from jaxtyping import Array, Bool, Float, Int, PRNGKeyArray
 
 from representax.core import EncoderMetadata, Modality, Route
+from representax.models.components import Linear, l2_normalize, mean_pool
 from representax.planning import RematerializationPolicy
 
 from .config import ModernVBERTConfig
 from .model import (
     AttentionImplementation,
-    Linear,
     ModernVBERTTextBatch,
     ModernVBERTTextEncoder,
-    _l2_normalize,
-    _mean_pool,
 )
 from .vision import SigLIPVisionTower, pixel_shuffle
 
@@ -254,4 +252,4 @@ class ModernVBERTEncoder(eqx.Module):
     ) -> Float[Array, "batch representation"]:
         del route, key
         hidden = self.hidden_states(inputs)
-        return _l2_normalize(_mean_pool(hidden, inputs.attention_mask))
+        return l2_normalize(mean_pool(hidden, inputs.attention_mask))

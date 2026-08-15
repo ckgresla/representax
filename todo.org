@@ -345,6 +345,14 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
    and verified status without configuration, checkpoint, forward,
    input-gradient, and performance evidence.
 ** NEXT Build reusable native transformer and modality components :models:
+*** DONE Extract shared projection, normalization, embedding, and pooling primitives
+    ModernVBERT now consumes the public Equinox components without changing its
+    model tree or numerics.  Fast unit tests cover Hugging Face linear layout,
+    FP32 layer-normalization statistics, repeated-token embedding gradients,
+    masked mean pooling, and stable L2 normalization.
+*** NEXT Compose reusable attention, position, MLP, residual, and layer-stack policies
+    Prove the component boundary with the native BERT family before extending
+    it to architectural variants.
 ** TODO Port encoder-only text families :models:text:
 ** TODO Port decoder-only, state-space, and mixture-of-experts text families :models:text:
 ** TODO Port encoder-decoder text families :models:text:

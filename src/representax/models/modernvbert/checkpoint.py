@@ -15,6 +15,7 @@ from representax.integrations.huggingface import (
     load_hf_config,
     load_safetensor_subset,
 )
+from representax.models.components import LayerNorm, Linear
 from representax.planning import RematerializationPolicy
 
 from .config import (
@@ -28,8 +29,6 @@ from .model import (
     AttentionImplementation,
     FusedSelfAttention,
     GatedMLP,
-    LayerNorm,
-    Linear,
     ModernVBERTTextBlock,
     ModernVBERTTextEncoder,
     ModernVBERTTextLayerStack,

@@ -15,6 +15,13 @@ import jax.numpy as jnp
 from jaxtyping import Array, Bool, Float, Int, PRNGKeyArray
 
 from representax.core import EncoderMetadata, Modality, Route
+from representax.models.components import (
+    LayerNorm,
+    Linear,
+    embedding_lookup,
+    l2_normalize,
+    mean_pool,
+)
 from representax.planning import RematerializationPolicy
 
 from .config import ModernVBERTTextConfig
@@ -38,41 +45,6 @@ def _rematerialize_layer(function: Any, policy: RematerializationPolicy) -> Any:
         policy=checkpoint_policy,
         prevent_cse=False,
     )
-
-
-@jax.custom_vjp
-def _embedding_lookup(
-    table: Float[Array, "vocabulary hidden"],
-    indices: Int[Array, "*batch"],
-) -> Float[Array, "*batch hidden"]:
-    """Gather embeddings while completing each table-gradient scatter."""
-
-    return table[indices]
-
-
-def _embedding_lookup_forward(
-    table: Float[Array, "vocabulary hidden"],
-    indices: Int[Array, "*batch"],
-) -> tuple[
-    Float[Array, "*batch hidden"],
-    tuple[Float[Array, "vocabulary hidden"], Int[Array, "*batch"]],
-]:
-    return table[indices], (table, indices)
-
-
-def _embedding_lookup_backward(
-    residual: tuple[
-        Float[Array, "vocabulary hidden"],
-        Int[Array, "*batch"],
-    ],
-    cotangent: Float[Array, "*batch hidden"],
-) -> tuple[Float[Array, "vocabulary hidden"], None]:
-    table, indices = residual
-    gradient = jnp.zeros_like(table).at[indices].add(cotangent)
-    return jax.lax.optimization_barrier(gradient), None
-
-
-_embedding_lookup.defvjp(_embedding_lookup_forward, _embedding_lookup_backward)
 
 
 class ModernVBERTTextBatch(eqx.Module):
@@ -116,74 +88,6 @@ class ModernVBERTTextBatch(eqx.Module):
                 raise ValueError("position_ids and attention_mask must align")
             if not jnp.issubdtype(self.position_ids.dtype, jnp.integer):
                 raise TypeError("position_ids must have an integer dtype")
-
-
-class Linear(eqx.Module):
-    """Batched linear projection with Hugging Face weight orientation."""
-
-    weight: Float[Array, "output input"]
-    bias: Float[Array, " output"] | None = None
-
-    @classmethod
-    def init(
-        cls,
-        input_size: int,
-        output_size: int,
-        *,
-        key: PRNGKeyArray,
-        scale: float,
-        dtype: jnp.dtype,
-        bias: bool = False,
-    ) -> Linear:
-        weight = scale * jax.random.normal(key, (output_size, input_size), dtype=dtype)
-        return cls(
-            weight=weight,
-            bias=jnp.zeros((output_size,), dtype=dtype) if bias else None,
-        )
-
-    def __call__(
-        self,
-        value: Float[Array, "*batch input"],
-    ) -> Float[Array, "*batch output"]:
-        output = value @ self.weight.T
-        return output if self.bias is None else output + self.bias
-
-
-class LayerNorm(eqx.Module):
-    """ModernBERT LayerNorm with FP32 statistics."""
-
-    weight: Float[Array, " hidden"]
-    bias: Float[Array, " hidden"] | None
-    epsilon: float = eqx.field(static=True)
-
-    @classmethod
-    def init(
-        cls,
-        size: int,
-        *,
-        epsilon: float,
-        dtype: jnp.dtype,
-        bias: bool = False,
-    ) -> LayerNorm:
-        return cls(
-            weight=jnp.ones((size,), dtype=dtype),
-            bias=jnp.zeros((size,), dtype=dtype) if bias else None,
-            epsilon=epsilon,
-        )
-
-    def __call__(
-        self,
-        value: Float[Array, "*batch hidden"],
-    ) -> Float[Array, "*batch hidden"]:
-        source_dtype = value.dtype
-        value = value.astype(jnp.float32)
-        mean = jnp.mean(value, axis=-1, keepdims=True)
-        variance = jnp.mean(jnp.square(value - mean), axis=-1, keepdims=True)
-        output = (value - mean) * jax.lax.rsqrt(variance + self.epsilon)
-        output = output * self.weight.astype(jnp.float32)
-        if self.bias is not None:
-            output = output + self.bias.astype(jnp.float32)
-        return output.astype(source_dtype)
 
 
 def _rotary_frequencies(
@@ -534,7 +438,7 @@ class ModernVBERTTextTower(eqx.Module):
     ) -> Float[Array, "batch sequence hidden"]:
         """Gather token embeddings with a complete table-gradient scatter."""
 
-        return _embedding_lookup(self.token_embedding, input_ids)
+        return embedding_lookup(self.token_embedding, input_ids)
 
     @classmethod
     def init(
@@ -649,25 +553,6 @@ class ModernVBERTTextTower(eqx.Module):
         return self.final_norm(hidden)
 
 
-def _mean_pool(
-    hidden: Float[Array, "batch sequence hidden"],
-    attention_mask: Bool[Array, "batch sequence"] | Int[Array, "batch sequence"],
-) -> Float[Array, "batch hidden"]:
-    hidden = hidden.astype(jnp.float32)
-    mask = attention_mask.astype(bool)[..., None]
-    total = jnp.sum(jnp.where(mask, hidden, 0.0), axis=1)
-    count = jnp.maximum(jnp.sum(mask, axis=1), 1)
-    return total / count
-
-
-def _l2_normalize(
-    value: Float[Array, "*batch hidden"],
-) -> Float[Array, "*batch hidden"]:
-    value = value.astype(jnp.float32)
-    norm = jnp.linalg.norm(value, axis=-1, keepdims=True)
-    return value / jnp.maximum(norm, jnp.asarray(1e-12, value.dtype))
-
-
 class ModernVBERTTextEncoder(eqx.Module):
     """Text-only Representax encoder backed by a native ModernBERT tower."""
 
@@ -726,4 +611,4 @@ class ModernVBERTTextEncoder(eqx.Module):
     ) -> Float[Array, "batch representation"]:
         del route, key
         hidden = self.hidden_states(inputs)
-        return _l2_normalize(_mean_pool(hidden, inputs.attention_mask))
+        return l2_normalize(mean_pool(hidden, inputs.attention_mask))

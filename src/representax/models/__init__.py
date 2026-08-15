@@ -1,5 +1,6 @@
 """Native model implementations and integrations."""
 
+from .components import LayerNorm, Linear, embedding_lookup, l2_normalize, mean_pool
 from .dense import DenseEncoder
 from .modernvbert import (
     ModernVBERTBatch,
@@ -14,6 +15,8 @@ from .modernvbert import (
 
 __all__ = [
     "DenseEncoder",
+    "LayerNorm",
+    "Linear",
     "ModernVBERTBatch",
     "ModernVBERTCheckpointAdapter",
     "ModernVBERTConfig",
@@ -22,4 +25,7 @@ __all__ = [
     "ModernVBERTTextCheckpointAdapter",
     "ModernVBERTTextConfig",
     "ModernVBERTTextEncoder",
+    "embedding_lookup",
+    "l2_normalize",
+    "mean_pool",
 ]

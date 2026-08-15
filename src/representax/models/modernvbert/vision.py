@@ -9,8 +9,10 @@ import jax
 import jax.numpy as jnp
 from jaxtyping import Array, Float, PRNGKeyArray
 
+from representax.models.components import LayerNorm, Linear
+
 from .config import ModernVBERTVisionConfig
-from .model import AttentionImplementation, LayerNorm, Linear
+from .model import AttentionImplementation
 
 
 class PatchEmbedding(eqx.Module):
