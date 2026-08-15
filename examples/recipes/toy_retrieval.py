@@ -23,7 +23,8 @@ def to_features(record):
     return record
 
 
-Data = builds(
+# Hydra-Zen's overload does not expose positional arguments forwarded to a target.
+Data = builds(  # ty: ignore[no-matching-overload]
     mix,
     source(
         "file://examples/data/toy.jsonl",

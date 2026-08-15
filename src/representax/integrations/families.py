@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from types import MappingProxyType
+from typing import TypedDict, cast
 
 from representax.core import Modality
 
@@ -70,7 +71,25 @@ class ModelFamily:
     support: FamilySupport
 
 
-def _family(row: dict[str, object]) -> ModelFamily:
+class _ModelFamilyRow(TypedDict):
+    """Typed view of one generator-validated manifest row."""
+
+    name: str
+    model_types: list[str]
+    modalities: list[str]
+    components: list[str]
+    configuration_constraints: list[str]
+    config_adapter: str | None
+    input_contracts: list[tuple[str, list[str]]]
+    output_contracts: list[str]
+    checkpoint_layout: str
+    checkpoint_adapter: str | None
+    implementation_module: str | None
+    acceptance_gates: list[str]
+    support: str
+
+
+def _family(row: _ModelFamilyRow) -> ModelFamily:
     return ModelFamily(
         name=str(row["name"]),
         model_types=tuple(str(value) for value in row["model_types"]),
@@ -107,8 +126,14 @@ def _family(row: dict[str, object]) -> ModelFamily:
     )
 
 
+_TYPED_MODEL_FAMILY_ROWS = cast(list[_ModelFamilyRow], MODEL_FAMILY_ROWS)
+
 MODEL_FAMILIES: Mapping[str, ModelFamily] = MappingProxyType(
-    {family.name: family for row in MODEL_FAMILY_ROWS for family in (_family(row),)}
+    {
+        family.name: family
+        for row in _TYPED_MODEL_FAMILY_ROWS
+        for family in (_family(row),)
+    }
 )
 MODEL_TYPE_TO_FAMILY: Mapping[str, ModelFamily] = MappingProxyType(
     {

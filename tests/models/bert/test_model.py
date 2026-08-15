@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any, cast
+
 import equinox as eqx
 import jax
 import jax.numpy as jnp
@@ -109,7 +111,7 @@ def test_native_bert_is_scanned_jittable_and_dropout_is_keyed():
     def hidden_only(candidate, inputs):
         return candidate.hidden_states(inputs)
 
-    lowered = hidden_only.lower(model, batch).as_text()
+    lowered = cast(Any, hidden_only).lower(model, batch).as_text()
     assert lowered.count("stablehlo.while") == 1
 
 

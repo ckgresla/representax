@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 import equinox as eqx
 import jax
@@ -140,10 +140,11 @@ class GradCache:
             query_key = document_key = None
         else:
             query_key, document_key = jax.random.split(key)
+        encoder = cast(Encoder, model)
         query_count = _leading_batch_size(batch.query, role="query")
         document_count = _leading_batch_size(batch.document, role="document")
         queries = _rematerialized_encode(
-            model,
+            encoder,
             batch.query,
             route=Route.QUERY,
             batch_size=query_count,
@@ -151,7 +152,7 @@ class GradCache:
             key=query_key,
         )
         documents = _rematerialized_encode(
-            model,
+            encoder,
             batch.document,
             route=Route.DOCUMENT,
             batch_size=document_count,

@@ -7,9 +7,14 @@ tests.
 Install the lightweight development environment with:
 
 ```bash
-python -m pip install -e ".[test]"
+python -m pip install -e ".[config,hf,test]" --group static
+python scripts/check.py
 pytest
 ```
+
+The static command is the fast, import-free development gate: Ruff checks
+formatting and lint rules, then ty checks the source package, tests, examples,
+and repository scripts. Pytest remains the behavioral test suite.
 
 Model integrations must include deterministic forward parity. Trainable model
 integrations must additionally cover gradients and one optimizer update using

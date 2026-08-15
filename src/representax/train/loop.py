@@ -189,6 +189,12 @@ def run_training(
     try:
         restored = None
         if resume:
+            if checkpoint is None:  # pragma: no cover - guarded before setup
+                raise AssertionError("resume requires checkpoint configuration")
+            if not isinstance(
+                data_fingerprint, str
+            ):  # pragma: no cover - guarded above
+                raise AssertionError("checkpointed training requires data fingerprint")
             checkpoint_manager = CheckpointManager(
                 run_path,
                 scientific_fingerprint=fingerprint,
@@ -237,6 +243,12 @@ def run_training(
                 initial_optimizer_step=initial_optimizer_step,
             )
             if checkpoint is not None:
+                if not isinstance(
+                    data_fingerprint, str
+                ):  # pragma: no cover - guarded above
+                    raise AssertionError(
+                        "checkpointed training requires data fingerprint"
+                    )
                 checkpoint_manager = CheckpointManager(
                     run_path,
                     scientific_fingerprint=fingerprint,
@@ -313,9 +325,12 @@ def run_training(
             pending_metric = record
 
             final = completed == training.max_steps
-            if checkpoint_manager is not None and checkpoint.should_save(
-                completed, final=final
-            ):
+            should_checkpoint = (
+                checkpoint_manager is not None
+                and checkpoint is not None
+                and checkpoint.should_save(completed, final=final)
+            )
+            if should_checkpoint:
                 logger.metrics(
                     pending_metric,
                     console=pending_metric.iteration % logging.console_every == 0,

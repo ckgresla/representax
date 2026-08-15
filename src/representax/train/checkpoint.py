@@ -10,7 +10,7 @@ import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 import jax
 import numpy as np
@@ -373,8 +373,12 @@ class CheckpointManager:
             jax.process_index() if process_index is None else process_index
         )
         self._checkpointer = checkpointer or ocp.training.Checkpointer(
-            self.checkpoint_root,
-            preservation_policy=ocp.training.preservation_policies.LatestN(keep),
+            str(self.checkpoint_root),
+            # Orbax v1 re-exports LatestN through a module path that ty does not
+            # yet connect to the public PreservationPolicy protocol.
+            preservation_policy=cast(
+                Any, ocp.training.preservation_policies.LatestN(keep)
+            ),
             cleanup_tmp_directories=False,
         )
         self._pending: _PendingSave | None = None

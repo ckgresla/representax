@@ -19,10 +19,17 @@ class RandomAccessSource(Protocol):
 class ArtifactSpec(Protocol):
     """Artifact fields consumed by built-in and custom resolvers."""
 
-    uri: str
-    revision: str | None
-    split: str | None
-    subset: str | None
+    @property
+    def uri(self) -> str: ...
+
+    @property
+    def revision(self) -> str | None: ...
+
+    @property
+    def split(self) -> str | None: ...
+
+    @property
+    def subset(self) -> str | None: ...
 
 
 ArtifactResolver = Callable[[ArtifactSpec], RandomAccessSource]

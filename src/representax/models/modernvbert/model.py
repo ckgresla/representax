@@ -7,7 +7,8 @@ execution path.
 
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Iterator
+from typing import Any, overload
 
 import equinox as eqx
 import jax
@@ -39,22 +40,26 @@ class ModernVBERTTextBatch(eqx.Module):
     position_ids: Int[Array, "#batch sequence"] | None = None
 
     def __post_init__(self) -> None:
-        if (self.input_ids is None) == (self.inputs_embeds is None):
+        input_ids = self.input_ids
+        inputs_embeds = self.inputs_embeds
+        if (input_ids is None) == (inputs_embeds is None):
             raise ValueError("specify exactly one of input_ids or inputs_embeds")
         if self.attention_mask.ndim != 2:
             raise ValueError("attention_mask must have shape [batch, sequence]")
-        if self.input_ids is not None:
-            if self.input_ids.ndim != 2:
+        if input_ids is not None:
+            if input_ids.ndim != 2:
                 raise ValueError("input_ids must have shape [batch, sequence]")
-            if not jnp.issubdtype(self.input_ids.dtype, jnp.integer):
+            if not jnp.issubdtype(input_ids.dtype, jnp.integer):
                 raise TypeError("input_ids must have an integer dtype")
-        elif self.inputs_embeds.ndim != 3:
-            raise ValueError("inputs_embeds must have shape [batch, sequence, hidden]")
-        token_shape = (
-            self.input_ids.shape
-            if self.input_ids is not None
-            else self.inputs_embeds.shape[:2]
-        )
+            token_shape = input_ids.shape
+        else:
+            if inputs_embeds is None:  # pragma: no cover - guarded above
+                raise AssertionError("inputs_embeds must be present")
+            if inputs_embeds.ndim != 3:
+                raise ValueError(
+                    "inputs_embeds must have shape [batch, sequence, hidden]"
+                )
+            token_shape = inputs_embeds.shape[:2]
         if token_shape != self.attention_mask.shape:
             raise ValueError("token inputs and attention_mask must align")
         if self.position_ids is not None:
@@ -382,6 +387,12 @@ class ModernVBERTTextLayerStack(eqx.Module):
     def __len__(self) -> int:
         return self.depth
 
+    @overload
+    def __getitem__(self, index: int) -> ModernVBERTTextBlock: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> tuple[ModernVBERTTextBlock, ...]: ...
+
     def __getitem__(
         self,
         index: int | slice,
@@ -394,11 +405,14 @@ class ModernVBERTTextLayerStack(eqx.Module):
         if self.blocks is None:
             raise IndexError(index)
         block = jax.tree.map(lambda leaf: leaf[index], self.blocks)
-        attention_norm = (
-            None
-            if index == 0
-            else jax.tree.map(lambda leaf: leaf[index - 1], self.attention_norms)
-        )
+        if index == 0:
+            attention_norm = None
+        else:
+            if self.attention_norms is None:  # pragma: no cover - invalid tree
+                raise AssertionError("post-zero layers require attention norms")
+            attention_norm = jax.tree.map(
+                lambda leaf: leaf[index - 1], self.attention_norms
+            )
         return ModernVBERTTextBlock(
             attention=block.attention,
             attention_norm=attention_norm,
@@ -406,6 +420,9 @@ class ModernVBERTTextLayerStack(eqx.Module):
             mlp=block.mlp,
             sliding_attention=block.sliding_attention,
         )
+
+    def __iter__(self) -> Iterator[ModernVBERTTextBlock]:
+        return (self[index] for index in range(self.depth))
 
 
 class ModernVBERTTextTower(eqx.Module):
@@ -419,7 +436,7 @@ class ModernVBERTTextTower(eqx.Module):
         self,
         input_ids: Int[Array, "batch sequence"],
     ) -> Float[Array, "batch sequence hidden"]:
-        """Gather token embeddings with a complete table-gradient scatter."""
+        """Gather token embeddings with repeated-token gradient accumulation."""
 
         return embedding_lookup(self.token_embedding, input_ids)
 
@@ -468,11 +485,12 @@ class ModernVBERTTextTower(eqx.Module):
         attention_implementation: AttentionImplementation,
         rematerialization: RematerializationPolicy,
     ) -> Float[Array, "batch sequence hidden"]:
-        hidden = (
-            self.token_embeddings(batch.input_ids)
-            if batch.input_ids is not None
-            else batch.inputs_embeds
-        )
+        if batch.input_ids is not None:
+            hidden = self.token_embeddings(batch.input_ids)
+        elif batch.inputs_embeds is not None:
+            hidden = batch.inputs_embeds
+        else:  # pragma: no cover - rejected by ModernVBERTTextBatch
+            raise AssertionError("token inputs must be present")
         hidden = hidden.astype(compute_dtype)
         attention_mask = batch.attention_mask.astype(bool)
         batch_size, sequence, _ = hidden.shape

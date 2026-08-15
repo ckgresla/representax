@@ -79,6 +79,8 @@ class BertConfig(FrozenConfig):
         if bool(value.get("add_cross_attention", False)):
             raise ValueError("native BERT does not yet support cross-attention")
         activation = str(value.get("hidden_act", "gelu"))
+        if activation not in ("gelu", "gelu_new", "relu", "silu"):
+            raise ValueError(f"unsupported BERT hidden activation: {activation!r}")
         return cls(
             vocab_size=int(value["vocab_size"]),
             hidden_size=int(value["hidden_size"]),
@@ -87,7 +89,7 @@ class BertConfig(FrozenConfig):
             num_attention_heads=int(value["num_attention_heads"]),
             max_position_embeddings=int(value["max_position_embeddings"]),
             type_vocab_size=int(value.get("type_vocab_size", 2)),
-            hidden_activation=activation,  # type: ignore[arg-type]
+            hidden_activation=activation,
             hidden_dropout_probability=float(value.get("hidden_dropout_prob", 0.1)),
             attention_dropout_probability=float(
                 value.get("attention_probs_dropout_prob", 0.1)

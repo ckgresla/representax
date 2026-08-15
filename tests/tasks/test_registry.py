@@ -54,6 +54,12 @@ def _job_data():
     }
 
 
+def _build_custom_loss(config: LossConfig):
+    if not isinstance(config, _CustomLossConfig):
+        raise TypeError("custom loss requires _CustomLossConfig")
+    return config.kind, config.weight
+
+
 def test_extended_registries_parse_custom_configs_without_global_mutation():
     tasks = BUILTIN_TASKS.extended(
         TaskDefinition(
@@ -66,7 +72,7 @@ def test_extended_registries_parse_custom_configs_without_global_mutation():
         LossDefinition(
             kind="test/loss",
             config_type=_CustomLossConfig,
-            build=lambda config: (config.kind, config.weight),
+            build=_build_custom_loss,
             task_kinds=frozenset({"test/custom"}),
             training_strategies=frozenset({"direct"}),
         )

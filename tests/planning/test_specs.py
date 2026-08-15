@@ -1,5 +1,7 @@
 """Domain configuration and parameter-role tests."""
 
+from typing import Any
+
 import jax
 import pytest
 from pydantic import ValidationError
@@ -22,8 +24,8 @@ from representax.tasks.retrieval import MNRConfig, MNRTask, RetrievalConfig
 from representax.train import GradCache, build_loss_execution, scientific_fingerprint
 
 
-def _training(**overrides):
-    values = {
+def _training(**overrides: Any) -> TrainingConfig:
+    values: dict[str, Any] = {
         "global_batch_size": 64,
         "max_steps": 100,
         "seed": 7,
@@ -37,8 +39,8 @@ def _training(**overrides):
     return TrainingConfig(**values)
 
 
-def _job(**overrides):
-    values = {
+def _job(**overrides: Any) -> JobConfig:
+    values: dict[str, Any] = {
         "name": "test-job",
         "model": ModelConfig(target="tests.models.ToyEncoder"),
         "task": RetrievalConfig(),
@@ -110,7 +112,7 @@ def test_job_round_trips_registered_configs_and_is_frozen():
     assert isinstance(restored.task, RetrievalConfig)
     assert isinstance(restored.loss, MNRConfig)
     with pytest.raises(ValidationError, match="frozen"):
-        restored.training.seed = 9
+        restored.training.seed = 9  # ty: ignore[invalid-assignment]
 
 
 def test_parameter_roles_project_domain_config_without_parallel_trees():
@@ -138,7 +140,9 @@ def test_parameter_roles_project_domain_config_without_parallel_trees():
         "seed": 7,
     }
     assert set(execution) == {"training"}
-    assert execution["training"]["grad_cache"] == {
+    training_execution = execution["training"]
+    assert isinstance(training_execution, dict)
+    assert training_execution["grad_cache"] == {
         "micro_batch_size": 8,
         "query_micro_batch_size": None,
         "document_micro_batch_size": None,

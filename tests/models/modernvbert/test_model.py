@@ -260,6 +260,7 @@ def test_hf_state_dict_mapping_round_trips_the_native_tree():
     assert restored.tower.layers[1].attention_norm is not None
     assert not bool(restored.tower.layers[0].sliding_attention)
     assert bool(restored.tower.layers[1].sliding_attention)
+    assert restored.tower.layers.blocks is not None
     assert restored.tower.layers.blocks.attention.qkv.weight.shape == (
         config.num_hidden_layers,
         3 * config.hidden_size,

@@ -60,10 +60,13 @@ performance = [
 ]
 test = [
     "pytest>=8",
-    "ruff>=0.9",
 ]
 
 [dependency-groups]
+static = [
+    "ruff>=0.16,<0.17",
+    "ty==0.0.72",
+]
 parity = [
     "sentence-transformers>=5",
     "torch>=2.5",
@@ -105,3 +108,17 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 # Jaxtyping shape strings are deliberately not Python forward references.
 # F722 is the upstream-recommended Ruff exception for this syntax.
 ignore = ["F722"]
+
+[tool.ty.src]
+include = ["src", "tests", "examples", "scripts"]
+
+[[tool.ty.overrides]]
+include = [
+    "tests/models/**/performance_probe.py",
+    "tests/models/**/transformers_*.py",
+    "tests/models/upstream.py",
+]
+
+[tool.ty.overrides.analysis]
+# Upstream parity programs load these optional reference runtimes dynamically.
+replace-imports-with-any = ["PIL", "PIL.**", "torch", "torch.**"]

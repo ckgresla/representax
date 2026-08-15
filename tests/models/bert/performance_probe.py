@@ -12,7 +12,7 @@ import statistics
 import time
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
@@ -143,10 +143,13 @@ def _transformers(
     configure_torch_float32_highest()
     started = time.perf_counter()
     with transformers_tacet():
-        model = BertModel.from_pretrained(
-            arguments.checkpoint,
-            dtype=torch.float32,
-            local_files_only=True,
+        model = cast(
+            Any,
+            BertModel.from_pretrained(
+                arguments.checkpoint,
+                dtype=torch.float32,
+                local_files_only=True,
+            ),
         ).to("cuda")
     model.eval()
     input_ids = torch.as_tensor(inputs["input_ids"], device="cuda", dtype=torch.long)

@@ -118,6 +118,7 @@ def test_multimodal_modernvbert_updates_vision_and_connector():
 
     assert int(result.state.step) == 1
     assert bool(result.metrics.numeric_finite)
+    assert isinstance(result.state.model, ModernVBERTEncoder)
     assert not jnp.array_equal(
         result.state.model.connector.weight,
         model.connector.weight,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from typing import cast
 
 import pytest
 
@@ -163,7 +164,7 @@ def test_custom_resolver_and_mapper_can_override_builtins():
 
     resolved = data.build_grain_dataset(
         recipe,
-        resolvers={"hf": lambda _artifact: [{"value": 7}]},
+        resolvers={"hf": cast(data.ArtifactResolver, lambda _artifact: [{"value": 7}])},
         mappers={mapper_path: lambda record: {"value": record["value"] + 1}},
     )
 

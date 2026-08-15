@@ -43,6 +43,7 @@ repository-only dependency groups rather than published package extras:
 
 ```bash
 python -m pip install -e ".[config,hf]"
+python -m pip install -e ".[config,hf,test]" --group static
 python -m pip install -e ".[test]" --group parity
 python -m pip install -e ".[test]" --group parity-modernvbert
 python -m pip install -e ".[test,performance]" --group parity-modernvbert
@@ -256,12 +257,16 @@ recipe, model/state template, task/optimizer program, and batch source and pass
 ## Tests
 
 ```bash
+python scripts/check.py
 pytest
 pytest -m runtime
 pytest -m parity
 pytest -m distributed
 pytest -m performance
 ```
+
+The first command is the fast static gate: Ruff formatting and linting followed
+by ty type checking. It does not import JAX or compile model programs.
 
 Tests live outside the package and mirror its model, task, data, and runtime
 structure. Pytest markers select orthogonal runtime, parity, distributed, and

@@ -115,7 +115,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   formatting pass, annotation contracts pass, all 78 fast tests pass, and the
   public Python 3.11-3.13, runtime, distributed, and wheel-install CI matrix is
   green.
-* TODO Add a fast Ruff and ty static-analysis gate :tooling:typing:ci:
+* DONE Add a fast Ruff and ty static-analysis gate :tooling:typing:ci:
   Treat this as Representax's =cargo clippy=: one canonical repository command
   runs =ruff format --check=, =ruff check=, and =ty check= without importing JAX,
   compiling models, or executing tests. Keep the default =pytest= lane as the
@@ -130,6 +130,14 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   GitHub annotations in the single static CI job rather than repeating it in
   every Python-version test job. Record cold and warm timings and keep the local
   gate tight enough to run continuously during development.
+  Accepted with =ty==0.0.72= and Ruff in a repository-only static dependency
+  group, one =python scripts/check.py= entry point, native GitHub diagnostics,
+  and a clean boundary over =src=, tests, examples, and scripts. The first ty
+  pass found 28 source diagnostics; all were resolved without global rule
+  suppression. The complete warm static gate checks 116 files in 2.14 seconds.
+  Behavioral evidence is 93 fast tests, eight CPU training-runtime tests, two
+  ModernVBERT GPU runtime tests, and all three pinned BERT forward, gradient,
+  optimizer-update, and export/reload parity tests.
 * DONE Implement exact native-JAX GradCache as an execution plan for MNR :retrieval:runtime:
   Preserve =MNRTask= and one shared row-level MNR primitive as the sole
   scientific definition.

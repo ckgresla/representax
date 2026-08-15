@@ -351,6 +351,8 @@ def test_orbax_preserves_mixed_training_dtypes(tmp_path):
     restored = resumed.restore_training_state(state)
     resumed.close()
 
+    assert isinstance(restored.state.model, _MixedPrecisionModel)
+    assert isinstance(restored.state.optimizer_state, dict)
     assert restored.state.model.trainable_master.dtype == jnp.float32
     assert restored.state.model.frozen_compute.dtype == jnp.bfloat16
     assert restored.state.optimizer_state["moment"].dtype == jnp.float32

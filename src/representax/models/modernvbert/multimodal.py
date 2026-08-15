@@ -229,6 +229,8 @@ class ModernVBERTEncoder(eqx.Module):
         if inputs.pixel_values is None:
             return self.text.hidden_states(inputs.text_batch())
 
+        if inputs.input_ids is None:  # pragma: no cover - rejected by batch validation
+            raise AssertionError("multimodal inputs require input_ids")
         features = self.image_features(inputs.pixel_values)
         embeddings = self.text.tower.token_embeddings(inputs.input_ids)
         fused = merge_image_features(

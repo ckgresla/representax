@@ -32,6 +32,7 @@ def test_layer_norm_matches_jax_reference_with_fp32_statistics():
     )
     value = jnp.asarray([[1.0, 2.0, 4.0]], dtype=jnp.float32)
     expected = jax.nn.standardize(value, axis=-1, epsilon=1e-5)
+    assert layer_norm.bias is not None
     expected = expected * layer_norm.weight + layer_norm.bias
     np.testing.assert_allclose(layer_norm(value), expected, rtol=1e-6, atol=1e-6)
 
@@ -49,6 +50,20 @@ def test_embedding_lookup_accumulates_repeated_table_gradients():
         ]
     )
     np.testing.assert_array_equal(gradient, expected)
+
+
+def test_embedding_lookup_supports_forward_mode_autodiff():
+    table = jnp.arange(12, dtype=jnp.float32).reshape(4, 3)
+    tangent = jnp.arange(12, dtype=jnp.float32).reshape(4, 3) / 10
+    indices = jnp.asarray([[1, 1, 3]])
+
+    _, actual = jax.jvp(
+        lambda value: embedding_lookup(value, indices),
+        (table,),
+        (tangent,),
+    )
+
+    np.testing.assert_array_equal(actual, tangent[indices])
 
 
 def test_pooling_and_normalization_ignore_padding():

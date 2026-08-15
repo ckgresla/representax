@@ -33,39 +33,13 @@ def rematerialize(function: Any, policy: RematerializationPolicy) -> Any:
     )
 
 
-@jax.custom_vjp
 def embedding_lookup(
     table: Float[Array, "vocabulary hidden"],
     indices: Int[Array, "*batch"],
 ) -> Float[Array, "*batch hidden"]:
-    """Gather embeddings with an explicit dense table-gradient scatter."""
+    """Gather embeddings; repeated-token gradients accumulate naturally."""
 
     return table[indices]
-
-
-def _embedding_lookup_forward(
-    table: Float[Array, "vocabulary hidden"],
-    indices: Int[Array, "*batch"],
-) -> tuple[
-    Float[Array, "*batch hidden"],
-    tuple[Float[Array, "vocabulary hidden"], Int[Array, "*batch"]],
-]:
-    return table[indices], (table, indices)
-
-
-def _embedding_lookup_backward(
-    residual: tuple[
-        Float[Array, "vocabulary hidden"],
-        Int[Array, "*batch"],
-    ],
-    cotangent: Float[Array, "*batch hidden"],
-) -> tuple[Float[Array, "vocabulary hidden"], None]:
-    table, indices = residual
-    gradient = jnp.zeros_like(table).at[indices].add(cotangent)
-    return jax.lax.optimization_barrier(gradient), None
-
-
-embedding_lookup.defvjp(_embedding_lookup_forward, _embedding_lookup_backward)
 
 
 class Linear(eqx.Module):

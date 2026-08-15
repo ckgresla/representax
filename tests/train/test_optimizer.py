@@ -1,9 +1,12 @@
 """Declarative optimizer construction and train-state initialization tests."""
 
+from typing import Any, cast
+
 import equinox as eqx
 import jax
 import jax.numpy as jnp
 import numpy as np
+import optax
 import pytest
 
 from representax.config import ComponentConfig, OptimizationConfig
@@ -24,10 +27,11 @@ def test_build_optimizer_initializes_adamw_state_from_config():
     state = init_train_state(model, optimizer)
 
     parameters = eqx.filter(model, eqx.is_inexact_array)
-    adam_state = state.optimizer_state[0]
+    optimizer_state = cast(tuple[Any, ...], state.optimizer_state)
+    adam_state = cast(optax.ScaleByAdamState, optimizer_state[0])
     assert jax.tree.structure(adam_state.mu) == jax.tree.structure(parameters)
     assert jax.tree.structure(adam_state.nu) == jax.tree.structure(parameters)
-    assert int(adam_state.count) == 0
+    assert np.asarray(adam_state.count).item() == 0
     for moment in (adam_state.mu, adam_state.nu):
         for leaf in jax.tree.leaves(moment):
             if eqx.is_inexact_array(leaf):

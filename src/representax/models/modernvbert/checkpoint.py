@@ -377,6 +377,8 @@ class ModernVBERTTextCheckpointAdapter:
                 }
             )
             if index > 0:
+                if layer.attention_norm is None:  # pragma: no cover - invalid tree
+                    raise AssertionError("post-zero layers require attention norms")
                 native[prefix + "attention_norm.weight"] = layer.attention_norm.weight
         if set(native) != set(mapping):
             missing = set(mapping).difference(native)
@@ -395,12 +397,19 @@ class ModernVBERTTextCheckpointAdapter:
 
 
 def _vision_native_state(model: ModernVBERTEncoder) -> dict[str, jax.Array]:
-    native = {
+    def required(value: jax.Array | None, name: str) -> jax.Array:
+        if value is None:
+            raise ValueError(f"ModernVBERT vision parameter {name} requires a bias")
+        return value
+
+    native: dict[str, jax.Array] = {
         "vision.patch_embedding.weight": model.vision.patch_embedding.weight,
         "vision.patch_embedding.bias": model.vision.patch_embedding.bias,
         "vision.position_embedding": model.vision.position_embedding,
         "vision.final_norm.weight": model.vision.final_norm.weight,
-        "vision.final_norm.bias": model.vision.final_norm.bias,
+        "vision.final_norm.bias": required(
+            model.vision.final_norm.bias, "vision.final_norm.bias"
+        ),
         "connector.weight": model.connector.weight,
     }
     for index, layer in enumerate(model.vision.layers):
@@ -408,26 +417,40 @@ def _vision_native_state(model: ModernVBERTEncoder) -> dict[str, jax.Array]:
         native.update(
             {
                 prefix + "attention_norm.weight": layer.attention_norm.weight,
-                prefix + "attention_norm.bias": layer.attention_norm.bias,
+                prefix + "attention_norm.bias": required(
+                    layer.attention_norm.bias, prefix + "attention_norm.bias"
+                ),
                 prefix + "attention.query.weight": layer.attention.query.weight,
-                prefix + "attention.query.bias": layer.attention.query.bias,
+                prefix + "attention.query.bias": required(
+                    layer.attention.query.bias, prefix + "attention.query.bias"
+                ),
                 prefix + "attention.key.weight": layer.attention.key.weight,
-                prefix + "attention.key.bias": layer.attention.key.bias,
+                prefix + "attention.key.bias": required(
+                    layer.attention.key.bias, prefix + "attention.key.bias"
+                ),
                 prefix + "attention.value.weight": layer.attention.value.weight,
-                prefix + "attention.value.bias": layer.attention.value.bias,
+                prefix + "attention.value.bias": required(
+                    layer.attention.value.bias, prefix + "attention.value.bias"
+                ),
                 prefix + "attention.output.weight": layer.attention.output.weight,
-                prefix + "attention.output.bias": layer.attention.output.bias,
+                prefix + "attention.output.bias": required(
+                    layer.attention.output.bias, prefix + "attention.output.bias"
+                ),
                 prefix + "mlp_norm.weight": layer.mlp_norm.weight,
-                prefix + "mlp_norm.bias": layer.mlp_norm.bias,
+                prefix + "mlp_norm.bias": required(
+                    layer.mlp_norm.bias, prefix + "mlp_norm.bias"
+                ),
                 prefix + "mlp.input.weight": layer.mlp.input.weight,
-                prefix + "mlp.input.bias": layer.mlp.input.bias,
+                prefix + "mlp.input.bias": required(
+                    layer.mlp.input.bias, prefix + "mlp.input.bias"
+                ),
                 prefix + "mlp.output.weight": layer.mlp.output.weight,
-                prefix + "mlp.output.bias": layer.mlp.output.bias,
+                prefix + "mlp.output.bias": required(
+                    layer.mlp.output.bias, prefix + "mlp.output.bias"
+                ),
             }
         )
-    if any(value is None for value in native.values()):
-        raise ValueError("ModernVBERT vision parameters require their upstream biases")
-    return native  # type: ignore[return-value]
+    return native
 
 
 @dataclass(frozen=True)

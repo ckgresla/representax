@@ -279,6 +279,7 @@ def test_grain_recipe_drives_compiled_updates_end_to_end(tmp_path):
 
     assert result.completed_iterations == TOY_STEPS
     assert int(result.state.step) == TOY_STEPS
+    assert isinstance(result.state.model, DenseEncoder)
     assert not jnp.array_equal(
         result.state.model.projection.weight,
         model.projection.weight,

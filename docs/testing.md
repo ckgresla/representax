@@ -13,8 +13,23 @@ Markers describe how a test executes:
 The default `pytest` command excludes the four environment-sensitive lanes.
 Each lane can be selected across the mirrored tree with `pytest -m <marker>`.
 
+## Static analysis
+
+Run the import-free development gate before pytest:
+
+```bash
+python scripts/check.py
+```
+
+It checks formatting and lint rules with Ruff, then type-checks `src`, tests,
+examples, and repository scripts with ty. The tools live in the repository-only
+`static` dependency group. Optional PyTorch and Pillow imports are dynamic only
+inside their upstream-oracle files; the production source receives no relaxed
+type-checking rules.
+
 Ordinary CI runs the fast suite on CPU across Python 3.11, 3.12, and 3.13.  It
-runs the generic training/runtime tree once on Python 3.13, exercises the two-
+runs the static gate once on Python 3.13, the generic training/runtime tree once
+on Python 3.13, exercises the two-
 and four-device distributed semantics with four virtual CPU devices, and builds
 and installs the wheel in a fresh CPU-only context.  Model-family runtime,
 upstream parity, and matched systems measurements remain their explicit lanes

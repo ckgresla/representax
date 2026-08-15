@@ -14,7 +14,7 @@ import warnings
 from contextlib import suppress
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
@@ -278,7 +278,7 @@ def _make_inputs(case: ModelPerformanceCase, checkpoint: Path, path: Path) -> No
         dtype=np.int32,
     )
     attention_mask = np.ones_like(input_ids, dtype=np.int32)
-    arrays = {
+    arrays: dict[str, np.ndarray] = {
         "input_ids": input_ids,
         "attention_mask": attention_mask,
     }
@@ -308,7 +308,8 @@ def _make_inputs(case: ModelPerformanceCase, checkpoint: Path, path: Path) -> No
             (case.batch_size, case.image_count, image_size, image_size),
             dtype=np.int32,
         )
-    np.savez(path, **arrays)
+    # NumPy's current ``savez`` typing models arbitrary named arrays as booleans.
+    np.savez(path, **cast(Any, arrays))
 
 
 def _memory_values(reports: dict[str, dict[str, Any]]) -> tuple[int, int, str]:
