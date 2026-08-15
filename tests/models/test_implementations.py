@@ -18,19 +18,30 @@ def test_every_checkpoint_backed_model_has_an_acceptance_registration():
     checkpoint_backed = {
         path.parent.name for path in implementation_root.glob("*/checkpoint.py")
     }
+    family_names = set(MODEL_FAMILIES)
+    assert checkpoint_backed == family_names
     registered = {case.package for case in MODEL_IMPLEMENTATIONS}
-    assert registered == checkpoint_backed
     performance_claims = {
         family.name
         for family in MODEL_FAMILIES.values()
         if AcceptanceGate.PERFORMANCE in family.acceptance_gates
     }
     assert registered == performance_claims
-    for case in MODEL_IMPLEMENTATIONS:
-        tests = Path("tests/models") / case.package
+    for family in MODEL_FAMILIES.values():
+        tests = Path("tests/models") / family.name
         assert (tests / "test_model.py").is_file()
-        assert (tests / "test_transformers_parity.py").is_file()
-        assert (tests / "performance_probe.py").is_file()
+        if family.acceptance_gates.intersection(
+            {
+                AcceptanceGate.FORWARD,
+                AcceptanceGate.INPUT_GRADIENT,
+                AcceptanceGate.PARAMETER_GRADIENT,
+                AcceptanceGate.OPTIMIZER_UPDATE,
+                AcceptanceGate.EXPORT_RELOAD,
+            }
+        ):
+            assert (tests / "test_transformers_parity.py").is_file()
+        if AcceptanceGate.PERFORMANCE in family.acceptance_gates:
+            assert (tests / "performance_probe.py").is_file()
 
 
 @pytest.mark.performance

@@ -23,8 +23,8 @@ def test_transformers_5_3_catalog_is_complete_and_support_is_explicit():
     assert modernvbert.family == "modernvbert"
 
     bert = get_hugging_face_architecture("bert")
-    assert bert.support is ArchitectureSupport.CATALOGUED
-    assert bert.family is None
+    assert bert.support is ArchitectureSupport.NATIVE
+    assert bert.family == "bert"
     assert bert.has_auto_model
 
 

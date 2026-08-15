@@ -1,0 +1,40 @@
+{
+  "contract": {
+    "architecture": "bert-base",
+    "batch_size": 16,
+    "compute_dtype": "float32",
+    "measurement_iterations": 20,
+    "parameter_dtype": "float32",
+    "sequence_length": 128,
+    "transformers_version": "5.3.0",
+    "warmup_iterations": 5
+  },
+  "numerical": {
+    "cosine": 1.0000001192092896,
+    "max_absolute": 8.568167686462402e-08,
+    "relative_l2": 5.671499820891768e-07
+  },
+  "representax": {
+    "allocator_peak_device_bytes": 820428800,
+    "backend_version": "0.10.1",
+    "compile_or_first_execution_seconds": 15.925566028803587,
+    "device": "NVIDIA GeForce RTX 4090",
+    "initialization_seconds": 1.585136417299509,
+    "steady_state_examples_per_second": 1450.0704516775957,
+    "steady_state_median_seconds": 0.01103394664824009
+  },
+  "result": {
+    "memory_ratio": 1.3971819196428572,
+    "memory_status": "warning",
+    "speedup": 1.0436589320546508
+  },
+  "transformers": {
+    "allocator_peak_device_bytes": 587202560,
+    "backend_version": "2.8.0+cu128",
+    "compile_or_first_execution_seconds": 0.2676459662616253,
+    "device": "NVIDIA GeForce RTX 4090",
+    "initialization_seconds": 0.4595977570861578,
+    "steady_state_examples_per_second": 1389.4102825554733,
+    "steady_state_median_seconds": 0.011515676975250244
+  }
+}

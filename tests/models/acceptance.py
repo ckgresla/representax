@@ -63,6 +63,16 @@ class ModelPerformanceCase:
 
 MODEL_IMPLEMENTATIONS = (
     ModelPerformanceCase(
+        name="bert-base-forward-fp32",
+        package="bert",
+        probe_module="tests.models.bert.performance_probe",
+        checkpoint_environment="REPRESENTAX_BERT_CHECKPOINT",
+        upstream_python_environment="REPRESENTAX_BERT_TRANSFORMERS_PYTHON",
+        batch_size=16,
+        sequence_length=128,
+        maximum_memory_ratio=None,
+    ),
+    ModelPerformanceCase(
         name="modernvbert-text-forward-fp32",
         package="modernvbert",
         probe_module="tests.models.modernvbert.performance_probe",

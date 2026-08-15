@@ -1,0 +1,26 @@
+#+title: Native BERT acceptance benchmark
+
+* Contract
+
+- Transformers 5.3.0 =BertModel= versus the native Equinox BERT family.
+- Random-weight standard BERT-base configuration: 12 layers, hidden size 768,
+  12 heads, intermediate size 3072.
+- FP32 with TF32 disabled in PyTorch and highest JAX matmul precision.
+- Batch 16, sequence 128, identical token IDs and all-valid attention masks.
+- Five warmups and twenty synchronized steady-state forward measurements.
+- Transformers ran on RTX 4090 GPU 0 and Representax on an otherwise idle,
+  identical RTX 4090 GPU 1.  The two isolated processes used their environment-
+  owned CUDA libraries.
+
+* Result
+
+Representax produced the same normalized representations to 8.57e-8 maximum
+absolute error and ran 1.044x faster in steady state: 11.034 ms versus 11.516 ms
+per step, or 1450 versus 1389 examples per second.
+
+The native framework allocator peak was 0.764 GiB versus 0.547 GiB upstream
+(1.397x), recorded as a warning rather than a correctness failure.  Native
+compile-plus-first execution was 15.93 seconds versus 0.268 seconds upstream;
+that cold-start cost is reported separately from steady-state throughput.
+
+See =summary.json= for the machine-readable measurements.

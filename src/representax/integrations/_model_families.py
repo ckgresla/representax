@@ -11,20 +11,34 @@ ARCHITECTURE_CATALOG_SHA256 = (
     "2af65737162af25c40803b987355fb09d4547d922842edeeb6c0f80838f4117c"
 )
 FAMILY_MANIFEST_SHA256 = (
-    "8d13f1da622edf3b34e62e3922c78507736c41d7d66d5a56b6105f2fe1933c41"
+    "5db2d7f1d5f173346bb1e35442779d6026ffc701bbee06ffe01c684c32635cc0"
 )
 
 MODEL_FAMILY_ROWS = json.loads(
     '[{"acceptance_gates":["config_mapping","checkpoint_roundtrip","forward",'
-    '"input_gradient","performance"],"checkpoint_adapter":"representax.models'
-    '.modernvbert.ModernVBERTCheckpointAdapter","checkpoint_layout":"huggingf'
-    'ace_safetensors","components":["token_embedding","rotary_attention","sli'
-    'ding_attention","gated_mlp","siglip_vision","pixel_shuffle_connector","m'
-    'ean_pooling","l2_normalization"],"config_adapter":"representax.models.mo'
-    'dernvbert.ModernVBERTConfig.from_hf_config","implementation_module":"rep'
-    'resentax.models.modernvbert","input_contracts":[["text",["input_ids","at'
-    'tention_mask"]],["fused",["input_ids","attention_mask","pixel_values","i'
-    'mage_valid"]]],"modalities":["text","image","fused"],"model_types":["mod'
-    'ernvbert"],"name":"modernvbert","output_contracts":["last_hidden_state",'
-    '"mean_pooled_l2_normalized_representation"],"support":"verified"}]'
+    '"input_gradient","parameter_gradient","optimizer_update","export_reload"'
+    ',"performance"],"checkpoint_adapter":"representax.models.bert.BertCheckp'
+    'ointAdapter","checkpoint_layout":"huggingface_safetensors","components":'
+    '["token_embedding","absolute_position_embedding","token_type_embedding",'
+    '"multi_head_attention","post_norm_residual","dense_mlp","pooler","mean_p'
+    'ooling","l2_normalization"],"config_adapter":"representax.models.bert.Be'
+    'rtConfig.from_hf_config","configuration_constraints":["is_decoder=false"'
+    ',"add_cross_attention=false"],"implementation_module":"representax.model'
+    's.bert","input_contracts":[["text",["input_ids","attention_mask"]],["emb'
+    'edded_text",["inputs_embeds","attention_mask"]]],"modalities":["text"],"'
+    'model_types":["bert"],"name":"bert","output_contracts":["last_hidden_sta'
+    'te","pooler_output","mean_pooled_l2_normalized_representation"],"support'
+    '":"native"},{"acceptance_gates":["config_mapping","checkpoint_roundtrip"'
+    ',"forward","input_gradient","performance"],"checkpoint_adapter":"represe'
+    'ntax.models.modernvbert.ModernVBERTCheckpointAdapter","checkpoint_layout'
+    '":"huggingface_safetensors","components":["token_embedding","rotary_atte'
+    'ntion","sliding_attention","gated_mlp","siglip_vision","pixel_shuffle_co'
+    'nnector","mean_pooling","l2_normalization"],"config_adapter":"representa'
+    'x.models.modernvbert.ModernVBERTConfig.from_hf_config","configuration_co'
+    'nstraints":[],"implementation_module":"representax.models.modernvbert","'
+    'input_contracts":[["text",["input_ids","attention_mask"]],["fused",["inp'
+    'ut_ids","attention_mask","pixel_values","image_valid"]]],"modalities":["'
+    'text","image","fused"],"model_types":["modernvbert"],"name":"modernvbert'
+    '","output_contracts":["last_hidden_state","mean_pooled_l2_normalized_rep'
+    'resentation"],"support":"verified"}]'
 )

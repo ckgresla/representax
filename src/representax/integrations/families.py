@@ -59,6 +59,7 @@ class ModelFamily:
     model_types: tuple[str, ...]
     modalities: tuple[Modality, ...]
     components: tuple[str, ...]
+    configuration_constraints: tuple[str, ...]
     config_adapter: str | None
     input_contracts: tuple[ModelInputContract, ...]
     output_contracts: tuple[str, ...]
@@ -75,6 +76,9 @@ def _family(row: dict[str, object]) -> ModelFamily:
         model_types=tuple(str(value) for value in row["model_types"]),
         modalities=tuple(Modality(value) for value in row["modalities"]),
         components=tuple(str(value) for value in row["components"]),
+        configuration_constraints=tuple(
+            str(value) for value in row["configuration_constraints"]
+        ),
         config_adapter=(
             None if row["config_adapter"] is None else str(row["config_adapter"])
         ),

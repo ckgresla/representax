@@ -1,6 +1,19 @@
 """Native model implementations and integrations."""
 
-from .components import LayerNorm, Linear, embedding_lookup, l2_normalize, mean_pool
+from .bert import BertBatch, BertCheckpointAdapter, BertConfig, BertEncoder
+from .components import (
+    Activation,
+    AttentionImplementation,
+    LayerNorm,
+    Linear,
+    activate,
+    dot_product_attention,
+    dropout,
+    embedding_lookup,
+    l2_normalize,
+    mean_pool,
+    rematerialize,
+)
 from .dense import DenseEncoder
 from .modernvbert import (
     ModernVBERTBatch,
@@ -14,6 +27,12 @@ from .modernvbert import (
 )
 
 __all__ = [
+    "Activation",
+    "AttentionImplementation",
+    "BertBatch",
+    "BertCheckpointAdapter",
+    "BertConfig",
+    "BertEncoder",
     "DenseEncoder",
     "LayerNorm",
     "Linear",
@@ -25,7 +44,11 @@ __all__ = [
     "ModernVBERTTextCheckpointAdapter",
     "ModernVBERTTextConfig",
     "ModernVBERTTextEncoder",
+    "activate",
+    "dot_product_attention",
+    "dropout",
     "embedding_lookup",
     "l2_normalize",
     "mean_pool",
+    "rematerialize",
 ]

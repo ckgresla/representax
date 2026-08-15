@@ -7,7 +7,7 @@ execution path.
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any
 
 import equinox as eqx
 import jax
@@ -16,35 +16,18 @@ from jaxtyping import Array, Bool, Float, Int, PRNGKeyArray
 
 from representax.core import EncoderMetadata, Modality, Route
 from representax.models.components import (
+    AttentionImplementation,
     LayerNorm,
     Linear,
+    dot_product_attention,
     embedding_lookup,
     l2_normalize,
     mean_pool,
+    rematerialize,
 )
 from representax.planning import RematerializationPolicy
 
 from .config import ModernVBERTTextConfig
-
-AttentionImplementation = Literal["xla", "cudnn"]
-
-
-def _rematerialize_layer(function: Any, policy: RematerializationPolicy) -> Any:
-    """Apply one stable public rematerialization choice to a scanned layer."""
-
-    if policy == "none":
-        return function
-    if policy == "selective":
-        checkpoint_policy = jax.checkpoint_policies.dots_with_no_batch_dims_saveable
-    elif policy == "full":
-        checkpoint_policy = jax.checkpoint_policies.nothing_saveable
-    else:
-        raise ValueError("rematerialization must be 'none', 'selective', or 'full'")
-    return jax.checkpoint(
-        function,
-        policy=checkpoint_policy,
-        prevent_cse=False,
-    )
 
 
 class ModernVBERTTextBatch(eqx.Module):
@@ -135,11 +118,11 @@ def _scaled_dot_product_attention(
     """Run exact full or symmetric local attention through JAX's primitive."""
 
     local_window = None if local_radius is None else (local_radius, local_radius)
-    return jax.nn.dot_product_attention(
+    return dot_product_attention(
         query,
         key,
         value,
-        mask=attention_mask[:, None, None, :].astype(bool),
+        attention_mask=attention_mask[:, None, None, :].astype(bool),
         local_window_size=local_window,
         implementation=implementation,
     )
@@ -544,7 +527,7 @@ class ModernVBERTTextTower(eqx.Module):
                 output = output + layer.mlp(layer.mlp_norm(output))
                 return output, None
 
-            executed_layer = _rematerialize_layer(apply_layer, rematerialization)
+            executed_layer = rematerialize(apply_layer, rematerialization)
             hidden, _ = jax.lax.scan(
                 executed_layer,
                 hidden,

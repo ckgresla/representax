@@ -2,10 +2,35 @@
 
 from __future__ import annotations
 
+from typing import Any, Literal
+
 import equinox as eqx
 import jax
 import jax.numpy as jnp
 from jaxtyping import Array, Bool, Float, Int, PRNGKeyArray
+
+from representax.planning import RematerializationPolicy
+
+AttentionImplementation = Literal["xla", "cudnn"]
+Activation = Literal["gelu", "gelu_new", "relu", "silu"]
+
+
+def rematerialize(function: Any, policy: RematerializationPolicy) -> Any:
+    """Apply one stable activation-rematerialization policy to a layer."""
+
+    if policy == "none":
+        return function
+    if policy == "selective":
+        checkpoint_policy = jax.checkpoint_policies.dots_with_no_batch_dims_saveable
+    elif policy == "full":
+        checkpoint_policy = jax.checkpoint_policies.nothing_saveable
+    else:
+        raise ValueError("rematerialization must be 'none', 'selective', or 'full'")
+    return jax.checkpoint(
+        function,
+        policy=checkpoint_policy,
+        prevent_cse=False,
+    )
 
 
 @jax.custom_vjp
@@ -111,6 +136,86 @@ class LayerNorm(eqx.Module):
         return output.astype(source_dtype)
 
 
+def activate(
+    value: Float[Array, "*batch hidden"],
+    activation: Activation,
+) -> Float[Array, "*batch hidden"]:
+    """Apply an explicitly named Transformers-compatible activation."""
+
+    if activation == "gelu":
+        return jax.nn.gelu(value, approximate=False)
+    if activation == "gelu_new":
+        return jax.nn.gelu(value, approximate=True)
+    if activation == "relu":
+        return jax.nn.relu(value)
+    if activation == "silu":
+        return jax.nn.silu(value)
+    raise ValueError(f"unsupported activation {activation!r}")
+
+
+def dropout(
+    value: Float[Array, "*batch"],
+    probability: float,
+    *,
+    key: PRNGKeyArray | None,
+) -> Float[Array, "*batch"]:
+    """Apply inverted dropout when a training key is supplied."""
+
+    if key is None or probability == 0.0:
+        return value
+    if not 0.0 <= probability < 1.0:
+        raise ValueError("dropout probability must be in [0, 1)")
+    keep_probability = 1.0 - probability
+    keep = jax.random.bernoulli(key, keep_probability, value.shape)
+    return jnp.where(keep, value / keep_probability, 0.0)
+
+
+def dot_product_attention(
+    query: Float[Array, "batch target_sequence heads head"],
+    key: Float[Array, "batch source_sequence heads head"],
+    value: Float[Array, "batch source_sequence heads head"],
+    *,
+    attention_mask: Bool[Array, "#batch #heads target_sequence source_sequence"]
+    | None = None,
+    dropout_probability: float = 0.0,
+    dropout_key: PRNGKeyArray | None = None,
+    local_window_size: tuple[int, int] | None = None,
+    implementation: AttentionImplementation = "xla",
+) -> Float[Array, "batch target_sequence heads head"]:
+    """Run full/local attention, adding explicit probability dropout if needed."""
+
+    if dropout_key is None or dropout_probability == 0.0:
+        return jax.nn.dot_product_attention(
+            query,
+            key,
+            value,
+            mask=attention_mask,
+            local_window_size=local_window_size,
+            implementation=implementation,
+        )
+
+    scores = jnp.einsum("bthd,bshd->bhts", query, key)
+    scores = scores * jax.lax.rsqrt(jnp.asarray(query.shape[-1], scores.dtype))
+    mask = attention_mask
+    if local_window_size is not None:
+        left, right = local_window_size
+        target = jnp.arange(query.shape[1])[:, None]
+        source = jnp.arange(key.shape[1])[None, :]
+        local_mask = (source >= target - left) & (source <= target + right)
+        mask = local_mask if mask is None else mask & local_mask
+    if mask is not None:
+        scores = jnp.where(mask, scores, jnp.finfo(scores.dtype).min)
+    probabilities = jax.nn.softmax(scores.astype(jnp.float32), axis=-1).astype(
+        value.dtype
+    )
+    probabilities = dropout(
+        probabilities,
+        dropout_probability,
+        key=dropout_key,
+    )
+    return jnp.einsum("bhts,bshd->bthd", probabilities, value)
+
+
 def mean_pool(
     hidden: Float[Array, "batch sequence hidden"],
     attention_mask: Bool[Array, "batch sequence"] | Int[Array, "batch sequence"],
@@ -135,9 +240,15 @@ def l2_normalize(
 
 
 __all__ = [
+    "Activation",
+    "AttentionImplementation",
     "LayerNorm",
     "Linear",
+    "activate",
+    "dot_product_attention",
+    "dropout",
     "embedding_lookup",
     "l2_normalize",
     "mean_pool",
+    "rematerialize",
 ]

@@ -36,6 +36,17 @@ This makes generation useful without pretending architecture ports are
 mechanical: codegen owns dispatch and acceptance scaffolding, while humans own
 the semantic decomposition and native Equinox implementation.
 
+BERT is the second native family and the first proof that the component layer
+extends beyond ModernVBERT. Its standard bidirectional encoder, absolute and
+token-type embeddings, post-norm attention/MLP stack, pooler, dropout semantics,
+and checkpoint round trip are native. A generated Transformers 5.3.0 fixture
+passes full-forward, pooler, input-embedding, input-gradient, complete parameter-
+gradient, one-step AdamW, and native-export/upstream-reload parity. Its matched
+BERT-base GPU probe is also faster than Transformers while recording a higher
+allocator peak as a warning. Decoder cache and cross-attention configurations
+remain explicit family constraints, so BERT remains `native` rather than
+`verified` until those architecture modes are implemented and accepted.
+
 Each model family owns one bidirectional checkpoint adapter with three explicit
 parts:
 

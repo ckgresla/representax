@@ -350,10 +350,33 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
     model tree or numerics.  Fast unit tests cover Hugging Face linear layout,
     FP32 layer-normalization statistics, repeated-token embedding gradients,
     masked mean pooling, and stable L2 normalization.
-*** NEXT Compose reusable attention, position, MLP, residual, and layer-stack policies
-    Prove the component boundary with the native BERT family before extending
-    it to architectural variants.
+*** DONE Prove shared attention, activation, dropout, and rematerialization with BERT
+    Native BERT reuses the common primitives, executes homogeneous depth with
+    =lax.scan=, preserves inference and keyed-training dropout semantics, and
+    passes a generated pinned Transformers 5.3.0 forward, pooler,
+    input-embedding, and input-gradient oracle.
+*** NEXT Generalize positional, residual, MLP, and layer-stack policies through another family
+    Extract a policy only when at least two native consumers demonstrate the
+    same semantics; do not force superficially similar model graphs together.
 ** TODO Port encoder-only text families :models:text:
+*** DONE Port the standard bidirectional BERT base model :models:bert:
+    Native configuration, scanned Equinox forward, Hugging Face safetensor
+    import/export, deterministic inference, keyed dropout, representation
+    pooling, and pinned forward/input-gradient parity pass.  Decoder cache and
+    cross-attention modes are rejected explicitly.  Support remains =native=
+    until those configuration modes are implemented and accepted.
+*** DONE Complete BERT parameter, optimizer, export/reload, and performance gates :models:bert:testing:
+    The generated Transformers 5.3.0 oracle covers the complete parameter tree
+    and one canonical AdamW update.  Analytically null gradient directions use
+    an absolute update bound because Adam amplifies backend roundoff; all
+    scientifically nonzero leaves retain absolute, relative, and cosine gates.
+    A native safetensor export reloads through upstream =BertModel= with exact
+    outputs.  On RTX 4090 at batch 16 and sequence 128, native FP32 inference is
+    11.034 ms versus 11.516 ms upstream (1.044x; 1450 versus 1389 examples/s),
+    with 8.57e-8 maximum output error.  Native allocator peak is 0.764 GiB
+    versus 0.547 GiB and remains an explicit warning.  Compile-plus-first is
+    15.93 seconds versus 0.268 seconds and remains a cold-start optimization.
+*** NEXT Implement and accept BERT decoder cache and cross-attention modes :models:bert:
 ** TODO Port decoder-only, state-space, and mixture-of-experts text families :models:text:
 ** TODO Port encoder-decoder text families :models:text:
 ** TODO Port vision and image-representation families :models:vision:

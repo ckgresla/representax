@@ -40,7 +40,27 @@ def test_modernvbert_family_is_semantic_and_verified():
     assert AcceptanceGate.FORWARD in family.acceptance_gates
     assert AcceptanceGate.INPUT_GRADIENT in family.acceptance_gates
     assert AcceptanceGate.PERFORMANCE in family.acceptance_gates
-    assert get_model_type_family("bert") is None
+    assert get_model_type_family("albert") is None
+
+
+def test_bert_family_is_native_with_explicit_configuration_constraints():
+    family = get_model_family("bert")
+    assert family is get_model_type_family("bert")
+    assert family.support is FamilySupport.NATIVE
+    assert family.configuration_constraints == (
+        "is_decoder=false",
+        "add_cross_attention=false",
+    )
+    assert family.acceptance_gates == {
+        AcceptanceGate.CONFIG_MAPPING,
+        AcceptanceGate.CHECKPOINT_ROUNDTRIP,
+        AcceptanceGate.FORWARD,
+        AcceptanceGate.INPUT_GRADIENT,
+        AcceptanceGate.PARAMETER_GRADIENT,
+        AcceptanceGate.OPTIMIZER_UPDATE,
+        AcceptanceGate.EXPORT_RELOAD,
+        AcceptanceGate.PERFORMANCE,
+    }
 
 
 def test_generated_family_registry_is_current_and_torch_free():
@@ -74,7 +94,13 @@ def test_manifest_rejects_stale_unknown_and_overlapping_ownership():
 
 
 def test_manifest_rejects_unearned_verified_support():
-    unverified = deepcopy(REVIEWED_MODEL_FAMILIES[0])
+    unverified = deepcopy(
+        next(
+            family
+            for family in REVIEWED_MODEL_FAMILIES
+            if family["support"] == "verified"
+        )
+    )
     unverified["acceptance_gates"] = ("config_mapping", "forward")
     with pytest.raises(ValueError, match="missing gates"):
         _validate((unverified,))

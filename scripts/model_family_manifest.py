@@ -14,6 +14,50 @@ REFERENCE_CATALOG_SHA256 = (
 
 MODEL_FAMILIES = (
     {
+        "name": "bert",
+        "model_types": ("bert",),
+        "modalities": ("text",),
+        "components": (
+            "token_embedding",
+            "absolute_position_embedding",
+            "token_type_embedding",
+            "multi_head_attention",
+            "post_norm_residual",
+            "dense_mlp",
+            "pooler",
+            "mean_pooling",
+            "l2_normalization",
+        ),
+        "configuration_constraints": (
+            "is_decoder=false",
+            "add_cross_attention=false",
+        ),
+        "config_adapter": "representax.models.bert.BertConfig.from_hf_config",
+        "input_contracts": (
+            ("text", ("input_ids", "attention_mask")),
+            ("embedded_text", ("inputs_embeds", "attention_mask")),
+        ),
+        "output_contracts": (
+            "last_hidden_state",
+            "pooler_output",
+            "mean_pooled_l2_normalized_representation",
+        ),
+        "checkpoint_layout": "huggingface_safetensors",
+        "checkpoint_adapter": "representax.models.bert.BertCheckpointAdapter",
+        "implementation_module": "representax.models.bert",
+        "acceptance_gates": (
+            "config_mapping",
+            "checkpoint_roundtrip",
+            "forward",
+            "input_gradient",
+            "parameter_gradient",
+            "optimizer_update",
+            "export_reload",
+            "performance",
+        ),
+        "support": "native",
+    },
+    {
         "name": "modernvbert",
         "model_types": ("modernvbert",),
         "modalities": ("text", "image", "fused"),
@@ -27,6 +71,7 @@ MODEL_FAMILIES = (
             "mean_pooling",
             "l2_normalization",
         ),
+        "configuration_constraints": (),
         "config_adapter": (
             "representax.models.modernvbert.ModernVBERTConfig.from_hf_config"
         ),

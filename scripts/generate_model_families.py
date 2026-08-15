@@ -60,6 +60,17 @@ def _nonempty_strings(value: Any, *, field: str, family: str) -> tuple[str, ...]
     return result
 
 
+def _strings(value: Any, *, field: str, family: str) -> tuple[str, ...]:
+    if not isinstance(value, (tuple, list)):
+        raise ValueError(f"{family}.{field} must be a sequence")
+    result = tuple(value)
+    if any(not isinstance(item, str) or not item for item in result):
+        raise ValueError(f"{family}.{field} must contain non-empty strings")
+    if len(result) != len(set(result)):
+        raise ValueError(f"{family}.{field} contains duplicates")
+    return result
+
+
 def validate_manifest(
     families: Sequence[Mapping[str, Any]],
     *,
@@ -113,6 +124,11 @@ def validate_manifest(
             )
         components = _nonempty_strings(
             raw.get("components"), field="components", family=family
+        )
+        constraints = _strings(
+            raw.get("configuration_constraints", ()),
+            field="configuration_constraints",
+            family=family,
         )
         outputs = _nonempty_strings(
             raw.get("output_contracts"),
@@ -183,6 +199,7 @@ def validate_manifest(
                 "model_types": model_types,
                 "modalities": modalities,
                 "components": components,
+                "configuration_constraints": constraints,
                 "config_adapter": config_adapter,
                 "input_contracts": tuple(normalized_contracts),
                 "output_contracts": outputs,
