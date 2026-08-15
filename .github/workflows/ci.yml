@@ -13,7 +13,7 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
-      - run: python -m pip install -e ".[config,hf,test]" --group static
+      - run: python -m pip install -e ".[config,hf,test,performance]" --group static
       - run: python scripts/check.py
 
   test:

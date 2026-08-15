@@ -43,7 +43,7 @@ repository-only dependency groups rather than published package extras:
 
 ```bash
 python -m pip install -e ".[config,hf]"
-python -m pip install -e ".[config,hf,test]" --group static
+python -m pip install -e ".[config,hf,test,performance]" --group static
 python -m pip install -e ".[test]" --group parity
 python -m pip install -e ".[test]" --group parity-modernvbert
 python -m pip install -e ".[test,performance]" --group parity-modernvbert

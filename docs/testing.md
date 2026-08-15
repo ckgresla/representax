@@ -18,6 +18,7 @@ Each lane can be selected across the mirrored tree with `pytest -m <marker>`.
 Run the import-free development gate before pytest:
 
 ```bash
+python -m pip install -e ".[config,hf,test,performance]" --group static
 python scripts/check.py
 ```
 

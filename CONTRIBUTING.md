@@ -7,7 +7,7 @@ tests.
 Install the lightweight development environment with:
 
 ```bash
-python -m pip install -e ".[config,hf,test]" --group static
+python -m pip install -e ".[config,hf,test,performance]" --group static
 python scripts/check.py
 pytest
 ```
