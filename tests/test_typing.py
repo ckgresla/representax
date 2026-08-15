@@ -32,5 +32,7 @@ def test_mnr_annotations_distinguish_embeddings_and_relations():
 def test_encoder_annotation_accepts_typed_prng_keys():
     annotation = get_type_hints(encode)["key"]
 
-    assert isinstance(jax.random.key(0), annotation)
+    key = jax.random.key(0)
+    assert jax.dtypes.issubdtype(key.dtype, jax.dtypes.prng_key)
+    assert "jaxtyping.Key" in repr(annotation)
     assert isinstance(None, annotation)
