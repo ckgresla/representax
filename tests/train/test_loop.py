@@ -20,7 +20,7 @@ from representax.train import (
     StepResult,
     TrainState,
     build_train_step,
-    make_train_state,
+    init_train_state,
     run_training,
 )
 from tests.train.toy_retrieval import (
@@ -260,7 +260,7 @@ def test_grain_recipe_drives_compiled_updates_end_to_end(tmp_path):
         key=jax.random.key(0),
     )
     optimizer = optax.adamw(learning_rate=0.03, weight_decay=0.0)
-    state = make_train_state(model, optimizer)
+    state = init_train_state(model, optimizer)
     result = run_training(
         state=state,
         step=build_train_step(

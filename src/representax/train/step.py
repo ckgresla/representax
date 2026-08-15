@@ -48,7 +48,7 @@ def tree_all_finite(*trees: Any) -> jax.Array:
     return jnp.all(jnp.stack(checks))
 
 
-def make_train_state(
+def init_train_state(
     model: eqx.Module,
     optimizer: optax.GradientTransformationExtraArgs,
 ) -> TrainState:
@@ -60,6 +60,11 @@ def make_train_state(
         optimizer_state=optimizer.init(parameters),
         step=jnp.asarray(0, dtype=jnp.int32),
     )
+
+
+# Compatibility alias for the public 0.0.1 API. New code should use the
+# canonical Optax-style ``init_train_state`` name.
+make_train_state = init_train_state
 
 
 TrainStep = Callable[[TrainState, Any, jax.Array | None], StepResult]

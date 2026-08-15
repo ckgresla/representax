@@ -184,8 +184,6 @@ for cache and extension behavior.
 Application code imports concrete operations from their owning modules:
 
 ```python
-import optax
-
 from representax.config import (
     BatchConfig,
     CheckpointConfig,
@@ -199,9 +197,13 @@ from representax.config import (
 from representax.data import build_grain_iterator
 from representax.tasks import build_task
 from representax.tasks.retrieval import MNRConfig, RetrievalConfig
-from representax.train import build_train_step, make_train_state, run_training
+from representax.train import (
+    build_optimizer,
+    build_train_step,
+    init_train_state,
+    run_training,
+)
 
-optimizer = optax.adamw(learning_rate=1e-3)
 job = JobConfig(
     name="example",
     model=ModelConfig(target="my_project.Model"),
@@ -223,8 +225,9 @@ job = JobConfig(
     logging=LoggingConfig(console_every=100),
     checkpointing=CheckpointConfig(every=1_000, keep=3),
 )
+optimizer = build_optimizer(job.optimization)
 task = build_task(job.task, job.loss)
-state = make_train_state(model, optimizer)
+state = init_train_state(model, optimizer)
 batches = build_grain_iterator(job.data, batch_size=32, batch_fn=collate)
 result = run_training(
     state=state,

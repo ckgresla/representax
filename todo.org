@@ -300,6 +300,12 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   generated Transformers 5.3.0 identifier catalog is attributed under Apache
   2.0 in =THIRD_PARTY.md=.
 * TODO Define the stable public API and deprecation policy :release:api:
+** DONE Build optimizers from job configs and initialize train state canonically
+   =build_optimizer(job.optimization)= resolves the trusted dotted Optax factory
+   and passes its serialized parameters exactly once. =init_train_state= filters
+   the trainable model leaves and delegates optimizer-state construction to
+   =optimizer.init(parameters)=; =make_train_state= remains a compatibility alias
+   for the published =0.0.1= API.
 * DONE Freeze every Transformers 5.3.0 architecture definition for v0 :models:hf:
   Mechanically snapshot every config model type and task-neutral =AutoModel=
   mapping into a Torch-free catalog. Keep =catalogued=, =native=, and =verified=

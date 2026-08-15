@@ -19,11 +19,13 @@ from .execution import Direct, ExecutionContext, LossExecution
 from .grad_cache import GradCache
 from .logging import MetricRecord, Reporter, RunLogger
 from .loop import TrainingRunResult, run_training
+from .optimizer import build_optimizer
 from .sharding import DataParallel, build_data_parallel_train_step
 from .state import StepMetrics, StepResult, TrainState
 from .step import (
     TrainStep,
     build_train_step,
+    init_train_state,
     make_train_state,
     tree_all_finite,
     tree_global_norm,
@@ -55,6 +57,8 @@ __all__ = [
     "build_train_step",
     "build_loss_execution",
     "build_data_parallel_train_step",
+    "build_optimizer",
+    "init_train_state",
     "make_train_state",
     "run_training",
     "scientific_fingerprint",

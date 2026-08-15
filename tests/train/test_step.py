@@ -9,7 +9,7 @@ import pytest
 
 from representax.models import DenseEncoder
 from representax.tasks.retrieval import MNRTask, retrieval_batch
-from representax.train import build_train_step, make_train_state
+from representax.train import build_train_step, init_train_state
 
 
 @pytest.mark.runtime
@@ -17,7 +17,7 @@ def test_compiled_retrieval_training_reduces_loss():
     model = DenseEncoder(4, 3, key=jax.random.key(0))
     task = MNRTask(scale=5.0, symmetric=True)
     optimizer = optax.adamw(learning_rate=0.03, weight_decay=0.0)
-    state = make_train_state(model, optimizer)
+    state = init_train_state(model, optimizer)
     step = build_train_step(task, optimizer, max_grad_norm=1.0)
     batch = retrieval_batch(
         query=jnp.eye(4, dtype=jnp.float32),
@@ -46,7 +46,7 @@ def test_compiled_retrieval_training_reduces_loss():
 def test_nonfinite_forward_keeps_model_and_optimizer_state():
     model = DenseEncoder(2, 2, key=jax.random.key(7), normalize=False)
     optimizer = optax.adamw(learning_rate=1e-3)
-    state = make_train_state(model, optimizer)
+    state = init_train_state(model, optimizer)
     step = build_train_step(
         MNRTask(scale=5.0),
         optimizer,

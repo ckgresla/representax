@@ -19,7 +19,7 @@ from representax.train import (
     GradCache,
     build_data_parallel_train_step,
     build_train_step,
-    make_train_state,
+    init_train_state,
 )
 
 
@@ -96,7 +96,7 @@ def test_data_parallel_grad_cache_matches_one_device_global_update(world_size: i
         dimension_weights=(1.0, 2.0),
     )
     optimizer = optax.adamw(learning_rate=2e-3, weight_decay=1e-2)
-    state = make_train_state(model, optimizer)
+    state = init_train_state(model, optimizer)
     batch = _global_batch()
     execution = GradCache(
         query_chunk_size=2,

@@ -22,7 +22,7 @@ from representax.train import (
     RunLogger,
     TrainState,
     build_train_step,
-    make_train_state,
+    init_train_state,
     run_training,
     scientific_fingerprint,
     training_checkpointables,
@@ -91,7 +91,7 @@ def _state(input_dimension=2, output_dimension=2, optimizer=None):
         normalize=False,
     )
     optimizer = optax.adamw(learning_rate=0.01) if optimizer is None else optimizer
-    return make_train_state(model, optimizer)
+    return init_train_state(model, optimizer)
 
 
 def _checkpointables(iteration, state=None):
@@ -266,7 +266,7 @@ def test_orbax_retains_latest_complete_checkpoints_and_restores_state(tmp_path):
         key=jax.random.key(0),
         normalize=True,
     )
-    incompatible_state = make_train_state(
+    incompatible_state = init_train_state(
         different_model,
         optax.adamw(learning_rate=0.01),
     )

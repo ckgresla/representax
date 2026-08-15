@@ -15,7 +15,7 @@ from representax.models.modernvbert import (
     ModernVBERTVisionConfig,
 )
 from representax.tasks.retrieval import MNRTask, retrieval_batch
-from representax.train import GradCache, build_train_step, make_train_state
+from representax.train import GradCache, build_train_step, init_train_state
 
 
 @pytest.mark.runtime
@@ -38,7 +38,7 @@ def test_modernvbert_runs_one_compiled_grad_cache_retrieval_update():
         key=jax.random.key(0),
     )
     optimizer = optax.adamw(learning_rate=1e-3, weight_decay=0.0)
-    state = make_train_state(model, optimizer)
+    state = init_train_state(model, optimizer)
     step = build_train_step(
         MNRTask(scale=5.0, symmetric=True),
         optimizer,
@@ -95,7 +95,7 @@ def test_multimodal_modernvbert_updates_vision_and_connector():
     )
     model = ModernVBERTEncoder.init(config, key=jax.random.key(2))
     optimizer = optax.adamw(learning_rate=1e-3, weight_decay=0.0)
-    state = make_train_state(model, optimizer)
+    state = init_train_state(model, optimizer)
     step = build_train_step(MNRTask(scale=5.0, symmetric=True), optimizer)
     input_ids = jnp.asarray([[1, 19, 19, 19, 19, 2], [3, 19, 19, 19, 19, 4]])
     query = ModernVBERTBatch(

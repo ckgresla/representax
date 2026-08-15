@@ -13,7 +13,7 @@ import pytest
 from representax.core import EncoderMetadata, Modality, Route, encode
 from representax.models import DenseEncoder
 from representax.tasks.retrieval import MNRTask, retrieval_batch
-from representax.train import GradCache, build_train_step, make_train_state
+from representax.train import GradCache, build_train_step, init_train_state
 
 
 def _assert_array_trees_close(actual: Any, expected: Any) -> None:
@@ -78,7 +78,7 @@ def test_grad_cache_matches_direct_full_optimizer_update(symmetric: bool):
         dimension_weights=(1.0, 2.0),
     )
     optimizer = optax.adamw(learning_rate=1e-3, weight_decay=1e-2)
-    state = make_train_state(model, optimizer)
+    state = init_train_state(model, optimizer)
     batch = _nontrivial_batch()
     direct = build_train_step(
         task,
