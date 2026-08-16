@@ -54,7 +54,8 @@ def _job_data():
     }
 
 
-def _build_custom_loss(config: LossConfig):
+def _build_custom_loss(task: TaskConfig, config: LossConfig):
+    del task
     if not isinstance(config, _CustomLossConfig):
         raise TypeError("custom loss requires _CustomLossConfig")
     return config.kind, config.weight
@@ -84,7 +85,7 @@ def test_extended_registries_parse_custom_configs_without_global_mutation():
 
     assert isinstance(job.task, _CustomTaskConfig)
     assert isinstance(job.loss, _CustomLossConfig)
-    assert losses.build(job.loss) == ("test/loss", 2.5)
+    assert losses.build(job.task, job.loss) == ("test/loss", 2.5)
     assert "test/custom" not in BUILTIN_TASKS.definitions
     assert "test/loss" not in BUILTIN_LOSSES.definitions
 
@@ -116,7 +117,7 @@ def test_grad_cache_is_rejected_when_loss_does_not_support_it():
         LossDefinition(
             kind="test/loss",
             config_type=_CustomLossConfig,
-            build=lambda config: config,
+            build=lambda task, config: config,
             task_kinds=frozenset({"test/custom"}),
             training_strategies=frozenset({"direct"}),
         )

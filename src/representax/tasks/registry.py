@@ -7,10 +7,30 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any
 
+from representax.core import Route
+
 from .config import LossConfig, TaskConfig
+from .pairwise.batch import PairwiseBatch
+from .pairwise.config import (
+    AngleConfig,
+    ContrastiveConfig,
+    CoSENTConfig,
+    CosineRegressionConfig,
+    PairwiseConfig,
+)
+from .pairwise.task import AnglETask, ContrastiveTask, CoSENTTask, CosineRegressionTask
 from .retrieval.batch import RetrievalBatch
 from .retrieval.config import MNRConfig, RetrievalConfig
 from .retrieval.mnr import MNRTask
+from .triplet.batch import ExplicitTripletBatch, LabeledExamplesBatch
+from .triplet.config import (
+    BatchHardSoftMarginLossConfig,
+    BatchTripletLossConfig,
+    ExplicitTripletConfig,
+    ExplicitTripletLossConfig,
+    LabeledExamplesConfig,
+)
+from .triplet.task import BatchTripletTask, ExplicitTripletTask
 
 
 def _index_definitions(definitions: Iterable[Any], *, label: str) -> Mapping[str, Any]:
@@ -103,7 +123,7 @@ class LossDefinition:
 
     kind: str
     config_type: type[LossConfig]
-    build: Callable[[LossConfig], Any]
+    build: Callable[[TaskConfig, LossConfig], Any]
     task_kinds: frozenset[str]
     training_strategies: frozenset[str]
 
@@ -143,28 +163,138 @@ class LossRegistry:
             label="loss",
         )
 
-    def build(self, config: LossConfig) -> Any:
+    def build(self, task: TaskConfig, config: LossConfig) -> Any:
         definition = self.definition(config.kind)
         if not isinstance(config, definition.config_type):
             raise TypeError(
                 f"loss {config.kind!r} requires {definition.config_type.__name__}, "
                 f"received {type(config).__name__}"
             )
-        return definition.build(config)
+        return definition.build(task, config)
 
     def extended(self, *definitions: LossDefinition) -> LossRegistry:
         return LossRegistry((*self._definitions.values(), *definitions))
 
 
-def _build_mnr_task(config: LossConfig) -> MNRTask:
-    if not isinstance(config, MNRConfig):
+def _build_mnr_task(task: TaskConfig, loss: LossConfig) -> MNRTask:
+    if not isinstance(task, RetrievalConfig) or not isinstance(loss, MNRConfig):
         raise TypeError("mnr requires MNRConfig")
     return MNRTask(
-        scale=config.scale,
-        symmetric=config.symmetric,
-        dimensions=config.dimensions,
-        dimension_weights=config.dimension_weights,
-        negative_scope=config.negative_scope,
+        scale=loss.scale,
+        symmetric=loss.symmetric,
+        dimensions=loss.dimensions,
+        dimension_weights=loss.dimension_weights,
+        negative_scope=loss.negative_scope,
+    )
+
+
+def _pairwise_routes(task: TaskConfig) -> tuple[Route, Route]:
+    if not isinstance(task, PairwiseConfig):
+        raise TypeError("pairwise losses require PairwiseConfig")
+    return task.left_route, task.right_route
+
+
+def _build_cosine_regression_task(
+    task: TaskConfig,
+    loss: LossConfig,
+) -> CosineRegressionTask:
+    if not isinstance(loss, CosineRegressionConfig):
+        raise TypeError("cosine_regression requires CosineRegressionConfig")
+    left_route, right_route = _pairwise_routes(task)
+    return CosineRegressionTask(left_route=left_route, right_route=right_route)
+
+
+def _build_contrastive_task(
+    task: TaskConfig,
+    loss: LossConfig,
+) -> ContrastiveTask:
+    if not isinstance(loss, ContrastiveConfig):
+        raise TypeError("contrastive requires ContrastiveConfig")
+    left_route, right_route = _pairwise_routes(task)
+    return ContrastiveTask(
+        distance=loss.distance,
+        margin=loss.margin,
+        online=loss.mining == "online",
+        left_route=left_route,
+        right_route=right_route,
+    )
+
+
+def _build_cosent_task(task: TaskConfig, loss: LossConfig) -> CoSENTTask:
+    if not isinstance(loss, CoSENTConfig):
+        raise TypeError("cosent requires CoSENTConfig")
+    left_route, right_route = _pairwise_routes(task)
+    return CoSENTTask(
+        scale=loss.scale,
+        left_route=left_route,
+        right_route=right_route,
+    )
+
+
+def _build_angle_task(task: TaskConfig, loss: LossConfig) -> AnglETask:
+    if not isinstance(loss, AngleConfig):
+        raise TypeError("angle requires AngleConfig")
+    left_route, right_route = _pairwise_routes(task)
+    return AnglETask(
+        scale=loss.scale,
+        left_route=left_route,
+        right_route=right_route,
+    )
+
+
+def _build_explicit_triplet_task(
+    task: TaskConfig,
+    loss: LossConfig,
+) -> ExplicitTripletTask:
+    if not isinstance(task, ExplicitTripletConfig) or not isinstance(
+        loss, ExplicitTripletLossConfig
+    ):
+        raise TypeError(
+            "triplet requires ExplicitTripletConfig and ExplicitTripletLossConfig"
+        )
+    return ExplicitTripletTask(
+        distance=loss.distance,
+        margin=loss.margin,
+        anchor_route=task.anchor_route,
+        positive_route=task.positive_route,
+        negative_route=task.negative_route,
+    )
+
+
+def _build_batch_triplet_task(
+    task: TaskConfig,
+    loss: LossConfig,
+) -> BatchTripletTask:
+    if not isinstance(task, LabeledExamplesConfig) or not isinstance(
+        loss, BatchTripletLossConfig
+    ):
+        raise TypeError(
+            "batch_triplet requires LabeledExamplesConfig and BatchTripletLossConfig"
+        )
+    return BatchTripletTask(
+        mining=loss.mining,
+        distance=loss.distance,
+        margin=loss.margin,
+        route=task.route,
+    )
+
+
+def _build_batch_hard_soft_margin_task(
+    task: TaskConfig,
+    loss: LossConfig,
+) -> BatchTripletTask:
+    if not isinstance(task, LabeledExamplesConfig) or not isinstance(
+        loss, BatchHardSoftMarginLossConfig
+    ):
+        raise TypeError(
+            "batch_hard_soft_margin requires LabeledExamplesConfig and "
+            "BatchHardSoftMarginLossConfig"
+        )
+    return BatchTripletTask(
+        mining="hard_soft_margin",
+        distance=loss.distance,
+        margin=None,
+        route=task.route,
     )
 
 
@@ -174,6 +304,21 @@ BUILTIN_TASKS = TaskRegistry(
             kind="retrieval",
             config_type=RetrievalConfig,
             batch_type=RetrievalBatch,
+        ),
+        TaskDefinition(
+            kind="pairwise",
+            config_type=PairwiseConfig,
+            batch_type=PairwiseBatch,
+        ),
+        TaskDefinition(
+            kind="explicit_triplet",
+            config_type=ExplicitTripletConfig,
+            batch_type=ExplicitTripletBatch,
+        ),
+        TaskDefinition(
+            kind="labeled_examples",
+            config_type=LabeledExamplesConfig,
+            batch_type=LabeledExamplesBatch,
         ),
     )
 )
@@ -185,6 +330,55 @@ BUILTIN_LOSSES = LossRegistry(
             build=_build_mnr_task,
             task_kinds=frozenset({"retrieval"}),
             training_strategies=frozenset({"direct", "grad_cache"}),
+        ),
+        LossDefinition(
+            kind="cosine_regression",
+            config_type=CosineRegressionConfig,
+            build=_build_cosine_regression_task,
+            task_kinds=frozenset({"pairwise"}),
+            training_strategies=frozenset({"direct"}),
+        ),
+        LossDefinition(
+            kind="contrastive",
+            config_type=ContrastiveConfig,
+            build=_build_contrastive_task,
+            task_kinds=frozenset({"pairwise"}),
+            training_strategies=frozenset({"direct"}),
+        ),
+        LossDefinition(
+            kind="cosent",
+            config_type=CoSENTConfig,
+            build=_build_cosent_task,
+            task_kinds=frozenset({"pairwise"}),
+            training_strategies=frozenset({"direct"}),
+        ),
+        LossDefinition(
+            kind="angle",
+            config_type=AngleConfig,
+            build=_build_angle_task,
+            task_kinds=frozenset({"pairwise"}),
+            training_strategies=frozenset({"direct"}),
+        ),
+        LossDefinition(
+            kind="triplet",
+            config_type=ExplicitTripletLossConfig,
+            build=_build_explicit_triplet_task,
+            task_kinds=frozenset({"explicit_triplet"}),
+            training_strategies=frozenset({"direct"}),
+        ),
+        LossDefinition(
+            kind="batch_triplet",
+            config_type=BatchTripletLossConfig,
+            build=_build_batch_triplet_task,
+            task_kinds=frozenset({"labeled_examples"}),
+            training_strategies=frozenset({"direct"}),
+        ),
+        LossDefinition(
+            kind="batch_hard_soft_margin",
+            config_type=BatchHardSoftMarginLossConfig,
+            build=_build_batch_hard_soft_margin_task,
+            task_kinds=frozenset({"labeled_examples"}),
+            training_strategies=frozenset({"direct"}),
         ),
     )
 )
@@ -206,7 +400,7 @@ def build_task(
     definition = losses.definition(loss.kind)
     if task.kind not in definition.task_kinds:
         raise ValueError(f"loss {loss.kind!r} does not support task {task.kind!r}")
-    return losses.build(loss)
+    return losses.build(task, loss)
 
 
 __all__ = [

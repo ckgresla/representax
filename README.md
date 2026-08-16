@@ -12,7 +12,12 @@ The project is alpha. The current slice provides:
   Face safetensor loading and pinned numerical acceptance;
 - a Torch-free dense Sentence Transformers module loader and fixed-shape host
   embedding API;
-- direct multiple-negatives ranking, including symmetric and Matryoshka modes;
+- direct and cached multiple-negatives ranking, including symmetric and
+  Matryoshka modes;
+- task-native labeled-pair cosine regression, contrastive and online mining,
+  CoSENT, and AnglE objectives;
+- explicit triplet learning plus all, hard, hard soft-margin, and semi-hard
+  within-batch mining;
 - an end-to-end Grain-to-compiled-step trainer with asynchronous reporting;
 - lazy Grain recipes with built-in Hugging Face and local artifact resolvers;
 - validated domain configs with annotated scientific and execution parameters; and
@@ -139,6 +144,58 @@ Install `representax[hf]` for Hub transport and tokenization. The native model
 runtime itself requires neither Torch nor Sentence Transformers. The pinned
 `all-MiniLM-L6-v2` and `all-mpnet-base-v2` acceptance cases verify the complete
 text-to-normalized-embedding path against Sentence Transformers 5.6.1.
+
+## Pairwise representation learning
+
+Labeled pair objectives use one modality-neutral batch and keep semantic routes
+on the task rather than inside the loss:
+
+```python
+import jax.numpy as jnp
+from representax.tasks import build_task
+from representax.tasks.pairwise import CoSENTConfig, PairwiseConfig, pairwise_batch
+
+task = build_task(PairwiseConfig(), CoSENTConfig(scale=20.0))
+batch = pairwise_batch(
+    left=left_model_inputs,
+    right=right_model_inputs,
+    labels=jnp.asarray([1.0, 0.7, 0.0]),
+)
+```
+
+The same task boundary supports text, image, audio, video, or fused model-native
+payloads. See the
+[Sentence Transformers capability ledger](docs/sentence-transformers-capabilities.md)
+for exact native and remaining coverage.
+
+## Triplet representation learning
+
+Supplied triplets and class-labeled mining batches are distinct data contracts.
+Both keep semantic routes on the task configuration and share native distance
+primitives:
+
+```python
+import jax.numpy as jnp
+from representax.tasks import build_task
+from representax.tasks.triplet import (
+    BatchTripletLossConfig,
+    LabeledExamplesConfig,
+    labeled_examples_batch,
+)
+
+task = build_task(
+    LabeledExamplesConfig(),
+    BatchTripletLossConfig(mining="semi_hard", margin=0.5),
+)
+batch = labeled_examples_batch(
+    examples=model_inputs,
+    labels=jnp.asarray([0, 0, 1, 1]),
+)
+```
+
+Explicit triplets support cosine, Euclidean, and Manhattan distance. In-batch
+mining supports cosine, Euclidean, and squared Euclidean distance, explicit
+padding validity, and fixed-shape JIT compilation.
 
 ## ModernVBERT
 

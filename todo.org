@@ -486,6 +486,30 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
     layer objectives, triplet families, cosine/CoSENT/AnglE/contrastive families,
     distillation and MSE families, classification, GISTEmbed, orthogonal
     regularization, denoising, and mega-batch mining through task-native losses.
+**** DONE Add the labeled-pair loss family
+     Add one modality-neutral fixed-shape pair batch with task-owned semantic
+     routes. Native cosine regression, ordinary and online-mined contrastive
+     losses over cosine, Euclidean, and Manhattan distance, CoSENT, and AnglE
+     match Sentence Transformers 5.6.1 values and both representation gradients
+     across seven pinned oracle cases. All four scientific loss configs run
+     through the generic compiled optimizer step; online mining is a policy on
+     contrastive loss rather than a duplicate task class.
+**** DONE Add explicit and in-batch-mined triplet objectives
+     Keep supplied anchor-positive-negative rows distinct from reusable
+     class-labeled example batches. Native cosine, Euclidean, and Manhattan
+     explicit triplets plus all, hard, hard soft-margin, and semi-hard in-batch
+     mining match all five Sentence Transformers 5.6.1 classes on loss and
+     representation gradients. Both contracts run through the generic compiled
+     optimizer step and preserve task-owned semantic routes. Representax keeps
+     positive Euclidean and Manhattan distance semantics instead of reproducing
+     the pinned oracle's sign-reversed explicit callbacks; that class is gated
+     through its correct cosine path.
+**** TODO Add embedding, score-margin, and distribution distillation objectives
+**** TODO Generalize Matryoshka and adaptive-layer composition across losses
+**** TODO Add GIST-guided negative selection and its cached execution
+**** TODO Add classification and contrastive-tension objectives
+**** TODO Add orthogonal regularization as a composable loss term
+**** TODO Add denoising autoencoding and mega-batch mining execution
 *** TODO Complete the released dense evaluator inventory
     Cover embedding similarity, binary and label classification, information
     retrieval and NanoBEIR, triplet, reranking, paraphrase mining, translation,
@@ -530,9 +554,9 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
 * TODO Add multi-dataset functionality through source sampling policies :api:data:
 * TODO Add LoRA and parameter-selection recipes :api:training:
 
-* TODO Implement triplet losses :tasks:metric_learning:
-* TODO Implement cosine-similarity losses :tasks:metric_learning:
-* TODO Implement CoSENT losses :tasks:metric_learning:
+* DONE Implement triplet losses :tasks:metric_learning:
+* DONE Implement cosine-similarity losses :tasks:metric_learning:
+* DONE Implement CoSENT losses :tasks:metric_learning:
 * TODO Implement classification tasks and losses :tasks:classification:
 * TODO Implement representation distillation tasks and losses :tasks:distillation:
 * TODO Implement pairwise reward modeling :tasks:reward_modeling:
