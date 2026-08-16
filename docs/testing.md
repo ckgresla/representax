@@ -13,6 +13,29 @@ Markers describe how a test executes:
 The default `pytest` command excludes the four environment-sensitive lanes.
 Each lane can be selected across the mirrored tree with `pytest -m <marker>`.
 
+## Task-loss acceptance
+
+The canonical Sentence Transformers loss inventory is one discoverable file:
+
+```bash
+python -m pip install -e ".[test,performance]" --group parity
+pytest -m parity tests/tasks/test_sentence_transformers_parity.py
+pytest -m performance tests/tasks/test_sentence_transformers_parity.py -s
+```
+
+The parity lane generates shared NumPy tensors, passes the same values to JAX
+and the pinned Sentence Transformers 5.6.1 class, then compares the scalar loss
+and every representation gradient. An explicit coverage assertion keeps the 18
+classes claimed as native synchronized with the paired cases. Cached MNR uses
+each runtime's chunked score-row objective; end-to-end encoder replay and
+distributed execution remain in the dedicated GradCache acceptance suites.
+
+The performance lane compiles one native forward-and-backward program per
+class, warms both runtimes, synchronizes every sample, and reports median
+latency. It is intentionally separate from parity and emits performance
+shortfalls as warnings. Small loss-only measurements show dispatch and fusion
+quality; full encoder training remains the authoritative systems benchmark.
+
 ## Static analysis
 
 Run the import-free development gate before pytest:

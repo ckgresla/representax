@@ -1,6 +1,6 @@
 """Task families and their explicit construction registry."""
 
-from . import pairwise, retrieval, triplet
+from . import distillation, pairwise, retrieval, triplet
 from .config import LossConfig, TaskConfig
 from .registry import (
     BUILTIN_LOSSES,
@@ -22,6 +22,7 @@ __all__ = [
     "TaskConfig",
     "TaskRegistry",
     "build_task",
+    "distillation",
     "pairwise",
     "retrieval",
     "triplet",

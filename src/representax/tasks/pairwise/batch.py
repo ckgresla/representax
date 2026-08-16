@@ -5,9 +5,10 @@ from __future__ import annotations
 from typing import Any
 
 import equinox as eqx
-import jax
 import jax.numpy as jnp
 from jaxtyping import Array, Bool, Float
+
+from representax.tasks._batch import payload_row_count
 
 
 class PairwiseBatch(eqx.Module):
@@ -25,12 +26,7 @@ class PairwiseBatch(eqx.Module):
             raise TypeError("valid must be a boolean vector matching labels")
         pair_count = self.labels.shape[0]
         for name, payload in (("left", self.left), ("right", self.right)):
-            leaves = [
-                value for value in jax.tree.leaves(payload) if eqx.is_array(value)
-            ]
-            if not leaves:
-                raise ValueError(f"{name} payload must contain arrays")
-            if any(value.ndim == 0 or value.shape[0] != pair_count for value in leaves):
+            if payload_row_count(payload, name=name) != pair_count:
                 raise ValueError(f"{name} payload must contain one row per pair")
 
 

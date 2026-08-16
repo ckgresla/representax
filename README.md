@@ -197,6 +197,36 @@ Explicit triplets support cosine, Euclidean, and Manhattan distance. In-batch
 mining supports cosine, Euclidean, and squared Euclidean distance, explicit
 padding validity, and fixed-shape JIT compilation.
 
+## Representation distillation
+
+Teacher artifacts remain ordinary fixed-shape batch data rather than live
+models hidden in a loss. Representax supports embedding matching, score-margin
+regression, and distribution distillation through registered tasks:
+
+```python
+from representax.tasks import build_task
+from representax.tasks.distillation import (
+    DistributionDistillationConfig,
+    DistributionKLLossConfig,
+    distribution_distillation_batch,
+)
+
+task = build_task(
+    DistributionDistillationConfig(),
+    DistributionKLLossConfig(temperature=2.0),
+)
+batch = distribution_distillation_batch(
+    query=query_model_inputs,
+    candidates=(positive_model_inputs, negative_model_inputs),
+    teacher_scores=teacher_scores,
+)
+```
+
+Embedding targets may be broadcast across input columns or supplied per
+column, with MSE, L2, or cosine matching. Learned student-to-teacher projections
+belong in the model composition so optimizer-visible state is never concealed
+inside a task.
+
 ## ModernVBERT
 
 The first production-family integration loads pinned Hugging Face safetensors

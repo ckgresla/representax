@@ -10,6 +10,24 @@ from typing import Any
 from representax.core import Route
 
 from .config import LossConfig, TaskConfig
+from .distillation.batch import (
+    DistributionDistillationBatch,
+    EmbeddingDistillationBatch,
+    MarginDistillationBatch,
+)
+from .distillation.config import (
+    DistributionDistillationConfig,
+    DistributionKLLossConfig,
+    EmbeddingDistillationConfig,
+    EmbeddingDistillationLossConfig,
+    MarginDistillationConfig,
+    MarginMSELossConfig,
+)
+from .distillation.task import (
+    DistributionDistillationTask,
+    EmbeddingDistillationTask,
+    MarginDistillationTask,
+)
 from .pairwise.batch import PairwiseBatch
 from .pairwise.config import (
     AngleConfig,
@@ -298,6 +316,56 @@ def _build_batch_hard_soft_margin_task(
     )
 
 
+def _build_embedding_distillation_task(
+    task: TaskConfig,
+    loss: LossConfig,
+) -> EmbeddingDistillationTask:
+    if not isinstance(task, EmbeddingDistillationConfig) or not isinstance(
+        loss, EmbeddingDistillationLossConfig
+    ):
+        raise TypeError(
+            "embedding_distillation requires EmbeddingDistillationConfig and "
+            "EmbeddingDistillationLossConfig"
+        )
+    return EmbeddingDistillationTask(distance=loss.distance, routes=task.routes)
+
+
+def _build_margin_distillation_task(
+    task: TaskConfig,
+    loss: LossConfig,
+) -> MarginDistillationTask:
+    if not isinstance(task, MarginDistillationConfig) or not isinstance(
+        loss, MarginMSELossConfig
+    ):
+        raise TypeError(
+            "margin_mse requires MarginDistillationConfig and MarginMSELossConfig"
+        )
+    return MarginDistillationTask(
+        similarity=loss.similarity,
+        query_route=task.query_route,
+        document_route=task.document_route,
+    )
+
+
+def _build_distribution_distillation_task(
+    task: TaskConfig,
+    loss: LossConfig,
+) -> DistributionDistillationTask:
+    if not isinstance(task, DistributionDistillationConfig) or not isinstance(
+        loss, DistributionKLLossConfig
+    ):
+        raise TypeError(
+            "distribution_kl requires DistributionDistillationConfig and "
+            "DistributionKLLossConfig"
+        )
+    return DistributionDistillationTask(
+        similarity=loss.similarity,
+        temperature=loss.temperature,
+        query_route=task.query_route,
+        candidate_route=task.candidate_route,
+    )
+
+
 BUILTIN_TASKS = TaskRegistry(
     (
         TaskDefinition(
@@ -319,6 +387,21 @@ BUILTIN_TASKS = TaskRegistry(
             kind="labeled_examples",
             config_type=LabeledExamplesConfig,
             batch_type=LabeledExamplesBatch,
+        ),
+        TaskDefinition(
+            kind="embedding_distillation",
+            config_type=EmbeddingDistillationConfig,
+            batch_type=EmbeddingDistillationBatch,
+        ),
+        TaskDefinition(
+            kind="margin_distillation",
+            config_type=MarginDistillationConfig,
+            batch_type=MarginDistillationBatch,
+        ),
+        TaskDefinition(
+            kind="distribution_distillation",
+            config_type=DistributionDistillationConfig,
+            batch_type=DistributionDistillationBatch,
         ),
     )
 )
@@ -378,6 +461,27 @@ BUILTIN_LOSSES = LossRegistry(
             config_type=BatchHardSoftMarginLossConfig,
             build=_build_batch_hard_soft_margin_task,
             task_kinds=frozenset({"labeled_examples"}),
+            training_strategies=frozenset({"direct"}),
+        ),
+        LossDefinition(
+            kind="embedding_distillation",
+            config_type=EmbeddingDistillationLossConfig,
+            build=_build_embedding_distillation_task,
+            task_kinds=frozenset({"embedding_distillation"}),
+            training_strategies=frozenset({"direct"}),
+        ),
+        LossDefinition(
+            kind="margin_mse",
+            config_type=MarginMSELossConfig,
+            build=_build_margin_distillation_task,
+            task_kinds=frozenset({"margin_distillation"}),
+            training_strategies=frozenset({"direct"}),
+        ),
+        LossDefinition(
+            kind="distribution_kl",
+            config_type=DistributionKLLossConfig,
+            build=_build_distribution_distillation_task,
+            task_kinds=frozenset({"distribution_distillation"}),
             training_strategies=frozenset({"direct"}),
         ),
     )

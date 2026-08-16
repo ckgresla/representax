@@ -5,21 +5,10 @@ from __future__ import annotations
 from typing import Any
 
 import equinox as eqx
-import jax
 import jax.numpy as jnp
 from jaxtyping import Array, Bool, Int
 
-
-def _payload_row_count(payload: Any, *, name: str) -> int:
-    leaves = [value for value in jax.tree.leaves(payload) if eqx.is_array(value)]
-    if not leaves:
-        raise ValueError(f"{name} payload must contain arrays")
-    if any(value.ndim == 0 for value in leaves):
-        raise ValueError(f"{name} payload arrays must have a batch dimension")
-    row_count = leaves[0].shape[0]
-    if any(value.shape[0] != row_count for value in leaves):
-        raise ValueError(f"{name} payload arrays must have the same row count")
-    return row_count
+from representax.tasks._batch import payload_row_count
 
 
 class ExplicitTripletBatch(eqx.Module):
@@ -39,7 +28,7 @@ class ExplicitTripletBatch(eqx.Module):
             ("positive", self.positive),
             ("negative", self.negative),
         ):
-            if _payload_row_count(payload, name=name) != triplet_count:
+            if payload_row_count(payload, name=name) != triplet_count:
                 raise ValueError(f"{name} payload must contain one row per triplet")
 
 
@@ -52,7 +41,7 @@ def explicit_triplet_batch(
 ) -> ExplicitTripletBatch:
     """Build an explicit-triplet batch with all rows valid by default."""
 
-    triplet_count = _payload_row_count(anchor, name="anchor")
+    triplet_count = payload_row_count(anchor, name="anchor")
     if valid is None:
         valid = jnp.ones((triplet_count,), dtype=jnp.bool_)
     return ExplicitTripletBatch(
@@ -75,7 +64,7 @@ class LabeledExamplesBatch(eqx.Module):
             raise TypeError("labels must be an integer vector")
         if self.valid.shape != self.labels.shape or self.valid.dtype != jnp.bool_:
             raise TypeError("valid must be a boolean vector matching labels")
-        if _payload_row_count(self.examples, name="examples") != self.labels.shape[0]:
+        if payload_row_count(self.examples, name="examples") != self.labels.shape[0]:
             raise ValueError("examples payload must contain one row per label")
 
 

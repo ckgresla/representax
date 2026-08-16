@@ -10,7 +10,7 @@ execution contracts; it is not a promise to reproduce upstream class names.
 | Labeled-pair regression and ranking | `CosineSimilarityLoss`, `CoSENTLoss`, `AnglELoss` | Native: fixed-shape pair batches, explicit validity, task-owned routes, and pinned value/representation-gradient parity |
 | Pairwise contrastive learning | `ContrastiveLoss`, `OnlineContrastiveLoss` | Native: cosine, Euclidean, and Manhattan distance; ordinary and online mining share one scientific loss configuration |
 | Explicit and label-mined triplets | `TripletLoss`, `BatchAllTripletLoss`, `BatchHardTripletLoss`, `BatchHardSoftMarginTripletLoss`, `BatchSemiHardTripletLoss` | Native: explicit routed triplets plus all, hard, hard soft-margin, and semi-hard mining over class-labeled batches; pinned value/representation-gradient parity |
-| Embedding and score distillation | `MSELoss`, `EmbedDistillLoss`, `MarginMSELoss`, `DistillKLDivLoss` | Planned |
+| Embedding and score distillation | `MSELoss`, `EmbedDistillLoss`, `MarginMSELoss`, `DistillKLDivLoss` | Native: broadcast or per-column teacher embeddings with MSE, L2, or cosine matching; positive-minus-negative score regression; temperature-scaled distribution KL; pinned value/representation-gradient parity |
 | Dimension and layer composition | `MatryoshkaLoss`, `Matryoshka2dLoss`, `AdaptiveLayerLoss` | Partial: MNR supports weighted Matryoshka dimensions; general loss and layer composition remain |
 | Guide-model negative selection | `GISTEmbedLoss`, `CachedGISTEmbedLoss` | Planned |
 | Contrastive tension | `ContrastiveTensionLoss` | Planned |
@@ -23,6 +23,20 @@ execution contracts; it is not a promise to reproduce upstream class names.
 batch contract, compiled training path, and pinned upstream numerical gate are
 implemented. Performance comparisons remain a separate systems gate so a
 correct implementation cannot acquire a speed claim without matched evidence.
+
+Every native row is closed by
+[`tests/tasks/test_sentence_transformers_parity.py`](../tests/tasks/test_sentence_transformers_parity.py).
+Its inventory assertion requires all 18 claimed upstream classes to appear in
+same-tensor value and representation-gradient cases. The separate performance
+case measures synchronized, warmed forward and backward work per class and
+warns—rather than invalidating numerical correctness—if a native objective is
+slower on an uncontrolled device.
+
+Sentence Transformers may place an optional learned projection inside
+`MSELoss` or `EmbedDistillLoss`. Representax keeps trainable state in the model:
+compose a projection head before these losses when student and teacher
+dimensions differ. The loss then receives equal projected dimensions, avoiding
+optimizer-visible parameters hidden inside a task closure.
 
 Representax uses positive Euclidean and Manhattan distances for explicit
 triplets, consistent with the released loss documentation and margin equation.

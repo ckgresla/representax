@@ -504,7 +504,18 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      positive Euclidean and Manhattan distance semantics instead of reproducing
      the pinned oracle's sign-reversed explicit callbacks; that class is gated
      through its correct cosine path.
-**** TODO Add embedding, score-margin, and distribution distillation objectives
+**** DONE Add embedding, score-margin, and distribution distillation objectives
+     Add separate fixed-shape contracts for broadcast or per-column teacher
+     embeddings, positive-minus-negative teacher margins, and candidate-score
+     distributions. Native MSE, L2, cosine, margin MSE, and temperature-scaled
+     KL objectives run through the registered generic optimizer step. One
+     canonical parity file now covers all 18 Sentence Transformers 5.6.1
+     classes claimed native through 24 same-tensor loss and representation-
+     gradient cases plus an explicit inventory-coverage assertion, including
+     direct and score-row-chunked MNR. A separate per-class GPU performance lane
+     measures synchronized warmed forward and backward work, reporting
+     regressions as warnings rather than correctness failures. Learned
+     dimensional projections remain explicit model state.
 **** TODO Generalize Matryoshka and adaptive-layer composition across losses
 **** TODO Add GIST-guided negative selection and its cached execution
 **** TODO Add classification and contrastive-tension objectives
