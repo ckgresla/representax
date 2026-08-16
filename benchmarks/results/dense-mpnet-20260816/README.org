@@ -1,0 +1,28 @@
+#+title: Native all-mpnet-base-v2 dense-route acceptance
+
+* Contract
+
+- Sentence Transformers 5.6.1 at =sentence-transformers/all-mpnet-base-v2=
+  revision =e8c3b32edf5434bc2275fc9bab85f82640a19130= versus the native
+  Representax MPNet, mean-pooling, and normalization module chain.
+- FP32 with TF32 disabled upstream and highest JAX matmul precision.
+- Batch 16, sequence 128, identical random token IDs and all-valid masks.
+- Five warmups and twenty synchronized steady-state forward measurements.
+- One RTX 4090; isolated processes run sequentially under a 180-second probe
+  deadline. Native compilation has a separate 60-second acceptance ceiling.
+
+* Result
+
+The matched tensor route agrees to =2.91e-7= maximum absolute error,
+=1.09e-6= relative L2, and cosine =1.0=. A separate full tokenizer-to-embedding
+parity test agrees to =1.18e-7= maximum absolute error.
+
+Representax is =1.153x= faster in steady state: 11.070 ms versus 12.760 ms per
+step, or 1,445 versus 1,254 examples per second. Explicit native compilation
+takes 15.99 seconds and first execution after compilation takes 12.24 ms.
+
+The native allocator peak is 0.762 GiB versus 0.598 GiB upstream (1.275x), and
+the native process peak is 1.396 GiB versus 1.045 GiB (1.336x). Both are
+recorded warnings and remain optimization targets, not correctness failures.
+
+See =summary.json= for the machine-readable measurements.

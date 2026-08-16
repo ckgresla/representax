@@ -15,6 +15,7 @@ from representax.core import EncoderMetadata, Modality, Route
 from representax.inference import TextEmbeddingModel
 from representax.models.bert import BertCheckpointAdapter
 from representax.models.components import AttentionImplementation, Linear
+from representax.models.mpnet import MPNetCheckpointAdapter
 from representax.models.sentence import (
     POOLING_MODES,
     DenseActivation,
@@ -276,6 +277,15 @@ def _text_backbone(
     model_type = str(config.get("model_type", ""))
     if model_type == "bert":
         return BertCheckpointAdapter(
+            attention_implementation=attention_implementation,
+            rematerialization=rematerialization,
+        ).load(
+            checkpoint,
+            parameter_dtype=parameter_dtype,
+            compute_dtype=compute_dtype,
+        )
+    if model_type == "mpnet":
+        return MPNetCheckpointAdapter(
             attention_implementation=attention_implementation,
             rematerialization=rematerialization,
         ).load(

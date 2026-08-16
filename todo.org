@@ -466,9 +466,21 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
     =1110a243fdf4706b3f48f1d95db1a4f5529b4d41= produce normalized embeddings
     with maximum absolute error =1.0803342e-7=, relative L2 =5.2440890e-7=,
     and cosine =1.0= on the full host string-to-embedding path.
-*** TODO Reproduce =all-mpnet-base-v2= through a native MPNet family
+*** DONE Reproduce =all-mpnet-base-v2= through a native MPNet family
     Use MPNet to generalize positional, residual, MLP, and layer-stack policies
     only where a second consumer proves the shared semantics.
+    The native family implements padding-aware positions, shared bucketed
+    relative attention bias, a scanned layer stack, direct safetensor
+    load/export, and the standard dense mean-pooling plus normalization chain.
+    Transformers 5.3.0 parity covers hidden states, pooler output, embedded-input
+    gradients, parameter gradients, one AdamW update, and native-to-upstream
+    checkpoint export.  The full Sentence Transformers 5.6.1 string path at Hub
+    revision =e8c3b32edf5434bc2275fc9bab85f82640a19130= agrees to =1.18e-7=
+    maximum absolute error, =9.10e-7= relative L2, and cosine =1.0=.
+    At batch 16 and sequence 128 on one RTX 4090, Representax sustains 1,445
+    examples/s versus 1,254 upstream, a =1.153x= speedup, and compiles in 15.99
+    seconds. Allocator and process peaks are 27.5% and 33.6% higher; both remain
+    explicit warnings and memory-optimization targets.
 *** TODO Complete the released dense loss inventory
     Cover MNR and cached MNR variants, symmetric ranking, Matryoshka and adaptive
     layer objectives, triplet families, cosine/CoSENT/AnglE/contrastive families,

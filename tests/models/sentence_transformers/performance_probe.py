@@ -83,7 +83,6 @@ def _representax(
 
     from representax.core import Route
     from representax.integrations import load_sentence_transformer_artifact
-    from representax.models.bert import BertBatch
 
     started = time.perf_counter()
     loaded = load_sentence_transformer_artifact(
@@ -92,7 +91,7 @@ def _representax(
         parameter_dtype=jnp.float32,
         compute_dtype=jnp.float32,
     )
-    batch = BertBatch(
+    batch = loaded.encoder.make_batch(
         input_ids=jnp.asarray(inputs["input_ids"]),
         attention_mask=jnp.asarray(inputs["attention_mask"]),
     )

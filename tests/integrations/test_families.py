@@ -63,6 +63,28 @@ def test_bert_family_is_native_with_explicit_configuration_constraints():
     }
 
 
+def test_mpnet_family_is_verified_with_explicit_position_semantics():
+    family = get_model_family("mpnet")
+    assert family is get_model_type_family("mpnet")
+    assert family.support is FamilySupport.VERIFIED
+    assert family.configuration_constraints == (
+        "pad_token_id=1",
+        "relative_attention_num_buckets=32",
+    )
+    assert "padding_aware_absolute_position_embedding" in family.components
+    assert "bucketed_relative_attention_bias" in family.components
+    assert family.acceptance_gates == {
+        AcceptanceGate.CONFIG_MAPPING,
+        AcceptanceGate.CHECKPOINT_ROUNDTRIP,
+        AcceptanceGate.FORWARD,
+        AcceptanceGate.INPUT_GRADIENT,
+        AcceptanceGate.PARAMETER_GRADIENT,
+        AcceptanceGate.OPTIMIZER_UPDATE,
+        AcceptanceGate.EXPORT_RELOAD,
+        AcceptanceGate.PERFORMANCE,
+    }
+
+
 def test_generated_family_registry_is_current_and_torch_free():
     assert REFERENCE_CATALOG_SHA256 == CATALOG_SHA256
     assert FAMILY_MANIFEST_SHA256

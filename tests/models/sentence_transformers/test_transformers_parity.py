@@ -6,6 +6,7 @@ import json
 import os
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 import jax
@@ -28,24 +29,47 @@ _TEXTS = (
     "It is raining.",
     "A bee lands on a flower.",
 )
-_MINILM_REVISION = "1110a243fdf4706b3f48f1d95db1a4f5529b4d41"
 
 
-def _checkpoint() -> Path:
-    value = os.environ.get("REPRESENTAX_MINILM_CHECKPOINT")
+@dataclass(frozen=True, slots=True)
+class _DenseParityCase:
+    name: str
+    checkpoint_environment: str
+    model_id: str
+    revision: str
+
+
+_DENSE_PARITY_CASES = (
+    _DenseParityCase(
+        name="all-minilm-l6-v2",
+        checkpoint_environment="REPRESENTAX_MINILM_CHECKPOINT",
+        model_id="sentence-transformers/all-MiniLM-L6-v2",
+        revision="1110a243fdf4706b3f48f1d95db1a4f5529b4d41",
+    ),
+    _DenseParityCase(
+        name="all-mpnet-base-v2",
+        checkpoint_environment="REPRESENTAX_MPNET_CHECKPOINT",
+        model_id="sentence-transformers/all-mpnet-base-v2",
+        revision="e8c3b32edf5434bc2275fc9bab85f82640a19130",
+    ),
+)
+
+
+def _checkpoint(case: _DenseParityCase) -> Path:
+    value = os.environ.get(case.checkpoint_environment)
     if value is None:
-        pytest.skip("set REPRESENTAX_MINILM_CHECKPOINT for dense-route parity")
+        pytest.skip(f"set {case.checkpoint_environment} for dense-route parity")
     path = Path(value)
     if not path.is_dir():
-        raise FileNotFoundError(f"MiniLM checkpoint not found: {path}")
+        raise FileNotFoundError(f"dense checkpoint not found: {path}")
     revisions = {
         path.name,
         *(tree.stem for tree in path.glob(".cache/huggingface/trees/*.json")),
     }
-    if _MINILM_REVISION not in revisions:
+    if case.revision not in revisions:
         raise ValueError(
-            "dense parity requires sentence-transformers/all-MiniLM-L6-v2 at "
-            f"revision {_MINILM_REVISION}; found identities {sorted(revisions)}"
+            f"dense parity requires {case.model_id} at revision {case.revision}; "
+            f"found identities {sorted(revisions)}"
         )
     return path
 
@@ -54,8 +78,13 @@ def _upstream_python() -> str:
     return os.environ.get("REPRESENTAX_SENTENCE_TRANSFORMERS_PYTHON", sys.executable)
 
 
-def test_all_minilm_l6_v2_full_string_embedding_parity(tmp_path):
-    checkpoint = _checkpoint()
+@pytest.mark.parametrize(
+    "case",
+    _DENSE_PARITY_CASES,
+    ids=lambda case: case.name,
+)
+def test_dense_full_string_embedding_parity(case, tmp_path):
+    checkpoint = _checkpoint(case)
     texts_path = tmp_path / "texts.json"
     upstream_path = tmp_path / "upstream.npy"
     metadata_path = tmp_path / "upstream.json"
@@ -102,7 +131,7 @@ def test_all_minilm_l6_v2_full_string_embedding_parity(tmp_path):
         json.dumps(
             {
                 "checkpoint": checkpoint.name,
-                "checkpoint_revision": _MINILM_REVISION,
+                "checkpoint_revision": case.revision,
                 "shape": actual.shape,
                 "max_absolute": result.max_absolute,
                 "relative_l2": result.relative_l2,

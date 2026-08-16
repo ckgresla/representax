@@ -187,6 +187,24 @@ class SentenceEncoder(eqx.Module):
     metadata: EncoderMetadata
     truncate_dimension: int | None = eqx.field(static=True, default=None)
 
+    def make_batch(
+        self,
+        *,
+        input_ids: Int[Array, "batch sequence"],
+        attention_mask: Bool[Array, "batch sequence"] | Int[Array, "batch sequence"],
+        token_type_ids: Int[Array, "batch sequence"] | None = None,
+    ) -> Any:
+        """Delegate host token-batch construction to the native backbone."""
+
+        builder = getattr(self.backbone, "make_batch", None)
+        if not callable(builder):
+            raise TypeError("sentence backbones must implement make_batch")
+        return builder(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            token_type_ids=token_type_ids,
+        )
+
     def encode(
         self,
         inputs: Any,

@@ -12,14 +12,13 @@ import numpy as np
 from jaxtyping import Array, Float
 
 from representax.core import Route, encode
-from representax.models.bert import BertBatch
 from representax.models.sentence import SentenceBatch, SentenceEncoder
 
 
 @eqx.filter_jit
 def _compiled_encode(
     model: SentenceEncoder,
-    batch: BertBatch | SentenceBatch,
+    batch: Any,
     route: Route,
 ) -> Float[Array, "batch representation"]:
     return encode(model, batch, route=route)
@@ -118,7 +117,7 @@ class TextEmbeddingModel:
         route: Route = Route.GENERIC,
         prompt_name: str | None = None,
         prompt: str | None = None,
-    ) -> BertBatch | SentenceBatch:
+    ) -> Any:
         """Turn host strings into a fixed-shape native token batch."""
 
         route = Route(route)
@@ -132,7 +131,7 @@ class TextEmbeddingModel:
                 f"text processor output is missing required field {error.args[0]!r}"
             ) from error
         token_type_ids = encoded.get("token_type_ids")
-        backbone_batch = BertBatch(
+        backbone_batch = self.encoder.make_batch(
             input_ids=jnp.asarray(input_ids),
             attention_mask=jnp.asarray(attention_mask),
             token_type_ids=(

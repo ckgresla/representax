@@ -92,6 +92,23 @@ MODEL_IMPLEMENTATIONS = (
         ),
     ),
     ModelPerformanceCase(
+        name="all-mpnet-base-v2-dense-forward-fp32",
+        package="mpnet",
+        probe_module="tests.models.mpnet.performance_probe",
+        checkpoint_environment="REPRESENTAX_MPNET_CHECKPOINT",
+        upstream_python_environment="REPRESENTAX_SENTENCE_TRANSFORMERS_PYTHON",
+        batch_size=16,
+        sequence_length=128,
+        maximum_memory_ratio=None,
+        maximum_compilation_seconds=60.0,
+        probe_timeout_seconds=180.0,
+        output_tolerance=NumericalTolerance(
+            absolute=3e-6,
+            relative=3e-6,
+            cosine=0.999999,
+        ),
+    ),
+    ModelPerformanceCase(
         name="modernvbert-text-forward-fp32",
         package="modernvbert",
         probe_module="tests.models.modernvbert.performance_probe",

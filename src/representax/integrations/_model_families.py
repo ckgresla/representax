@@ -11,7 +11,7 @@ ARCHITECTURE_CATALOG_SHA256 = (
     "2af65737162af25c40803b987355fb09d4547d922842edeeb6c0f80838f4117c"
 )
 FAMILY_MANIFEST_SHA256 = (
-    "5db2d7f1d5f173346bb1e35442779d6026ffc701bbee06ffe01c684c32635cc0"
+    "1a0a3552bbe3e467c892753eb6729a937ab2e448299477dc57fe17a17a11412f"
 )
 
 MODEL_FAMILY_ROWS = json.loads(
@@ -40,5 +40,19 @@ MODEL_FAMILY_ROWS = json.loads(
     'ut_ids","attention_mask","pixel_values","image_valid"]]],"modalities":["'
     'text","image","fused"],"model_types":["modernvbert"],"name":"modernvbert'
     '","output_contracts":["last_hidden_state","mean_pooled_l2_normalized_rep'
-    'resentation"],"support":"verified"}]'
+    'resentation"],"support":"verified"},{"acceptance_gates":["config_mapping'
+    '","checkpoint_roundtrip","forward","input_gradient","parameter_gradient"'
+    ',"optimizer_update","export_reload","performance"],"checkpoint_adapter":'
+    '"representax.models.mpnet.MPNetCheckpointAdapter","checkpoint_layout":"h'
+    'uggingface_safetensors","components":["token_embedding","padding_aware_a'
+    'bsolute_position_embedding","bucketed_relative_attention_bias","multi_he'
+    'ad_attention","post_norm_residual","dense_mlp","pooler","mean_pooling","'
+    'l2_normalization"],"config_adapter":"representax.models.mpnet.MPNetConfi'
+    'g.from_hf_config","configuration_constraints":["pad_token_id=1","relativ'
+    'e_attention_num_buckets=32"],"implementation_module":"representax.models'
+    '.mpnet","input_contracts":[["text",["input_ids","attention_mask"]],["emb'
+    'edded_text",["inputs_embeds","attention_mask"]]],"modalities":["text"],"'
+    'model_types":["mpnet"],"name":"mpnet","output_contracts":["last_hidden_s'
+    'tate","pooler_output","mean_pooled_l2_normalized_representation"],"suppo'
+    'rt":"verified"}]'
 )

@@ -25,6 +25,16 @@ from .modernvbert import (
     ModernVBERTTextConfig,
     ModernVBERTTextEncoder,
 )
+from .mpnet import (
+    MPNET_MODEL_ID,
+    MPNetBatch,
+    MPNetCheckpointAdapter,
+    MPNetConfig,
+    MPNetEncoder,
+    create_mpnet_position_ids,
+    mpnet_relative_position_bucket,
+    mpnet_weight_names,
+)
 from .sentence import (
     POOLING_MODES,
     DenseActivation,
@@ -54,6 +64,11 @@ __all__ = [
     "ModernVBERTTextCheckpointAdapter",
     "ModernVBERTTextConfig",
     "ModernVBERTTextEncoder",
+    "MPNET_MODEL_ID",
+    "MPNetBatch",
+    "MPNetCheckpointAdapter",
+    "MPNetConfig",
+    "MPNetEncoder",
     "POOLING_MODES",
     "DenseActivation",
     "PoolingMode",
@@ -63,10 +78,13 @@ __all__ = [
     "SentenceNormalize",
     "SentencePooling",
     "activate",
+    "create_mpnet_position_ids",
     "dot_product_attention",
     "dropout",
     "embedding_lookup",
     "l2_normalize",
     "mean_pool",
+    "mpnet_relative_position_bucket",
+    "mpnet_weight_names",
     "rematerialize",
 ]

@@ -8,8 +8,8 @@ the same core boundary.
 The project is alpha. The current slice provides:
 
 - an Equinox-native encoder protocol with typed routes;
-- native BERT and ModernVBERT text-image encoders with direct Hugging Face
-  safetensor loading and pinned numerical acceptance;
+- native BERT, MPNet, and ModernVBERT text-image encoders with direct Hugging
+  Face safetensor loading and pinned numerical acceptance;
 - a Torch-free dense Sentence Transformers module loader and fixed-shape host
   embedding API;
 - direct multiple-negatives ranking, including symmetric and Matryoshka modes;
@@ -52,9 +52,10 @@ python -m pip install -e ".[test,performance]" --group parity-modernvbert
 ```
 
 The v0 Hugging Face reference is pinned to Transformers 5.3.0. Its complete
-architecture catalog is distinct from native support: BERT and ModernVBERT are
-the currently verified native families. Repository-only dense-route acceptance
-uses Sentence Transformers 5.6.1, the latest stable multimodal release line.
+architecture catalog is distinct from native support: BERT, MPNet, and
+ModernVBERT are the currently verified native families. Repository-only
+dense-route acceptance uses Sentence Transformers 5.6.1, the latest stable
+multimodal release line.
 
 See the [compatibility matrix](https://github.com/ckgresla/representax/blob/main/docs/compatibility.md) for the locally accepted
 Python/JAX combinations and the distinction between CPU CI and accelerator
@@ -124,8 +125,8 @@ host, and executes fixed-shape native batches:
 from representax.integrations import load_sentence_transformer
 
 model = load_sentence_transformer(
-    "sentence-transformers/all-MiniLM-L6-v2",
-    revision="1110a243fdf4706b3f48f1d95db1a4f5529b4d41",
+    "sentence-transformers/all-mpnet-base-v2",
+    revision="e8c3b32edf5434bc2275fc9bab85f82640a19130",
 )
 embeddings = model.embed(
     ["A small bee.", "A large flower."],
@@ -135,7 +136,9 @@ similarities = model.similarity(embeddings, embeddings)
 ```
 
 Install `representax[hf]` for Hub transport and tokenization. The native model
-runtime itself requires neither Torch nor Sentence Transformers.
+runtime itself requires neither Torch nor Sentence Transformers. The pinned
+`all-MiniLM-L6-v2` and `all-mpnet-base-v2` acceptance cases verify the complete
+text-to-normalized-embedding path against Sentence Transformers 5.6.1.
 
 ## ModernVBERT
 

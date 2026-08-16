@@ -149,6 +149,8 @@ def dot_product_attention(
     key: Float[Array, "batch source_sequence heads head"],
     value: Float[Array, "batch source_sequence heads head"],
     *,
+    attention_bias: Float[Array, "#batch #heads target_sequence source_sequence"]
+    | None = None,
     attention_mask: Bool[Array, "#batch #heads target_sequence source_sequence"]
     | None = None,
     dropout_probability: float = 0.0,
@@ -163,6 +165,7 @@ def dot_product_attention(
             query,
             key,
             value,
+            bias=attention_bias,
             mask=attention_mask,
             local_window_size=local_window_size,
             implementation=implementation,
@@ -170,6 +173,8 @@ def dot_product_attention(
 
     scores = jnp.einsum("bthd,bshd->bhts", query, key)
     scores = scores * jax.lax.rsqrt(jnp.asarray(query.shape[-1], scores.dtype))
+    if attention_bias is not None:
+        scores = scores + attention_bias.astype(scores.dtype)
     mask = attention_mask
     if local_window_size is not None:
         left, right = local_window_size

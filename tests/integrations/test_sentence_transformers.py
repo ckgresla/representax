@@ -17,10 +17,18 @@ from representax.integrations import (
     load_sentence_transformer_modules,
 )
 from representax.models.bert import BertCheckpointAdapter, BertConfig, BertEncoder
+from representax.models.mpnet import (
+    MPNetCheckpointAdapter,
+    MPNetConfig,
+    MPNetEncoder,
+)
 
 
 class _Tokenizer:
-    all_special_ids = (0, 1, 2)
+    def __init__(self, *, start_id: int = 1, pad_id: int = 0) -> None:
+        self.start_id = start_id
+        self.pad_id = pad_id
+        self.all_special_ids = (start_id, pad_id, 2)
 
     def __call__(
         self,
@@ -36,13 +44,21 @@ class _Tokenizer:
         assert return_tensors == "np"
         rows = []
         for text in texts:
-            tokens = [1, *(3 + ord(character) % 10 for character in text), 2]
+            tokens = [
+                self.start_id,
+                *(3 + ord(character) % 10 for character in text),
+                2,
+            ]
             tokens = tokens[:max_length]
             if tokens[-1] != 2:
                 tokens[-1] = 2
             rows.append(tokens)
         width = max_length if padding == "max_length" else max(map(len, rows))
-        input_ids = np.zeros((len(rows), width), dtype=np.int32)
+        input_ids = np.full(
+            (len(rows), width),
+            self.pad_id,
+            dtype=np.int32,
+        )
         attention_mask = np.zeros_like(input_ids)
         for index, row in enumerate(rows):
             input_ids[index, : len(row)] = row
@@ -142,6 +158,61 @@ def _checkpoint(path: Path, *, include_prompt: bool = True) -> Path:
     return path
 
 
+def _mpnet_checkpoint(path: Path) -> Path:
+    config = MPNetConfig(
+        vocab_size=16,
+        hidden_size=4,
+        intermediate_size=8,
+        num_hidden_layers=1,
+        num_attention_heads=2,
+        max_position_embeddings=10,
+        relative_attention_num_buckets=32,
+        hidden_dropout_probability=0.0,
+        attention_dropout_probability=0.0,
+    )
+    model = MPNetEncoder.init(config, key=jax.random.key(11))
+    MPNetCheckpointAdapter(rematerialization="none").save(model, path)
+    _write_json(
+        path / "modules.json",
+        [
+            {
+                "idx": 0,
+                "name": "0",
+                "path": "",
+                "type": "sentence_transformers.models.Transformer",
+            },
+            {
+                "idx": 1,
+                "name": "1",
+                "path": "1_Pooling",
+                "type": "sentence_transformers.models.Pooling",
+            },
+            {
+                "idx": 2,
+                "name": "2",
+                "path": "2_Normalize",
+                "type": "sentence_transformers.models.Normalize",
+            },
+        ],
+    )
+    _write_json(
+        path / "config_sentence_transformers.json",
+        {"model_type": "SentenceTransformer", "similarity_fn_name": "cosine"},
+    )
+    _write_json(
+        path / "sentence_bert_config.json",
+        {"max_seq_length": 8, "do_lower_case": False},
+    )
+    _write_json(
+        path / "1_Pooling" / "config.json",
+        {
+            "word_embedding_dimension": 4,
+            "pooling_mode_mean_tokens": True,
+        },
+    )
+    return path
+
+
 def test_standard_dense_graph_loads_without_upstream_runtime(tmp_path):
     checkpoint = _checkpoint(tmp_path / "sentence-model")
 
@@ -168,6 +239,25 @@ def test_host_embed_uses_fixed_shapes_routes_and_partial_batch_padding(tmp_path)
     output = model.embed(["a", "bc", "def"], route=Route.QUERY, batch_size=2)
 
     assert output.shape == (3, 3)
+    np.testing.assert_allclose(
+        np.linalg.norm(output, axis=1),
+        np.ones((3,)),
+        rtol=1e-6,
+        atol=1e-6,
+    )
+
+
+def test_mpnet_backbone_uses_its_native_token_contract(tmp_path):
+    checkpoint = _mpnet_checkpoint(tmp_path / "sentence-mpnet")
+    model = load_sentence_transformer(
+        checkpoint,
+        processor=_Tokenizer(start_id=0, pad_id=1),
+    )
+
+    output = model.embed(["a", "bc", "def"], batch_size=2)
+
+    assert isinstance(model.encoder.backbone, MPNetEncoder)
+    assert output.shape == (3, 4)
     np.testing.assert_allclose(
         np.linalg.norm(output, axis=1),
         np.ones((3,)),

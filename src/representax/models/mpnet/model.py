@@ -1,7 +1,8 @@
-"""Native Equinox BERT encoder compatible with Transformers 5.3."""
+"""Native Equinox MPNet encoder compatible with Transformers 5.3."""
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 import equinox as eqx
@@ -24,16 +25,55 @@ from representax.models.components import (
 )
 from representax.planning import RematerializationPolicy
 
-from .config import BertConfig
+from .config import MPNetConfig
 
 
-class BertBatch(eqx.Module):
-    """Token IDs or input embeddings and masks accepted by native BERT."""
+def create_mpnet_position_ids(
+    input_ids: Int[Array, "batch sequence"],
+    *,
+    padding_index: int = 1,
+) -> Int[Array, "batch sequence"]:
+    """Create padding-aware MPNet positions exactly as Transformers does."""
+
+    mask = (input_ids != padding_index).astype(input_ids.dtype)
+    incremental = jnp.cumsum(mask, axis=1) * mask
+    return incremental + padding_index
+
+
+def mpnet_relative_position_bucket(
+    relative_position: Int[Array, "*shape"],
+    *,
+    num_buckets: int = 32,
+    max_distance: int = 128,
+) -> Int[Array, "*shape"]:
+    """Map signed relative positions into MPNet's logarithmic buckets."""
+
+    if num_buckets < 4 or num_buckets % 2:
+        raise ValueError("num_buckets must be even and >= 4")
+    if max_distance <= num_buckets // 4:
+        raise ValueError("max_distance must exceed the exact bucket range")
+    distance = -relative_position
+    half = num_buckets // 2
+    direction = (distance < 0).astype(jnp.int32) * half
+    distance = jnp.abs(distance)
+    max_exact = half // 2
+    small = distance < max_exact
+    safe_distance = jnp.maximum(distance, max_exact).astype(jnp.float32)
+    logarithmic = max_exact + (
+        jnp.log(safe_distance / max_exact)
+        / math.log(max_distance / max_exact)
+        * (half - max_exact)
+    ).astype(jnp.int32)
+    logarithmic = jnp.minimum(logarithmic, half - 1)
+    return direction + jnp.where(small, distance, logarithmic).astype(jnp.int32)
+
+
+class MPNetBatch(eqx.Module):
+    """Token IDs or input embeddings and masks accepted by native MPNet."""
 
     attention_mask: Bool[Array, "batch sequence"] | Int[Array, "batch sequence"]
     input_ids: Int[Array, "batch sequence"] | None = None
     inputs_embeds: Float[Array, "batch sequence hidden"] | None = None
-    token_type_ids: Int[Array, "batch sequence"] | None = None
     position_ids: Int[Array, "#batch sequence"] | None = None
 
     def __post_init__(self) -> None:
@@ -54,11 +94,6 @@ class BertBatch(eqx.Module):
                 )
             if self.inputs_embeds.shape[:2] != self.attention_mask.shape:
                 raise ValueError("inputs_embeds and attention_mask must align")
-        if self.token_type_ids is not None:
-            if self.token_type_ids.shape != self.attention_mask.shape:
-                raise ValueError("token_type_ids and attention_mask must align")
-            if not jnp.issubdtype(self.token_type_ids.dtype, jnp.integer):
-                raise TypeError("token_type_ids must have an integer dtype")
         if self.position_ids is not None:
             if self.position_ids.ndim != 2:
                 raise ValueError("position_ids must have shape [batch, sequence]")
@@ -70,37 +105,34 @@ class BertBatch(eqx.Module):
                 raise TypeError("position_ids must have an integer dtype")
 
 
-class BertEmbeddings(eqx.Module):
+class MPNetEmbeddings(eqx.Module):
     word: Float[Array, "vocabulary hidden"]
     position: Float[Array, "position hidden"]
-    token_type: Float[Array, "type hidden"]
     norm: LayerNorm
 
     @classmethod
     def init(
         cls,
-        config: BertConfig,
+        config: MPNetConfig,
         *,
         key: PRNGKeyArray,
         dtype: jnp.dtype,
-    ) -> BertEmbeddings:
-        word_key, position_key, token_type_key = jax.random.split(key, 3)
+    ) -> MPNetEmbeddings:
+        word_key, position_key = jax.random.split(key)
 
         def initialize(key: PRNGKeyArray, shape: tuple[int, int]) -> jax.Array:
             return config.initializer_range * jax.random.normal(key, shape, dtype=dtype)
 
         word = initialize(word_key, (config.vocab_size, config.hidden_size))
         word = word.at[config.pad_token_id].set(0)
+        position = initialize(
+            position_key,
+            (config.max_position_embeddings, config.hidden_size),
+        )
+        position = position.at[config.pad_token_id].set(0)
         return cls(
             word=word,
-            position=initialize(
-                position_key,
-                (config.max_position_embeddings, config.hidden_size),
-            ),
-            token_type=initialize(
-                token_type_key,
-                (config.type_vocab_size, config.hidden_size),
-            ),
+            position=position,
             norm=LayerNorm.init(
                 config.hidden_size,
                 epsilon=config.norm_epsilon,
@@ -111,41 +143,47 @@ class BertEmbeddings(eqx.Module):
 
     def __call__(
         self,
-        batch: BertBatch,
+        batch: MPNetBatch,
         *,
-        config: BertConfig,
+        config: MPNetConfig,
         key: PRNGKeyArray | None,
     ) -> Float[Array, "batch sequence hidden"]:
         sequence = batch.attention_mask.shape[1]
-        if sequence > config.max_position_embeddings:
-            raise ValueError("sequence exceeds max_position_embeddings")
+        if sequence + config.pad_token_id >= config.max_position_embeddings:
+            raise ValueError("sequence exceeds MPNet position embedding capacity")
         if batch.input_ids is None:
             assert batch.inputs_embeds is not None
             hidden = batch.inputs_embeds
+            default_positions = jnp.arange(
+                config.pad_token_id + 1,
+                sequence + config.pad_token_id + 1,
+                dtype=jnp.int32,
+            )[None, :]
         else:
             hidden = embedding_lookup(self.word, batch.input_ids)
-            # Transformers constructs this table with ``padding_idx``. Preserve
-            # the selected forward value while suppressing only that row's
-            # embedding cotangent, exactly as PyTorch does.
             padding = batch.input_ids == config.pad_token_id
             hidden = jnp.where(
-                padding[..., None],
-                jax.lax.stop_gradient(hidden),
-                hidden,
+                padding[..., None], jax.lax.stop_gradient(hidden), hidden
             )
-        position_ids = batch.position_ids
-        if position_ids is None:
-            position_ids = jnp.arange(sequence)[None, :]
-        token_type_ids = batch.token_type_ids
-        if token_type_ids is None:
-            token_type_ids = jnp.zeros(batch.attention_mask.shape, dtype=jnp.int32)
-        hidden = hidden + embedding_lookup(self.position, position_ids)
-        hidden = hidden + embedding_lookup(self.token_type, token_type_ids)
-        hidden = self.norm(hidden)
+            default_positions = create_mpnet_position_ids(
+                batch.input_ids,
+                padding_index=config.pad_token_id,
+            )
+        position_ids = (
+            default_positions if batch.position_ids is None else batch.position_ids
+        )
+        positions = embedding_lookup(self.position, position_ids)
+        position_padding = position_ids == config.pad_token_id
+        positions = jnp.where(
+            position_padding[..., None],
+            jax.lax.stop_gradient(positions),
+            positions,
+        )
+        hidden = self.norm(hidden + positions)
         return dropout(hidden, config.hidden_dropout_probability, key=key)
 
 
-class BertSelfAttention(eqx.Module):
+class MPNetSelfAttention(eqx.Module):
     query: Linear
     key: Linear
     value: Linear
@@ -154,11 +192,11 @@ class BertSelfAttention(eqx.Module):
     @classmethod
     def init(
         cls,
-        config: BertConfig,
+        config: MPNetConfig,
         *,
         key: PRNGKeyArray,
         dtype: jnp.dtype,
-    ) -> BertSelfAttention:
+    ) -> MPNetSelfAttention:
         keys = jax.random.split(key, 4)
         arguments = {
             "input_size": config.hidden_size,
@@ -178,8 +216,9 @@ class BertSelfAttention(eqx.Module):
         self,
         hidden: Float[Array, "batch sequence hidden"],
         attention_mask: Bool[Array, "batch sequence"],
+        position_bias: Float[Array, "1 heads sequence sequence"],
         *,
-        config: BertConfig,
+        config: MPNetConfig,
         probability_key: PRNGKeyArray | None,
         implementation: AttentionImplementation,
     ) -> Float[Array, "batch sequence hidden"]:
@@ -199,6 +238,7 @@ class BertSelfAttention(eqx.Module):
             project(self.query),
             project(self.key),
             project(self.value),
+            attention_bias=position_bias,
             attention_mask=attention_mask[:, None, None, :],
             dropout_probability=config.attention_dropout_probability,
             dropout_key=probability_key,
@@ -207,18 +247,18 @@ class BertSelfAttention(eqx.Module):
         return self.output(attended.reshape(batch, sequence, config.hidden_size))
 
 
-class BertMLP(eqx.Module):
+class MPNetMLP(eqx.Module):
     input: Linear
     output: Linear
 
     @classmethod
     def init(
         cls,
-        config: BertConfig,
+        config: MPNetConfig,
         *,
         key: PRNGKeyArray,
         dtype: jnp.dtype,
-    ) -> BertMLP:
+    ) -> MPNetMLP:
         input_key, output_key = jax.random.split(key)
         return cls(
             input=Linear.init(
@@ -243,35 +283,35 @@ class BertMLP(eqx.Module):
         self,
         hidden: Float[Array, "batch sequence hidden"],
         *,
-        config: BertConfig,
+        config: MPNetConfig,
     ) -> Float[Array, "batch sequence hidden"]:
         return self.output(activate(self.input(hidden), config.hidden_activation))
 
 
-class BertLayer(eqx.Module):
-    attention: BertSelfAttention
+class MPNetLayer(eqx.Module):
+    attention: MPNetSelfAttention
     attention_norm: LayerNorm
-    mlp: BertMLP
+    mlp: MPNetMLP
     output_norm: LayerNorm
 
     @classmethod
     def init(
         cls,
-        config: BertConfig,
+        config: MPNetConfig,
         *,
         key: PRNGKeyArray,
         dtype: jnp.dtype,
-    ) -> BertLayer:
+    ) -> MPNetLayer:
         attention_key, mlp_key = jax.random.split(key)
         return cls(
-            attention=BertSelfAttention.init(config, key=attention_key, dtype=dtype),
+            attention=MPNetSelfAttention.init(config, key=attention_key, dtype=dtype),
             attention_norm=LayerNorm.init(
                 config.hidden_size,
                 epsilon=config.norm_epsilon,
                 dtype=dtype,
                 bias=True,
             ),
-            mlp=BertMLP.init(config, key=mlp_key, dtype=dtype),
+            mlp=MPNetMLP.init(config, key=mlp_key, dtype=dtype),
             output_norm=LayerNorm.init(
                 config.hidden_size,
                 epsilon=config.norm_epsilon,
@@ -284,8 +324,9 @@ class BertLayer(eqx.Module):
         self,
         hidden: Float[Array, "batch sequence hidden"],
         attention_mask: Bool[Array, "batch sequence"],
+        position_bias: Float[Array, "1 heads sequence sequence"],
         *,
-        config: BertConfig,
+        config: MPNetConfig,
         key: PRNGKeyArray | None,
         implementation: AttentionImplementation,
     ) -> Float[Array, "batch sequence hidden"]:
@@ -298,6 +339,7 @@ class BertLayer(eqx.Module):
         attention = self.attention(
             hidden,
             attention_mask,
+            position_bias,
             config=config,
             probability_key=probability_key,
             implementation=implementation,
@@ -316,47 +358,54 @@ class BertLayer(eqx.Module):
         return self.output_norm(hidden + output)
 
 
-class BertLayerStack(eqx.Module):
-    """Depth-major homogeneous BERT layers executed by one scan."""
+class MPNetLayerStack(eqx.Module):
+    """Depth-major homogeneous MPNet layers executed by one scan."""
 
-    blocks: BertLayer | None
+    blocks: MPNetLayer | None
     depth: int = eqx.field(static=True)
 
     @classmethod
-    def from_layers(cls, layers: tuple[BertLayer, ...]) -> BertLayerStack:
+    def from_layers(cls, layers: tuple[MPNetLayer, ...]) -> MPNetLayerStack:
         if not layers:
             return cls(blocks=None, depth=0)
         blocks = jax.tree.map(lambda *values: jnp.stack(values), *layers)
         return cls(blocks=blocks, depth=len(layers))
 
-    def layer(self, index: int) -> BertLayer:
+    def layer(self, index: int) -> MPNetLayer:
         if self.blocks is None or not 0 <= index < self.depth:
             raise IndexError(index)
         return jax.tree.map(lambda value: value[index], self.blocks)
 
 
-class BertTower(eqx.Module):
-    embeddings: BertEmbeddings
-    layers: BertLayerStack
+class MPNetTower(eqx.Module):
+    embeddings: MPNetEmbeddings
+    layers: MPNetLayerStack
+    relative_attention_bias: Float[Array, "bucket heads"]
     pooler: Linear
-    config: BertConfig = eqx.field(static=True)
+    config: MPNetConfig = eqx.field(static=True)
 
     @classmethod
     def init(
         cls,
-        config: BertConfig,
+        config: MPNetConfig,
         *,
         key: PRNGKeyArray,
         dtype: jnp.dtype,
-    ) -> BertTower:
-        keys = jax.random.split(key, config.num_hidden_layers + 2)
+    ) -> MPNetTower:
+        keys = jax.random.split(key, config.num_hidden_layers + 3)
         layers = tuple(
-            BertLayer.init(config, key=keys[index + 1], dtype=dtype)
+            MPNetLayer.init(config, key=keys[index + 1], dtype=dtype)
             for index in range(config.num_hidden_layers)
         )
+        relative_attention_bias = config.initializer_range * jax.random.normal(
+            keys[-2],
+            (config.relative_attention_num_buckets, config.num_attention_heads),
+            dtype=dtype,
+        )
         return cls(
-            embeddings=BertEmbeddings.init(config, key=keys[0], dtype=dtype),
-            layers=BertLayerStack.from_layers(layers),
+            embeddings=MPNetEmbeddings.init(config, key=keys[0], dtype=dtype),
+            layers=MPNetLayerStack.from_layers(layers),
+            relative_attention_bias=relative_attention_bias,
             pooler=Linear.init(
                 config.hidden_size,
                 config.hidden_size,
@@ -368,9 +417,24 @@ class BertTower(eqx.Module):
             config=config,
         )
 
+    def position_bias(
+        self,
+        sequence: int,
+        *,
+        dtype: jnp.dtype,
+    ) -> Float[Array, "1 heads sequence sequence"]:
+        positions = jnp.arange(sequence, dtype=jnp.int32)
+        relative = positions[None, :] - positions[:, None]
+        buckets = mpnet_relative_position_bucket(
+            relative,
+            num_buckets=self.config.relative_attention_num_buckets,
+        )
+        values = embedding_lookup(self.relative_attention_bias, buckets)
+        return jnp.transpose(values, (2, 0, 1))[None].astype(dtype)
+
     def __call__(
         self,
-        batch: BertBatch,
+        batch: MPNetBatch,
         *,
         key: PRNGKeyArray | None,
         compute_dtype: jnp.dtype,
@@ -386,6 +450,7 @@ class BertTower(eqx.Module):
         hidden = self.embeddings(batch, config=self.config, key=embedding_key)
         hidden = hidden.astype(compute_dtype)
         attention_mask = batch.attention_mask.astype(bool)
+        position_bias = self.position_bias(hidden.shape[1], dtype=compute_dtype)
         if self.layers.blocks is None:
             return hidden
 
@@ -393,12 +458,13 @@ class BertTower(eqx.Module):
 
         def apply_layer(
             carry: Float[Array, "batch sequence hidden"],
-            values: tuple[BertLayer, PRNGKeyArray],
+            values: tuple[MPNetLayer, PRNGKeyArray],
         ) -> tuple[Float[Array, "batch sequence hidden"], None]:
             layer, layer_key = values
             output = layer(
                 carry,
                 attention_mask,
+                position_bias,
                 config=self.config,
                 key=layer_key if training else None,
                 implementation=attention_implementation,
@@ -420,10 +486,10 @@ class BertTower(eqx.Module):
         return jnp.tanh(self.pooler(hidden[:, 0]))
 
 
-class BertEncoder(eqx.Module):
-    """Native bidirectional BERT model plus representation pooling."""
+class MPNetEncoder(eqx.Module):
+    """Native bidirectional MPNet model plus representation pooling."""
 
-    tower: BertTower
+    tower: MPNetTower
     metadata: EncoderMetadata
     compute_dtype: Any = eqx.field(static=True)
     attention_implementation: AttentionImplementation = eqx.field(static=True)
@@ -432,18 +498,18 @@ class BertEncoder(eqx.Module):
     @classmethod
     def init(
         cls,
-        config: BertConfig,
+        config: MPNetConfig,
         *,
         key: PRNGKeyArray,
         parameter_dtype: jnp.dtype = jnp.float32,
         compute_dtype: jnp.dtype = jnp.float32,
         attention_implementation: AttentionImplementation = "xla",
         rematerialization: RematerializationPolicy = "full",
-        model_id: str = "representax/bert",
+        model_id: str = "representax/mpnet",
         revision: str = "random-init",
-    ) -> BertEncoder:
+    ) -> MPNetEncoder:
         return cls(
-            tower=BertTower.init(config, key=key, dtype=parameter_dtype),
+            tower=MPNetTower.init(config, key=key, dtype=parameter_dtype),
             metadata=EncoderMetadata(
                 model_id=model_id,
                 revision=revision,
@@ -458,12 +524,12 @@ class BertEncoder(eqx.Module):
 
     def hidden_states(
         self,
-        inputs: BertBatch,
+        inputs: MPNetBatch,
         *,
         key: PRNGKeyArray | None = None,
     ) -> Float[Array, "batch sequence hidden"]:
-        if not isinstance(inputs, BertBatch):
-            raise TypeError("BERT inputs must be BertBatch")
+        if not isinstance(inputs, MPNetBatch):
+            raise TypeError("MPNet inputs must be MPNetBatch")
         return self.tower(
             inputs,
             key=key,
@@ -478,18 +544,16 @@ class BertEncoder(eqx.Module):
         input_ids: Int[Array, "batch sequence"],
         attention_mask: Bool[Array, "batch sequence"] | Int[Array, "batch sequence"],
         token_type_ids: Int[Array, "batch sequence"] | None = None,
-    ) -> BertBatch:
+    ) -> MPNetBatch:
         """Build this backbone's token-input contract at the host boundary."""
 
-        return BertBatch(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            token_type_ids=token_type_ids,
-        )
+        if token_type_ids is not None:
+            raise TypeError("MPNet does not accept token_type_ids")
+        return MPNetBatch(input_ids=input_ids, attention_mask=attention_mask)
 
     def pooler_output(
         self,
-        inputs: BertBatch,
+        inputs: MPNetBatch,
         *,
         key: PRNGKeyArray | None = None,
     ) -> Float[Array, "batch hidden"]:
@@ -497,7 +561,7 @@ class BertEncoder(eqx.Module):
 
     def encode(
         self,
-        inputs: BertBatch,
+        inputs: MPNetBatch,
         *,
         route: Route,
         key: PRNGKeyArray | None = None,
@@ -508,12 +572,14 @@ class BertEncoder(eqx.Module):
 
 
 __all__ = [
-    "BertBatch",
-    "BertEmbeddings",
-    "BertEncoder",
-    "BertLayer",
-    "BertLayerStack",
-    "BertMLP",
-    "BertSelfAttention",
-    "BertTower",
+    "MPNetBatch",
+    "MPNetEmbeddings",
+    "MPNetEncoder",
+    "MPNetLayer",
+    "MPNetLayerStack",
+    "MPNetMLP",
+    "MPNetSelfAttention",
+    "MPNetTower",
+    "create_mpnet_position_ids",
+    "mpnet_relative_position_bucket",
 ]

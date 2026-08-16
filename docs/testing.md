@@ -168,5 +168,21 @@ export REPRESENTAX_MODERNVBERT_TRANSFORMERS_PYTHON=/path/to/tf53/bin/python
 pytest -m performance tests/models
 ```
 
+The dense Sentence Transformers cases use the repository-only `parity` group
+and immutable local snapshots:
+
+```bash
+python -m pip install -e ".[test,performance]" --group parity
+export REPRESENTAX_SENTENCE_TRANSFORMERS_PYTHON=/path/to/parity/bin/python
+export REPRESENTAX_MINILM_CHECKPOINT=/path/to/all-MiniLM-L6-v2
+export REPRESENTAX_MPNET_CHECKPOINT=/path/to/all-mpnet-base-v2
+pytest -m parity tests/models/sentence_transformers
+pytest -m performance tests/models/test_implementations.py
+```
+
+Native MPNet parameter, input-gradient, optimizer-update, and export parity use
+the same Transformers 5.3.0 environment through
+`REPRESENTAX_MPNET_TRANSFORMERS_PYTHON`.
+
 Each comparison also checks its final output numerically before applying the
 speed and memory thresholds. A faster program doing different work cannot pass.
