@@ -54,6 +54,8 @@ class ModelPerformanceCase:
     measurement_iterations: int = 20
     minimum_speedup: float = 1.0
     maximum_memory_ratio: float | None = 1.0
+    maximum_compilation_seconds: float | None = None
+    probe_timeout_seconds: float = 300.0
     output_tolerance: NumericalTolerance = NumericalTolerance(
         absolute=5e-6,
         relative=5e-5,
@@ -71,6 +73,23 @@ MODEL_IMPLEMENTATIONS = (
         batch_size=16,
         sequence_length=128,
         maximum_memory_ratio=None,
+    ),
+    ModelPerformanceCase(
+        name="all-minilm-l6-v2-dense-forward-fp32",
+        package="bert",
+        probe_module="tests.models.sentence_transformers.performance_probe",
+        checkpoint_environment="REPRESENTAX_MINILM_CHECKPOINT",
+        upstream_python_environment="REPRESENTAX_SENTENCE_TRANSFORMERS_PYTHON",
+        batch_size=16,
+        sequence_length=128,
+        maximum_memory_ratio=None,
+        maximum_compilation_seconds=60.0,
+        probe_timeout_seconds=120.0,
+        output_tolerance=NumericalTolerance(
+            absolute=2e-6,
+            relative=2e-6,
+            cosine=0.999999,
+        ),
     ),
     ModelPerformanceCase(
         name="modernvbert-text-forward-fp32",
@@ -254,7 +273,16 @@ def _run_probe(
         text=True,
     )
     monitor = _ProcessMemoryMonitor(process)
-    stdout, stderr = process.communicate()
+    try:
+        stdout, stderr = process.communicate(timeout=case.probe_timeout_seconds)
+    except subprocess.TimeoutExpired as error:
+        process.kill()
+        stdout, stderr = process.communicate()
+        raise AssertionError(
+            f"{runtime} probe exceeded {case.probe_timeout_seconds:.1f}s; "
+            "the compile or execution workload is not acceptably bounded\n"
+            f"stdout:\n{stdout}\nstderr:\n{stderr}"
+        ) from error
     external_peak = monitor.close()
     if process.returncode:
         raise AssertionError(
@@ -422,6 +450,14 @@ def compare_model_performance(
     for message in memory_warnings:
         warnings.warn(message, RuntimeWarning, stacklevel=2)
     assert speedup > case.minimum_speedup, result
+    if case.maximum_compilation_seconds is not None:
+        compilation_seconds = float(
+            reports["representax"].get(
+                "compilation_seconds",
+                reports["representax"]["compile_or_first_execution_seconds"],
+            )
+        )
+        assert compilation_seconds <= case.maximum_compilation_seconds, result
     if case.maximum_memory_ratio is not None:
         assert memory_ratio <= case.maximum_memory_ratio, result
     return result

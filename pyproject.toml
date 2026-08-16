@@ -68,7 +68,7 @@ static = [
     "ty==0.0.72",
 ]
 parity = [
-    "sentence-transformers>=5",
+    "sentence-transformers==5.6.1",
     "torch>=2.5",
     "transformers==5.3.0",
 ]
@@ -121,4 +121,11 @@ include = [
 
 [tool.ty.overrides.analysis]
 # Upstream parity programs load these optional reference runtimes dynamically.
-replace-imports-with-any = ["PIL", "PIL.**", "torch", "torch.**"]
+replace-imports-with-any = [
+    "PIL",
+    "PIL.**",
+    "sentence_transformers",
+    "sentence_transformers.**",
+    "torch",
+    "torch.**",
+]

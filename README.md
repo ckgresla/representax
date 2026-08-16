@@ -8,8 +8,10 @@ the same core boundary.
 The project is alpha. The current slice provides:
 
 - an Equinox-native encoder protocol with typed routes;
-- a native ModernVBERT text-image encoder with bidirectional Hugging Face
-  weight maps for every tensor used by its forward pass;
+- native BERT and ModernVBERT text-image encoders with direct Hugging Face
+  safetensor loading and pinned numerical acceptance;
+- a Torch-free dense Sentence Transformers module loader and fixed-shape host
+  embedding API;
 - direct multiple-negatives ranking, including symmetric and Matryoshka modes;
 - an end-to-end Grain-to-compiled-step trainer with asynchronous reporting;
 - lazy Grain recipes with built-in Hugging Face and local artifact resolvers;
@@ -50,8 +52,9 @@ python -m pip install -e ".[test,performance]" --group parity-modernvbert
 ```
 
 The v0 Hugging Face reference is pinned to Transformers 5.3.0. Its complete
-architecture catalog is distinct from native support: ModernVBERT is currently
-the only architecture carrying the verified native-support claim.
+architecture catalog is distinct from native support: BERT and ModernVBERT are
+the currently verified native families. Repository-only dense-route acceptance
+uses Sentence Transformers 5.6.1, the latest stable multimodal release line.
 
 See the [compatibility matrix](https://github.com/ckgresla/representax/blob/main/docs/compatibility.md) for the locally accepted
 Python/JAX combinations and the distinction between CPU CI and accelerator
@@ -113,8 +116,26 @@ encode_documents = rpx.bind(model, route=rpx.Route.DOCUMENT)
 document_embeddings = encode_documents(batch)
 ```
 
-Host-side tokenization, media decoding, and batching will be exposed through a
-higher-level `embed` API as production model integrations land.
+For standard dense Sentence Transformers artifacts, the host API resolves the
+static serialized module chain without importing PyTorch, tokenizes on the
+host, and executes fixed-shape native batches:
+
+```python
+from representax.integrations import load_sentence_transformer
+
+model = load_sentence_transformer(
+    "sentence-transformers/all-MiniLM-L6-v2",
+    revision="1110a243fdf4706b3f48f1d95db1a4f5529b4d41",
+)
+embeddings = model.embed(
+    ["A small bee.", "A large flower."],
+    batch_size=2,
+)
+similarities = model.similarity(embeddings, embeddings)
+```
+
+Install `representax[hf]` for Hub transport and tokenization. The native model
+runtime itself requires neither Torch nor Sentence Transformers.
 
 ## ModernVBERT
 

@@ -9,7 +9,8 @@ project or to PyTorch.
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol, TypeVar, runtime_checkable
 
@@ -17,6 +18,15 @@ import jax
 import jax.numpy as jnp
 
 ModelT = TypeVar("ModelT")
+
+
+@dataclass(frozen=True, slots=True)
+class ResolvedHuggingFaceCheckpoint:
+    """A local checkpoint directory with its immutable external identity."""
+
+    path: Path
+    model_id: str
+    revision: str
 
 
 @runtime_checkable
@@ -32,6 +42,55 @@ class HuggingFaceCheckpointAdapter(Protocol[ModelT]):
     ) -> ModelT: ...
 
     def state_dict(self, model: ModelT) -> Mapping[str, jax.Array]: ...
+
+
+def resolve_hf_checkpoint(
+    model_name_or_path: str | Path,
+    *,
+    revision: str | None = None,
+    cache_directory: str | Path | None = None,
+    local_files_only: bool = False,
+    token: bool | str | None = None,
+    allow_patterns: Sequence[str] | None = None,
+) -> ResolvedHuggingFaceCheckpoint:
+    """Resolve a local path or Hub model to one immutable local snapshot."""
+
+    candidate = Path(model_name_or_path).expanduser()
+    if candidate.is_dir():
+        return ResolvedHuggingFaceCheckpoint(
+            path=candidate.resolve(),
+            model_id=candidate.name,
+            revision=revision or "local",
+        )
+    try:
+        from huggingface_hub import snapshot_download
+    except ImportError as error:
+        raise ImportError(
+            "Hugging Face Hub loading requires `pip install representax[hf]`"
+        ) from error
+
+    model_id = str(model_name_or_path)
+    path = Path(
+        snapshot_download(
+            repo_id=model_id,
+            revision=revision,
+            cache_dir=None if cache_directory is None else str(cache_directory),
+            local_files_only=local_files_only,
+            token=token,
+            allow_patterns=None if allow_patterns is None else list(allow_patterns),
+        )
+    ).resolve()
+    resolved_revision = path.name
+    if not (
+        len(resolved_revision) == 40
+        and all(character in "0123456789abcdef" for character in resolved_revision)
+    ):
+        resolved_revision = revision or "resolved"
+    return ResolvedHuggingFaceCheckpoint(
+        path=path,
+        model_id=model_id,
+        revision=resolved_revision,
+    )
 
 
 def load_hf_config(checkpoint: str | Path) -> dict[str, Any]:

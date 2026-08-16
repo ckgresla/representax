@@ -25,6 +25,16 @@ from .modernvbert import (
     ModernVBERTTextConfig,
     ModernVBERTTextEncoder,
 )
+from .sentence import (
+    POOLING_MODES,
+    DenseActivation,
+    PoolingMode,
+    SentenceBatch,
+    SentenceDense,
+    SentenceEncoder,
+    SentenceNormalize,
+    SentencePooling,
+)
 
 __all__ = [
     "Activation",
@@ -44,6 +54,14 @@ __all__ = [
     "ModernVBERTTextCheckpointAdapter",
     "ModernVBERTTextConfig",
     "ModernVBERTTextEncoder",
+    "POOLING_MODES",
+    "DenseActivation",
+    "PoolingMode",
+    "SentenceBatch",
+    "SentenceDense",
+    "SentenceEncoder",
+    "SentenceNormalize",
+    "SentencePooling",
     "activate",
     "dot_product_attention",
     "dropout",

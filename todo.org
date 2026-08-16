@@ -444,7 +444,75 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
 * TODO Keep compiled =encode= arrays-in and arrays-out :api:
 * TODO Support reusable pooling, normalization, projection, and routing modules :api:
 * TODO Add evaluator protocols and standard representation metrics :api:eval:
-* TODO Reach Sentence Transformers functionality parity without copying its API :api:parity:
+* TODO Reach Sentence Transformers 5.6.1 capability parity without copying its API :api:parity:
+  Pin =sentence-transformers==5.6.1= as the repository-only oracle. Maintain a
+  reviewed capability ledger rather than equating upstream class names with our
+  public API. Dense bi-encoders, late-interaction/multi-vector encoders,
+  cross-encoders, and sparse encoders are separate task and systems contracts;
+  text, image, audio, video, and fused inputs cut across those contracts.
+** NEXT Complete the dense bi-encoder route :api:models:retrieval:
+*** DONE Load the standard serialized dense module chain
+    Resolve a pinned Hub revision or local directory, parse =modules.json= and
+    =config_sentence_transformers.json= without importing PyTorch, and compose a
+    native Transformer, all released pooling modes, optional Dense projections,
+    and optional normalization. Reject unknown or executable remote modules.
+    The Torch-free loader resolves local or revision-pinned Hub artifacts,
+    validates a contiguous static module graph, and supports all six released
+    pooling modes plus allowlisted Dense activations and Normalize modules.
+*** DONE Reproduce =all-MiniLM-L6-v2= from text through normalized embeddings
+    Use the already accepted native BERT family so this gate isolates artifact
+    loading, tokenization, pooling, normalization, route handling, and batching.
+    Sentence Transformers 5.6.1 and Transformers 5.3.0 at Hub revision
+    =1110a243fdf4706b3f48f1d95db1a4f5529b4d41= produce normalized embeddings
+    with maximum absolute error =1.0803342e-7=, relative L2 =5.2440890e-7=,
+    and cosine =1.0= on the full host string-to-embedding path.
+*** TODO Reproduce =all-mpnet-base-v2= through a native MPNet family
+    Use MPNet to generalize positional, residual, MLP, and layer-stack policies
+    only where a second consumer proves the shared semantics.
+*** TODO Complete the released dense loss inventory
+    Cover MNR and cached MNR variants, symmetric ranking, Matryoshka and adaptive
+    layer objectives, triplet families, cosine/CoSENT/AnglE/contrastive families,
+    distillation and MSE families, classification, GISTEmbed, orthogonal
+    regularization, denoising, and mega-batch mining through task-native losses.
+*** TODO Complete the released dense evaluator inventory
+    Cover embedding similarity, binary and label classification, information
+    retrieval and NanoBEIR, triplet, reranking, paraphrase mining, translation,
+    MSE, and sequential composition through reusable metric protocols.
+*** TODO Complete dense trainer capabilities
+    Support source-neutral single and multi-source training, per-source tasks and
+    losses, deterministic samplers, hard-negative mining, prompts and typed
+    routes, truncation/quantization/Matryoshka outputs, evaluators, callbacks,
+    checkpoint/resume, and Hub-compatible save/load without copying Trainer.
+*** TODO Beat matched dense Sentence Transformers systems performance
+    Hold checkpoint, preprocessing, pooling, objective, precision, shapes, and
+    effective batch fixed. Gate numerical and quality equivalence first, then
+    compilation latency, steady-state throughput, allocator and process peak,
+    maximum effective batch, and device scaling. Compilation is an explicit,
+    reported phase with bounded shape signatures, never an invisible training
+    stall.
+    The first 4090 gate at batch 16 and sequence 128 passes numerical and
+    throughput requirements: Representax sustains 6,938 examples/s versus
+    5,290 for Sentence Transformers, a =1.312x= speedup, and compiles in 15.34
+    seconds under a 60-second acceptance ceiling. Allocator peak remains 37.0%
+    higher and end-to-end process peak 12.3% higher, recorded as explicit
+    warnings and remaining optimization work rather than correctness failures.
+** TODO Implement late-interaction and multi-vector representation learning :tasks:late_interaction:
+   Support token-level and learned multi-vector embeddings, ColBERT-style MaxSim,
+   masking and compression, in-batch negatives, cached/replayed representations,
+   retrieval evaluators, and efficient indexing. Treat the released 5.6.1 oracle
+   as a baseline inventory, not as the ceiling for this track.
+** TODO Implement cross-encoder and reranker training :tasks:cross_encoder:
+   Cover encoder and generative scoring modules; pointwise, pairwise, and listwise
+   losses; classification, correlation, reranking, and NanoBEIR evaluators; and
+   text/image/audio/video pair routing under the shared trainer.
+** TODO Implement sparse encoder training and retrieval :tasks:sparse_encoder:
+   Cover MLM and static sparse backbones, SPLADE and sparse-autoencoder pooling,
+   sparse MNR/CoSENT/triplet/MSE/distillation losses, FLOPS regularization, CSR
+   reconstruction, sparse retrieval metrics, and reciprocal-rank fusion.
+** TODO Validate multimodal capability across every supported encoder route :multimodal:
+   Exercise text, image, audio, video, and fused examples through preprocessing,
+   model forwards, losses, evaluators, batching, export, and matched systems
+   gates rather than treating multimodality as inference-only metadata.
 * TODO Support =encode_query= and =encode_document= behavior through typed routes :api:retrieval:
 * TODO Add Hugging Face Hub loading, local loading, and model export :api:hf:
 * TODO Add multi-dataset functionality through source sampling policies :api:data:

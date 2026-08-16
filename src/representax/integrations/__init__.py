@@ -22,8 +22,18 @@ from .families import (
 )
 from .huggingface import (
     HuggingFaceCheckpointAdapter,
+    ResolvedHuggingFaceCheckpoint,
     load_hf_config,
     load_safetensor_subset,
+    resolve_hf_checkpoint,
+)
+from .sentence_transformers import (
+    SENTENCE_TRANSFORMERS_ORACLE_VERSION,
+    LoadedSentenceTransformer,
+    SentenceTransformerModuleSpec,
+    load_sentence_transformer,
+    load_sentence_transformer_artifact,
+    load_sentence_transformer_modules,
 )
 
 __all__ = [
@@ -36,14 +46,22 @@ __all__ = [
     "HUGGING_FACE_ARCHITECTURES",
     "HuggingFaceCheckpointAdapter",
     "HuggingFaceArchitecture",
+    "LoadedSentenceTransformer",
     "MODEL_FAMILIES",
     "MODEL_TYPE_TO_FAMILY",
     "ModelFamily",
     "ModelInputContract",
+    "ResolvedHuggingFaceCheckpoint",
+    "SENTENCE_TRANSFORMERS_ORACLE_VERSION",
+    "SentenceTransformerModuleSpec",
     "TRANSFORMERS_VERSION",
     "get_hugging_face_architecture",
     "get_model_family",
     "get_model_type_family",
     "load_hf_config",
     "load_safetensor_subset",
+    "load_sentence_transformer",
+    "load_sentence_transformer_artifact",
+    "load_sentence_transformer_modules",
+    "resolve_hf_checkpoint",
 ]

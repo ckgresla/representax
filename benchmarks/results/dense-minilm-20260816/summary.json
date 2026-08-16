@@ -1,0 +1,48 @@
+{
+  "contract": {
+    "batch_size": 16,
+    "checkpoint": "sentence-transformers/all-MiniLM-L6-v2",
+    "checkpoint_revision": "1110a243fdf4706b3f48f1d95db1a4f5529b4d41",
+    "compute_dtype": "float32",
+    "measurement_iterations": 20,
+    "probe_timeout_seconds": 120.0,
+    "sentence_transformers_version": "5.6.1",
+    "sequence_length": 128,
+    "warmup_iterations": 5
+  },
+  "full_string_numerical": {
+    "cosine": 1.0,
+    "max_absolute": 1.0803341865539551e-07,
+    "relative_l2": 5.244089038569655e-07
+  },
+  "matched_forward_numerical": {
+    "cosine": 1.0,
+    "max_absolute": 2.8312206268310547e-07,
+    "relative_l2": 1.2277150744921528e-06
+  },
+  "representax": {
+    "allocator_peak_device_bytes": 229821184,
+    "backend_version": "0.10.1",
+    "compilation_seconds": 15.340780859813094,
+    "external_peak_device_bytes": 727711744,
+    "first_execution_seconds": 0.003504745662212372,
+    "initialization_seconds": 1.289441792294383,
+    "steady_state_examples_per_second": 6937.882534050604,
+    "steady_state_median_seconds": 0.002306179143488407
+  },
+  "result": {
+    "external_memory_ratio": 1.1229773462783172,
+    "memory_ratio": 1.3698410034179687,
+    "memory_status": "warning",
+    "speedup": 1.311554893081893
+  },
+  "sentence_transformers": {
+    "allocator_peak_device_bytes": 167772160,
+    "backend_version": "2.13.0+cu130",
+    "external_peak_device_bytes": 648019968,
+    "first_execution_seconds": 0.25393240340054035,
+    "initialization_seconds": 0.3000743053853512,
+    "steady_state_examples_per_second": 5289.814837828068,
+    "steady_state_median_seconds": 0.0030246805399656296
+  }
+}

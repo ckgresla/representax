@@ -14,6 +14,7 @@ from .core import (
     encode,
     evaluate_loss,
 )
+from .inference import TextEmbeddingModel, embed
 
 __all__ = [
     "BoundEncoder",
@@ -24,9 +25,11 @@ __all__ = [
     "Route",
     "JobConfig",
     "Task",
+    "TextEmbeddingModel",
     "bind",
     "data",
     "encode",
+    "embed",
     "evaluate_loss",
     "integrations",
     "models",
