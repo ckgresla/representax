@@ -3,6 +3,9 @@
 Representax pins Sentence Transformers 5.6.1 as a repository-only acceptance
 oracle. This ledger maps its 29 released dense loss classes to scientific and
 execution contracts; it is not a promise to reproduce upstream class names.
+Loss coverage is only one layer of the dense system. Data, sampling, trainer,
+evaluation, inference, and final-artifact gaps are tracked separately in the
+[`dense-system audit`](dense-system-audit.md).
 
 | Scientific contract | Sentence Transformers 5.6.1 classes | Representax status |
 |---|---|---|

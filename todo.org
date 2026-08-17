@@ -261,13 +261,12 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   run =31852459601=.  The registered pending publisher created and reserved
   [[https://pypi.org/project/representax/0.0.1/][representax on PyPI]], and the workflow created the corresponding GitHub
   [[https://github.com/ckgresla/representax/releases/tag/v0.0.1][Release]] from the same accepted artifact bundle.
-* TODO Publish =representax= 0.0.2 with the complete dense-loss inventory :release:
-  Tag only after the release-ready commit passes public CI and the exact 0.0.2
-  wheel passes fresh CPU and CUDA 13 smoke installs. Publish through the existing
-  protected PyPI environment; do not reuse or replace the 0.0.1 artifacts.
-  The locally built candidate passes strict Twine validation and isolated-wheel
-  CPU/GPU smoke execution with identical loss =2.3512461185455322=; public CI,
-  the signed tag, protected deployment approval, and registry readback remain.
+* TODO Cut the next release after dense-system acceptance :release:
+  Choose and set the next version only after the dense trainer, evaluator, and
+  disk-to-final-model systems gates are complete. Tag only after the exact
+  release-ready commit passes public CI and its wheel passes fresh CPU and CUDA
+  13 smoke installs through the protected PyPI environment; do not reuse or
+  replace the published 0.0.1 artifacts.
 * DONE Publish a minimal CPU-first installation and compatibility matrix :release:
 ** DONE Build bounded wheel and source-distribution artifacts
    The universal wheel contains only =representax=, package metadata, the MIT
@@ -457,6 +456,8 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   public API. Dense bi-encoders, late-interaction/multi-vector encoders,
   cross-encoders, and sparse encoders are separate task and systems contracts;
   text, image, audio, video, and fused inputs cut across those contracts.
+  The system-level dense audit and the exact boundary we intend to implement
+  live in =docs/dense-system-audit.md=.
 ** NEXT Complete the dense bi-encoder route :api:models:retrieval:
 *** DONE Load the standard serialized dense module chain
     Resolve a pinned Hub revision or local directory, parse =modules.json= and
@@ -552,11 +553,27 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
     Cover embedding similarity, binary and label classification, information
     retrieval and NanoBEIR, triplet, reranking, paraphrase mining, translation,
     MSE, and sequential composition through reusable metric protocols.
+**** TODO Define one typed evaluator protocol and namespaced =valid/...= results
+**** TODO Implement similarity, classification, triplet, and MSE evaluators
+**** TODO Implement retrieval, reranking, paraphrase, translation, and NanoBEIR
+**** TODO Add sequential composition and explicit primary-metric selection
 *** TODO Complete dense trainer capabilities
     Support source-neutral single and multi-source training, per-source tasks and
     losses, deterministic samplers, hard-negative mining, prompts and typed
     routes, truncation/quantization/Matryoshka outputs, evaluators, callbacks,
     checkpoint/resume, and Hub-compatible save/load without copying Trainer.
+**** NEXT Build a complete job from =JobConfig= without separately wired objects
+     Construct the model, task/loss/modifiers, optimizer and schedule, Grain
+     source, execution policy, reporters, evaluators, and final exporter from
+     validated declarative configuration at the Python/JAX boundary.
+**** TODO Implement gradient accumulation as actual compiled training behavior
+**** TODO Add default, no-duplicate, hashed no-duplicate, and label-group samplers
+**** TODO Add proportional/round-robin multi-source and per-source task/loss routing
+**** TODO Make prompts and typed routes first-class preprocessing configuration
+**** TODO Add validation cadence, best-checkpoint selection, and lifecycle hooks
+**** TODO Export and reload one final native and compatible Hub model artifact
+**** TODO Add W&B reporting through the existing asynchronous reporter protocol
+**** TODO Add source-neutral offline hard-negative mining with artifact provenance
 *** TODO Beat matched dense Sentence Transformers systems performance
     Hold checkpoint, preprocessing, pooling, objective, precision, shapes, and
     effective batch fixed. Gate numerical and quality equivalence first, then
@@ -570,6 +587,26 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
     seconds under a 60-second acceptance ceiling. Allocator peak remains 37.0%
     higher and end-to-end process peak 12.3% higher, recorded as explicit
     warnings and remaining optimization work rather than correctness failures.
+**** DONE Accept the pinned ModernVBERT GradCache device-step matrix against 5.6.1
+     For logical batches 32, 128, 512, and 1,024 at sequence length 512 and
+     chunk two, require identical checkpoint/input/scientific fingerprints,
+     FP32 highest precision, loss and gradient-norm agreement, no OOM, separate
+     cold/steady/memory reporting, and a live repository-only performance test.
+     This is an encoder/loss/backward/optimizer benchmark, not end-to-end.
+     Accepted on two RTX 4090s at source commit =859d935=: all four points fit,
+     agree within =1.91e-6= loss absolute and =7.64e-5= gradient-norm relative,
+     and run =1.224x--1.303x= faster with a =1.250x= geometric mean speedup.
+     Native allocator usage is 5.1%--5.6% higher while process-visible device
+     usage is 0.8%--1.5% lower. Raw reports, replay, and the validated summary
+     live in =benchmarks/results/grad-cache-st56-20260817/=.
+**** NEXT Benchmark dataset-on-disk through the durable final model
+     Start timing at process launch with pinned raw local data and an initial
+     checkpoint already on disk. Stop only after preprocessing, nonzero-rate
+     training, validation, asynchronous checkpoint synchronization, final model
+     export, and fresh-process reload verification. Compare cold and warm
+     preprocessing separately and report total/stage wall time, host/device
+     memory, restart cost, and final validation quality. The exact contract is
+     =docs/dense-system-audit.md=.
 ** TODO Implement late-interaction and multi-vector representation learning :tasks:late_interaction:
    Support token-level and learned multi-vector embeddings, ColBERT-style MaxSim,
    masking and compression, in-batch negatives, cached/replayed representations,

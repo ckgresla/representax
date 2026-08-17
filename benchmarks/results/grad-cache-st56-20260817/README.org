@@ -1,0 +1,85 @@
+#+title: ModernVBERT GradCache versus Sentence Transformers 5.6.1
+#+options: toc:2 num:nil
+
+* Decision
+
+The pinned device-side GradCache training-step gate passes at every declared
+logical batch. Representax performs the same ModernVBERT encoder, mean pooling,
+normalized MNR, backward replay, gradient accounting, and AdamW update between
+=1.224x= and =1.303x= faster than Sentence Transformers 5.6.1. The geometric
+mean speedup is =1.250x=.
+
+This is not a dataset-on-disk to final-model benchmark. It excludes artifact
+opening, tokenization, Grain/DataLoader work, reporting, validation, checkpoint
+publication, and final model export. That broader contract is defined in
+=docs/dense-system-audit.md=.
+
+* Matched contract
+
+- checkpoint: =ModernVBERT/modernvbert-embed= revision
+  =da507113c3fdbc2e49d39c4b0148025c6bd008f9=
+- source implementation: commit
+  =859d93500dd20a58044f1eb0e5034e89b1d81179=
+- Sentence Transformers =5.6.1=, Transformers =5.3.0=, Torch =2.13.0+cu130=
+- Representax on JAX =0.10.1=
+- FP32 parameters, compute, objective, and highest matmul precision; upstream
+  TF32 disabled
+- sequence length 512, query/document/loss chunk size two, logical paired
+  batches 32, 128, 512, and 1,024
+- identical initial weights, generated token IDs, masks, pooling, scale, seed,
+  zero-rate AdamW update, and workload fingerprints
+- separate RTX 4090s, one warmup, five synchronized measured steps, native
+  persistent compilation cache disabled
+
+The editable environment reported an unreleased =0.0.2= candidate label during
+measurement. It is retained verbatim in the raw reports, but it is not a
+release claim: =v0.0.1= remains the only release, and the evidence is identified
+by exact source commit.
+
+* Result
+
+Times are steady-state medians and memory is GiB.
+
+| Batch | Representax step | ST step | Speedup | Representax ex/s | ST ex/s | Native compile + first | ST first | Native allocator | ST allocator | Native process | ST process |
+|-------+-------------------+---------+---------+------------------+---------+------------------------+----------+------------------+--------------+----------------+------------|
+|    32 |             1.774 |   2.176 |  1.226x |           18.036 |  14.707 |                 35.871 |    4.166 |            4.000 |        3.789 |          4.404 |      4.441 |
+|   128 |             7.156 |   8.758 |  1.224x |           17.888 |  14.615 |                 42.720 |    9.463 |            4.000 |        3.791 |          4.404 |      4.445 |
+|   512 |            28.576 |  35.635 |  1.247x |           17.917 |  14.368 |                 64.593 |   36.541 |            4.000 |        3.800 |          4.404 |      4.441 |
+| 1,024 |            57.178 |  74.506 |  1.303x |           17.909 |  13.744 |                 91.492 |   78.229 |            4.000 |        3.806 |          4.404 |      4.473 |
+
+The maximum loss absolute difference is =1.91e-6=. The maximum gradient-global-
+norm relative difference is =7.64e-5=. Both frameworks fit every point.
+
+Native allocator usage is 5.1%--5.6% higher, while process-visible device usage
+is 0.8%--1.5% lower. Native allocator and process peaks remain flat across the
+matrix, demonstrating that encoder activation memory follows chunk size rather
+than logical batch size.
+
+Uncached compilation remains the principal small-job disadvantage. The extra
+first-step cost is amortized after approximately 79 additional steps at batch
+32, 21 at batch 128, 4 at batch 512, and 1 at batch 1,024. Persistent-cache
+behavior must be measured separately rather than mixed into this cold matrix.
+
+* Evidence and replay
+
+=summary.json= is the machine-readable acceptance result. The eight sibling
+JSON files retain raw timings, versions, fingerprints, losses, gradient norms,
+and allocator/process peaks.
+
+#+begin_src sh
+python -m benchmarks.grad_cache_matrix \
+  --checkpoint /immutable/path/to/modernvbert-snapshot \
+  --output-directory /raid/representax/benchmarks/gradcache-st56 \
+  --native-gpu 4 --upstream-gpu 5 \
+  --batches 32 128 512 1024 \
+  --source-commit "$(git rev-parse HEAD)"
+#+end_src
+
+The repository performance lane validates the tracked evidence and can launch a
+fresh matrix when both environment variables are present:
+
+#+begin_src sh
+export REPRESENTAX_MODERNVBERT_CHECKPOINT=/immutable/path/to/snapshot
+export REPRESENTAX_GRAD_CACHE_PERFORMANCE_GPUS=4,5
+pytest -q -s -m performance tests/train/test_grad_cache_performance.py
+#+end_src

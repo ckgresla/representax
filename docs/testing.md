@@ -25,7 +25,7 @@ pytest -m performance tests/tasks/test_sentence_transformers_parity.py -s
 
 The parity lane generates shared NumPy tensors, passes the same values to JAX
 and the pinned Sentence Transformers 5.6.1 class, then compares the scalar loss
-and every representation gradient. An explicit coverage assertion keeps the 18
+and every representation gradient. An explicit coverage assertion keeps the 29
 classes claimed as native synchronized with the paired cases. Cached MNR uses
 each runtime's chunked score-row objective; end-to-end encoder replay and
 distributed execution remain in the dedicated GradCache acceptance suites.
@@ -35,6 +35,46 @@ class, warms both runtimes, synchronizes every sample, and reports median
 latency. It is intentionally separate from parity and emits performance
 shortfalls as warnings. Small loss-only measurements show dispatch and fusion
 quality; full encoder training remains the authoritative systems benchmark.
+
+## GradCache training-step matrix
+
+The pinned ModernVBERT GradCache matrix measures one complete device-side
+optimizer step: token encoder forwards, pooling, cached MNR, representation
+cotangents, rematerialized parameter-gradient replay, gradient metrics, and one
+AdamW update. It deliberately excludes dataset opening, preprocessing,
+reporting, checkpoint publication, and final export, so it is not described as
+an end-to-end training benchmark.
+
+Run the four matched points concurrently on two isolated GPUs:
+
+```bash
+python -m benchmarks.grad_cache_matrix \
+  --checkpoint /immutable/path/to/modernvbert-snapshot \
+  --output-directory /raid/representax/benchmarks/gradcache-st56 \
+  --native-gpu 4 --upstream-gpu 5 \
+  --batches 32 128 512 1024 \
+  --source-commit "$(git rev-parse HEAD)"
+```
+
+The matrix runner requires Sentence Transformers 5.6.1, runs each matched pair
+concurrently in fresh subprocesses, removes a potentially conflicting
+`LD_LIBRARY_PATH`, disables the native persistent compilation cache for the
+cold-start measurement, and writes raw logs, reports, and one validated
+summary. Contract or numerical mismatches fail immediately. A speed shortfall
+is recorded as a warning in the artifact; the controlled repository acceptance
+test requires all four recorded points to beat the oracle.
+
+To rerun the same gate through pytest, set the checkpoint and GPU pair:
+
+```bash
+export REPRESENTAX_MODERNVBERT_CHECKPOINT=/immutable/path/to/snapshot
+export REPRESENTAX_GRAD_CACHE_PERFORMANCE_GPUS=4,5
+pytest -q -s -m performance \
+  tests/train/test_grad_cache_performance.py
+```
+
+The disk-to-final-model contract is broader and is specified separately in
+[`dense-system-audit.md`](dense-system-audit.md).
 
 ## Static analysis
 

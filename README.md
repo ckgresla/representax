@@ -22,7 +22,8 @@ The project is alpha. The current slice provides:
   5.6.1 dense loss classes, including Matryoshka/adaptive-layer modifiers,
   direct/cached GIST, contrastive tension, classification, orthogonal
   regularization, denoising, and bounded mega-batch mining;
-- an end-to-end Grain-to-compiled-step trainer with asynchronous reporting;
+- a Grain-to-compiled-step training loop with asynchronous reporting and exact
+  checkpoint resume;
 - lazy Grain recipes with built-in Hugging Face and local artifact resolvers;
 - validated domain configs with annotated scientific and execution parameters; and
 - explicit unit, runtime, parity, distributed, and performance test lanes.
@@ -420,6 +421,9 @@ Performance acceptance is evaluated against a matched upstream implementation
 on pinned hardware. Compile time, steady-state work, and peak device memory are
 measured separately; see
 [the test contract](https://github.com/ckgresla/representax/blob/main/docs/testing.md).
+The broader Sentence Transformers dense-system audit and the definition of a
+true dataset-on-disk to final-model benchmark are in
+[the dense-system audit](https://github.com/ckgresla/representax/blob/main/docs/dense-system-audit.md).
 
 ## Roadmap
 
