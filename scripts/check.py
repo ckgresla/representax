@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 
 
 def main() -> int:
@@ -21,6 +22,8 @@ def main() -> int:
         (
             "ty",
             "check",
+            "--python",
+            sys.executable,
             *(("--output-format=github",) if github else ()),
         ),
     )

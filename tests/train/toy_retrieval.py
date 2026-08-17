@@ -11,6 +11,7 @@ from representax.config import (
     BatchConfig,
     CheckpointConfig,
     ComponentConfig,
+    DataConfig,
     JobConfig,
     LoggingConfig,
     ModelConfig,
@@ -118,7 +119,7 @@ def toy_job_config(
                 parameters={"learning_rate": 0.03, "weight_decay": 0.0},
             )
         ),
-        data=mix(artifact, shuffle=False, seed=seed),
+        data=DataConfig(recipe=mix(artifact, shuffle=False, seed=seed)),
         training=TrainingConfig(
             global_batch_size=global_batch_size,
             max_steps=max_steps,

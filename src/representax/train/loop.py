@@ -20,6 +20,7 @@ from .checkpoint import (
     scientific_fingerprint,
     training_checkpointables,
 )
+from .evaluation import EvaluationRunner
 from .logging import MetricRecord, Reporter, RunLogger
 from .state import StepResult, TrainState
 from .step import TrainStep
@@ -33,6 +34,10 @@ class TrainingRunResult:
     completed_iterations: int
     run_directory: Path
     resumed: bool
+    selected_model: Any
+    best_iteration: int | None = None
+    best_metrics: Mapping[str, Any] | None = None
+    inference_bundle: Path | None = None
 
 
 def _int(value: Any) -> int:
@@ -130,6 +135,8 @@ def run_training(
     resume: bool = False,
     reporters: tuple[Reporter, ...] = (),
     place_batch: Callable[[Any], Any] = jax.device_put,
+    evaluation_runners: tuple[EvaluationRunner, ...] = (),
+    evaluation_batches: Callable[[], Iterable[Any]] | None = None,
 ) -> TrainingRunResult:
     """Run model-ready batches through one compiled single-device update.
 
@@ -142,6 +149,22 @@ def run_training(
     training = job.training
     logging = job.logging
     checkpoint = job.checkpointing
+    evaluation = job.evaluation
+    if evaluation is None:
+        if evaluation_runners or evaluation_batches is not None:
+            raise ValueError("evaluation runtime requires job.evaluation")
+    else:
+        if evaluation_batches is None or not evaluation_runners:
+            raise ValueError(
+                "job.evaluation requires evaluation runners and a batch factory"
+            )
+        configured_names = tuple(item.name for item in evaluation.evaluators)
+        runtime_names = tuple(runner.name for runner in evaluation_runners)
+        if runtime_names != configured_names:
+            raise ValueError(
+                "evaluation runner names differ from configuration: "
+                f"{runtime_names!r} != {configured_names!r}"
+            )
     if resume and checkpoint is None:
         raise ValueError("resume requires checkpoint configuration")
     source_batch_size = getattr(batches, "global_batch_size", None)
@@ -186,6 +209,8 @@ def run_training(
     seen_signatures: set[str] = set()
     pending_metric: MetricRecord | None = None
     run_failed = False
+    best_iteration: int | None = None
+    best_metrics: Mapping[str, Any] | None = None
     try:
         restored = None
         if resume:
@@ -200,6 +225,15 @@ def run_training(
                 scientific_fingerprint=fingerprint,
                 data_fingerprint=data_fingerprint,
                 keep=checkpoint.keep,
+                best_metric=(
+                    evaluation.primary_metric
+                    if evaluation is not None and evaluation.save_best
+                    else None
+                ),
+                best_mode=(
+                    evaluation.primary_metric_mode if evaluation is not None else "min"
+                ),
+                keep_best=(evaluation.keep_best if evaluation is not None else 1),
                 asynchronous=checkpoint.asynchronous,
             )
             restore_started = time.perf_counter()
@@ -254,6 +288,17 @@ def run_training(
                     scientific_fingerprint=fingerprint,
                     data_fingerprint=data_fingerprint,
                     keep=checkpoint.keep,
+                    best_metric=(
+                        evaluation.primary_metric
+                        if evaluation is not None and evaluation.save_best
+                        else None
+                    ),
+                    best_mode=(
+                        evaluation.primary_metric_mode
+                        if evaluation is not None
+                        else "min"
+                    ),
+                    keep_best=(evaluation.keep_best if evaluation is not None else 1),
                     asynchronous=checkpoint.asynchronous,
                     event=logger.event,
                 )
@@ -268,6 +313,86 @@ def run_training(
                 iteration=0,
                 end_iteration=training.max_steps,
             )
+
+        def run_evaluation(iteration: int) -> dict[str, float]:
+            if evaluation is None or evaluation_batches is None:
+                raise AssertionError("evaluation runtime is not configured")
+            logger.event("evaluation_started", iteration=iteration)
+            started = time.perf_counter()
+            metrics: dict[str, float] = {}
+            compilation_seconds = 0.0
+            evaluated_examples = 0
+            evaluated_batches = 0
+            for runner_index, runner in enumerate(evaluation_runners):
+                result = runner.run(
+                    current.model,
+                    evaluation_batches(),
+                    iteration=iteration,
+                    key=jax.random.fold_in(base_key, training.max_steps + runner_index),
+                    max_batches=evaluation.max_batches,
+                    place_batch=place_batch,
+                )
+                overlap = set(metrics) & set(result.metrics)
+                if overlap:
+                    raise ValueError(
+                        f"evaluation metric names collide: {sorted(overlap)}"
+                    )
+                metrics.update(result.metrics)
+                compilation_seconds += result.compilation_seconds
+                evaluated_examples += result.examples
+                evaluated_batches += result.batches
+            if evaluation.primary_metric not in metrics:
+                raise ValueError(
+                    "primary evaluation metric was not produced: "
+                    f"{evaluation.primary_metric!r}"
+                )
+            duration_seconds = time.perf_counter() - started
+            logger.metrics(
+                MetricRecord(
+                    iteration=iteration,
+                    event="evaluation",
+                    values={
+                        **metrics,
+                        "perf/evaluation_seconds": duration_seconds,
+                        "perf/evaluation_compilation_seconds": compilation_seconds,
+                    },
+                ),
+                console=True,
+            )
+            logger.event(
+                "evaluation_finished",
+                iteration=iteration,
+                batches=evaluated_batches,
+                examples=evaluated_examples,
+                duration_seconds=duration_seconds,
+                primary_metric=evaluation.primary_metric,
+                primary_value=metrics[evaluation.primary_metric],
+            )
+            return metrics
+
+        def save_checkpoint(
+            iteration: int,
+            metrics: Mapping[str, Any] | None = None,
+        ) -> None:
+            if checkpoint_manager is None:
+                raise AssertionError("checkpoint manager is not configured")
+            checkpoint_manager.save(
+                iteration,
+                training_checkpointables(
+                    state=current,
+                    iteration=iteration,
+                    rng=base_key,
+                    data_state=_get_iterator_state(iterator),
+                    logging_cursor=logger.cursor(),
+                ),
+                metrics=metrics,
+            )
+
+        if not resume and evaluation is not None and evaluation.on_start:
+            validation_metrics = run_evaluation(0)
+            if evaluation.save_best:
+                save_checkpoint(0, validation_metrics)
+
         for iteration_index in range(completed, training.max_steps):
             wait_started = time.perf_counter()
             try:
@@ -325,27 +450,41 @@ def run_training(
             pending_metric = record
 
             final = completed == training.max_steps
-            should_checkpoint = (
-                checkpoint_manager is not None
-                and checkpoint is not None
-                and checkpoint.should_save(completed, final=final)
+            should_evaluate = evaluation is not None and (
+                (
+                    evaluation.every_steps is not None
+                    and completed % evaluation.every_steps == 0
+                )
+                or (final and evaluation.on_end)
             )
-            if should_checkpoint:
+            validation_metrics = None
+            if should_evaluate:
                 logger.metrics(
                     pending_metric,
                     console=pending_metric.iteration % logging.console_every == 0,
                 )
                 pending_metric = None
-                checkpoint_manager.save(
-                    completed,
-                    training_checkpointables(
-                        state=current,
-                        iteration=completed,
-                        rng=base_key,
-                        data_state=_get_iterator_state(iterator),
-                        logging_cursor=logger.cursor(),
-                    ),
+                validation_metrics = run_evaluation(completed)
+            should_checkpoint = (
+                checkpoint_manager is not None
+                and checkpoint is not None
+                and (
+                    checkpoint.should_save(completed, final=final)
+                    or (
+                        validation_metrics is not None
+                        and evaluation is not None
+                        and evaluation.save_best
+                    )
                 )
+            )
+            if should_checkpoint:
+                if pending_metric is not None:
+                    logger.metrics(
+                        pending_metric,
+                        console=(pending_metric.iteration % logging.console_every == 0),
+                    )
+                    pending_metric = None
+                save_checkpoint(completed, validation_metrics)
 
         if pending_metric is not None:
             logger.metrics(
@@ -355,7 +494,20 @@ def run_training(
             pending_metric = None
         _close_batches(iterator)
         iterator_closed = True
+        selected_model = current.model
         if checkpoint_manager is not None:
+            if evaluation is not None and evaluation.save_best:
+                best_record = checkpoint_manager.best()
+                best_iteration = best_record.iteration
+                manifest_metrics = best_record.manifest.get("metrics")
+                if isinstance(manifest_metrics, Mapping):
+                    best_metrics = manifest_metrics
+                if job.export.selection == "best":
+                    restored_model, _ = checkpoint_manager.restore(
+                        {"model": current.model},
+                        iteration=best_iteration,
+                    )
+                    selected_model = restored_model["model"]
             checkpoint_manager.close()
             checkpoint_manager = None
         logger.event(
@@ -373,6 +525,9 @@ def run_training(
             completed_iterations=completed,
             run_directory=run_path,
             resumed=resume,
+            selected_model=selected_model,
+            best_iteration=best_iteration,
+            best_metrics=best_metrics,
         )
     except BaseException as error:
         run_failed = True

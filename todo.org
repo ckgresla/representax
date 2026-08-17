@@ -557,21 +557,54 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
 **** TODO Implement similarity, classification, triplet, and MSE evaluators
 **** TODO Implement retrieval, reranking, paraphrase, translation, and NanoBEIR
 **** TODO Add sequential composition and explicit primary-metric selection
-*** TODO Complete dense trainer capabilities
+*** DONE Land configuration-driven end-to-end training jobs
     Support source-neutral single and multi-source training, per-source tasks and
     losses, deterministic samplers, hard-negative mining, prompts and typed
     routes, truncation/quantization/Matryoshka outputs, evaluators, callbacks,
     checkpoint/resume, and Hub-compatible save/load without copying Trainer.
-**** NEXT Build a complete job from =JobConfig= without separately wired objects
+    The first acceptance slice is complete when one validated Hydra-Zen/Pydantic
+    =JobConfig= constructs and executes the model, task, loss execution,
+    optimizer/schedule, Grain sources, compiled step, validation lifecycle,
+    Orbax retention, and final exporter without repeating runtime wiring.  The
+    same general evaluation runner must work both during training and offline,
+    reuse compiled signatures, emit =valid/...= metrics, select a configured
+    primary metric, and preserve its best inference-ready checkpoint.  Final
+    publication must atomically emit a self-describing native artifact and an
+    optional verified Hugging Face artifact that reloads without training state.
+**** DONE Build a complete job from =JobConfig= without separately wired objects
      Construct the model, task/loss/modifiers, optimizer and schedule, Grain
      source, execution policy, reporters, evaluators, and final exporter from
      validated declarative configuration at the Python/JAX boundary.
-**** TODO Implement gradient accumulation as actual compiled training behavior
+**** DONE Implement exact capability-gated compiled gradient accumulation
+     Accumulate equal-size microbatches with one =lax.scan= and one Optax update
+     only for losses whose batch reduction decomposes exactly.  Reject unsafe
+     objectives rather than shrinking an MNR negative population; those retain
+     their full scientific batch through GradCache.
+**** DONE Add reusable offline and in-training evaluation with best selection
+     Keep inference/reduction task-owned, cache compiled batch signatures across
+     validation runs, and let Representax provide cadence, metric naming,
+     primary-metric comparison, lifecycle events, and checkpoint association.
+     Pass scalar checkpoint metrics into Orbax and compose latest-N plus best-N
+     preservation rather than reimplementing array storage.
+**** DONE Publish and reload inference-ready final/best artifacts
+     Restore only the selected model, atomically serialize a universal native
+     artifact with its exact job/model identity, optionally map back into the
+     source-compatible Hugging Face checkpoint, and verify a clean reload before
+     marking the export complete.
+    Accepted with one disk-to-final-model runtime test: local JSONL through
+    Grain, compiled two-microbatch accumulation, three optimizer updates,
+    validation at iterations 0--3, asynchronous Orbax latest/best retention,
+    non-final best-model restore, atomic native export, clean reload, and the
+    same offline validation loss.  A separate tiny-BERT contract preserves
+    source tokenizer metadata and requires exact adapter tensor equality after
+    Hugging Face export/reload. Accepted on the final tree with 175 fast CPU
+    tests, 12 runtime CPU tests, 3 four-device virtual distributed tests, and 4
+    compiled GPU-4 lifecycle/accumulation tests; Ruff, ty, strict wheel/sdist
+    metadata, and a fresh installed-wheel CPU smoke also pass at version 0.0.1.
+*** TODO Expand trainer input and integration capabilities
 **** TODO Add default, no-duplicate, hashed no-duplicate, and label-group samplers
 **** TODO Add proportional/round-robin multi-source and per-source task/loss routing
 **** TODO Make prompts and typed routes first-class preprocessing configuration
-**** TODO Add validation cadence, best-checkpoint selection, and lifecycle hooks
-**** TODO Export and reload one final native and compatible Hub model artifact
 **** TODO Add W&B reporting through the existing asynchronous reporter protocol
 **** TODO Add source-neutral offline hard-negative mining with artifact provenance
 *** TODO Beat matched dense Sentence Transformers systems performance

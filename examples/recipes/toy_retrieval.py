@@ -1,4 +1,4 @@
-"""A Git-trackable, CLI-overridable Hydra-Zen job configuration."""
+"""A Git-trackable, CLI-overridable Hydra-Zen training job."""
 
 from hydra_zen import builds, make_config, store, zen
 
@@ -6,6 +6,8 @@ from representax.config import (
     BatchConfig,
     CheckpointConfig,
     ComponentConfig,
+    DataConfig,
+    GradCacheConfig,
     JobConfig,
     LoggingConfig,
     MeshConfig,
@@ -15,25 +17,27 @@ from representax.config import (
 )
 from representax.data import mix, source
 from representax.tasks.retrieval import MNRConfig, RetrievalConfig
-
-
-def to_features(record):
-    """Example named mapper; real projects keep task mapping beside recipes."""
-
-    return record
-
+from representax.train import run_job
 
 # Hydra-Zen's overload does not expose positional arguments forwarded to a target.
-Data = builds(  # ty: ignore[no-matching-overload]
+Recipe = builds(  # ty: ignore[no-matching-overload]
     mix,
     source(
-        "file://examples/data/toy.jsonl",
+        "examples/data/toy.jsonl",
         revision="example-v1",
-        map="examples.recipes.toy_retrieval.to_features",
+        map="examples.recipes.toy_components.to_features",
     ),
     weights=(1.0,),
     seed=17,
     populate_full_signature=True,
+)
+Data = builds(
+    DataConfig,
+    recipe=Recipe,
+    collate=builds(
+        ComponentConfig,
+        target="examples.recipes.toy_components.collate",
+    ),
 )
 Model = builds(
     ModelConfig,
@@ -57,8 +61,8 @@ Optimization = builds(
 )
 Training = builds(
     TrainingConfig,
-    global_batch_size=32,
-    max_steps=100,
+    global_batch_size=4,
+    max_steps=1,
     seed=17,
     mesh=builds(
         MeshConfig,
@@ -67,9 +71,10 @@ Training = builds(
     ),
     batch=builds(
         BatchConfig,
-        micro_batch_size=8,
-        gradient_accumulation_steps=4,
+        micro_batch_size=4,
+        gradient_accumulation_steps=1,
     ),
+    grad_cache=builds(GradCacheConfig, micro_batch_size=2),
 )
 Job = builds(
     JobConfig,
@@ -80,19 +85,13 @@ Job = builds(
     optimization=Optimization,
     data=Data,
     training=Training,
-    logging=builds(LoggingConfig, console_every=10),
-    checkpointing=builds(CheckpointConfig, every=25, keep=3),
+    logging=builds(LoggingConfig, console_every=1),
+    checkpointing=builds(CheckpointConfig, every=1, keep=1),
 )
-Config = make_config(job=Job)
+Config = make_config(job=Job, run_directory="runs/toy-retrieval")
 store(Config, name="toy_retrieval")
-
-
-def show(job: JobConfig) -> None:
-    """Validate the composed user configuration before building JAX objects."""
-
-    print(job.model_dump_json(indent=2))
 
 
 if __name__ == "__main__":
     store.add_to_hydra_store()
-    zen(show).hydra_main(config_name="toy_retrieval", version_base="1.3")
+    zen(run_job).hydra_main(config_name="toy_retrieval", version_base="1.3")

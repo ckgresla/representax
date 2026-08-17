@@ -60,16 +60,19 @@ class MetricRecord:
     event: str = "training_step"
 
     def __post_init__(self) -> None:
-        if self.iteration <= 0:
-            raise ValueError("metric iteration must be positive")
+        if self.iteration < 0:
+            raise ValueError("metric iteration must be non-negative")
         if not self.event:
             raise ValueError("metric event must be non-empty")
         if not self.values:
             raise ValueError("metric values must be non-empty")
-        required = {"train/loss", "train/skipped_update"}
-        missing = required - set(self.values)
-        if missing:
-            raise ValueError(f"training metric values are missing {sorted(missing)}")
+        if self.event == "training_step":
+            required = {"train/loss", "train/skipped_update"}
+            missing = required - set(self.values)
+            if missing:
+                raise ValueError(
+                    f"training metric values are missing {sorted(missing)}"
+                )
         invalid = [
             name for name in self.values if not isinstance(name, str) or "/" not in name
         ]
@@ -277,9 +280,10 @@ class RunLogger:
     def _publish_metric(self, item: _MetricItem) -> None:
         record = item.record
         values = _json_value(record.values)
-        skipped_update = bool(values["train/skipped_update"])
-        if not skipped_update:
-            self._optimizer_step += 1
+        if record.event == "training_step":
+            skipped_update = bool(values["train/skipped_update"])
+            if not skipped_update:
+                self._optimizer_step += 1
         optimizer_step = self._optimizer_step
         row = {
             "schema_version": "representax-metrics-v1",
@@ -293,7 +297,7 @@ class RunLogger:
         }
         self._sequence += 1
         self._publish(row, metric=True)
-        if values.get("train/skipped_update"):
+        if record.event == "training_step" and values.get("train/skipped_update"):
             self._publish_event(
                 "nonfinite_update_skipped",
                 {"iteration": record.iteration, "optimizer_step": optimizer_step},
@@ -301,11 +305,19 @@ class RunLogger:
         if item.console:
             throughput = values.get("perf/examples_per_second")
             suffix = "" if throughput is None else f" {throughput:.1f} examples/s"
-            print(
-                f"train iteration={record.iteration} step={optimizer_step} "
-                f"loss={values['train/loss']:.6g}{suffix}",
-                flush=True,
-            )
+            if record.event == "training_step":
+                message = (
+                    f"train iteration={record.iteration} step={optimizer_step} "
+                    f"loss={values['train/loss']:.6g}{suffix}"
+                )
+            else:
+                loss = values.get("valid/loss")
+                loss_text = "" if loss is None else f" loss={loss:.6g}"
+                message = (
+                    f"{record.event} iteration={record.iteration} "
+                    f"step={optimizer_step}{loss_text}{suffix}"
+                )
+            print(message, flush=True)
 
     def _flush_outputs(self) -> None:
         self._events.flush()

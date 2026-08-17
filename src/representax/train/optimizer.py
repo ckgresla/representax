@@ -8,7 +8,7 @@ from typing import Any
 
 import optax
 
-from representax.config import OptimizationConfig
+from representax.config import ComponentConfig, OptimizationConfig
 
 
 def _resolve_optimizer_factory(target: str) -> Callable[..., Any]:
@@ -38,6 +38,18 @@ def _resolve_optimizer_factory(target: str) -> Callable[..., Any]:
     return factory
 
 
+def build_schedule(config: ComponentConfig | None) -> Callable[[Any], Any] | None:
+    """Build an optional Optax-compatible scalar schedule."""
+
+    if config is None:
+        return None
+    factory = _resolve_optimizer_factory(config.target)
+    schedule = factory(**config.parameters)
+    if not callable(schedule):
+        raise TypeError(f"schedule target {config.target!r} must return a callable")
+    return schedule
+
+
 def build_optimizer(
     config: OptimizationConfig,
 ) -> optax.GradientTransformationExtraArgs:
@@ -49,7 +61,15 @@ def build_optimizer(
 
     component = config.optimizer
     factory = _resolve_optimizer_factory(component.target)
-    optimizer = factory(**component.parameters)
+    parameters: dict[str, Any] = dict(component.parameters)
+    schedule = build_schedule(config.schedule)
+    if schedule is not None:
+        if config.schedule_parameter in parameters:
+            raise ValueError(
+                f"optimizer parameters already define {config.schedule_parameter!r}"
+            )
+        parameters[config.schedule_parameter] = schedule
+    optimizer = factory(**parameters)
     if not isinstance(
         optimizer,
         (optax.GradientTransformation, optax.GradientTransformationExtraArgs),
@@ -59,3 +79,6 @@ def build_optimizer(
             "GradientTransformation"
         )
     return optimizer
+
+
+__all__ = ["build_optimizer", "build_schedule"]

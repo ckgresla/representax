@@ -14,6 +14,7 @@ from .recipe import (
 from .resolvers import (
     ArtifactResolver,
     ArtifactSpec,
+    JsonLinesSource,
     RandomAccessSource,
     huggingface_dataset_id,
     local_path,
@@ -26,6 +27,7 @@ __all__ = [
     "ArtifactSpec",
     "ArtifactSource",
     "GrainBatchSource",
+    "JsonLinesSource",
     "Mapper",
     "MixtureRecipe",
     "RandomAccessSource",

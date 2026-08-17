@@ -7,6 +7,8 @@ explicit:
    one compiled, model-neutral Equinox update;
 2. `run_training` owns Grain iteration, device-placement dispatch, reporting,
    checkpointing, and failure cleanup on the host.
+3. `run_job` is the canonical configured entry point and builds both layers,
+   validation, model selection, and inference export from one `JobConfig`.
 
 This is the ordinary JAX boundary. Python is useful for I/O and lifecycle work;
 the repeated forward, backward, finite-update gate, and optimizer update belong
@@ -23,10 +25,13 @@ than enqueueing incidental `jax.numpy` work outside the train step.
 
 User-facing configurations are frozen Pydantic models organized by the domains
 users actually configure. `JobConfig` owns model, task, loss, optimization,
-data, training, logging, and checkpointing configs. `TrainingConfig` combines
+data, training, logging, checkpointing, evaluation, and export configs.
+`TrainingConfig` combines
 the scientific training values and their efficiency-only realization: global
 batch, maximum steps, seed, logical mesh, physical batch decomposition,
-optional GradCache, activation rematerialization, donation, and input prefetch.
+optional GradCache, activation rematerialization, and donation. Input threading
+and prefetch live in each `DataConfig`, because training and validation sources
+may need different host-side execution plans.
 
 Scientific and execution are field roles rather than parallel configuration
 trees. `Scientific[T]` and `Execution[T]` metadata can mark one value or a whole
@@ -42,6 +47,13 @@ dimensions, and local versus global negative scope. The loss registry declares
 compatible tasks and training strategies. A populated `training.grad_cache`
 therefore selects exact cached differentiation only when the configured loss
 advertises that capability; `None` selects direct differentiation.
+
+For losses that reduce independently over examples, configured gradient
+accumulation reshapes one logical batch into equal microbatches, evaluates them
+with one compiled `lax.scan`, averages their gradients, clips once, and performs
+one Optax update. The loss registry capability-gates this path. Cross-example
+objectives such as MNR reject ordinary accumulation because it would change the
+negative population; exact GradCache remains their bounded-memory execution.
 
 `MeshConfig` stores the portable logical axis shapes and names accepted by
 `jax.make_mesh(**config.model_dump())`. Concrete JAX `Device` objects are never
@@ -145,10 +157,37 @@ projection, the data contract, and model/optimizer structures; restores training
 and iterator state; truncates post-checkpoint log rows; and continues with the
 same next batch and random key as an uninterrupted run.
 
+## Evaluation, model selection, and inference publication
+
+`EvaluationRunner` is the shared offline and in-training loss-evaluation
+boundary. It caches JAX executables by batch structure and shape, aggregates
+unequal final batches by the task's exact loss denominator (or example count),
+and emits service-neutral `valid/...` metrics. `EvaluationConfig` controls
+start/end and periodic cadence, a bounded
+number of batches, the primary metric, and min/max selection. Training performs
+evaluation on a separate Grain iterator, leaving the resumable training cursor
+untouched.
+
+Representax computes the metric; Orbax receives the scalar mapping and composes
+latest-N with best-N preservation. Representax publishes an additional durable
+`best` pointer only after the checkpoint is complete. At the end of a successful
+job it restores only the selected model when necessary and atomically publishes
+`final-model/`:
+
+- `native/job.json` plus `native/model.eqx` reconstruct any configured Equinox
+  model without optimizer or loader state;
+- the optional `huggingface/` directory retains source tokenizer/config assets,
+  writes the trained adapter state, and must reload with exact tensors before
+  publication; and
+- `manifest.json` plus `REPRESENTAX_COMPLETE` fingerprint the complete bundle.
+
+The same `EvaluationRunner` is available through `representax.train.evaluate`
+for offline evaluation of a loaded inference bundle.
+
 ## Deliberately deferred
 
-The current host loop does not yet construct arbitrary named sharding plans,
-run validation, or provide concrete W&B/TensorBoard adapters. Grain owns lazy
+The current configured runtime does not yet construct arbitrary named sharding
+plans or provide concrete W&B/TensorBoard adapters. Grain owns lazy
 reading, mapping, batching, prefetch, and iterator state. Task-owned collation
 is the bridge from data examples to the compiled batch contract.
 
@@ -161,7 +200,8 @@ The existing `DataParallel` plan already uses a named mesh, replicated state,
 batch-axis sharding, `jax.make_array_from_process_local_data` for process-local
 rows, and explicit collective semantics. Completing the cookbook's high-
 performance sharding picture means wiring the annotated training mesh and batch
-fields into placement and step construction, initializing state directly into its declared sharding, and
-adding measured FSDP and tensor/hybrid plans. Representax will also benchmark
+fields into placement and step construction, initializing state directly into
+its declared sharding, and adding measured FSDP and tensor/hybrid plans.
+Representax will also benchmark
 JAX `Ref`-based state mutation against canonical functional Equinox/Optax plus
 buffer donation before changing the model-state contract.

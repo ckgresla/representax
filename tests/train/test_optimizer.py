@@ -11,7 +11,12 @@ import pytest
 
 from representax.config import ComponentConfig, OptimizationConfig
 from representax.models import DenseEncoder
-from representax.train import build_optimizer, init_train_state, make_train_state
+from representax.train import (
+    build_optimizer,
+    build_schedule,
+    init_train_state,
+    make_train_state,
+)
 
 
 def test_build_optimizer_initializes_adamw_state_from_config():
@@ -40,6 +45,29 @@ def test_build_optimizer_initializes_adamw_state_from_config():
 
 def test_make_train_state_remains_a_compatibility_alias():
     assert make_train_state is init_train_state
+
+
+def test_build_optimizer_injects_a_configured_schedule():
+    config = OptimizationConfig(
+        optimizer=ComponentConfig(target="optax.sgd"),
+        schedule=ComponentConfig(
+            target="optax.constant_schedule",
+            parameters={"value": 0.1},
+        ),
+    )
+
+    schedule = build_schedule(config.schedule)
+    optimizer = build_optimizer(config)
+    parameters = jnp.asarray([1.0, 2.0])
+    updates, _ = optimizer.update(
+        jnp.ones_like(parameters),
+        optimizer.init(parameters),
+        parameters,
+    )
+
+    assert schedule is not None
+    np.testing.assert_allclose(schedule(0), 0.1)
+    np.testing.assert_allclose(np.asarray(updates), [-0.1, -0.1])
 
 
 @pytest.mark.parametrize(

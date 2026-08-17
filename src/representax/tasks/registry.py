@@ -187,6 +187,7 @@ class LossDefinition:
     build: Callable[[TaskConfig, LossConfig], Any]
     task_kinds: frozenset[str]
     training_strategies: frozenset[str]
+    microbatch_accumulation: bool = False
 
     def __post_init__(self) -> None:
         if not self.kind:
@@ -245,6 +246,7 @@ class LossModifierDefinition:
     config_type: type[LossModifierConfig]
     build: Callable[[Any, LossModifierConfig], Any]
     training_strategies: frozenset[str]
+    microbatch_accumulation: bool = False
 
     def __post_init__(self) -> None:
         if not self.kind:
@@ -700,6 +702,7 @@ BUILTIN_LOSSES = LossRegistry(
             build=_build_cosine_regression_task,
             task_kinds=frozenset({"pairwise"}),
             training_strategies=frozenset({"direct"}),
+            microbatch_accumulation=True,
         ),
         LossDefinition(
             kind="contrastive",

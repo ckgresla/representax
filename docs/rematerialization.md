@@ -41,6 +41,10 @@ model = ModernVBERTTextCheckpointAdapter().load(
 )
 ```
 
+The configured job builder injects the policy into model factories that accept
+a `rematerialization` parameter. Direct model or checkpoint-adapter use may pass
+the same value explicitly.
+
 ## Default
 
 `"full"` is the default. On an RTX 4090, direct FP32 ModernVBERT training at

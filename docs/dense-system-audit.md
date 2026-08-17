@@ -30,28 +30,26 @@ Hub publication. Those are the concrete upstream capabilities assessed below.
 | Prompt-aware collation | Partial | Move prompt and route selection into reproducible mapper/collator configuration shared by training and inference. |
 | Batch sampling | Missing | Add default, no-duplicate, hashed no-duplicate, and group-by-label policies. |
 | Multi-source sampling | Partial | Grain provides weighted mixing; add explicit proportional and round-robin policies plus per-source task/loss routing. |
-| Generic training loop | Partial | Checkpoint/resume and asynchronous reporting exist; gradient accumulation, schedule construction, evaluation, and final export must become real runtime behavior rather than configuration-only fields. |
-| Evaluators and model selection | Missing | Add reusable evaluators, validation cadence, named primary metrics, and best-checkpoint selection. |
+| Generic training loop | Complete core | One validated `JobConfig` constructs data, model, task, optimizer/schedule, compiled updates, evaluation, checkpointing, and final export. Extend its sampler and routing inventory without adding a second trainer. |
+| Evaluators and model selection | Partial | Shared offline/in-training loss evaluation, validation cadence, primary metrics, and Orbax best-checkpoint selection are complete; add the released dense evaluator inventory. |
 | Offline hard-negative mining | Missing | Add a source-neutral mining transform that emits a new recipe/artifact manifest without hiding data provenance. |
-| Final dense artifact export | Missing | Save and reload a complete tokenizer, module chain, weights, prompts, truncation metadata, and model card; add optional Hub publication outside the training core. |
+| Final dense artifact export | Partial | Atomic native export and source-compatible Hugging Face export/reload are complete; add prompt/truncation metadata, model cards, and optional Hub publication outside the training core. |
 | Reporters and lifecycle hooks | Partial | Keep namespaced asynchronous metrics; add W&B and a small typed lifecycle protocol rather than copying Trainer callbacks. |
 | Distributed execution | Partial | Single-host GradCache is accepted; integrate arbitrary sharding with the full loop and defer multi-host acceptance until hardware is available. |
 
 ## What to add first
 
-1. **Finish the scientific trainer contract.** Implement actual gradient
-   accumulation, optimizer/schedule builders, prompt-aware model-ready mapping,
-   batch-sampler policies, and per-source task/loss routing. A `JobConfig`
-   should be sufficient to build and run the job without separately wiring
-   live objects by hand.
-2. **Make evaluation a first-class phase.** Implement embedding similarity,
+1. **Complete the trainer input policies.** Add prompt-aware model-ready mapping,
+   batch-sampler policies, and per-source task/loss routing to the accepted
+   `JobConfig`-driven runtime.
+2. **Complete the evaluator inventory.** Implement embedding similarity,
    binary classification, label accuracy, triplet, information retrieval,
    reranking, paraphrase mining, translation, MSE, NanoBEIR, and sequential
    composition through one evaluator protocol. Validation metrics should use
    `valid/...` names and drive best-checkpoint selection explicitly.
-3. **Produce a final portable model.** A completed run must atomically publish a
-   reloadable native artifact and, where the module chain is compatible, a
-   standard Hugging Face/Sentence Transformers artifact.
+3. **Complete portable-model metadata.** Extend the accepted atomic native and
+   Hugging Face export path with prompts, truncation metadata, model cards, and
+   optional Hub publication.
 4. **Complete the dense inference surface.** Add typed `embed_query` and
    `embed_document` functions, truncation, float/int8/uint8/binary output
    policies, token embeddings, semantic search, and multi-device encoding.

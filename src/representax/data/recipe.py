@@ -9,6 +9,7 @@ import json
 import math
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import Any, Self
 from urllib.parse import urlparse
@@ -48,8 +49,9 @@ def _mapper_id(mapper: Mapper) -> str:
         if not mapper:
             raise ValueError("mapper import path must be non-empty")
         return mapper
-    module = getattr(mapper, "__module__", "")
-    qualname = getattr(mapper, "__qualname__", "")
+    callable_value = mapper.func if isinstance(mapper, partial) else mapper
+    module = getattr(callable_value, "__module__", "")
+    qualname = getattr(callable_value, "__qualname__", "")
     if (
         not module
         or module == "__main__"
@@ -58,32 +60,45 @@ def _mapper_id(mapper: Mapper) -> str:
         or "<locals>" in qualname
     ):
         raise ValueError("recipe mappers must be named importable callables")
-    return f"{module}.{qualname}"
+    identity = f"{module}.{qualname}"
+    if isinstance(mapper, partial):
+        bindings = {
+            "args": mapper.args,
+            "keywords": mapper.keywords or {},
+        }
+        identity += ":partial:" + _json_fingerprint(bindings)
+    return identity
 
 
 def _implementation_contract(function: Callable[..., Any]) -> dict[str, str]:
     """Identify callable code strongly enough to reject changed preprocessing."""
 
-    module = getattr(function, "__module__", "")
-    qualname = getattr(function, "__qualname__", "")
+    callable_value = function.func if isinstance(function, partial) else function
+    module = getattr(callable_value, "__module__", "")
+    qualname = getattr(callable_value, "__qualname__", "")
     if not module or not qualname:
         raise ValueError("data callables must expose a stable module and qualname")
-    source_path = inspect.getsourcefile(function)
+    source_path = inspect.getsourcefile(callable_value)
     if source_path is not None:
         implementation = Path(source_path).read_bytes()
         digest_kind = "module_file_sha256"
     else:
         try:
-            implementation = inspect.getsource(function).encode()
+            implementation = inspect.getsource(callable_value).encode()
         except (OSError, TypeError) as error:
             raise ValueError(
                 f"cannot fingerprint data callable {module}.{qualname}"
             ) from error
         digest_kind = "callable_source_sha256"
-    return {
+    contract = {
         "callable": f"{module}.{qualname}",
         digest_kind: hashlib.sha256(implementation).hexdigest(),
     }
+    if isinstance(function, partial):
+        contract["bindings_sha256"] = _json_fingerprint(
+            {"args": function.args, "keywords": function.keywords or {}}
+        )
+    return contract
 
 
 def _data_implementations(

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from typing import ClassVar
 
 import equinox as eqx
 import jax
@@ -56,8 +57,18 @@ def _valid_mean(
 class CosineRegressionTask(eqx.Module):
     """Supervise the cosine similarity of aligned representation pairs."""
 
+    accumulation_metric_reductions: ClassVar[dict[str, str]] = {
+        "pair_similarity_mean": "mean",
+        "valid_pairs": "sum",
+    }
+
     left_route: Route = eqx.field(static=True, default=Route.GENERIC)
     right_route: Route = eqx.field(static=True, default=Route.GENERIC)
+
+    def accumulation_weight(self, batch: PairwiseBatch) -> Array:
+        """Return the exact denominator used by the batch-mean objective."""
+
+        return jnp.sum(batch.valid).astype(jnp.float32)
 
     def loss(
         self,

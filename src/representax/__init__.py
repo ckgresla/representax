@@ -14,6 +14,7 @@ from .core import (
     encode,
     evaluate_loss,
 )
+from .export import InferenceBundle, export_inference_bundle, load_inference_bundle
 from .inference import TextEmbeddingModel, embed
 
 __all__ = [
@@ -24,6 +25,7 @@ __all__ = [
     "Modality",
     "Route",
     "JobConfig",
+    "InferenceBundle",
     "Task",
     "TextEmbeddingModel",
     "bind",
@@ -31,7 +33,9 @@ __all__ = [
     "encode",
     "embed",
     "evaluate_loss",
+    "export_inference_bundle",
     "integrations",
+    "load_inference_bundle",
     "models",
     "planning",
     "tasks",

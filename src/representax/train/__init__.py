@@ -15,12 +15,23 @@ from .checkpoint import (
     validate_complete_checkpoint,
 )
 from .config import build_loss_execution
+from .evaluation import EvaluationResult, EvaluationRunner, evaluate
 from .execution import Direct, ExecutionContext, LossExecution
 from .grad_cache import GradCache
+from .job import (
+    JobRuntime,
+    build_batches,
+    build_collate,
+    build_component,
+    build_job_runtime,
+    build_model,
+    resolve_target,
+    run_job,
+)
 from .logging import MetricRecord, Reporter, RunLogger
 from .loop import TrainingRunResult, run_training
 from .mega_batch import MegaBatchMining
-from .optimizer import build_optimizer
+from .optimizer import build_optimizer, build_schedule
 from .sharding import DataParallel, build_data_parallel_train_step
 from .state import StepMetrics, StepResult, TrainState
 from .step import (
@@ -42,8 +53,11 @@ __all__ = [
     "Direct",
     "DataParallel",
     "ExecutionContext",
+    "EvaluationResult",
+    "EvaluationRunner",
     "GradCache",
     "IncompleteCheckpointError",
+    "JobRuntime",
     "LossExecution",
     "MegaBatchMining",
     "MegaBatchMiningConfig",
@@ -60,10 +74,19 @@ __all__ = [
     "build_train_step",
     "build_loss_execution",
     "build_data_parallel_train_step",
+    "build_batches",
+    "build_collate",
+    "build_component",
+    "build_job_runtime",
+    "build_model",
     "build_optimizer",
+    "build_schedule",
+    "evaluate",
     "init_train_state",
     "make_train_state",
     "run_training",
+    "run_job",
+    "resolve_target",
     "scientific_fingerprint",
     "training_checkpointables",
     "tree_all_finite",

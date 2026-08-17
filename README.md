@@ -22,8 +22,9 @@ The project is alpha. The current slice provides:
   5.6.1 dense loss classes, including Matryoshka/adaptive-layer modifiers,
   direct/cached GIST, contrastive tension, classification, orthogonal
   regularization, denoising, and bounded mega-batch mining;
-- a Grain-to-compiled-step training loop with asynchronous reporting and exact
-  checkpoint resume;
+- a Grain-to-compiled-step training loop with asynchronous reporting, exact
+  checkpoint resume, configured validation, best-model selection, and atomic
+  inference export;
 - lazy Grain recipes with built-in Hugging Face and local artifact resolvers;
 - validated domain configs with annotated scientific and execution parameters; and
 - explicit unit, runtime, parity, distributed, and performance test lanes.
@@ -334,20 +335,26 @@ from representax.config import (
     BatchConfig,
     CheckpointConfig,
     ComponentConfig,
+    DataConfig,
+    EvaluationConfig,
+    ExportConfig,
     JobConfig,
     LoggingConfig,
     ModelConfig,
     OptimizationConfig,
     TrainingConfig,
 )
-from representax.data import build_grain_iterator
-from representax.tasks import build_task
+from representax.data import mix, source
 from representax.tasks.retrieval import MNRConfig, RetrievalConfig
-from representax.train import (
-    build_optimizer,
-    build_train_step,
-    init_train_state,
-    run_training,
+from representax.train import run_job
+
+train_data = DataConfig(
+    recipe=mix(source("train.jsonl", map="my_project.to_retrieval_record")),
+    collate=ComponentConfig(target="my_project.collate_retrieval"),
+)
+valid_data = DataConfig(
+    recipe=mix(source("valid.jsonl", map="my_project.to_retrieval_record")),
+    collate=ComponentConfig(target="my_project.collate_retrieval"),
 )
 
 job = JobConfig(
@@ -361,7 +368,7 @@ job = JobConfig(
             parameters={"learning_rate": 1e-3},
         ),
     ),
-    data=recipe,
+    data=train_data,
     training=TrainingConfig(
         global_batch_size=32,
         max_steps=10_000,
@@ -370,19 +377,22 @@ job = JobConfig(
     ),
     logging=LoggingConfig(console_every=100),
     checkpointing=CheckpointConfig(every=1_000, keep=3),
+    evaluation=EvaluationConfig(
+        data=valid_data,
+        batch_size=32,
+        every_steps=1_000,
+        primary_metric="valid/loss",
+    ),
+    export=ExportConfig(selection="best"),
 )
-optimizer = build_optimizer(job.optimization)
-task = build_task(job.task, job.loss)
-state = init_train_state(model, optimizer)
-batches = build_grain_iterator(job.data, batch_size=32, batch_fn=collate)
-result = run_training(
-    state=state,
-    step=build_train_step(task, optimizer),
-    batches=batches,
-    job=job,
-    run_directory="runs/example",
-)
+result = run_job(job, "runs/example")
 ```
+
+`run_job` is the canonical configured boundary: it builds the Equinox model,
+task and loss modifiers, Optax schedule/state, Grain sources, compiled execution
+strategy, evaluator cache, Orbax lifecycle, and selected inference artifact.
+The lower-level builders and `run_training` remain public for research programs
+that need to assemble those pieces directly.
 
 Array-facing APIs use `jaxtyping` to state dtype and symbolic shape contracts
 directly on model forwards, tasks, losses, and compiled-step keys. Representax

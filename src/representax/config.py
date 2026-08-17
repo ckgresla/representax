@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Mapping
 from typing import Literal, Self
 
 from pydantic import (
     Field,
     NonNegativeInt,
+    PositiveFloat,
     PositiveInt,
     SerializeAsAny,
     ValidationInfo,
@@ -28,6 +30,8 @@ from .data.recipe import MixtureRecipe
 from .tasks.config import LossConfig, LossModifierConfig, TaskConfig
 
 RematerializationPolicy = Literal["none", "selective", "full"]
+MetricMode = Literal["min", "max"]
+ExportSelection = Literal["final", "best"]
 JsonScalar = str | int | float | bool | None
 JsonValue = TypeAliasType(
     "JsonValue",
@@ -50,6 +54,97 @@ class OptimizationConfig(FrozenConfig):
     """Optimizer transformation and its scientific hyperparameters."""
 
     optimizer: ComponentConfig
+    schedule: ComponentConfig | None = None
+    schedule_parameter: NonEmptyString = "learning_rate"
+    max_gradient_norm: Scientific[PositiveFloat | None] = 1.0
+
+
+class DataConfig(FrozenConfig):
+    """Reproducible artifact recipe plus Grain materialization policy."""
+
+    recipe: Scientific[MixtureRecipe]
+    collate: Scientific[ComponentConfig | None] = None
+    drop_remainder: Scientific[bool] = True
+    num_threads: Execution[NonNegativeInt] = 16
+    prefetch_buffer_size: Execution[NonNegativeInt] = 16
+
+    @model_validator(mode="before")
+    @classmethod
+    def wrap_recipe(cls, value: object) -> object:
+        """Keep the original one-recipe JobConfig spelling source-compatible."""
+
+        if isinstance(value, MixtureRecipe):
+            return {"recipe": value}
+        if (
+            isinstance(value, Mapping)
+            and "recipe" not in value
+            and "sources" in value
+            and "weights" in value
+        ):
+            return {"recipe": value}
+        return value
+
+
+class EvaluatorConfig(FrozenConfig):
+    """One registered evaluator and its stable metric namespace."""
+
+    kind: Literal["loss"] = "loss"
+    name: NonEmptyString = "loss"
+
+
+class EvaluationConfig(FrozenConfig):
+    """Offline-compatible validation data, cadence, and model selection."""
+
+    data: DataConfig
+    batch_size: Scientific[PositiveInt]
+    evaluators: Scientific[tuple[EvaluatorConfig, ...]] = (EvaluatorConfig(),)
+    every_steps: PositiveInt | None = None
+    on_start: bool = False
+    on_end: bool = True
+    max_batches: Scientific[PositiveInt | None] = None
+    primary_metric: Scientific[NonEmptyString] = "valid/loss"
+    primary_metric_mode: Scientific[MetricMode] = "min"
+    save_best: bool = True
+    keep_best: PositiveInt = 1
+
+    @model_validator(mode="after")
+    def validate_evaluation(self) -> Self:
+        names = tuple(evaluator.name for evaluator in self.evaluators)
+        if not names:
+            raise ValueError("evaluation requires at least one evaluator")
+        if len(set(names)) != len(names):
+            raise ValueError("evaluator names must be unique")
+        if not self.primary_metric.startswith("valid/"):
+            raise ValueError("primary_metric must use the valid/ namespace")
+        if self.save_best and not (
+            self.on_start or self.on_end or self.every_steps is not None
+        ):
+            raise ValueError("best-model selection requires an evaluation cadence")
+        return self
+
+
+class HuggingFaceExportConfig(FrozenConfig):
+    """Optional verified export through a native checkpoint adapter."""
+
+    source_checkpoint: NonEmptyString
+    adapter: ComponentConfig
+    verify_reload: bool = True
+
+
+class ExportConfig(FrozenConfig):
+    """Atomic inference artifact publication after successful training."""
+
+    enabled: bool = True
+    selection: ExportSelection = "final"
+    directory_name: NonEmptyString = "final-model"
+    huggingface: HuggingFaceExportConfig | None = None
+
+    @field_validator("directory_name")
+    @classmethod
+    def validate_directory_name(cls, value: str) -> str:
+        if value in {".", ".."} or "/" in value or "\\" in value:
+            raise ValueError("export directory_name must be one path component")
+        return value
 
 
 class MeshConfig(FrozenConfig):
@@ -157,7 +252,6 @@ class TrainingConfig(FrozenConfig):
         ),
     )
     donate_buffers: Execution[bool] = True
-    prefetch_depth: Execution[NonNegativeInt] = 2
 
     @model_validator(mode="after")
     def validate_loss_execution(self) -> Self:
@@ -205,10 +299,12 @@ class JobConfig(FrozenConfig):
     loss: Scientific[SerializeAsAny[LossConfig]]
     loss_modifiers: Scientific[tuple[SerializeAsAny[LossModifierConfig], ...]] = ()
     optimization: Scientific[OptimizationConfig]
-    data: Scientific[MixtureRecipe]
+    data: DataConfig
     training: TrainingConfig
     checkpointing: CheckpointConfig | None = None
     logging: LoggingConfig = LoggingConfig()
+    evaluation: EvaluationConfig | None = None
+    export: ExportConfig = ExportConfig()
 
     @field_validator("task", mode="before")
     @classmethod
@@ -304,6 +400,19 @@ class JobConfig(FrozenConfig):
                 f"loss {self.loss.kind!r} does not support training strategy "
                 f"{strategy!r}"
             )
+        accumulation_steps = self.training.batch.gradient_accumulation_steps
+        if accumulation_steps > 1:
+            if strategy != "direct":
+                raise ValueError(
+                    "gradient accumulation composes only with direct execution; "
+                    "GradCache and mega-batch execution already own their logical "
+                    "batch decomposition"
+                )
+            if not definition.microbatch_accumulation:
+                raise ValueError(
+                    f"loss {self.loss.kind!r} does not decompose exactly across "
+                    "gradient-accumulation microbatches"
+                )
         modifiers = (
             None if info.context is None else info.context.get("modifier_registry")
         )
@@ -320,6 +429,13 @@ class JobConfig(FrozenConfig):
                     f"loss modifier {modifier.kind!r} does not support training "
                     f"strategy {strategy!r}"
                 )
+            if accumulation_steps > 1 and not (
+                modifier_definition.microbatch_accumulation
+            ):
+                raise ValueError(
+                    f"loss modifier {modifier.kind!r} does not decompose exactly "
+                    "across gradient-accumulation microbatches"
+                )
         return self
 
     @model_validator(mode="after")
@@ -331,6 +447,18 @@ class JobConfig(FrozenConfig):
             raise ValueError(
                 "additional checkpoint iterations cannot exceed training.max_steps"
             )
+        if (
+            self.evaluation is not None
+            and self.evaluation.save_best
+            and self.checkpointing is None
+        ):
+            raise ValueError("best-model selection requires checkpointing")
+        if (
+            self.export.enabled
+            and self.export.selection == "best"
+            and (self.evaluation is None or not self.evaluation.save_best)
+        ):
+            raise ValueError("best-model export requires evaluation.save_best")
         return self
 
     def parameters(self, role: ParameterRole) -> dict[str, object]:
@@ -343,7 +471,12 @@ __all__ = [
     "BatchConfig",
     "CheckpointConfig",
     "ComponentConfig",
+    "DataConfig",
+    "EvaluationConfig",
+    "EvaluatorConfig",
+    "ExportConfig",
     "GradCacheConfig",
+    "HuggingFaceExportConfig",
     "JobConfig",
     "LoggingConfig",
     "MegaBatchMiningConfig",

@@ -133,7 +133,7 @@ def test_training_loop_writes_every_metric_and_closes_batches(tmp_path, capsys):
     assert run["status"] == "completed"
     assert run["completed_iterations"] == 2
     assert run["scientific"]["training"]["global_batch_size"] == 2
-    assert run["execution"]["training"]["prefetch_depth"] == 2
+    assert run["execution"]["data"]["prefetch_buffer_size"] == 16
     assert run["config"]["logging"] == {
         "console_every": 2,
         "reporter_queue_size": 16,

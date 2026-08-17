@@ -25,6 +25,7 @@ from representax.tasks.modifiers import (
     MatryoshkaModifierConfig,
     MatryoshkaTask,
 )
+from representax.tasks.pairwise import CosineRegressionConfig, PairwiseConfig
 from representax.tasks.retrieval import MNRConfig, MNRTask, RetrievalConfig
 from representax.train import GradCache, build_loss_execution, scientific_fingerprint
 
@@ -36,8 +37,8 @@ def _training(**overrides: Any) -> TrainingConfig:
         "seed": 7,
         "mesh": MeshConfig(axis_shapes=(4,), axis_names=("data",)),
         "batch": BatchConfig(
-            micro_batch_size=4,
-            gradient_accumulation_steps=4,
+            micro_batch_size=64,
+            gradient_accumulation_steps=1,
         ),
     }
     values.update(overrides)
@@ -145,7 +146,7 @@ def test_parameter_roles_project_domain_config_without_parallel_trees():
         "max_steps": 100,
         "seed": 7,
     }
-    assert set(execution) == {"training"}
+    assert set(execution) == {"data", "training"}
     training_execution = execution["training"]
     assert isinstance(training_execution, dict)
     assert training_execution["grad_cache"] == {
@@ -165,25 +166,49 @@ def test_scientific_fingerprint_ignores_execution_only_changes():
             mesh=MeshConfig(axis_shapes=(8,), axis_names=("data",)),
             batch=BatchConfig(
                 micro_batch_size=2,
-                gradient_accumulation_steps=4,
+                gradient_accumulation_steps=1,
             ),
             grad_cache=GradCacheConfig(micro_batch_size=2),
             activation_rematerialization="selective",
-            prefetch_depth=8,
         )
     )
     changed_science = _job(
         training=_training(
             global_batch_size=128,
             batch=BatchConfig(
-                micro_batch_size=8,
-                gradient_accumulation_steps=4,
+                micro_batch_size=128,
+                gradient_accumulation_steps=1,
             ),
         )
     )
 
     assert scientific_fingerprint(retuned_execution) == scientific_fingerprint(baseline)
     assert scientific_fingerprint(changed_science) != scientific_fingerprint(baseline)
+
+
+def test_gradient_accumulation_is_capability_gated_by_loss_semantics():
+    with pytest.raises(ValidationError, match="does not decompose exactly"):
+        _job(
+            training=_training(
+                batch=BatchConfig(
+                    micro_batch_size=16,
+                    gradient_accumulation_steps=4,
+                )
+            )
+        )
+
+    job = _job(
+        task=PairwiseConfig(),
+        loss=CosineRegressionConfig(),
+        training=_training(
+            batch=BatchConfig(
+                micro_batch_size=16,
+                gradient_accumulation_steps=4,
+            )
+        ),
+    )
+
+    assert job.training.batch.gradient_accumulation_steps == 4
 
 
 def test_structured_task_loss_and_grad_cache_build_runtime_objects():

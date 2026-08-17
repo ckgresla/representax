@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 from urllib.parse import unquote, urlparse
@@ -33,6 +35,35 @@ class ArtifactSpec(Protocol):
 
 
 ArtifactResolver = Callable[[ArtifactSpec], RandomAccessSource]
+
+
+@dataclass(frozen=True)
+class JsonLinesSource:
+    """Offset-indexed local JSONL without a materialized dataset dependency."""
+
+    path: Path
+    offsets: tuple[int, ...]
+
+    @classmethod
+    def open(cls, path: Path) -> JsonLinesSource:
+        offsets = []
+        with path.open("rb") as stream:
+            while line := stream.readline():
+                if line.strip():
+                    offsets.append(stream.tell() - len(line))
+        return cls(path=path, offsets=tuple(offsets))
+
+    def __len__(self) -> int:
+        return len(self.offsets)
+
+    def __getitem__(self, index: int) -> Any:
+        if index < 0:
+            index += len(self)
+        if index < 0 or index >= len(self):
+            raise IndexError(index)
+        with self.path.open("rb") as stream:
+            stream.seek(self.offsets[index])
+            return json.loads(stream.readline())
 
 
 def _datasets_module():
@@ -122,8 +153,8 @@ def resolve_local(artifact: ArtifactSpec) -> RandomAccessSource:
     path = local_path(artifact.uri)
     if not path.exists():
         raise FileNotFoundError(f"local artifact does not exist: {path}")
-    datasets = _datasets_module()
     if path.is_dir():
+        datasets = _datasets_module()
         split = artifact.split or "train"
         resolved = datasets.load_dataset(
             str(path),
@@ -143,6 +174,9 @@ def resolve_local(artifact: ArtifactSpec) -> RandomAccessSource:
             f"expected one of {supported}"
         ) from error
 
+    if builder == "json":
+        return JsonLinesSource.open(path)
+    datasets = _datasets_module()
     if builder == "arrow":
         resolved = datasets.Dataset.from_file(str(path), in_memory=False)
     else:
@@ -167,6 +201,7 @@ __all__ = [
     "ArtifactResolver",
     "ArtifactSpec",
     "BUILTIN_RESOLVERS",
+    "JsonLinesSource",
     "RandomAccessSource",
     "huggingface_dataset_id",
     "local_path",
