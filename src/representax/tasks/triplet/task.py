@@ -10,7 +10,7 @@ import jax
 import jax.numpy as jnp
 from jaxtyping import Array, Float, PRNGKeyArray
 
-from representax.core import Encoder, LossOutput, Route, encode
+from representax.core import EncodeFunction, Encoder, LossOutput, Route, encode
 
 from .batch import ExplicitTripletBatch, LabeledExamplesBatch
 from .losses import (
@@ -57,29 +57,47 @@ class ExplicitTripletTask(eqx.Module):
         *,
         key: PRNGKeyArray | None = None,
     ) -> LossOutput:
+        representations = self.representations(model, batch, key=key)
+        return self.loss_from_representations(representations, batch)
+
+    def representations(
+        self,
+        model: Encoder,
+        batch: ExplicitTripletBatch,
+        *,
+        key: PRNGKeyArray | None = None,
+        encode_fn: EncodeFunction = encode,
+    ) -> tuple[Array, Array, Array]:
         if key is None:
             anchor_key = positive_key = negative_key = None
         else:
             anchor_key, positive_key, negative_key = jax.random.split(key, 3)
-        anchor = encode(
+        anchor = encode_fn(
             model,
             batch.anchor,
             route=self.anchor_route,
             key=anchor_key,
         )
-        positive = encode(
+        positive = encode_fn(
             model,
             batch.positive,
             route=self.positive_route,
             key=positive_key,
         )
-        negative = encode(
+        negative = encode_fn(
             model,
             batch.negative,
             route=self.negative_route,
             key=negative_key,
         )
-        return self.loss_from_embeddings(anchor, positive, negative, batch)
+        return anchor, positive, negative
+
+    def loss_from_representations(
+        self,
+        representations: tuple[Array, Array, Array],
+        batch: ExplicitTripletBatch,
+    ) -> LossOutput:
+        return self.loss_from_embeddings(*representations, batch)
 
     def loss_from_embeddings(
         self,
@@ -138,7 +156,25 @@ class BatchTripletTask(eqx.Module):
         *,
         key: PRNGKeyArray | None = None,
     ) -> LossOutput:
-        embeddings = encode(model, batch.examples, route=self.route, key=key)
+        representations = self.representations(model, batch, key=key)
+        return self.loss_from_representations(representations, batch)
+
+    def representations(
+        self,
+        model: Encoder,
+        batch: LabeledExamplesBatch,
+        *,
+        key: PRNGKeyArray | None = None,
+        encode_fn: EncodeFunction = encode,
+    ) -> tuple[Array]:
+        return (encode_fn(model, batch.examples, route=self.route, key=key),)
+
+    def loss_from_representations(
+        self,
+        representations: tuple[Array],
+        batch: LabeledExamplesBatch,
+    ) -> LossOutput:
+        (embeddings,) = representations
         return self.loss_from_embeddings(embeddings, batch)
 
     def loss_from_embeddings(

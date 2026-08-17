@@ -12,6 +12,7 @@ import pytest
 
 from representax.core import EncoderMetadata, Modality, Route, encode
 from representax.models import DenseEncoder
+from representax.tasks.modifiers import MatryoshkaTask
 from representax.tasks.retrieval import MNRTask, retrieval_batch
 from representax.train import GradCache, build_train_step, init_train_state
 
@@ -71,11 +72,10 @@ def _nontrivial_batch():
 @pytest.mark.parametrize("symmetric", [False, True])
 def test_grad_cache_matches_direct_full_optimizer_update(symmetric: bool):
     model = DenseEncoder(4, 3, key=jax.random.key(0), normalize=False)
-    task = MNRTask(
-        scale=7.0,
-        symmetric=symmetric,
-        dimensions=(2, 3),
-        dimension_weights=(1.0, 2.0),
+    task = MatryoshkaTask(
+        MNRTask(scale=7.0, symmetric=symmetric),
+        (2, 3),
+        weights=(1.0, 2.0),
     )
     optimizer = optax.adamw(learning_rate=1e-3, weight_decay=1e-2)
     state = init_train_state(model, optimizer)

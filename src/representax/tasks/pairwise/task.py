@@ -9,7 +9,7 @@ import jax
 import jax.numpy as jnp
 from jaxtyping import Array, Float, PRNGKeyArray
 
-from representax.core import Encoder, LossOutput, Route, encode
+from representax.core import EncodeFunction, Encoder, LossOutput, Route, encode
 
 from .batch import PairwiseBatch
 from .losses import (
@@ -28,6 +28,7 @@ def _encode_pairs(
     left_route: Route,
     right_route: Route,
     key: PRNGKeyArray | None,
+    encode_fn: EncodeFunction = encode,
 ) -> tuple[
     Float[Array, "pair representation"],
     Float[Array, "pair representation"],
@@ -37,8 +38,8 @@ def _encode_pairs(
     else:
         left_key, right_key = jax.random.split(key)
     return (
-        encode(model, batch.left, route=left_route, key=left_key),
-        encode(model, batch.right, route=right_route, key=right_key),
+        encode_fn(model, batch.left, route=left_route, key=left_key),
+        encode_fn(model, batch.right, route=right_route, key=right_key),
     )
 
 
@@ -65,14 +66,32 @@ class CosineRegressionTask(eqx.Module):
         *,
         key: PRNGKeyArray | None = None,
     ) -> LossOutput:
-        left, right = _encode_pairs(
+        representations = self.representations(model, batch, key=key)
+        return self.loss_from_representations(representations, batch)
+
+    def representations(
+        self,
+        model: Encoder,
+        batch: PairwiseBatch,
+        *,
+        key: PRNGKeyArray | None = None,
+        encode_fn: EncodeFunction = encode,
+    ) -> tuple[Array, Array]:
+        return _encode_pairs(
             model,
             batch,
             left_route=self.left_route,
             right_route=self.right_route,
             key=key,
+            encode_fn=encode_fn,
         )
-        return self.loss_from_embeddings(left, right, batch)
+
+    def loss_from_representations(
+        self,
+        representations: tuple[Array, Array],
+        batch: PairwiseBatch,
+    ) -> LossOutput:
+        return self.loss_from_embeddings(*representations, batch)
 
     def loss_from_embeddings(
         self,
@@ -117,14 +136,32 @@ class ContrastiveTask(eqx.Module):
         *,
         key: PRNGKeyArray | None = None,
     ) -> LossOutput:
-        left, right = _encode_pairs(
+        representations = self.representations(model, batch, key=key)
+        return self.loss_from_representations(representations, batch)
+
+    def representations(
+        self,
+        model: Encoder,
+        batch: PairwiseBatch,
+        *,
+        key: PRNGKeyArray | None = None,
+        encode_fn: EncodeFunction = encode,
+    ) -> tuple[Array, Array]:
+        return _encode_pairs(
             model,
             batch,
             left_route=self.left_route,
             right_route=self.right_route,
             key=key,
+            encode_fn=encode_fn,
         )
-        return self.loss_from_embeddings(left, right, batch)
+
+    def loss_from_representations(
+        self,
+        representations: tuple[Array, Array],
+        batch: PairwiseBatch,
+    ) -> LossOutput:
+        return self.loss_from_embeddings(*representations, batch)
 
     def loss_from_embeddings(
         self,
@@ -171,14 +208,32 @@ class CoSENTTask(eqx.Module):
         *,
         key: PRNGKeyArray | None = None,
     ) -> LossOutput:
-        left, right = _encode_pairs(
+        representations = self.representations(model, batch, key=key)
+        return self.loss_from_representations(representations, batch)
+
+    def representations(
+        self,
+        model: Encoder,
+        batch: PairwiseBatch,
+        *,
+        key: PRNGKeyArray | None = None,
+        encode_fn: EncodeFunction = encode,
+    ) -> tuple[Array, Array]:
+        return _encode_pairs(
             model,
             batch,
             left_route=self.left_route,
             right_route=self.right_route,
             key=key,
+            encode_fn=encode_fn,
         )
-        return self.loss_from_embeddings(left, right, batch)
+
+    def loss_from_representations(
+        self,
+        representations: tuple[Array, Array],
+        batch: PairwiseBatch,
+    ) -> LossOutput:
+        return self.loss_from_embeddings(*representations, batch)
 
     def loss_from_embeddings(
         self,
@@ -221,14 +276,32 @@ class AnglETask(eqx.Module):
         *,
         key: PRNGKeyArray | None = None,
     ) -> LossOutput:
-        left, right = _encode_pairs(
+        representations = self.representations(model, batch, key=key)
+        return self.loss_from_representations(representations, batch)
+
+    def representations(
+        self,
+        model: Encoder,
+        batch: PairwiseBatch,
+        *,
+        key: PRNGKeyArray | None = None,
+        encode_fn: EncodeFunction = encode,
+    ) -> tuple[Array, Array]:
+        return _encode_pairs(
             model,
             batch,
             left_route=self.left_route,
             right_route=self.right_route,
             key=key,
+            encode_fn=encode_fn,
         )
-        return self.loss_from_embeddings(left, right, batch)
+
+    def loss_from_representations(
+        self,
+        representations: tuple[Array, Array],
+        batch: PairwiseBatch,
+    ) -> LossOutput:
+        return self.loss_from_embeddings(*representations, batch)
 
     def loss_from_embeddings(
         self,

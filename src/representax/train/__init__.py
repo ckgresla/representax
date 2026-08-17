@@ -1,6 +1,6 @@
 """Generic training state and compiled update construction."""
 
-from representax.config import CheckpointConfig, LoggingConfig
+from representax.config import CheckpointConfig, LoggingConfig, MegaBatchMiningConfig
 
 from .checkpoint import (
     CheckpointError,
@@ -19,6 +19,7 @@ from .execution import Direct, ExecutionContext, LossExecution
 from .grad_cache import GradCache
 from .logging import MetricRecord, Reporter, RunLogger
 from .loop import TrainingRunResult, run_training
+from .mega_batch import MegaBatchMining
 from .optimizer import build_optimizer
 from .sharding import DataParallel, build_data_parallel_train_step
 from .state import StepMetrics, StepResult, TrainState
@@ -44,6 +45,8 @@ __all__ = [
     "GradCache",
     "IncompleteCheckpointError",
     "LossExecution",
+    "MegaBatchMining",
+    "MegaBatchMiningConfig",
     "MetricRecord",
     "Reporter",
     "RestoredTrainingState",

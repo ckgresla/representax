@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "representax"
-version = "0.0.1"
+version = "0.0.2"
 description = "Task-general representation learning in JAX and Equinox."
 readme = "README.md"
 license = "MIT"

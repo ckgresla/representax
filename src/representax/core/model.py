@@ -65,6 +65,19 @@ class Encoder(Protocol):
     ) -> Float[Array, "batch representation"]: ...
 
 
+@runtime_checkable
+class LayerwiseEncoder(Encoder, Protocol):
+    """Encoder that exposes postprocessed representations at every depth."""
+
+    def encode_layers(
+        self,
+        inputs: Any,
+        *,
+        route: Route,
+        key: PRNGKeyArray | None = None,
+    ) -> Float[Array, "layer batch representation"]: ...
+
+
 def _metadata(model: Any) -> EncoderMetadata:
     if not isinstance(model, eqx.Module):
         raise TypeError("encoders must be Equinox module trees")
@@ -98,6 +111,41 @@ def encode(
         raise ValueError(
             f"{metadata.model_id} declares output_dimension="
             f"{metadata.output_dimension} but returned {result.shape[1]}"
+        )
+    return result
+
+
+def encode_layers(
+    model: LayerwiseEncoder,
+    inputs: Any,
+    *,
+    route: Route = Route.GENERIC,
+    key: PRNGKeyArray | None = None,
+) -> Float[Array, "layer batch representation"]:
+    """Encode every available depth and enforce a stable layer-major contract."""
+
+    metadata = _metadata(model)
+    route = Route(route)
+    if route not in metadata.routes:
+        raise ValueError(f"{metadata.model_id} does not support route {route.value!r}")
+    layerwise = getattr(model, "encode_layers", None)
+    if not callable(layerwise):
+        raise TypeError(
+            f"{metadata.model_id} does not expose layerwise representations"
+        )
+    result = jnp.asarray(layerwise(inputs, route=route, key=key))
+    if result.ndim != 3:
+        raise ValueError(
+            "layerwise encoder output must have shape [layer, batch, dimension]"
+        )
+    if not jnp.issubdtype(result.dtype, jnp.floating):
+        raise TypeError("layerwise encoder output must have a floating dtype")
+    if result.shape[0] < 2:
+        raise ValueError("layerwise encoders must expose a prior and final layer")
+    if result.shape[2] != metadata.output_dimension:
+        raise ValueError(
+            f"{metadata.model_id} declares output_dimension="
+            f"{metadata.output_dimension} but returned {result.shape[2]}"
         )
     return result
 

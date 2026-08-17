@@ -9,7 +9,7 @@ import jax
 import jax.numpy as jnp
 from jaxtyping import Array, Float, PRNGKeyArray
 
-from representax.core import Encoder, LossOutput, Route, encode
+from representax.core import EncodeFunction, Encoder, LossOutput, Route, encode
 
 from .batch import (
     DistributionDistillationBatch,
@@ -63,21 +63,53 @@ class EmbeddingDistillationTask(eqx.Module):
         *,
         key: PRNGKeyArray | None = None,
     ) -> LossOutput:
+        representations = self.representations(model, batch, key=key)
+        return self.loss_from_representations(representations, batch)
+
+    def representations(
+        self,
+        model: Encoder,
+        batch: EmbeddingDistillationBatch,
+        *,
+        key: PRNGKeyArray | None = None,
+        encode_fn: EncodeFunction = encode,
+    ) -> tuple[Array, ...]:
         routes = _resolved_routes(self.routes, len(batch.inputs))
         keys = _keys(key, len(batch.inputs))
-        embeddings = jnp.stack(
-            tuple(
-                encode(model, payload, route=route, key=column_key)
-                for payload, route, column_key in zip(
-                    batch.inputs,
-                    routes,
-                    keys,
-                    strict=True,
-                )
-            ),
-            axis=0,
+        return tuple(
+            encode_fn(model, payload, route=route, key=column_key)
+            for payload, route, column_key in zip(
+                batch.inputs,
+                routes,
+                keys,
+                strict=True,
+            )
         )
-        return self.loss_from_embeddings(embeddings, batch)
+
+    def loss_from_representations(
+        self,
+        representations: tuple[Array, ...],
+        batch: EmbeddingDistillationBatch,
+    ) -> LossOutput:
+        return self.loss_from_embeddings(jnp.stack(representations), batch)
+
+    def dimension_batch(
+        self,
+        batch: EmbeddingDistillationBatch,
+        *,
+        dimension: int,
+        full_dimension: int,
+    ) -> EmbeddingDistillationBatch:
+        """Truncate embedding targets exactly when they match the full student width."""
+
+        teacher = batch.teacher_embeddings
+        if teacher.shape[-1] == full_dimension:
+            teacher = teacher[..., :dimension]
+        return EmbeddingDistillationBatch(
+            inputs=batch.inputs,
+            teacher_embeddings=teacher,
+            valid=batch.valid,
+        )
 
     def loss_from_embeddings(
         self,
@@ -117,31 +149,52 @@ class MarginDistillationTask(eqx.Module):
         *,
         key: PRNGKeyArray | None = None,
     ) -> LossOutput:
+        representations = self.representations(model, batch, key=key)
+        return self.loss_from_representations(representations, batch)
+
+    def representations(
+        self,
+        model: Encoder,
+        batch: MarginDistillationBatch,
+        *,
+        key: PRNGKeyArray | None = None,
+        encode_fn: EncodeFunction = encode,
+    ) -> tuple[Array, ...]:
         keys = _keys(key, len(batch.negatives) + 2)
-        query = encode(model, batch.query, route=self.query_route, key=keys[0])
-        positive = encode(
+        query = encode_fn(model, batch.query, route=self.query_route, key=keys[0])
+        positive = encode_fn(
             model,
             batch.positive,
             route=self.document_route,
             key=keys[1],
         )
-        negatives = jnp.stack(
-            tuple(
-                encode(
-                    model,
-                    payload,
-                    route=self.document_route,
-                    key=negative_key,
-                )
-                for payload, negative_key in zip(
-                    batch.negatives,
-                    keys[2:],
-                    strict=True,
-                )
-            ),
-            axis=0,
+        negatives = tuple(
+            encode_fn(
+                model,
+                payload,
+                route=self.document_route,
+                key=negative_key,
+            )
+            for payload, negative_key in zip(
+                batch.negatives,
+                keys[2:],
+                strict=True,
+            )
         )
-        return self.loss_from_embeddings(query, positive, negatives, batch)
+        return query, positive, *negatives
+
+    def loss_from_representations(
+        self,
+        representations: tuple[Array, ...],
+        batch: MarginDistillationBatch,
+    ) -> LossOutput:
+        query, positive, *negatives = representations
+        return self.loss_from_embeddings(
+            query,
+            positive,
+            jnp.stack(tuple(negatives)),
+            batch,
+        )
 
     def loss_from_embeddings(
         self,
@@ -188,25 +241,41 @@ class DistributionDistillationTask(eqx.Module):
         *,
         key: PRNGKeyArray | None = None,
     ) -> LossOutput:
+        representations = self.representations(model, batch, key=key)
+        return self.loss_from_representations(representations, batch)
+
+    def representations(
+        self,
+        model: Encoder,
+        batch: DistributionDistillationBatch,
+        *,
+        key: PRNGKeyArray | None = None,
+        encode_fn: EncodeFunction = encode,
+    ) -> tuple[Array, ...]:
         keys = _keys(key, len(batch.candidates) + 1)
-        query = encode(model, batch.query, route=self.query_route, key=keys[0])
-        candidates = jnp.stack(
-            tuple(
-                encode(
-                    model,
-                    payload,
-                    route=self.candidate_route,
-                    key=candidate_key,
-                )
-                for payload, candidate_key in zip(
-                    batch.candidates,
-                    keys[1:],
-                    strict=True,
-                )
-            ),
-            axis=0,
+        query = encode_fn(model, batch.query, route=self.query_route, key=keys[0])
+        candidates = tuple(
+            encode_fn(
+                model,
+                payload,
+                route=self.candidate_route,
+                key=candidate_key,
+            )
+            for payload, candidate_key in zip(
+                batch.candidates,
+                keys[1:],
+                strict=True,
+            )
         )
-        return self.loss_from_embeddings(query, candidates, batch)
+        return query, *candidates
+
+    def loss_from_representations(
+        self,
+        representations: tuple[Array, ...],
+        batch: DistributionDistillationBatch,
+    ) -> LossOutput:
+        query, *candidates = representations
+        return self.loss_from_embeddings(query, jnp.stack(tuple(candidates)), batch)
 
     def loss_from_embeddings(
         self,

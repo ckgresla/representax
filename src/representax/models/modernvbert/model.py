@@ -485,6 +485,23 @@ class ModernVBERTTextTower(eqx.Module):
         attention_implementation: AttentionImplementation,
         rematerialization: RematerializationPolicy,
     ) -> Float[Array, "batch sequence hidden"]:
+        return self.all_hidden_states(
+            batch,
+            compute_dtype=compute_dtype,
+            attention_implementation=attention_implementation,
+            rematerialization=rematerialization,
+        )[-1]
+
+    def all_hidden_states(
+        self,
+        batch: ModernVBERTTextBatch,
+        *,
+        compute_dtype: jnp.dtype,
+        attention_implementation: AttentionImplementation,
+        rematerialization: RematerializationPolicy,
+    ) -> Float[Array, "layer batch sequence hidden"]:
+        """Return embedding output followed by every encoder-layer output."""
+
         if batch.input_ids is not None:
             hidden = self.token_embeddings(batch.input_ids)
         elif batch.inputs_embeds is not None:
@@ -509,12 +526,16 @@ class ModernVBERTTextTower(eqx.Module):
         else:
             position_ids = batch.position_ids
         hidden = self.embedding_norm(hidden)
+        initial_hidden = hidden
         if self.layers.blocks is not None:
 
             def apply_layer(
                 carry: Float[Array, "batch sequence hidden"],
                 values: tuple[Array, _ModernVBERTTextScanBlock],
-            ) -> tuple[Float[Array, "batch sequence hidden"], None]:
+            ) -> tuple[
+                Float[Array, "batch sequence hidden"],
+                Float[Array, "batch sequence hidden"],
+            ]:
                 index, layer = values
                 if self.layers.attention_norms is None:
                     attention_input = carry
@@ -543,15 +564,17 @@ class ModernVBERTTextTower(eqx.Module):
                     implementation=attention_implementation,
                 )
                 output = output + layer.mlp(layer.mlp_norm(output))
-                return output, None
+                return output, output
 
             executed_layer = rematerialize(apply_layer, rematerialization)
-            hidden, _ = jax.lax.scan(
+            _, layer_outputs = jax.lax.scan(
                 executed_layer,
                 hidden,
                 (jnp.arange(self.layers.depth), self.layers.blocks),
             )
-        return self.final_norm(hidden)
+            layer_outputs = layer_outputs.at[-1].set(self.final_norm(layer_outputs[-1]))
+            return jnp.concatenate((initial_hidden[None, ...], layer_outputs), axis=0)
+        return self.final_norm(initial_hidden)[None, ...]
 
 
 class ModernVBERTTextEncoder(eqx.Module):
@@ -603,6 +626,24 @@ class ModernVBERTTextEncoder(eqx.Module):
             rematerialization=self.rematerialization,
         )
 
+    def hidden_states_by_layer(
+        self,
+        inputs: ModernVBERTTextBatch,
+        *,
+        key: PRNGKeyArray | None = None,
+    ) -> Float[Array, "layer batch sequence hidden"]:
+        """Expose the embedding output and every text layer for modifiers."""
+
+        del key
+        if not isinstance(inputs, ModernVBERTTextBatch):
+            raise TypeError("ModernVBERT text inputs must be ModernVBERTTextBatch")
+        return self.tower.all_hidden_states(
+            inputs,
+            compute_dtype=self.compute_dtype,
+            attention_implementation=self.attention_implementation,
+            rematerialization=self.rematerialization,
+        )
+
     def encode(
         self,
         inputs: ModernVBERTTextBatch,
@@ -613,3 +654,17 @@ class ModernVBERTTextEncoder(eqx.Module):
         del route, key
         hidden = self.hidden_states(inputs)
         return l2_normalize(mean_pool(hidden, inputs.attention_mask))
+
+    def encode_layers(
+        self,
+        inputs: ModernVBERTTextBatch,
+        *,
+        route: Route,
+        key: PRNGKeyArray | None = None,
+    ) -> Float[Array, "layer batch representation"]:
+        """Pool normalized representations for every text-layer depth."""
+
+        del route, key
+        hidden = self.hidden_states_by_layer(inputs)
+        pooled = jax.vmap(lambda value: mean_pool(value, inputs.attention_mask))(hidden)
+        return l2_normalize(pooled)

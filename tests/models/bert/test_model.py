@@ -99,7 +99,17 @@ def test_native_bert_is_scanned_jittable_and_dropout_is_keyed():
         atol=1e-6,
     )
     repeated = model.hidden_states(batch)
-    np.testing.assert_array_equal(hidden, repeated)
+    # A separately compiled eager call can use a different, numerically
+    # equivalent XLA fusion than the enclosing inference program.
+    np.testing.assert_allclose(hidden, repeated, rtol=2e-6, atol=3e-7)
+    layerwise = model.encode_layers(batch, route=Route.QUERY)
+    assert layerwise.shape == (tiny_config().num_hidden_layers + 1, 2, 12)
+    np.testing.assert_allclose(
+        layerwise[-1],
+        representation,
+        rtol=1e-6,
+        atol=1e-6,
+    )
 
     first = model.hidden_states(batch, key=jax.random.key(1))
     same = model.hidden_states(batch, key=jax.random.key(1))

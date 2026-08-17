@@ -1,7 +1,7 @@
 # Sentence Transformers capability ledger
 
 Representax pins Sentence Transformers 5.6.1 as a repository-only acceptance
-oracle. This ledger maps its 28 released dense loss classes to scientific and
+oracle. This ledger maps its 29 released dense loss classes to scientific and
 execution contracts; it is not a promise to reproduce upstream class names.
 
 | Scientific contract | Sentence Transformers 5.6.1 classes | Representax status |
@@ -11,13 +11,13 @@ execution contracts; it is not a promise to reproduce upstream class names.
 | Pairwise contrastive learning | `ContrastiveLoss`, `OnlineContrastiveLoss` | Native: cosine, Euclidean, and Manhattan distance; ordinary and online mining share one scientific loss configuration |
 | Explicit and label-mined triplets | `TripletLoss`, `BatchAllTripletLoss`, `BatchHardTripletLoss`, `BatchHardSoftMarginTripletLoss`, `BatchSemiHardTripletLoss` | Native: explicit routed triplets plus all, hard, hard soft-margin, and semi-hard mining over class-labeled batches; pinned value/representation-gradient parity |
 | Embedding and score distillation | `MSELoss`, `EmbedDistillLoss`, `MarginMSELoss`, `DistillKLDivLoss` | Native: broadcast or per-column teacher embeddings with MSE, L2, or cosine matching; positive-minus-negative score regression; temperature-scaled distribution KL; pinned value/representation-gradient parity |
-| Dimension and layer composition | `MatryoshkaLoss`, `Matryoshka2dLoss`, `AdaptiveLayerLoss` | Partial: MNR supports weighted Matryoshka dimensions; general loss and layer composition remain |
-| Guide-model negative selection | `GISTEmbedLoss`, `CachedGISTEmbedLoss` | Planned |
-| Contrastive tension | `ContrastiveTensionLoss` | Planned |
-| Classification head training | `SoftmaxLoss` | Planned as a classification task, not a retrieval special case |
-| Orthogonal regularization | `GlobalOrthogonalRegularizationLoss` | Planned as a composable regularizer |
-| Denoising autoencoding | `DenoisingAutoEncoderLoss` | Planned as a reconstruction task |
-| Mega-batch mining | `MegaBatchMarginLoss` | Planned as an execution and sampling policy |
+| Dimension and layer composition | `MatryoshkaLoss`, `Matryoshka2dLoss`, `AdaptiveLayerLoss` | Native: registered loss modifiers reuse one representation or layerwise encoder pass; Matryoshka composes with cached MNR/GIST, and BERT, MPNet, ModernVBERT, and serialized sentence chains expose one-scan layerwise outputs |
+| Guide-model negative selection | `GISTEmbedLoss`, `CachedGISTEmbedLoss` | Native: offline guide representations, absolute/relative filtering, explicit negatives, direct and bounded replay, and score-row chunking |
+| Contrastive tension | `ContrastiveTensionLoss`, `ContrastiveTensionLossInBatchNegatives` | Native: explicit dual-encoder state, aligned-pair BCE, symmetric in-batch CE, cosine/dot similarity, and trainable temperature |
+| Classification head training | `SoftmaxLoss` | Native: explicit encoder-plus-head model state and configurable pair features under a classification task |
+| Orthogonal regularization | `GlobalOrthogonalRegularizationLoss` | Native: modality-neutral representation batches, named mean/second-moment terms, and mean/sum aggregation |
+| Denoising autoencoding | `DenoisingAutoEncoderLoss` | Native: explicit encoder/causal-decoder composition, damaged-input batches, shifted clean-token targets, and padding-aware cross entropy |
+| Mega-batch mining | `MegaBatchMarginLoss` | Native: direct hardest-negative margins plus bounded candidate mining and gradient replay as an execution policy |
 
 “Native” means more than accepting a configuration: the formula, model-facing
 batch contract, compiled training path, and pinned upstream numerical gate are
@@ -26,11 +26,25 @@ correct implementation cannot acquire a speed claim without matched evidence.
 
 Every native row is closed by
 [`tests/tasks/test_sentence_transformers_parity.py`](../tests/tasks/test_sentence_transformers_parity.py).
-Its inventory assertion requires all 18 claimed upstream classes to appear in
-same-tensor value and representation-gradient cases. The separate performance
+Its inventory assertion requires all 29 upstream classes to appear in 39
+same-tensor value and relevant-gradient cases. The separate performance
 case measures synchronized, warmed forward and backward work per class and
 warns—rather than invalidating numerical correctness—if a native objective is
 slower on an uncontrolled device.
+
+On the August 16, 2026 RTX 4090 acceptance run (batch 48, representation
+dimension 128), every native loss-plus-representation-backward program was
+faster than its paired Sentence Transformers 5.6.1 class: the observed range
+was 3.00x to 84.69x, with native compilation between 0.078 and 1.030 seconds.
+This deliberately measures objective math over already-computed embeddings; it
+is not an encoder, input-pipeline, or full optimizer-step speed claim.
+
+Guide encodings are batch artifacts rather than a live hidden model. Likewise,
+classification heads, contrastive-tension encoder branches and temperature,
+and reconstruction decoders remain explicit Equinox model state. Mega-batch
+candidate selection is an execution schedule, while its margins remain the
+scientific loss. These boundaries keep every trainable parameter visible to
+Optax and every memory-changing policy visible to the job configuration.
 
 Sentence Transformers may place an optional learned projection inside
 `MSELoss` or `EmbedDistillLoss`. Representax keeps trainable state in the model:

@@ -261,6 +261,13 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   run =31852459601=.  The registered pending publisher created and reserved
   [[https://pypi.org/project/representax/0.0.1/][representax on PyPI]], and the workflow created the corresponding GitHub
   [[https://github.com/ckgresla/representax/releases/tag/v0.0.1][Release]] from the same accepted artifact bundle.
+* TODO Publish =representax= 0.0.2 with the complete dense-loss inventory :release:
+  Tag only after the release-ready commit passes public CI and the exact 0.0.2
+  wheel passes fresh CPU and CUDA 13 smoke installs. Publish through the existing
+  protected PyPI environment; do not reuse or replace the 0.0.1 artifacts.
+  The locally built candidate passes strict Twine validation and isolated-wheel
+  CPU/GPU smoke execution with identical loss =2.3512461185455322=; public CI,
+  the signed tag, protected deployment approval, and registry readback remain.
 * DONE Publish a minimal CPU-first installation and compatibility matrix :release:
 ** DONE Build bounded wheel and source-distribution artifacts
    The universal wheel contains only =representax=, package metadata, the MIT
@@ -481,7 +488,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
     examples/s versus 1,254 upstream, a =1.153x= speedup, and compiles in 15.99
     seconds. Allocator and process peaks are 27.5% and 33.6% higher; both remain
     explicit warnings and memory-optimization targets.
-*** TODO Complete the released dense loss inventory
+*** DONE Complete the released dense loss inventory
     Cover MNR and cached MNR variants, symmetric ranking, Matryoshka and adaptive
     layer objectives, triplet families, cosine/CoSENT/AnglE/contrastive families,
     distillation and MSE families, classification, GISTEmbed, orthogonal
@@ -509,18 +516,38 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      embeddings, positive-minus-negative teacher margins, and candidate-score
      distributions. Native MSE, L2, cosine, margin MSE, and temperature-scaled
      KL objectives run through the registered generic optimizer step. One
-     canonical parity file now covers all 18 Sentence Transformers 5.6.1
-     classes claimed native through 24 same-tensor loss and representation-
-     gradient cases plus an explicit inventory-coverage assertion, including
-     direct and score-row-chunked MNR. A separate per-class GPU performance lane
+     canonical parity file now covers all 29 Sentence Transformers 5.6.1 loss
+     classes through 39 same-tensor loss and relevant-gradient cases plus an
+     explicit inventory assertion. A separate per-class GPU performance lane
      measures synchronized warmed forward and backward work, reporting
-     regressions as warnings rather than correctness failures. Learned
-     dimensional projections remain explicit model state.
-**** TODO Generalize Matryoshka and adaptive-layer composition across losses
-**** TODO Add GIST-guided negative selection and its cached execution
-**** TODO Add classification and contrastive-tension objectives
-**** TODO Add orthogonal regularization as a composable loss term
-**** TODO Add denoising autoencoding and mega-batch mining execution
+     regressions as warnings rather than correctness failures. On the August
+     16 RTX 4090 acceptance run, all 29 native objective programs beat their
+     matched upstream class (3.00x--84.69x) with 0.078--1.030 second native
+     compilation. This is precomputed-representation objective math, not an
+     encoder or full optimizer-step speed claim. Learned dimensional
+     projections remain explicit model state.
+**** DONE Generalize Matryoshka and adaptive-layer composition across losses
+     Registered scientific modifier configs now build one-pass Matryoshka,
+     adaptive-layer, and 2D compositions over representation-native tasks.
+     BERT, MPNet, ModernVBERT, and serialized sentence chains expose layerwise
+     results from one scanned forward. Matryoshka composes with local and
+     distributed cached MNR and local cached GIST; 2- and 4-GPU global-update
+     equivalence remains green.
+**** DONE Add GIST-guided negative selection and its cached execution
+     Keep guide representations as explicit offline batch artifacts. Native
+     absolute/relative filtering, explicit negative columns, bounded encoder
+     replay, and score-row chunks match direct values and gradients.
+**** DONE Add classification and contrastive-tension objectives
+     Keep classifier heads, dual encoder branches, and trainable temperature
+     in explicit Equinox model state. Pair softmax, aligned BCE tension, and
+     symmetric in-batch cosine/dot tension match the pinned oracle.
+**** DONE Add orthogonal regularization as a composable loss term
+     Native mean and second-moment penalties support named metrics, modality-
+     neutral representation batches, and mean/sum aggregation.
+**** DONE Add denoising autoencoding and mega-batch mining execution
+     Denoising uses explicit encoder/decoder composition and padding-aware
+     shifted token reconstruction. Mega-batch margins are scientific loss
+     parameters; bounded candidate mining and replay are execution policy.
 *** TODO Complete the released dense evaluator inventory
     Cover embedding similarity, binary and label classification, information
     retrieval and NanoBEIR, triplet, reranking, paraphrase mining, translation,
@@ -568,8 +595,13 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
 * DONE Implement triplet losses :tasks:metric_learning:
 * DONE Implement cosine-similarity losses :tasks:metric_learning:
 * DONE Implement CoSENT losses :tasks:metric_learning:
-* TODO Implement classification tasks and losses :tasks:classification:
-* TODO Implement representation distillation tasks and losses :tasks:distillation:
+* TODO Expand classification beyond paired softmax :tasks:classification:
+  Add single-example and multi-label heads, class weighting, evaluator metrics,
+  and source mappings without coupling them to the paired SoftmaxLoss contract.
+* DONE Implement representation distillation tasks and losses :tasks:distillation:
+  Native embedding matching, score-margin regression, and distribution KL keep
+  teacher artifacts in fixed-shape batch data and trainable projections in the
+  explicit model tree.
 * TODO Implement pairwise reward modeling :tasks:reward_modeling:
 * TODO Implement listwise reward modeling :tasks:reward_modeling:
 * TODO Implement pointwise and process reward modeling :tasks:reward_modeling:

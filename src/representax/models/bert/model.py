@@ -413,6 +413,55 @@ class BertTower(eqx.Module):
         )
         return hidden
 
+    def all_hidden_states(
+        self,
+        batch: BertBatch,
+        *,
+        key: PRNGKeyArray | None,
+        compute_dtype: jnp.dtype,
+        attention_implementation: AttentionImplementation,
+        rematerialization: RematerializationPolicy,
+    ) -> Float[Array, "layer batch sequence hidden"]:
+        """Return embedding output followed by every encoder-layer output."""
+
+        if key is None:
+            embedding_key = None
+            layer_keys = jax.random.split(jax.random.key(0), self.layers.depth)
+        else:
+            embedding_key, layer_key = jax.random.split(key)
+            layer_keys = jax.random.split(layer_key, self.layers.depth)
+        hidden = self.embeddings(batch, config=self.config, key=embedding_key)
+        hidden = hidden.astype(compute_dtype)
+        if self.layers.blocks is None:
+            return hidden[None, ...]
+        attention_mask = batch.attention_mask.astype(bool)
+        training = key is not None
+
+        def apply_layer(
+            carry: Float[Array, "batch sequence hidden"],
+            values: tuple[BertLayer, PRNGKeyArray],
+        ) -> tuple[
+            Float[Array, "batch sequence hidden"],
+            Float[Array, "batch sequence hidden"],
+        ]:
+            layer, layer_key = values
+            output = layer(
+                carry,
+                attention_mask,
+                config=self.config,
+                key=layer_key if training else None,
+                implementation=attention_implementation,
+            )
+            return output, output
+
+        executed_layer = rematerialize(apply_layer, rematerialization)
+        _, layer_outputs = jax.lax.scan(
+            executed_layer,
+            hidden,
+            (self.layers.blocks, layer_keys),
+        )
+        return jnp.concatenate((hidden[None, ...], layer_outputs), axis=0)
+
     def pool(
         self,
         hidden: Float[Array, "batch sequence hidden"],
@@ -472,6 +521,24 @@ class BertEncoder(eqx.Module):
             rematerialization=self.rematerialization,
         )
 
+    def hidden_states_by_layer(
+        self,
+        inputs: BertBatch,
+        *,
+        key: PRNGKeyArray | None = None,
+    ) -> Float[Array, "layer batch sequence hidden"]:
+        """Expose the embedding output and every encoder layer for modifiers."""
+
+        if not isinstance(inputs, BertBatch):
+            raise TypeError("BERT inputs must be BertBatch")
+        return self.tower.all_hidden_states(
+            inputs,
+            key=key,
+            compute_dtype=self.compute_dtype,
+            attention_implementation=self.attention_implementation,
+            rematerialization=self.rematerialization,
+        )
+
     def make_batch(
         self,
         *,
@@ -505,6 +572,22 @@ class BertEncoder(eqx.Module):
         del route
         hidden = self.hidden_states(inputs, key=key)
         return l2_normalize(mean_pool(hidden, inputs.attention_mask))
+
+    def encode_layers(
+        self,
+        inputs: BertBatch,
+        *,
+        route: Route,
+        key: PRNGKeyArray | None = None,
+    ) -> Float[Array, "layer batch representation"]:
+        """Pool normalized representations for the embedding and every layer."""
+
+        del route
+        if not isinstance(inputs, BertBatch):
+            raise TypeError("BERT inputs must be BertBatch")
+        hidden = self.hidden_states_by_layer(inputs, key=key)
+        pooled = jax.vmap(lambda value: mean_pool(value, inputs.attention_mask))(hidden)
+        return l2_normalize(pooled)
 
 
 __all__ = [

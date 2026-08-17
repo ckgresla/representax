@@ -231,6 +231,35 @@ class SentenceEncoder(eqx.Module):
             value = value[:, : self.truncate_dimension]
         return value
 
+    def encode_layers(
+        self,
+        inputs: Any,
+        *,
+        route: Route,
+        key: PRNGKeyArray | None = None,
+    ) -> Float[Array, "layer batch representation"]:
+        """Apply the serialized sentence module chain at every backbone depth."""
+
+        del route
+        layer_states = getattr(self.backbone, "hidden_states_by_layer", None)
+        if not callable(layer_states):
+            raise TypeError("sentence backbone does not expose layerwise hidden states")
+        if isinstance(inputs, SentenceBatch):
+            backbone_inputs = inputs.backbone_inputs
+            attention_mask = inputs.pooling_mask
+        else:
+            backbone_inputs = inputs
+            attention_mask = getattr(inputs, "attention_mask", None)
+        if attention_mask is None:
+            raise TypeError("sentence inputs must expose attention_mask")
+        hidden = layer_states(backbone_inputs, key=key)
+        value = jax.vmap(lambda state: self.pooling(state, attention_mask))(hidden)
+        for module in self.postprocessors:
+            value = jax.vmap(module)(value)
+        if self.truncate_dimension is not None:
+            value = value[..., : self.truncate_dimension]
+        return value
+
 
 __all__ = [
     "DenseActivation",

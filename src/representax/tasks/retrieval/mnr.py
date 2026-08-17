@@ -11,7 +11,7 @@ import jax
 import jax.numpy as jnp
 from jaxtyping import Array, Bool, Float, PRNGKeyArray
 
-from representax.core import Encoder, LossOutput, Route, encode
+from representax.core import EncodeFunction, Encoder, LossOutput, Route, encode
 
 from .batch import RetrievalBatch
 
@@ -364,12 +364,10 @@ def mnr_loss_terms(
 
 
 class MNRTask(eqx.Module):
-    """Retrieval task supporting direct, symmetric, and Matryoshka MNR."""
+    """Direct or symmetric multiple-negatives ranking task."""
 
     scale: float = eqx.field(static=True, default=20.0)
     symmetric: bool = eqx.field(static=True, default=False)
-    dimensions: tuple[int, ...] | None = eqx.field(static=True, default=None)
-    dimension_weights: tuple[float, ...] | None = eqx.field(static=True, default=None)
     negative_scope: Literal["local", "global"] = eqx.field(
         static=True,
         default="global",
@@ -378,18 +376,6 @@ class MNRTask(eqx.Module):
     def __post_init__(self) -> None:
         if not math.isfinite(self.scale) or self.scale <= 0:
             raise ValueError("scale must be finite and positive")
-        if self.dimensions is not None:
-            if not self.dimensions or any(d <= 0 for d in self.dimensions):
-                raise ValueError("Matryoshka dimensions must be positive")
-            if tuple(sorted(set(self.dimensions))) != self.dimensions:
-                raise ValueError("Matryoshka dimensions must be sorted and unique")
-            if self.dimension_weights is not None:
-                if len(self.dimension_weights) != len(self.dimensions):
-                    raise ValueError("dimension weights must match dimensions")
-                if any(not math.isfinite(w) or w <= 0 for w in self.dimension_weights):
-                    raise ValueError("dimension weights must be finite and positive")
-        elif self.dimension_weights is not None:
-            raise ValueError("dimension weights require Matryoshka dimensions")
         if self.negative_scope not in {"local", "global"}:
             raise ValueError("negative_scope must be 'local' or 'global'")
 
@@ -400,15 +386,51 @@ class MNRTask(eqx.Module):
         *,
         key: PRNGKeyArray | None = None,
     ) -> LossOutput:
+        representations = self.representations(model, batch, key=key, encode_fn=encode)
+        return self.loss_from_representations(representations, batch)
+
+    def representations(
+        self,
+        model: Encoder,
+        batch: RetrievalBatch,
+        *,
+        key: PRNGKeyArray | None = None,
+        encode_fn: EncodeFunction = encode,
+    ) -> tuple[
+        Float[Array, "*layer query representation"],
+        Float[Array, "*layer document representation"],
+    ]:
+        """Encode retrieval columns once for ordinary or layerwise objectives."""
+
         if key is None:
             query_key = document_key = None
         else:
             query_key, document_key = jax.random.split(key)
-        queries = encode(model, batch.query, route=Route.QUERY, key=query_key)
-        documents = encode(
+        queries = encode_fn(model, batch.query, route=Route.QUERY, key=query_key)
+        documents = encode_fn(
             model, batch.document, route=Route.DOCUMENT, key=document_key
         )
-        return self.loss_from_embeddings(queries, documents, batch)
+        return queries, documents
+
+    def loss_from_representations(
+        self,
+        representations: tuple[
+            Float[Array, "query representation"],
+            Float[Array, "document representation"],
+        ],
+        batch: RetrievalBatch,
+        *,
+        row_chunk_size: int | None = None,
+    ) -> LossOutput:
+        """Evaluate MNR from the task-generic representation boundary."""
+
+        queries, documents = representations
+        return self.loss_from_embeddings(
+            queries,
+            documents,
+            batch,
+            row_chunk_size=row_chunk_size,
+        )
 
     def loss_from_embeddings(
         self,
@@ -422,34 +444,21 @@ class MNRTask(eqx.Module):
 
         queries = jnp.asarray(query_embeddings)
         documents = jnp.asarray(document_embeddings)
-        dimensions = self.dimensions or (queries.shape[1],)
-        if dimensions[-1] > queries.shape[1]:
-            raise ValueError("Matryoshka dimension exceeds encoder output dimension")
-        raw_weights = self.dimension_weights or tuple(1.0 for _ in dimensions)
-        weights = jnp.asarray(raw_weights, dtype=jnp.float32)
-        weights = weights / jnp.sum(weights)
-        terms = tuple(
-            _mnr_loss_values(
-                queries[:, :dimension],
-                documents[:, :dimension],
-                batch.positive_mask,
-                positive_weights=batch.positive_weights,
-                query_valid=batch.query_valid,
-                document_valid=batch.document_valid,
-                scale=self.scale,
-                symmetric=self.symmetric,
-                row_chunk_size=row_chunk_size,
-            )
-            for dimension in dimensions
+        terms = _mnr_loss_values(
+            queries,
+            documents,
+            batch.positive_mask,
+            positive_weights=batch.positive_weights,
+            query_valid=batch.query_valid,
+            document_valid=batch.document_valid,
+            scale=self.scale,
+            symmetric=self.symmetric,
+            row_chunk_size=row_chunk_size,
         )
-        dimension_losses = jnp.stack([term.loss for term in terms])
-        forward_losses = jnp.stack([term.forward_loss for term in terms])
-        reverse_losses = jnp.stack([term.reverse_loss for term in terms])
         return LossOutput(
-            loss=jnp.sum(weights * dimension_losses),
+            loss=terms.loss,
             metrics={
-                "forward_loss": jnp.sum(weights * forward_losses),
-                "reverse_loss": jnp.sum(weights * reverse_losses),
-                "dimension_losses": dimension_losses,
+                "forward_loss": terms.forward_loss,
+                "reverse_loss": terms.reverse_loss,
             },
         )

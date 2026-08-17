@@ -1,9 +1,9 @@
 <h1 align="center">Representax</h1>
 
 Representax is a native JAX and Equinox system for efficient, task-general
-representation learning. Retrieval is the first working task; classification,
-reward modeling, distillation, and self-supervised objectives are planned on
-the same core boundary.
+representation learning. Retrieval is the first mature task; classification,
+distillation, regularization, and denoising use the same core boundary, with
+reward modeling and self-supervised objectives next.
 
 The project is alpha. The current slice provides:
 
@@ -18,6 +18,10 @@ The project is alpha. The current slice provides:
   CoSENT, and AnglE objectives;
 - explicit triplet learning plus all, hard, hard soft-margin, and semi-hard
   within-batch mining;
+- native scientific and execution contracts for all 29 Sentence Transformers
+  5.6.1 dense loss classes, including Matryoshka/adaptive-layer modifiers,
+  direct/cached GIST, contrastive tension, classification, orthogonal
+  regularization, denoising, and bounded mega-batch mining;
 - an end-to-end Grain-to-compiled-step trainer with asynchronous reporting;
 - lazy Grain recipes with built-in Hugging Face and local artifact resolvers;
 - validated domain configs with annotated scientific and execution parameters; and
@@ -226,6 +230,35 @@ Embedding targets may be broadcast across input columns or supplied per
 column, with MSE, L2, or cosine matching. Learned student-to-teacher projections
 belong in the model composition so optimizer-visible state is never concealed
 inside a task.
+
+## Loss composition and bounded execution
+
+Loss modifiers are scientific job configuration, while GradCache and
+mega-batch mining are execution configuration. For example, the same MNR
+objective can be trained at several prefix dimensions with direct execution or
+bounded encoder replay:
+
+```python
+from representax.tasks import build_task
+from representax.tasks.modifiers import MatryoshkaModifierConfig
+from representax.tasks.retrieval import MNRConfig, RetrievalConfig
+
+task = build_task(
+    RetrievalConfig(),
+    MNRConfig(scale=20.0),
+    modifiers=(
+        MatryoshkaModifierConfig(
+            dimensions=(768, 512, 256, 128, 64),
+        ),
+    ),
+)
+```
+
+The pinned capability ledger records the exact class mapping and evidence.
+Forty paired checks cover the inventory plus 39 same-tensor value-and-gradient
+cases. A separate GPU lane measures compiled objective forward and
+backward performance without turning uncontrolled timing noise into a
+correctness failure.
 
 ## ModernVBERT
 

@@ -1,4 +1,4 @@
-"""Exact GradCache execution for the canonical MNR objective."""
+"""Exact GradCache execution for representation-ranking objectives."""
 
 from __future__ import annotations
 
@@ -11,6 +11,8 @@ import jax.numpy as jnp
 from jaxtyping import Array, Float, PRNGKeyArray
 
 from representax.core import Encoder, LossOutput, Route, Task, encode
+from representax.tasks.guided import GISTBatch, GISTTask
+from representax.tasks.modifiers import MatryoshkaTask
 from representax.tasks.retrieval import MNRTask, RetrievalBatch
 
 from .execution import _LOCAL_EXECUTION_CONTEXT, ExecutionContext
@@ -21,6 +23,8 @@ def _leading_batch_size(inputs: Any, *, role: str) -> int:
     if not leaves:
         raise ValueError(f"{role} inputs must contain arrays")
     batch_size = leaves[0].shape[0]
+    if batch_size == 0:
+        raise ValueError(f"{role} inputs must contain at least one row")
     if any(leaf.ndim == 0 or leaf.shape[0] != batch_size for leaf in leaves):
         raise ValueError(f"{role} inputs must be row-major")
     return batch_size
@@ -41,7 +45,11 @@ def _pad_and_chunk(inputs: Any, *, batch_size: int, chunk_size: int) -> Any:
 
     def chunk(leaf: Array) -> Array:
         widths = ((0, padding),) + ((0, 0),) * (leaf.ndim - 1)
-        padded = jnp.pad(leaf, widths)
+        # Repeat a real row rather than synthesizing an all-zero example. The
+        # padded outputs are discarded either way, while an all-zero row can
+        # have undefined model derivatives (for example through L2 norm at 0)
+        # and poison the otherwise zero cotangent during replay.
+        padded = jnp.pad(leaf, widths, mode="edge")
         return padded.reshape((chunk_count, chunk_size, *leaf.shape[1:]))
 
     return jax.tree.map(chunk, inputs)
@@ -92,7 +100,7 @@ def _rematerialized_encode(
 
 @dataclass(frozen=True)
 class GradCache:
-    """Bound encoder and similarity-loss memory without changing MNR semantics."""
+    """Bound encoder and score-row memory without changing loss semantics."""
 
     query_chunk_size: int
     document_chunk_size: int | None = None
@@ -115,8 +123,11 @@ class GradCache:
         return self.loss_row_chunk_size or self.query_chunk_size
 
     def validate(self, task: Task[Any]) -> None:
-        if not isinstance(task, MNRTask):
-            raise TypeError("GradCache currently requires MNRTask")
+        base_task = task.task if isinstance(task, MatryoshkaTask) else task
+        if not isinstance(base_task, (MNRTask, GISTTask)):
+            raise TypeError(
+                "GradCache requires MNRTask, GISTTask, or their Matryoshka modifier"
+            )
 
     def evaluate(
         self,
@@ -127,19 +138,83 @@ class GradCache:
         key: PRNGKeyArray | None,
         context: ExecutionContext = _LOCAL_EXECUTION_CONTEXT,
     ) -> LossOutput:
-        if not isinstance(task, MNRTask) or not isinstance(batch, RetrievalBatch):
-            raise TypeError("GradCache requires MNRTask and RetrievalBatch")
+        modifier = task if isinstance(task, MatryoshkaTask) else None
+        base_task = modifier.task if modifier is not None else task
+        if modifier is None:
+            representation_key = key
+            modifier_key = None
+        elif modifier.dimensions_per_step == -1 or modifier.dimensions_per_step >= len(
+            modifier.dimensions
+        ):
+            representation_key = modifier_key = key
+        elif key is None:
+            raise ValueError("random Matryoshka sampling requires a JAX key")
+        else:
+            representation_key, modifier_key = jax.random.split(key)
+
+        if isinstance(base_task, GISTTask) and isinstance(batch, GISTBatch):
+            if context.data_axis_name is not None:
+                raise NotImplementedError(
+                    "distributed cached GIST is not implemented yet"
+                )
+            encoder = cast(Encoder, model)
+
+            def cached_encode(
+                candidate: Encoder,
+                inputs: Any,
+                *,
+                route: Route,
+                key: PRNGKeyArray | None = None,
+            ) -> Float[Array, "batch representation"]:
+                batch_size = _leading_batch_size(inputs, role=route.value)
+                chunk_size = (
+                    self.query_chunk_size
+                    if route == Route.QUERY
+                    else self.resolved_document_chunk_size
+                )
+                return _rematerialized_encode(
+                    candidate,
+                    inputs,
+                    route=route,
+                    batch_size=batch_size,
+                    chunk_size=chunk_size,
+                    key=key,
+                )
+
+            representations = base_task.representations(
+                encoder,
+                batch,
+                key=representation_key,
+                encode_fn=cached_encode,
+            )
+            if modifier is not None:
+                return modifier.loss_from_representations(
+                    representations,
+                    batch,
+                    key=modifier_key,
+                    row_chunk_size=self.resolved_loss_row_chunk_size,
+                )
+            return base_task.loss_from_representations(
+                representations, batch, row_chunk_size=self.resolved_loss_row_chunk_size
+            )
+        if not isinstance(base_task, MNRTask) or not isinstance(batch, RetrievalBatch):
+            raise TypeError(
+                "GradCache requires MNR/Retrieval or GIST/GuidedRetrieval contracts"
+            )
         axis_name = context.data_axis_name
-        if axis_name is not None and task.negative_scope != "global":
+        if axis_name is not None and base_task.negative_scope != "global":
             raise NotImplementedError(
                 "distributed GradCache currently implements global negatives only"
             )
-        if axis_name is not None and key is not None:
-            key = jax.random.fold_in(key, jax.lax.axis_index(axis_name))
-        if key is None:
+        if axis_name is not None and representation_key is not None:
+            representation_key = jax.random.fold_in(
+                representation_key,
+                jax.lax.axis_index(axis_name),
+            )
+        if representation_key is None:
             query_key = document_key = None
         else:
-            query_key, document_key = jax.random.split(key)
+            query_key, document_key = jax.random.split(representation_key)
         encoder = cast(Encoder, model)
         query_count = _leading_batch_size(batch.query, role="query")
         document_count = _leading_batch_size(batch.document, role="document")
@@ -206,12 +281,20 @@ class GradCache:
                     tiled=True,
                 ),
             )
-        output = task.loss_from_embeddings(
-            queries,
-            documents,
-            batch,
-            row_chunk_size=self.resolved_loss_row_chunk_size,
-        )
+        if modifier is None:
+            output = base_task.loss_from_embeddings(
+                queries,
+                documents,
+                batch,
+                row_chunk_size=self.resolved_loss_row_chunk_size,
+            )
+        else:
+            output = modifier.loss_from_representations(
+                (queries, documents),
+                batch,
+                key=modifier_key,
+                row_chunk_size=self.resolved_loss_row_chunk_size,
+            )
         if axis_name is None:
             return output
         return LossOutput(

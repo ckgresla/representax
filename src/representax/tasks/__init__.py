@@ -1,11 +1,26 @@
 """Task families and their explicit construction registry."""
 
-from . import distillation, pairwise, retrieval, triplet
-from .config import LossConfig, TaskConfig
+from . import (
+    classification,
+    contrastive_tension,
+    distillation,
+    guided,
+    mega_batch,
+    modifiers,
+    pairwise,
+    reconstruction,
+    regularization,
+    retrieval,
+    triplet,
+)
+from .config import LossConfig, LossModifierConfig, TaskConfig
 from .registry import (
+    BUILTIN_LOSS_MODIFIERS,
     BUILTIN_LOSSES,
     BUILTIN_TASKS,
     LossDefinition,
+    LossModifierDefinition,
+    LossModifierRegistry,
     LossRegistry,
     TaskDefinition,
     TaskRegistry,
@@ -13,17 +28,28 @@ from .registry import (
 )
 
 __all__ = [
+    "BUILTIN_LOSS_MODIFIERS",
     "BUILTIN_LOSSES",
     "BUILTIN_TASKS",
     "LossConfig",
     "LossDefinition",
+    "LossModifierConfig",
+    "LossModifierDefinition",
+    "LossModifierRegistry",
     "LossRegistry",
     "TaskDefinition",
     "TaskConfig",
     "TaskRegistry",
     "build_task",
+    "classification",
+    "contrastive_tension",
     "distillation",
+    "guided",
+    "mega_batch",
+    "modifiers",
     "pairwise",
+    "regularization",
+    "reconstruction",
     "retrieval",
     "triplet",
 ]

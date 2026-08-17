@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from typing import Any, Generic, Protocol, TypeVar, runtime_checkable
 
 import equinox as eqx
@@ -10,6 +10,8 @@ import jax.numpy as jnp
 from jaxtyping import Array, Float, PRNGKeyArray
 
 ModelT = TypeVar("ModelT")
+
+EncodeFunction = Callable[..., Float[Array, "*leading representation"]]
 
 
 class LossOutput(eqx.Module):
@@ -29,6 +31,31 @@ class Task(Protocol, Generic[ModelT]):
         batch: Any,
         *,
         key: PRNGKeyArray | None = None,
+    ) -> LossOutput: ...
+
+
+@runtime_checkable
+class RepresentationTask(Task[ModelT], Protocol, Generic[ModelT]):
+    """A task whose model work can be separated from its representation loss.
+
+    This seam lets loss modifiers reuse a single encoder pass. ``encode_fn`` is
+    normally :func:`representax.core.encode`; adaptive-layer training supplies
+    the corresponding layerwise encoder operation instead.
+    """
+
+    def representations(
+        self,
+        model: ModelT,
+        batch: Any,
+        *,
+        key: PRNGKeyArray | None = None,
+        encode_fn: EncodeFunction,
+    ) -> Any: ...
+
+    def loss_from_representations(
+        self,
+        representations: Any,
+        batch: Any,
     ) -> LossOutput: ...
 
 

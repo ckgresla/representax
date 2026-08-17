@@ -13,6 +13,7 @@ import pytest
 
 from representax.core import Route, encode
 from representax.models import DenseEncoder
+from representax.tasks.modifiers import MatryoshkaTask
 from representax.tasks.retrieval import MNRTask, mnr_loss_terms, retrieval_batch
 from representax.train import (
     DataParallel,
@@ -89,12 +90,11 @@ def test_data_parallel_grad_cache_matches_one_device_global_update(world_size: i
         pytest.skip(f"requires at least {world_size} JAX devices")
 
     model = DenseEncoder(4, 3, key=jax.random.key(5), normalize=False)
-    task = MNRTask(
+    base_task = MNRTask(
         scale=9.0,
         symmetric=True,
-        dimensions=(2, 3),
-        dimension_weights=(1.0, 2.0),
     )
+    task = MatryoshkaTask(base_task, (2, 3), weights=(1.0, 2.0))
     optimizer = optax.adamw(learning_rate=2e-3, weight_decay=1e-2)
     state = init_train_state(model, optimizer)
     batch = _global_batch()
@@ -142,7 +142,7 @@ def test_data_parallel_grad_cache_matches_one_device_global_update(world_size: i
         positive_weights=batch.positive_weights,
         query_valid=batch.query_valid,
         document_valid=batch.document_valid,
-        scale=task.scale,
+        scale=base_task.scale,
     )
     local_terms = mnr_loss_terms(
         queries[:1],
@@ -151,6 +151,6 @@ def test_data_parallel_grad_cache_matches_one_device_global_update(world_size: i
         positive_weights=batch.positive_weights[:1, :local_count],
         query_valid=batch.query_valid[:1],
         document_valid=batch.document_valid[:local_count],
-        scale=task.scale,
+        scale=base_task.scale,
     )
     assert float(global_terms.row_losses[0]) > float(local_terms.row_losses[0])

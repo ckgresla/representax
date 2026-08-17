@@ -107,6 +107,9 @@ def test_native_encoder_is_jittable_differentiable_and_normalized():
     assert encoded.dtype == jnp.float32
     assert jnp.all(jnp.isfinite(hidden))
     np.testing.assert_allclose(jnp.linalg.norm(encoded, axis=-1), 1.0, atol=1e-6)
+    layerwise = model.encode_layers(batch, route=Route.QUERY)
+    assert layerwise.shape == (tiny_config().num_hidden_layers + 1, 2, 8)
+    np.testing.assert_allclose(layerwise[-1], encoded, rtol=1e-6, atol=1e-6)
 
     embeddings = model.tower.token_embedding[batch.input_ids]
 

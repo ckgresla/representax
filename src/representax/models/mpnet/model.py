@@ -441,6 +441,25 @@ class MPNetTower(eqx.Module):
         attention_implementation: AttentionImplementation,
         rematerialization: RematerializationPolicy,
     ) -> Float[Array, "batch sequence hidden"]:
+        return self.all_hidden_states(
+            batch,
+            key=key,
+            compute_dtype=compute_dtype,
+            attention_implementation=attention_implementation,
+            rematerialization=rematerialization,
+        )[-1]
+
+    def all_hidden_states(
+        self,
+        batch: MPNetBatch,
+        *,
+        key: PRNGKeyArray | None,
+        compute_dtype: jnp.dtype,
+        attention_implementation: AttentionImplementation,
+        rematerialization: RematerializationPolicy,
+    ) -> Float[Array, "layer batch sequence hidden"]:
+        """Return embedding output followed by every encoder-layer output."""
+
         if key is None:
             embedding_key = None
             layer_keys = jax.random.split(jax.random.key(0), self.layers.depth)
@@ -452,14 +471,17 @@ class MPNetTower(eqx.Module):
         attention_mask = batch.attention_mask.astype(bool)
         position_bias = self.position_bias(hidden.shape[1], dtype=compute_dtype)
         if self.layers.blocks is None:
-            return hidden
+            return hidden[None, ...]
 
         training = key is not None
 
         def apply_layer(
             carry: Float[Array, "batch sequence hidden"],
             values: tuple[MPNetLayer, PRNGKeyArray],
-        ) -> tuple[Float[Array, "batch sequence hidden"], None]:
+        ) -> tuple[
+            Float[Array, "batch sequence hidden"],
+            Float[Array, "batch sequence hidden"],
+        ]:
             layer, layer_key = values
             output = layer(
                 carry,
@@ -469,15 +491,15 @@ class MPNetTower(eqx.Module):
                 key=layer_key if training else None,
                 implementation=attention_implementation,
             )
-            return output, None
+            return output, output
 
         executed_layer = rematerialize(apply_layer, rematerialization)
-        hidden, _ = jax.lax.scan(
+        _, layer_outputs = jax.lax.scan(
             executed_layer,
             hidden,
             (self.layers.blocks, layer_keys),
         )
-        return hidden
+        return jnp.concatenate((hidden[None, ...], layer_outputs), axis=0)
 
     def pool(
         self,
@@ -538,6 +560,24 @@ class MPNetEncoder(eqx.Module):
             rematerialization=self.rematerialization,
         )
 
+    def hidden_states_by_layer(
+        self,
+        inputs: MPNetBatch,
+        *,
+        key: PRNGKeyArray | None = None,
+    ) -> Float[Array, "layer batch sequence hidden"]:
+        """Expose the embedding output and every encoder layer for modifiers."""
+
+        if not isinstance(inputs, MPNetBatch):
+            raise TypeError("MPNet inputs must be MPNetBatch")
+        return self.tower.all_hidden_states(
+            inputs,
+            key=key,
+            compute_dtype=self.compute_dtype,
+            attention_implementation=self.attention_implementation,
+            rematerialization=self.rematerialization,
+        )
+
     def make_batch(
         self,
         *,
@@ -569,6 +609,20 @@ class MPNetEncoder(eqx.Module):
         del route
         hidden = self.hidden_states(inputs, key=key)
         return l2_normalize(mean_pool(hidden, inputs.attention_mask))
+
+    def encode_layers(
+        self,
+        inputs: MPNetBatch,
+        *,
+        route: Route,
+        key: PRNGKeyArray | None = None,
+    ) -> Float[Array, "layer batch representation"]:
+        """Pool normalized representations for the embedding and every layer."""
+
+        del route
+        hidden = self.hidden_states_by_layer(inputs, key=key)
+        pooled = jax.vmap(lambda value: mean_pool(value, inputs.attention_mask))(hidden)
+        return l2_normalize(pooled)
 
 
 __all__ = [

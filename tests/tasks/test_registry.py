@@ -22,6 +22,36 @@ from representax.tasks import (
     LossDefinition,
     TaskConfig,
     TaskDefinition,
+    build_task,
+)
+from representax.tasks.classification import (
+    PairClassificationConfig,
+    SoftmaxClassificationConfig,
+    SoftmaxClassificationTask,
+)
+from representax.tasks.contrastive_tension import (
+    ContrastiveTensionConfig,
+    ContrastiveTensionExamplesConfig,
+    ContrastiveTensionInBatchConfig,
+    ContrastiveTensionInBatchTask,
+    ContrastiveTensionPairsConfig,
+    ContrastiveTensionTask,
+)
+from representax.tasks.guided import GISTConfig, GISTTask, GuidedRetrievalConfig
+from representax.tasks.mega_batch import (
+    MegaBatchConfig,
+    MegaBatchMarginConfig,
+    MegaBatchMarginTask,
+)
+from representax.tasks.reconstruction import (
+    DenoisingAutoEncoderConfig,
+    DenoisingAutoEncoderTask,
+    DenoisingConfig,
+)
+from representax.tasks.regularization import (
+    GlobalOrthogonalRegularizationTask,
+    GORConfig,
+    RegularizationConfig,
 )
 from representax.tasks.retrieval import RetrievalBatch
 
@@ -141,3 +171,43 @@ def test_builtin_registries_declare_batch_and_training_contracts():
     assert task.batch_type is RetrievalBatch
     assert loss.task_kinds == frozenset({"retrieval"})
     assert loss.training_strategies == frozenset({"direct", "grad_cache"})
+
+
+@pytest.mark.parametrize(
+    ("task_config", "loss_config", "runtime_type"),
+    (
+        (GuidedRetrievalConfig(), GISTConfig(), GISTTask),
+        (
+            PairClassificationConfig(),
+            SoftmaxClassificationConfig(),
+            SoftmaxClassificationTask,
+        ),
+        (
+            ContrastiveTensionPairsConfig(),
+            ContrastiveTensionConfig(),
+            ContrastiveTensionTask,
+        ),
+        (
+            ContrastiveTensionExamplesConfig(),
+            ContrastiveTensionInBatchConfig(),
+            ContrastiveTensionInBatchTask,
+        ),
+        (
+            RegularizationConfig(),
+            GORConfig(),
+            GlobalOrthogonalRegularizationTask,
+        ),
+        (
+            DenoisingConfig(),
+            DenoisingAutoEncoderConfig(pad_token_id=0),
+            DenoisingAutoEncoderTask,
+        ),
+        (MegaBatchConfig(), MegaBatchMarginConfig(), MegaBatchMarginTask),
+    ),
+)
+def test_extended_dense_configs_build_registered_runtime_tasks(
+    task_config,
+    loss_config,
+    runtime_type,
+):
+    assert isinstance(build_task(task_config, loss_config), runtime_type)

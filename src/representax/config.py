@@ -25,7 +25,7 @@ from ._config import (
     project_parameters,
 )
 from .data.recipe import MixtureRecipe
-from .tasks.config import LossConfig, TaskConfig
+from .tasks.config import LossConfig, LossModifierConfig, TaskConfig
 
 RematerializationPolicy = Literal["none", "selective", "full"]
 JsonScalar = str | int | float | bool | None
@@ -128,6 +128,17 @@ class GradCacheConfig(FrozenConfig):
         return self.loss_row_chunk_size or self.micro_batch_size
 
 
+class MegaBatchMiningConfig(FrozenConfig):
+    """Memory bounds for frozen-candidate mega-batch hard-negative mining."""
+
+    micro_batch_size: PositiveInt
+    loss_row_chunk_size: PositiveInt | None = None
+
+    @property
+    def resolved_loss_row_chunk_size(self) -> int:
+        return self.loss_row_chunk_size or self.micro_batch_size
+
+
 class TrainingConfig(FrozenConfig):
     """Scientific and efficiency parameters governing the training process."""
 
@@ -137,6 +148,7 @@ class TrainingConfig(FrozenConfig):
     mesh: Execution[MeshConfig] = MeshConfig()
     batch: Execution[BatchConfig]
     grad_cache: Execution[GradCacheConfig | None] = None
+    mega_batch_mining: Execution[MegaBatchMiningConfig | None] = None
     activation_rematerialization: Execution[RematerializationPolicy] = Field(
         default="full",
         description=(
@@ -146,6 +158,12 @@ class TrainingConfig(FrozenConfig):
     )
     donate_buffers: Execution[bool] = True
     prefetch_depth: Execution[NonNegativeInt] = 2
+
+    @model_validator(mode="after")
+    def validate_loss_execution(self) -> Self:
+        if self.grad_cache is not None and self.mega_batch_mining is not None:
+            raise ValueError("configure only one specialized loss execution")
+        return self
 
 
 class LoggingConfig(FrozenConfig):
@@ -185,6 +203,7 @@ class JobConfig(FrozenConfig):
     model: Scientific[ModelConfig]
     task: Scientific[SerializeAsAny[TaskConfig]]
     loss: Scientific[SerializeAsAny[LossConfig]]
+    loss_modifiers: Scientific[tuple[SerializeAsAny[LossModifierConfig], ...]] = ()
     optimization: Scientific[OptimizationConfig]
     data: Scientific[MixtureRecipe]
     training: TrainingConfig
@@ -223,9 +242,47 @@ class JobConfig(FrozenConfig):
             raise TypeError("loss_registry validation context must be a LossRegistry")
         return registry.parse(value)
 
+    @field_validator("loss_modifiers", mode="before")
+    @classmethod
+    def validate_registered_loss_modifiers(
+        cls,
+        value: object,
+        info: ValidationInfo,
+    ) -> tuple[LossModifierConfig, ...]:
+        from .tasks.registry import BUILTIN_LOSS_MODIFIERS, LossModifierRegistry
+
+        registry = (
+            None if info.context is None else info.context.get("modifier_registry")
+        )
+        if registry is None:
+            registry = BUILTIN_LOSS_MODIFIERS
+        if not isinstance(registry, LossModifierRegistry):
+            raise TypeError(
+                "modifier_registry validation context must be a LossModifierRegistry"
+            )
+        if not isinstance(value, (list, tuple)):
+            raise TypeError("loss_modifiers must be a list or tuple")
+        parsed = tuple(registry.parse(modifier) for modifier in value)
+        kinds = tuple(modifier.kind for modifier in parsed)
+        if len(set(kinds)) != len(kinds):
+            raise ValueError("loss modifier kinds must be unique")
+        if len(parsed) > 1 and any(
+            kind in {"matryoshka", "adaptive_layer", "matryoshka_2d"} for kind in kinds
+        ):
+            raise ValueError(
+                "dimension/layer modifiers are mutually exclusive; use "
+                "matryoshka_2d for their joint objective"
+            )
+        return parsed
+
     @model_validator(mode="after")
     def validate_loss_capabilities(self, info: ValidationInfo) -> Self:
-        from .tasks.registry import BUILTIN_LOSSES, LossRegistry
+        from .tasks.registry import (
+            BUILTIN_LOSS_MODIFIERS,
+            BUILTIN_LOSSES,
+            LossModifierRegistry,
+            LossRegistry,
+        )
 
         registered = None if info.context is None else info.context.get("loss_registry")
         losses = BUILTIN_LOSSES if registered is None else registered
@@ -236,12 +293,33 @@ class JobConfig(FrozenConfig):
             raise ValueError(
                 f"loss {self.loss.kind!r} does not support task {self.task.kind!r}"
             )
-        strategy = "grad_cache" if self.training.grad_cache is not None else "direct"
+        if self.training.grad_cache is not None:
+            strategy = "grad_cache"
+        elif self.training.mega_batch_mining is not None:
+            strategy = "mega_batch_mining"
+        else:
+            strategy = "direct"
         if strategy not in definition.training_strategies:
             raise ValueError(
                 f"loss {self.loss.kind!r} does not support training strategy "
                 f"{strategy!r}"
             )
+        modifiers = (
+            None if info.context is None else info.context.get("modifier_registry")
+        )
+        if modifiers is None:
+            modifiers = BUILTIN_LOSS_MODIFIERS
+        if not isinstance(modifiers, LossModifierRegistry):
+            raise TypeError(
+                "modifier_registry validation context must be a LossModifierRegistry"
+            )
+        for modifier in self.loss_modifiers:
+            modifier_definition = modifiers.definition(modifier.kind)
+            if strategy not in modifier_definition.training_strategies:
+                raise ValueError(
+                    f"loss modifier {modifier.kind!r} does not support training "
+                    f"strategy {strategy!r}"
+                )
         return self
 
     @model_validator(mode="after")
@@ -268,6 +346,7 @@ __all__ = [
     "GradCacheConfig",
     "JobConfig",
     "LoggingConfig",
+    "MegaBatchMiningConfig",
     "MeshConfig",
     "ModelConfig",
     "OptimizationConfig",

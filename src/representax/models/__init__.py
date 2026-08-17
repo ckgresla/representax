@@ -14,6 +14,13 @@ from .components import (
     mean_pool,
     rematerialize,
 )
+from .composition import (
+    DenoisingAutoEncoder,
+    EncoderPair,
+    PairClassifier,
+    ReconstructionDecoder,
+    TokenReconstructionDecoder,
+)
 from .dense import DenseEncoder
 from .modernvbert import (
     ModernVBERTBatch,
@@ -54,6 +61,8 @@ __all__ = [
     "BertConfig",
     "BertEncoder",
     "DenseEncoder",
+    "DenoisingAutoEncoder",
+    "EncoderPair",
     "LayerNorm",
     "Linear",
     "ModernVBERTBatch",
@@ -72,11 +81,14 @@ __all__ = [
     "POOLING_MODES",
     "DenseActivation",
     "PoolingMode",
+    "PairClassifier",
+    "ReconstructionDecoder",
     "SentenceBatch",
     "SentenceDense",
     "SentenceEncoder",
     "SentenceNormalize",
     "SentencePooling",
+    "TokenReconstructionDecoder",
     "activate",
     "create_mpnet_position_ids",
     "dot_product_attention",

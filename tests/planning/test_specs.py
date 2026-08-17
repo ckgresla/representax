@@ -20,6 +20,11 @@ from representax.config import (
 )
 from representax.data import mix, source
 from representax.tasks import build_task
+from representax.tasks.modifiers import (
+    AdaptiveLayerModifierConfig,
+    MatryoshkaModifierConfig,
+    MatryoshkaTask,
+)
 from representax.tasks.retrieval import MNRConfig, MNRTask, RetrievalConfig
 from representax.train import GradCache, build_loss_execution, scientific_fingerprint
 
@@ -129,6 +134,7 @@ def test_parameter_roles_project_domain_config_without_parallel_trees():
     assert set(scientific) == {
         "data",
         "loss",
+        "loss_modifiers",
         "model",
         "optimization",
         "task",
@@ -184,8 +190,6 @@ def test_structured_task_loss_and_grad_cache_build_runtime_objects():
     loss = MNRConfig(
         scale=7.0,
         symmetric=True,
-        dimensions=(2, 4),
-        dimension_weights=(1.0, 2.0),
         negative_scope="global",
     )
     task = build_task(RetrievalConfig(), loss)
@@ -199,8 +203,55 @@ def test_structured_task_loss_and_grad_cache_build_runtime_objects():
 
     assert isinstance(task, MNRTask)
     assert task.scale == 7.0
-    assert task.dimensions == (2, 4)
+    assert task.symmetric
+    assert task.negative_scope == "global"
     assert isinstance(loss_execution, GradCache)
     assert loss_execution.query_chunk_size == 4
     assert loss_execution.resolved_document_chunk_size == 8
     assert loss_execution.resolved_loss_row_chunk_size == 2
+
+
+def test_loss_modifiers_round_trip_and_build_as_scientific_job_config():
+    modifier = MatryoshkaModifierConfig(
+        dimensions=(4, 2),
+        weights=(1.0, 0.5),
+    )
+    job = _job(loss_modifiers=(modifier,))
+
+    restored = JobConfig.model_validate_json(job.model_dump_json())
+    task = build_task(
+        restored.task,
+        restored.loss,
+        modifiers=restored.loss_modifiers,
+    )
+
+    assert restored.loss_modifiers == (modifier,)
+    assert isinstance(task, MatryoshkaTask)
+    assert task.dimensions == (4, 2)
+    assert job.parameters(ParameterRole.SCIENTIFIC)["loss_modifiers"] == [
+        {
+            "kind": "matryoshka",
+            "dimensions": [4, 2],
+            "weights": [1.0, 0.5],
+            "dimensions_per_step": -1,
+        }
+    ]
+
+
+def test_matryoshka_supports_grad_cache_but_adaptive_layers_do_not():
+    job = _job(
+        loss_modifiers=(MatryoshkaModifierConfig(dimensions=(4, 2)),),
+        training=_training(grad_cache=GradCacheConfig(micro_batch_size=2)),
+    )
+    task = build_task(job.task, job.loss, modifiers=job.loss_modifiers)
+    execution = build_loss_execution(job.training.grad_cache)
+
+    execution.validate(task)
+    with pytest.raises(
+        ValidationError,
+        match="loss modifier 'adaptive_layer' does not support training strategy",
+    ):
+        _job(
+            loss_modifiers=(AdaptiveLayerModifierConfig(),),
+            training=_training(grad_cache=GradCacheConfig(micro_batch_size=2)),
+        )
