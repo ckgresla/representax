@@ -11,9 +11,9 @@ from typing import Any
 
 import equinox as eqx
 import jax
-import jax.numpy as jnp
 
-from representax.core import Task, evaluate_loss
+from representax.core import Task
+from representax.evaluation import Evaluator, LossEvaluator
 
 
 @dataclass(frozen=True)
@@ -54,30 +54,17 @@ def _compilation_signature(tree: Any) -> str:
     return "sha256:" + hashlib.sha256(payload.encode()).hexdigest()
 
 
-def _metric_names(name: str, loss: Any) -> dict[str, Any]:
-    prefix = "valid" if name == "loss" else f"valid/{name}"
-    return {f"{prefix}/loss": loss}
-
-
 class EvaluationRunner:
-    """Own one task evaluator and reuse its JAX executable across invocations."""
+    """Run one typed evaluator and reuse its JAX executable across invocations."""
 
-    def __init__(self, task: Task[Any], *, name: str = "loss") -> None:
-        if not name:
-            raise ValueError("evaluation name must be non-empty")
-        self.name = name
+    def __init__(self, evaluator: Evaluator[Any, Any]) -> None:
+        self.name = evaluator.name
         self._seen_signatures: set[str] = set()
-        metric_weight = getattr(task, "accumulation_weight", None)
+        self._evaluator = evaluator
 
         @eqx.filter_jit
         def compiled(model: eqx.Module, batch: Any, key: Any) -> Any:
-            output = evaluate_loss(task, model, batch, key=key)
-            weight = (
-                metric_weight(batch)
-                if callable(metric_weight)
-                else jnp.asarray(_batch_size(batch), dtype=jnp.float32)
-            )
-            return output, weight
+            return evaluator.evaluate_batch(model, batch, key=key)
 
         self._compiled = compiled
 
@@ -99,8 +86,7 @@ class EvaluationRunner:
             raise ValueError("max_batches must be positive or None")
         started = time.perf_counter()
         compilation_seconds = 0.0
-        totals: dict[str, float] = {}
-        total_weight = 0.0
+        accumulator = self._evaluator.initialize()
         examples = 0
         batch_count = 0
         iterator = iter(batches)
@@ -113,22 +99,14 @@ class EvaluationRunner:
                 signature = _compilation_signature(batch)
                 first_use = signature not in self._seen_signatures
                 batch_key = (
-                    None
-                    if key is None
-                    else jax.random.fold_in(key, jnp.asarray(batch_index))
+                    None if key is None else jax.random.fold_in(key, batch_index)
                 )
                 dispatch_started = time.perf_counter()
-                output, weight = jax.device_get(self._compiled(model, batch, batch_key))
+                output = jax.device_get(self._compiled(model, batch, batch_key))
                 if first_use:
                     compilation_seconds += time.perf_counter() - dispatch_started
                     self._seen_signatures.add(signature)
-                batch_metrics = _metric_names(self.name, output.loss)
-                for metric_name, value in batch_metrics.items():
-                    scalar = float(value)
-                    totals[metric_name] = totals.get(metric_name, 0.0) + scalar * float(
-                        weight
-                    )
-                total_weight += float(weight)
+                accumulator = self._evaluator.accumulate(accumulator, output)
                 examples += size
                 batch_count += 1
         finally:
@@ -143,9 +121,7 @@ class EvaluationRunner:
             examples=examples,
             duration_seconds=time.perf_counter() - started,
             compilation_seconds=compilation_seconds,
-            metrics={
-                name: total / max(total_weight, 1.0) for name, total in totals.items()
-            },
+            metrics=self._evaluator.finalize(accumulator),
         )
 
 
@@ -157,7 +133,7 @@ def evaluate(
 ) -> EvaluationResult:
     """Run the same loss evaluator used by the training lifecycle offline."""
 
-    return EvaluationRunner(task).run(model, batches, **kwargs)
+    return EvaluationRunner(LossEvaluator(task)).run(model, batches, **kwargs)
 
 
 __all__ = ["EvaluationResult", "EvaluationRunner", "evaluate"]

@@ -26,6 +26,7 @@ from ._config import (
     Scientific,
     project_parameters,
 )
+from .core import Route
 from .data.recipe import MixtureRecipe
 from .tasks.config import LossConfig, LossModifierConfig, TaskConfig
 
@@ -86,10 +87,36 @@ class DataConfig(FrozenConfig):
 
 
 class EvaluatorConfig(FrozenConfig):
-    """One registered evaluator and its stable metric namespace."""
+    """Training-objective evaluator and its stable metric namespace."""
 
     kind: Literal["loss"] = "loss"
     name: NonEmptyString = "loss"
+
+
+class EmbeddingSimilarityEvaluatorConfig(EvaluatorConfig):
+    """Corpus-level correlations between labels and paired similarities."""
+
+    kind: Literal["embedding_similarity"] = "embedding_similarity"
+    name: NonEmptyString = "similarity"
+    similarity_functions: tuple[
+        Literal["cosine", "dot", "euclidean", "manhattan"], ...
+    ] = ("cosine", "dot", "euclidean", "manhattan")
+    main_similarity: Literal["cosine", "dot", "euclidean", "manhattan"] | None = None
+    left_route: Route = Route.GENERIC
+    right_route: Route = Route.GENERIC
+
+    @model_validator(mode="after")
+    def validate_similarity(self) -> Self:
+        if not self.similarity_functions:
+            raise ValueError("at least one similarity function is required")
+        if len(set(self.similarity_functions)) != len(self.similarity_functions):
+            raise ValueError("similarity functions must be unique")
+        if (
+            self.main_similarity is not None
+            and self.main_similarity not in self.similarity_functions
+        ):
+            raise ValueError("main_similarity must be one of similarity_functions")
+        return self
 
 
 class EvaluationConfig(FrozenConfig):
@@ -97,7 +124,9 @@ class EvaluationConfig(FrozenConfig):
 
     data: DataConfig
     batch_size: Scientific[PositiveInt]
-    evaluators: Scientific[tuple[EvaluatorConfig, ...]] = (EvaluatorConfig(),)
+    evaluators: Scientific[tuple[SerializeAsAny[EvaluatorConfig], ...]] = (
+        EvaluatorConfig(),
+    )
     every_steps: PositiveInt | None = None
     on_start: bool = False
     on_end: bool = True
@@ -106,6 +135,29 @@ class EvaluationConfig(FrozenConfig):
     primary_metric_mode: Scientific[MetricMode] = "min"
     save_best: bool = True
     keep_best: PositiveInt = 1
+
+    @field_validator("evaluators", mode="before")
+    @classmethod
+    def validate_evaluators(cls, value: object) -> object:
+        if not isinstance(value, (list, tuple)):
+            raise TypeError("evaluators must be a list or tuple")
+        parsed = []
+        for evaluator in value:
+            if isinstance(evaluator, EvaluatorConfig):
+                parsed.append(evaluator)
+                continue
+            if not isinstance(evaluator, Mapping):
+                raise TypeError("each evaluator must be a config or mapping")
+            kind = evaluator.get("kind", "loss")
+            if kind == "loss":
+                parsed.append(EvaluatorConfig.model_validate(evaluator))
+            elif kind == "embedding_similarity":
+                parsed.append(
+                    EmbeddingSimilarityEvaluatorConfig.model_validate(evaluator)
+                )
+            else:
+                raise ValueError(f"unknown evaluator kind {kind!r}")
+        return tuple(parsed)
 
     @model_validator(mode="after")
     def validate_evaluation(self) -> Self:
@@ -472,6 +524,7 @@ __all__ = [
     "CheckpointConfig",
     "ComponentConfig",
     "DataConfig",
+    "EmbeddingSimilarityEvaluatorConfig",
     "EvaluationConfig",
     "EvaluatorConfig",
     "ExportConfig",

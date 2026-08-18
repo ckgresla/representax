@@ -4,6 +4,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
+from representax.evaluation import LossEvaluator
 from representax.models import DenseEncoder
 from representax.tasks.pairwise import CosineRegressionTask, pairwise_batch
 from representax.train import EvaluationRunner, evaluate
@@ -42,7 +43,7 @@ def test_offline_evaluation_uses_example_weighted_valid_metrics():
 
 def test_evaluation_runner_reuses_the_compiled_shape_signature():
     model = DenseEncoder(2, 2, key=jax.random.key(7))
-    runner = EvaluationRunner(CosineRegressionTask())
+    runner = EvaluationRunner(LossEvaluator(CosineRegressionTask()))
 
     first = runner.run(model, _batches(), max_batches=1)
     second = runner.run(model, _batches(), max_batches=1)

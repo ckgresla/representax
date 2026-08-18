@@ -27,12 +27,15 @@ from .huggingface import (
     load_safetensor_subset,
     resolve_hf_checkpoint,
 )
+from .jina import load_jina_v5_small_text_encoder
 from .sentence_transformers import (
     SENTENCE_TRANSFORMERS_ORACLE_VERSION,
     LoadedSentenceTransformer,
+    SentencePairCollator,
     SentenceTransformerModuleSpec,
     load_sentence_transformer,
     load_sentence_transformer_artifact,
+    load_sentence_transformer_encoder,
     load_sentence_transformer_modules,
 )
 
@@ -53,15 +56,18 @@ __all__ = [
     "ModelInputContract",
     "ResolvedHuggingFaceCheckpoint",
     "SENTENCE_TRANSFORMERS_ORACLE_VERSION",
+    "SentencePairCollator",
     "SentenceTransformerModuleSpec",
     "TRANSFORMERS_VERSION",
     "get_hugging_face_architecture",
     "get_model_family",
     "get_model_type_family",
     "load_hf_config",
+    "load_jina_v5_small_text_encoder",
     "load_safetensor_subset",
     "load_sentence_transformer",
     "load_sentence_transformer_artifact",
+    "load_sentence_transformer_encoder",
     "load_sentence_transformer_modules",
     "resolve_hf_checkpoint",
 ]

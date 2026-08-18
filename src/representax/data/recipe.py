@@ -23,6 +23,12 @@ from .resolvers import BUILTIN_RESOLVERS, ArtifactResolver
 Mapper = str | Callable[[Any], Any]
 
 
+def identity(record: Any) -> Any:
+    """Preserve an artifact record while retaining a stable mapper identity."""
+
+    return record
+
+
 @dataclass(frozen=True)
 class GrainBatchSource:
     """Iterable Grain batches with an optional exact global-size contract."""
@@ -50,6 +56,8 @@ def _mapper_id(mapper: Mapper) -> str:
             raise ValueError("mapper import path must be non-empty")
         return mapper
     callable_value = mapper.func if isinstance(mapper, partial) else mapper
+    if not inspect.isfunction(callable_value) and not inspect.isclass(callable_value):
+        callable_value = type(callable_value)
     module = getattr(callable_value, "__module__", "")
     qualname = getattr(callable_value, "__qualname__", "")
     if (
@@ -74,6 +82,8 @@ def _implementation_contract(function: Callable[..., Any]) -> dict[str, str]:
     """Identify callable code strongly enough to reject changed preprocessing."""
 
     callable_value = function.func if isinstance(function, partial) else function
+    if not inspect.isfunction(callable_value) and not inspect.isclass(callable_value):
+        callable_value = type(callable_value)
     module = getattr(callable_value, "__module__", "")
     qualname = getattr(callable_value, "__qualname__", "")
     if not module or not qualname:
@@ -98,6 +108,9 @@ def _implementation_contract(function: Callable[..., Any]) -> dict[str, str]:
         contract["bindings_sha256"] = _json_fingerprint(
             {"args": function.args, "keywords": function.keywords or {}}
         )
+    state = getattr(function, "data_contract", None)
+    if callable(state):
+        contract["state_sha256"] = _json_fingerprint(state())
     return contract
 
 

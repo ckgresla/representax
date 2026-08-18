@@ -40,6 +40,17 @@ def collate_records(records):
     return {"values": [record["value"] for record in records]}
 
 
+class StatefulCollator:
+    def __init__(self, width):
+        self.width = width
+
+    def __call__(self, records):
+        return collate_records(records)
+
+    def data_contract(self):
+        return {"width": self.width}
+
+
 def _write_local_artifact(path, kind: str) -> None:
     rows = [{"value": 1}, {"value": 2}, {"value": 3}]
     if kind == "jsonl":
@@ -234,3 +245,29 @@ def test_grain_batch_source_fingerprints_the_resume_data_contract(tmp_path):
     assert first.data_fingerprint == same.data_fingerprint
     assert first.data_fingerprint != different_batching.data_fingerprint
     assert first.data_fingerprint != different_mapper.data_fingerprint
+
+
+def test_grain_batch_source_fingerprints_callable_configuration(tmp_path):
+    path = tmp_path / "records.jsonl"
+    _write_local_artifact(path, "jsonl")
+    recipe = data.mix(
+        data.source(path.as_uri(), revision="v1", map=project_record),
+        shuffle=False,
+    )
+
+    first = data.build_grain_iterator(
+        recipe,
+        batch_size=2,
+        batch_fn=StatefulCollator(width=8),
+        num_threads=0,
+        prefetch_buffer_size=0,
+    )
+    second = data.build_grain_iterator(
+        recipe,
+        batch_size=2,
+        batch_fn=StatefulCollator(width=16),
+        num_threads=0,
+        prefetch_buffer_size=0,
+    )
+
+    assert first.data_fingerprint != second.data_fingerprint

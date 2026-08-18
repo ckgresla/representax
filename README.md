@@ -8,8 +8,8 @@ reward modeling and self-supervised objectives next.
 The project is alpha. The current slice provides:
 
 - an Equinox-native encoder protocol with typed routes;
-- native BERT, MPNet, and ModernVBERT text-image encoders with direct Hugging
-  Face safetensor loading and pinned numerical acceptance;
+- native BERT, MPNet, ModernVBERT text-image, and pinned Jina v5 Omni Small text
+  encoders with direct Hugging Face safetensor loading and numerical acceptance;
 - a Torch-free dense Sentence Transformers module loader and fixed-shape host
   embedding API;
 - direct and cached multiple-negatives ranking, including symmetric and
@@ -25,6 +25,8 @@ The project is alpha. The current slice provides:
 - a Grain-to-compiled-step training loop with asynchronous reporting, exact
   checkpoint resume, configured validation, best-model selection, and atomic
   inference export;
+- a typed evaluator protocol with deterministic, corpus-level embedding
+  similarity metrics matching Sentence Transformers 5.6.1;
 - lazy Grain recipes with built-in Hugging Face and local artifact resolvers;
 - validated domain configs with annotated scientific and execution parameters; and
 - explicit unit, runtime, parity, distributed, and performance test lanes.
@@ -64,7 +66,8 @@ python -m pip install -e ".[test,performance]" --group parity-modernvbert
 
 The v0 Hugging Face reference is pinned to Transformers 5.3.0. Its complete
 architecture catalog is distinct from native support: BERT, MPNet, and
-ModernVBERT are the currently verified native families. Repository-only
+ModernVBERT have the broadest current acceptance, while Jina v5 Omni Small has
+a pinned native text path. Repository-only
 dense-route acceptance uses Sentence Transformers 5.6.1, the latest stable
 multimodal release line.
 
@@ -150,6 +153,20 @@ Install `representax[hf]` for Hub transport and tokenization. The native model
 runtime itself requires neither Torch nor Sentence Transformers. The pinned
 `all-MiniLM-L6-v2` and `all-mpnet-base-v2` acceptance cases verify the complete
 text-to-normalized-embedding path against Sentence Transformers 5.6.1.
+
+Jina v5 Omni Small has a separate, pinned text-only factory for training and
+inference without placing its unused vision or audio towers:
+
+```python
+from representax.integrations import load_jina_v5_small_text_encoder
+
+encoder = load_jina_v5_small_text_encoder(
+    revision="12949877f0092093f366c6450340011320152a05",
+)
+```
+
+Its optional checkpoint is not bundled and is separately licensed under CC
+BY-NC 4.0. See [`THIRD_PARTY.md`](THIRD_PARTY.md) before using those weights.
 
 ## Pairwise representation learning
 

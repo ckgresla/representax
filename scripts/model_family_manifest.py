@@ -58,6 +58,45 @@ MODEL_FAMILIES = (
         "support": "native",
     },
     {
+        "name": "jina_v5",
+        "model_types": ("qwen3_vl_text",),
+        "modalities": ("text",),
+        "components": (
+            "token_embedding",
+            "causal_grouped_query_attention",
+            "rotary_position_embedding",
+            "query_key_rms_normalization",
+            "swiglu_mlp",
+            "last_token_pooling",
+            "matryoshka_truncation",
+            "l2_normalization",
+        ),
+        "configuration_constraints": (
+            "checkpoint=jina-embeddings-v5-omni-small-retrieval",
+            "revision=12949877f0092093f366c6450340011320152a05",
+            "text_path_only=true",
+        ),
+        "config_adapter": (
+            "representax.models.jina_v5.JinaV5TextConfig.from_hf_config"
+        ),
+        "input_contracts": (("text", ("input_ids", "attention_mask")),),
+        "output_contracts": (
+            "last_hidden_state",
+            "last_token_l2_normalized_representation",
+        ),
+        "checkpoint_layout": "huggingface_safetensors",
+        "checkpoint_adapter": (
+            "representax.models.jina_v5.JinaV5TextCheckpointAdapter"
+        ),
+        "implementation_module": "representax.models.jina_v5",
+        "acceptance_gates": (
+            "config_mapping",
+            "checkpoint_roundtrip",
+            "forward",
+        ),
+        "support": "native",
+    },
+    {
         "name": "modernvbert",
         "model_types": ("modernvbert",),
         "modalities": ("text", "image", "fused"),

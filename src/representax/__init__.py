@@ -1,6 +1,6 @@
 """Representax: task-general representation learning in JAX."""
 
-from . import data, integrations, models, planning, tasks, train
+from . import data, evaluation, integrations, models, planning, tasks, train
 from .config import JobConfig
 from .core import (
     BoundEncoder,
@@ -32,6 +32,7 @@ __all__ = [
     "data",
     "encode",
     "embed",
+    "evaluation",
     "evaluate_loss",
     "export_inference_bundle",
     "integrations",

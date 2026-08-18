@@ -13,8 +13,15 @@ from typing import Any
 import equinox as eqx
 import jax
 
-from representax.config import ComponentConfig, DataConfig, JobConfig, ModelConfig
+from representax.config import (
+    ComponentConfig,
+    DataConfig,
+    EmbeddingSimilarityEvaluatorConfig,
+    JobConfig,
+    ModelConfig,
+)
 from representax.data import ArtifactResolver, build_grain_iterator
+from representax.evaluation import EmbeddingSimilarityEvaluator, LossEvaluator
 from representax.tasks import build_task
 
 from .config import build_loss_execution
@@ -91,6 +98,11 @@ def build_collate(config: DataConfig) -> Callable[[Any], Any] | None:
     if config.collate is None:
         return None
     collate = resolve_target(config.collate.target)
+    if inspect.isclass(collate):
+        instance = collate(**config.collate.parameters)
+        if not callable(instance):
+            raise TypeError("collate class must construct a callable instance")
+        return instance
     if not config.collate.parameters:
         return collate
     return partial(collate, **config.collate.parameters)
@@ -208,8 +220,22 @@ def build_job_runtime(
         evaluation_runners: tuple[EvaluationRunner, ...] = ()
         evaluation_batches = None
     else:
+
+        def build_evaluator(config: Any) -> Any:
+            if config.kind == "loss":
+                return LossEvaluator(task, name=config.name)
+            if isinstance(config, EmbeddingSimilarityEvaluatorConfig):
+                return EmbeddingSimilarityEvaluator(
+                    name=config.name,
+                    similarity_functions=config.similarity_functions,
+                    main_similarity=config.main_similarity,
+                    left_route=config.left_route,
+                    right_route=config.right_route,
+                )
+            raise ValueError(f"unsupported evaluator kind {config.kind!r}")
+
         evaluation_runners = tuple(
-            EvaluationRunner(task, name=config.name)
+            EvaluationRunner(build_evaluator(config))
             for config in job.evaluation.evaluators
         )
 

@@ -22,6 +22,14 @@ from .composition import (
     TokenReconstructionDecoder,
 )
 from .dense import DenseEncoder
+from .jina_v5 import (
+    JINA_V5_SMALL_MODEL_ID,
+    JINA_V5_SMALL_REVISION,
+    JinaV5TextBatch,
+    JinaV5TextCheckpointAdapter,
+    JinaV5TextConfig,
+    JinaV5TextEncoder,
+)
 from .modernvbert import (
     ModernVBERTBatch,
     ModernVBERTCheckpointAdapter,
@@ -65,6 +73,12 @@ __all__ = [
     "EncoderPair",
     "LayerNorm",
     "Linear",
+    "JINA_V5_SMALL_MODEL_ID",
+    "JINA_V5_SMALL_REVISION",
+    "JinaV5TextBatch",
+    "JinaV5TextCheckpointAdapter",
+    "JinaV5TextConfig",
+    "JinaV5TextEncoder",
     "ModernVBERTBatch",
     "ModernVBERTCheckpointAdapter",
     "ModernVBERTConfig",

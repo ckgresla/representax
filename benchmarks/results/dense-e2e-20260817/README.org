@@ -1,0 +1,79 @@
+#+title: Dense disk-to-final-model baseline
+#+options: toc:2 num:nil
+
+* Decision
+
+The first complete disk-to-trained-model comparison is scientifically valid but
+does not yet satisfy the systems-improvement gate. Representax reproduces the
+initial MiniLM STS metric within =7.8e-10= and the Jina Small metric within
+=6.1e-6=, trains both native models, publishes inference bundles, and verifies
+them in fresh processes. Cold total wall time and memory remain regressions, so
+the parent roadmap item stays open.
+
+* Matched contract
+
+- local STS Benchmark JSONL at immutable revision
+  =ab7a5ac0e35aa22088bdcf23e7fd99b220e53308=;
+- the same ordered rows, fixed-length tokenization, cosine-regression objective,
+  AdamW settings, validation set, and start/end evaluation;
+- Sentence Transformers =5.6.1=, Transformers =5.3.0=, Torch =2.13.0+cu130=,
+  JAX =0.10.1=, separate RTX 4090 GPUs 4 and 5, and one shared host;
+- unique cold JAX compilation caches, asynchronous Orbax final checkpoint,
+  atomic native export, and fresh-process reload probes; and
+- MiniLM: batch 32, length 128, 100 FP32 updates. Jina Small: batch 4,
+  length 128, 40 BF16 updates with full activation rematerialization.
+
+The released Jina Sentence Transformers wrapper is inference-only: its forward
+uses =torch.no_grad()= and its media auto-detection attempts to download text
+that resembles a URL. The matched oracle therefore disables media routing,
+deletes unused vision/audio towers, and replaces only that no-grad wrapper with
+an autograd-preserving call through the same upstream text model. This adapter
+is recorded in =summary.json= and is not presented as an unmodified upstream
+training result.
+
+* Result
+
+Times are process wall seconds and memory is process-visible device GiB.
+
+| Model | Runtime | Train/eval/export process | Fresh reload | Total | Device peak | Initial Spearman | Final Spearman |
+|-------+---------+---------------------------+--------------+-------+-------------+------------------+----------------|
+| MiniLM | Representax | 75.24 | 57.94 | 133.18 | 4.91 | 0.867098 | 0.884405 |
+| MiniLM | Sentence Transformers | 14.83 | 17.98 | 32.81 | 2.08 | 0.867098 | 0.885983 |
+| Jina Small | Representax | 78.61 | 20.26 | 98.87 | 8.42 | 0.886082 | 0.884123 |
+| Jina Small | patched ST oracle | 76.45 | 9.39 | 85.85 | 6.61 | 0.886076 | 0.884352 |
+
+MiniLM spends 30.98 seconds compiling the first training update and 16.74
+seconds compiling its evaluator. Jina spends 14.41 and 5.05 seconds
+respectively. Jina native evaluation is materially faster after compilation
+(13.34/8.64 seconds initially/finally versus 25.56/24.22), but compilation,
+checkpoint-template reconstruction during reload, host RSS, and device memory
+erase that advantage in the full lifecycle.
+
+Reload verification is exact to FP32 tolerance for MiniLM. Jina's fresh BF16
+process has maximum absolute drift =0.001216= and cosine =0.999981=, within the
+same explicit BF16 numerical contract used by its upstream parity gate.
+
+* Evidence and replay
+
+=summary.json= is the compact reviewed record. The full raw reports and model
+artifacts remain under =/raid/representax/benchmarks/=; their SHA-256 digests
+are recorded in the summary.
+
+#+begin_src sh
+python -m benchmarks.dense_end_to_end prepare \
+  --data-directory /raid/representax/benchmarks/dense-e2e-stsb
+
+python -m benchmarks.dense_end_to_end pair \
+  --model minilm \
+  --checkpoint /path/to/all-MiniLM-L6-v2 \
+  --data-directory /raid/representax/benchmarks/dense-e2e-stsb \
+  --result-directory /raid/representax/benchmarks/dense-e2e-minilm \
+  --representax-gpu 4 --sentence-transformers-gpu 5
+
+python -m benchmarks.dense_end_to_end pair \
+  --model jina-small \
+  --checkpoint /path/to/jina-embeddings-v5-omni-small-retrieval \
+  --data-directory /raid/representax/benchmarks/dense-e2e-stsb \
+  --result-directory /raid/representax/benchmarks/dense-e2e-jina-small \
+  --representax-gpu 4 --sentence-transformers-gpu 5
+#+end_src

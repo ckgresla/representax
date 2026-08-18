@@ -407,6 +407,15 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
     15.93 seconds versus 0.268 seconds and remains a cold-start optimization.
 *** NEXT Implement and accept BERT decoder cache and cross-attention modes :models:bert:
 ** TODO Port decoder-only, state-space, and mixture-of-experts text families :models:text:
+*** DONE Port the pinned Jina v5 Omni Small text path :models:jina:
+    Load only the 494M-parameter language path from the immutable Safetensors
+    checkpoint, execute its 28 causal GQA/SwiGLU layers with one rematerializable
+    =lax.scan=, last-token pool, Matryoshka truncate, and L2 normalize. The BF16
+    Sentence Transformers forward gate passes at max absolute =0.00206= and
+    cosine =0.999901= across none/selective/full rematerialization. A real
+    40-update STSB job, native export, and fresh reload pass at batch four.
+    Support remains =native= until parameter-gradient, optimizer-update,
+    source-compatible export, and isolated model-performance gates are added.
 ** TODO Port encoder-decoder text families :models:text:
 ** TODO Port vision and image-representation families :models:vision:
 ** TODO Port audio and speech representation families :models:audio:
@@ -443,7 +452,11 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
 * TODO Run accelerator-specific parity for fused kernels separately :models:testing:
 * WAITING Evaluate TorchAX only as an optional compatibility backend :models:research:
 * TODO Port a legally clean text-image encoder such as SigLIP2 :models:multimodal:
-* TODO Audit Jina and LCO licensing before considering native ports :models:release:
+* DONE Audit Jina licensing before its pinned native text port :models:release:
+  Representax ships an independent implementation and no upstream code or
+  weights. The optional =jina-embeddings-v5-omni-small-retrieval= checkpoint is
+  CC BY-NC 4.0, is pinned by revision, and is called out in =THIRD_PARTY.md=.
+* TODO Audit LCO licensing before considering a native port :models:release:
 * TODO Select native audio and video architecture families :models:multimodal:
 
 * TODO Add the host-side =embed= API for preprocessing and batching :api:
@@ -553,8 +566,16 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
     Cover embedding similarity, binary and label classification, information
     retrieval and NanoBEIR, triplet, reranking, paraphrase mining, translation,
     MSE, and sequential composition through reusable metric protocols.
-**** TODO Define one typed evaluator protocol and namespaced =valid/...= results
-**** TODO Implement similarity, classification, triplet, and MSE evaluators
+**** DONE Define one typed evaluator protocol and namespaced =valid/...= results
+     Keep compiled batch inference separate from host corpus accumulation and
+     finalization so exact correlation/ranking metrics do not enter JIT. The
+     same runner is reusable during training and offline.
+**** DONE Implement embedding-similarity evaluation and 5.6.1 parity
+     Cosine, dot, Euclidean, and Manhattan Pearson/Spearman metrics match the
+     pinned Sentence Transformers oracle on identical representations, including
+     average-rank tie behavior. Evaluation always uses deterministic inference;
+     training keys no longer accidentally enable model dropout.
+**** TODO Implement classification, triplet, and MSE evaluators
 **** TODO Implement retrieval, reranking, paraphrase, translation, and NanoBEIR
 **** TODO Add sequential composition and explicit primary-metric selection
 *** DONE Land configuration-driven end-to-end training jobs
@@ -632,7 +653,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      Native allocator usage is 5.1%--5.6% higher while process-visible device
      usage is 0.8%--1.5% lower. Raw reports, replay, and the validated summary
      live in =benchmarks/results/grad-cache-st56-20260817/=.
-**** NEXT Benchmark dataset-on-disk through the durable final model
+**** NEXT Beat the dataset-on-disk through durable-final-model baseline
      Start timing at process launch with pinned raw local data and an initial
      checkpoint already on disk. Stop only after preprocessing, nonzero-rate
      training, validation, asynchronous checkpoint synchronization, final model
@@ -640,6 +661,24 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      preprocessing separately and report total/stage wall time, host/device
      memory, restart cost, and final validation quality. The exact contract is
      =docs/dense-system-audit.md=.
+***** DONE Establish cold MiniLM and Jina Small paired baselines
+      The immutable STSB JSONL flow now covers raw Grain/Sentence Transformers
+      input through training, start/end embedding-similarity evaluation,
+      checkpoint synchronization, final export, and fresh-process reload.
+      MiniLM initial Spearman differs by only =7.8e-10=; Jina differs by
+      =6.1e-6= and passes native BF16 forward parity across all rematerialization
+      modes.
+      Cold total time remains behind (=0.246x= MiniLM and =0.868x= Jina) and
+      process-visible device peaks are =2.356x= and =1.274x= upstream, so this is
+      a recorded failing systems baseline, not a superiority claim. Evidence is
+      in =benchmarks/results/dense-e2e-20260817/=.
+***** TODO Remove duplicate source-checkpoint reconstruction from native reload
+      Reconstruct a safe typed model template from bundle metadata without
+      rereading and placing the original checkpoint before deserializing the
+      exported weights.
+***** TODO Reduce cold train/evaluator compilation and steady-state update time
+      Preserve the exact model, task, precision, batch, and validation contract;
+      report persistent-cache behavior separately from an honest cold process.
 ** TODO Implement late-interaction and multi-vector representation learning :tasks:late_interaction:
    Support token-level and learned multi-vector embeddings, ColBERT-style MaxSim,
    masking and compression, in-batch negatives, cached/replayed representations,

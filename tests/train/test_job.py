@@ -17,7 +17,9 @@ from representax.config import (
     CheckpointConfig,
     ComponentConfig,
     DataConfig,
+    EmbeddingSimilarityEvaluatorConfig,
     EvaluationConfig,
+    EvaluatorConfig,
     ExportConfig,
     JobConfig,
     ModelConfig,
@@ -127,6 +129,13 @@ def test_run_job_trains_evaluates_selects_and_exports_from_disk(tmp_path):
         evaluation=EvaluationConfig(
             data=_data(valid_path),
             batch_size=4,
+            evaluators=(
+                EvaluatorConfig(),
+                EmbeddingSimilarityEvaluatorConfig(
+                    similarity_functions=("cosine",),
+                    main_similarity="cosine",
+                ),
+            ),
             every_steps=1,
             on_start=True,
             on_end=True,
@@ -141,6 +150,7 @@ def test_run_job_trains_evaluates_selects_and_exports_from_disk(tmp_path):
     assert result.best_iteration in {0, 1, 2, 3}
     assert result.best_metrics is not None
     assert "valid/loss" in result.best_metrics
+    assert "valid/similarity/spearman_cosine" in result.best_metrics
     assert result.inference_bundle == run_directory / "final-model"
     assert (run_directory / "checkpoints" / "best").is_file()
     model, restored_job = load_inference_bundle(run_directory / "final-model")

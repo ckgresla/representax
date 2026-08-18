@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
@@ -513,12 +513,153 @@ def load_sentence_transformer(
     )
 
 
+def load_sentence_transformer_encoder(
+    model_name_or_path: str | Path,
+    *,
+    revision: str | None = None,
+    local_files_only: bool = False,
+    parameter_dtype: str = "float32",
+    compute_dtype: str = "float32",
+    attention_implementation: AttentionImplementation = "xla",
+    rematerialization: RematerializationPolicy = "none",
+) -> SentenceEncoder:
+    """Construct a native encoder from fully serializable job parameters."""
+
+    return load_sentence_transformer_artifact(
+        model_name_or_path,
+        revision=revision,
+        local_files_only=local_files_only,
+        parameter_dtype=jnp.dtype(parameter_dtype),
+        compute_dtype=jnp.dtype(compute_dtype),
+        attention_implementation=attention_implementation,
+        rematerialization=rematerialization,
+    ).encoder
+
+
+class SentencePairCollator:
+    """Tokenize raw labeled sentence pairs into one native static-shape batch."""
+
+    def __init__(
+        self,
+        checkpoint: str | Path,
+        *,
+        maximum_length: int,
+        left_field: str = "sentence1",
+        right_field: str = "sentence2",
+        label_field: str = "score",
+        pad_to_size: int | None = None,
+    ) -> None:
+        if maximum_length <= 0:
+            raise ValueError("maximum_length must be positive")
+        self.checkpoint = Path(checkpoint).expanduser().resolve()
+        config = load_hf_config(self.checkpoint)
+        self.model_type = str(config.get("model_type", ""))
+        if self.model_type not in {"bert", "mpnet", "qwen3_vl_audio"}:
+            raise ValueError(
+                f"native sentence-pair collation does not support {self.model_type!r}"
+            )
+        try:
+            from transformers import AutoTokenizer
+        except ImportError as error:
+            raise ImportError(
+                "sentence-pair preprocessing requires `pip install representax[hf]`"
+            ) from error
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            self.checkpoint,
+            local_files_only=True,
+            trust_remote_code=self.model_type == "qwen3_vl_audio",
+        )
+        self.maximum_length = maximum_length
+        self.left_field = left_field
+        self.right_field = right_field
+        self.label_field = label_field
+        if pad_to_size is not None and pad_to_size <= 0:
+            raise ValueError("pad_to_size must be positive or None")
+        self.pad_to_size = pad_to_size
+
+    def data_contract(self) -> Mapping[str, Any]:
+        """Return stable state incorporated into Grain resume fingerprints."""
+
+        return {
+            "schema_version": "representax-sentence-pair-collator-v1",
+            "checkpoint": str(self.checkpoint),
+            "model_type": self.model_type,
+            "maximum_length": self.maximum_length,
+            "left_field": self.left_field,
+            "right_field": self.right_field,
+            "label_field": self.label_field,
+            "pad_to_size": self.pad_to_size,
+        }
+
+    def _tokenize(self, texts: Sequence[str]) -> Any:
+        tokenizer = cast(Callable[..., Any], self.tokenizer)
+        encoded = tokenizer(
+            list(texts),
+            padding="max_length",
+            truncation=True,
+            max_length=self.maximum_length,
+            return_tensors="np",
+        )
+        input_ids = jnp.asarray(encoded["input_ids"])
+        attention_mask = jnp.asarray(encoded["attention_mask"])
+        if self.model_type == "bert":
+            from representax.models.bert import BertBatch
+
+            token_type_ids = encoded.get("token_type_ids")
+            return BertBatch(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                token_type_ids=(
+                    None if token_type_ids is None else jnp.asarray(token_type_ids)
+                ),
+            )
+        if self.model_type == "qwen3_vl_audio":
+            from representax.models.jina_v5 import JinaV5TextBatch
+
+            return JinaV5TextBatch(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+            )
+        from representax.models.mpnet import MPNetBatch
+
+        return MPNetBatch(input_ids=input_ids, attention_mask=attention_mask)
+
+    def __call__(self, examples: Sequence[Mapping[str, Any]]) -> Any:
+        from representax.tasks.pairwise import pairwise_batch
+
+        try:
+            left = tuple(str(example[self.left_field]) for example in examples)
+            right = tuple(str(example[self.right_field]) for example in examples)
+            labels = tuple(float(example[self.label_field]) for example in examples)
+        except KeyError as error:
+            raise KeyError(
+                f"sentence-pair record is missing field {error.args[0]!r}"
+            ) from error
+        valid = [True] * len(labels)
+        if self.pad_to_size is not None:
+            if len(labels) > self.pad_to_size:
+                raise ValueError("sentence-pair batch exceeds pad_to_size")
+            padding = self.pad_to_size - len(labels)
+            left = (*left, *("" for _ in range(padding)))
+            right = (*right, *("" for _ in range(padding)))
+            labels = (*labels, *(0.0 for _ in range(padding)))
+            valid.extend(False for _ in range(padding))
+        return pairwise_batch(
+            left=self._tokenize(left),
+            right=self._tokenize(right),
+            labels=jnp.asarray(labels, dtype=jnp.float32),
+            valid=jnp.asarray(valid),
+        )
+
+
 __all__ = [
     "LoadedSentenceTransformer",
     "SENTENCE_TRANSFORMERS_ORACLE_VERSION",
+    "SentencePairCollator",
     "SentenceTransformerModuleSpec",
     "SimilarityFunction",
     "load_sentence_transformer",
     "load_sentence_transformer_artifact",
+    "load_sentence_transformer_encoder",
     "load_sentence_transformer_modules",
 ]

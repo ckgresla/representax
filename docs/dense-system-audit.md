@@ -31,7 +31,7 @@ Hub publication. Those are the concrete upstream capabilities assessed below.
 | Batch sampling | Missing | Add default, no-duplicate, hashed no-duplicate, and group-by-label policies. |
 | Multi-source sampling | Partial | Grain provides weighted mixing; add explicit proportional and round-robin policies plus per-source task/loss routing. |
 | Generic training loop | Complete core | One validated `JobConfig` constructs data, model, task, optimizer/schedule, compiled updates, evaluation, checkpointing, and final export. Extend its sampler and routing inventory without adding a second trainer. |
-| Evaluators and model selection | Partial | Shared offline/in-training loss evaluation, validation cadence, primary metrics, and Orbax best-checkpoint selection are complete; add the released dense evaluator inventory. |
+| Evaluators and model selection | Partial | Shared offline/in-training loss and embedding-similarity evaluation, validation cadence, primary metrics, and Orbax best-checkpoint selection are complete; add the remaining released dense evaluator inventory. |
 | Offline hard-negative mining | Missing | Add a source-neutral mining transform that emits a new recipe/artifact manifest without hiding data provenance. |
 | Final dense artifact export | Partial | Atomic native export and source-compatible Hugging Face export/reload are complete; add prompt/truncation metadata, model cards, and optional Hub publication outside the training core. |
 | Reporters and lifecycle hooks | Partial | Keep namespaced asynchronous metrics; add W&B and a small typed lifecycle protocol rather than copying Trainer callbacks. |
@@ -90,6 +90,13 @@ The timer stops only after a fresh process can load the final artifact and
 reproduce its recorded validation embeddings. Network download time is excluded
 by pinning and checksumming both source data and the initial checkpoint before
 either arm starts.
+
+The first cold baseline is recorded in
+[`benchmarks/results/dense-e2e-20260817`](../benchmarks/results/dense-e2e-20260817/README.org).
+MiniLM and Jina Small both satisfy initial-quality and reload-equivalence gates,
+but neither yet beats the pinned oracle on complete cold wall time or memory.
+Compilation and duplicate source-checkpoint reconstruction during native reload
+are measured regressions, so this systems item remains open.
 
 Both frameworks must consume the same ordered example identifiers, tokenizer
 revision, prompts/routes, global batch, objective, optimizer and schedule,

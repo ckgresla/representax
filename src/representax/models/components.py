@@ -110,6 +110,26 @@ class LayerNorm(eqx.Module):
         return output.astype(source_dtype)
 
 
+class RMSNorm(eqx.Module):
+    """Last-axis root-mean-square normalization with FP32 statistics."""
+
+    weight: Float[Array, " hidden"]
+    epsilon: float = eqx.field(static=True)
+
+    def __call__(
+        self,
+        value: Float[Array, "*batch hidden"],
+    ) -> Float[Array, "*batch hidden"]:
+        source_dtype = value.dtype
+        value = value.astype(jnp.float32)
+        inverse_rms = jax.lax.rsqrt(
+            jnp.mean(jnp.square(value), axis=-1, keepdims=True) + self.epsilon
+        )
+        return (value * inverse_rms * self.weight.astype(jnp.float32)).astype(
+            source_dtype
+        )
+
+
 def activate(
     value: Float[Array, "*batch hidden"],
     activation: Activation,
@@ -223,6 +243,7 @@ __all__ = [
     "AttentionImplementation",
     "LayerNorm",
     "Linear",
+    "RMSNorm",
     "activate",
     "dot_product_attention",
     "dropout",

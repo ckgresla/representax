@@ -85,6 +85,22 @@ def test_mpnet_family_is_verified_with_explicit_position_semantics():
     }
 
 
+def test_jina_v5_family_is_checkpoint_specific_and_native():
+    family = get_model_family("jina_v5")
+    assert family is get_model_type_family("qwen3_vl_text")
+    assert family.support is FamilySupport.NATIVE
+    assert family.configuration_constraints == (
+        "checkpoint=jina-embeddings-v5-omni-small-retrieval",
+        "revision=12949877f0092093f366c6450340011320152a05",
+        "text_path_only=true",
+    )
+    assert family.acceptance_gates == {
+        AcceptanceGate.CONFIG_MAPPING,
+        AcceptanceGate.CHECKPOINT_ROUNDTRIP,
+        AcceptanceGate.FORWARD,
+    }
+
+
 def test_generated_family_registry_is_current_and_torch_free():
     assert REFERENCE_CATALOG_SHA256 == CATALOG_SHA256
     assert FAMILY_MANIFEST_SHA256

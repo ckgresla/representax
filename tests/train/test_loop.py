@@ -9,10 +9,12 @@ import jax.numpy as jnp
 import optax
 import pytest
 
+from representax.config import DataConfig, EvaluationConfig, EvaluatorConfig
 from representax.data import build_grain_iterator, mix, source
 from representax.models import DenseEncoder
 from representax.tasks.retrieval import MNRTask
 from representax.train import (
+    EvaluationRunner,
     LoggingConfig,
     MetricRecord,
     RunLogger,
@@ -61,6 +63,23 @@ class RecordingReporter:
 
     def close(self):
         self.closed = True
+
+
+class KeyPresenceEvaluator:
+    name = "deterministic"
+
+    def evaluate_batch(self, model, batch, *, key=None):
+        del model, batch
+        return jnp.asarray(key is None, dtype=jnp.float32)
+
+    def initialize(self):
+        return 0.0
+
+    def accumulate(self, accumulator, output):
+        return accumulator + float(output)
+
+    def finalize(self, accumulator):
+        return {"valid/deterministic/key_is_none": accumulator}
 
 
 def _state() -> TrainState:
@@ -241,6 +260,40 @@ def test_skipped_updates_advance_deterministic_iteration_keys(tmp_path):
     assert [row["metrics"]["train/key"] for row in first] == [
         row["metrics"]["train/key"] for row in second
     ]
+
+
+def test_training_evaluation_uses_deterministic_inference(tmp_path):
+    validation_source = source("memory://validation", map=_identity)
+    evaluation = EvaluationConfig(
+        data=DataConfig(recipe=mix(validation_source, shuffle=False)),
+        batch_size=2,
+        evaluators=(EvaluatorConfig(name="deterministic"),),
+        on_start=True,
+        on_end=False,
+        primary_metric="valid/deterministic/key_is_none",
+        primary_metric_mode="max",
+        save_best=False,
+    )
+    job = _job(
+        global_batch_size=2,
+        max_steps=1,
+        seed=19,
+        logging=LoggingConfig(console_every=10),
+    ).model_copy(update={"evaluation": evaluation})
+
+    run_training(
+        state=_state(),
+        step=_step,
+        batches=ClosingBatches([jnp.asarray([1.0, 3.0])]),
+        job=job,
+        run_directory=tmp_path / "deterministic-evaluation",
+        evaluation_runners=(EvaluationRunner(KeyPresenceEvaluator()),),
+        evaluation_batches=lambda: [jnp.asarray([2.0, 4.0])],
+    )
+
+    metrics = _read_jsonl(tmp_path / "deterministic-evaluation" / "metrics.jsonl")
+    evaluation_metrics = [row for row in metrics if row["event"] == "evaluation"]
+    assert evaluation_metrics[0]["metrics"]["valid/deterministic/key_is_none"] == 1.0
 
 
 def _identity(record):

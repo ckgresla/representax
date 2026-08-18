@@ -307,13 +307,14 @@ def _build_train_step_body(
             gradients,
             gradient_norm,
         )
-        parameters = eqx.filter(state.model, eqx.is_inexact_array)
+        parameters, static_model = eqx.partition(state.model, eqx.is_inexact_array)
         updates, optimizer_state = optimizer.update(
             clipped_gradients,
             state.optimizer_state,
             parameters,
         )
-        model = eqx.apply_updates(state.model, updates)
+        parameters = optax.apply_updates(parameters, updates)
+        model = cast(eqx.Module, eqx.combine(parameters, static_model))
         proposed_state = TrainState(
             model=model,
             optimizer_state=optimizer_state,

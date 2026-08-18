@@ -323,12 +323,12 @@ def run_training(
             compilation_seconds = 0.0
             evaluated_examples = 0
             evaluated_batches = 0
-            for runner_index, runner in enumerate(evaluation_runners):
+            for runner in evaluation_runners:
                 result = runner.run(
                     current.model,
                     evaluation_batches(),
                     iteration=iteration,
-                    key=jax.random.fold_in(base_key, training.max_steps + runner_index),
+                    key=None,
                     max_batches=evaluation.max_batches,
                     place_batch=place_batch,
                 )

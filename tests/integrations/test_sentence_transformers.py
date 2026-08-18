@@ -12,8 +12,10 @@ from safetensors.numpy import save_file
 
 from representax import Route
 from representax.integrations import (
+    SentencePairCollator,
     load_sentence_transformer,
     load_sentence_transformer_artifact,
+    load_sentence_transformer_encoder,
     load_sentence_transformer_modules,
 )
 from representax.models.bert import BertCheckpointAdapter, BertConfig, BertEncoder
@@ -230,6 +232,42 @@ def test_standard_dense_graph_loads_without_upstream_runtime(tmp_path):
     assert loaded.encoder.pooling.modes == ("mean",)
     assert loaded.max_sequence_length == 8
     assert loaded.prompts == {"query": "q: ", "document": "d: "}
+    assert (
+        load_sentence_transformer_encoder(
+            checkpoint,
+            local_files_only=True,
+        ).metadata.output_dimension
+        == 3
+    )
+
+
+def test_sentence_pair_collator_has_fixed_shapes_and_a_stable_contract(
+    tmp_path,
+    monkeypatch,
+):
+    checkpoint = _checkpoint(tmp_path / "sentence-model")
+    monkeypatch.setattr(
+        "transformers.AutoTokenizer.from_pretrained",
+        lambda *_args, **_kwargs: _Tokenizer(),
+    )
+    collator = SentencePairCollator(
+        checkpoint,
+        maximum_length=8,
+        pad_to_size=4,
+    )
+
+    batch = collator(
+        [
+            {"sentence1": "left", "sentence2": "right", "score": 0.75},
+            {"sentence1": "near", "sentence2": "far", "score": 0.25},
+        ]
+    )
+
+    assert batch.left.input_ids.shape == (4, 8)
+    assert batch.right.input_ids.shape == (4, 8)
+    np.testing.assert_array_equal(batch.valid, [True, True, False, False])
+    np.testing.assert_array_equal(batch.labels, [0.75, 0.25, 0.0, 0.0])
+    assert collator.data_contract()["maximum_length"] == 8
 
 
 def test_host_embed_uses_fixed_shapes_routes_and_partial_batch_padding(tmp_path):

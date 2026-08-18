@@ -247,5 +247,22 @@ Native MPNet parameter, input-gradient, optimizer-update, and export parity use
 the same Transformers 5.3.0 environment through
 `REPRESENTAX_MPNET_TRANSFORMERS_PYTHON`.
 
+The pinned Jina v5 Omni Small text path has its own BF16 forward gate. The
+checkpoint is optional, non-redistributed test data and remains governed by its
+CC BY-NC 4.0 artifact license:
+
+```bash
+export REPRESENTAX_JINA_V5_SMALL_CHECKPOINT=/path/to/pinned/snapshot
+export REPRESENTAX_JINA_V5_SMALL_ORACLE=/path/to/jina-v5-small-text-st56.npz
+python -m tests.models.jina_v5.transformers_oracle \
+  "$REPRESENTAX_JINA_V5_SMALL_CHECKPOINT" \
+  "$REPRESENTAX_JINA_V5_SMALL_ORACLE"
+pytest -q -m parity tests/models/jina_v5/test_transformers_parity.py
+```
+
+The complete raw-JSONL-to-fresh-reload comparison for MiniLM and Jina Small is
+replayed with `python -m benchmarks.dense_end_to_end`; the reviewed baseline is
+in [`benchmarks/results/dense-e2e-20260817`](../benchmarks/results/dense-e2e-20260817/README.org).
+
 Each comparison also checks its final output numerically before applying the
 speed and memory thresholds. A faster program doing different work cannot pass.

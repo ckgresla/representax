@@ -157,3 +157,34 @@ def test_gradient_accumulation_requires_divisible_array_batches():
 
     with pytest.raises(ValueError, match="divisible"):
         step(state, batch, None)
+
+
+@pytest.mark.runtime
+def test_optimizer_update_preserves_mixed_precision_parameter_dtypes():
+    model = DenseEncoder(2, 2, key=jax.random.key(41), normalize=False)
+    model = jax.tree.map(
+        lambda value: (
+            value.astype(jnp.bfloat16) if eqx.is_inexact_array(value) else value
+        ),
+        model,
+    )
+    optimizer = optax.adamw(learning_rate=1e-3, weight_decay=0.0)
+    state = init_train_state(model, optimizer)
+    batch = pairwise_batch(
+        left=jnp.asarray([[1.0, 0.0], [0.0, 1.0]], dtype=jnp.bfloat16),
+        right=jnp.asarray([[0.9, 0.1], [0.1, 0.9]], dtype=jnp.bfloat16),
+        labels=jnp.asarray([0.9, 0.8], dtype=jnp.float32),
+    )
+
+    result = build_train_step(
+        CosineRegressionTask(),
+        optimizer,
+        max_grad_norm=1.0,
+    )(state, batch, None)
+
+    parameter_dtypes = {
+        value.dtype
+        for value in jax.tree.leaves(result.state.model)
+        if eqx.is_inexact_array(value)
+    }
+    assert parameter_dtypes == {jnp.dtype(jnp.bfloat16)}
