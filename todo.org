@@ -694,6 +694,18 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      range from -0.00325 to +0.01127; treat them as preliminary, not a quality
      superiority claim. Raw reports live under
      =/raid/representax/benchmarks/dense-retrieval-minilm-*=.
+**** DONE Establish the first pinned MPNet architecture replication
+     Reuse the exact MiniLM data, evaluation, optimizer, precision, and initial
+     metric-parity contract with =sentence-transformers/all-mpnet-base-v2=.
+     Direct batch 32 is not competitive: Representax sustains 165.4 versus
+     183.2 examples/s (=0.903x=) and materially reduces the feasible-workload
+     headroom. Exact GradCache at scientific batch 128/chunk 8 instead sustains
+     110.4 versus 90.6 examples/s (=1.219x=), with compilation amortized after
+     about 171 optimizer updates. Process peaks are 8.43 versus 4.32 GiB, so
+     memory remains real optimization work even though both jobs fit. Initial
+     retrieval metrics match exactly; the final single-seed nDCG@10 delta is
+     =+0.00104= and is not a quality-superiority claim. Raw reports live under
+     =/raid/representax/benchmarks/dense-retrieval-mpnet-*=.
 **** TODO Complete multi-seed MiniLM, MPNet, and ModernVBERT time-to-quality runs
      Run at least three seeds, preserve the same row order within each seed,
      report confidence intervals for held-out retrieval quality and throughput,

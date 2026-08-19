@@ -1,0 +1,40 @@
+#+title: Matched MPNet dense-retrieval training — 2026-08-18
+
+* Contract
+
+- Model: =sentence-transformers/all-mpnet-base-v2= revision
+  =e8c3b32edf5434bc2275fc9bab85f82640a19130=.
+- Training data, NanoMSMARCO validation, tokenizer, checkpoint, pooling,
+  precision, maximum length, cosine MNR objective, optimizer, ordered examples,
+  and update count are identical between Representax and Sentence Transformers
+  5.6.1. The complete pinned artifact identity is in each raw =summary.json=.
+- Initial accuracy, precision, recall, MRR, nDCG, and MAP match exactly before
+  training.
+
+* Results
+
+Sustained Representax rates exclude compilation and the first execution.
+Process peak is a feasible-workload signal rather than an allocator-policy score.
+
+| execution | global batch | steps | native ex/s | ST ex/s | speedup | native compile+first | native peak GiB | ST peak GiB | native final nDCG@10 | ST final nDCG@10 |
+|-----------+--------------+-------+-------------+---------+---------+----------------------+-----------------+-------------+----------------------+------------------|
+| direct    |           32 |   100 |       165.4 |   183.2 |  0.903x |              31.78 s |           20.41 |        8.52 |             0.584354 |         0.588891 |
+| cache 8   |          128 |   100 |       110.4 |    90.6 |  1.219x |              43.43 s |            8.43 |        4.32 |             0.596235 |         0.595200 |
+
+The cached plan amortizes its compilation cost after approximately 171 updates.
+The 100-step wall-clock job remains slower before that crossover. Direct MPNet
+is both slower and materially larger, whereas exact GradCache changes the
+feasible workload and reverses the sustained-throughput result.
+
+* Interpretation and remaining gate
+
+This independently replicates the cached-training advantage on a second native
+architecture family. It does not establish a quality advantage: each row is one
+seed and the two frameworks do not share an identical dropout RNG stream.
+Multi-seed time-to-quality, direct/cached OOM frontiers, and the end-to-end
+ModernVBERT replication remain required before closing the dense-training proof.
+
+Raw reports:
+
+- =/raid/representax/benchmarks/dense-retrieval-mpnet-direct-b32-s100-20260818/=
+- =/raid/representax/benchmarks/dense-retrieval-mpnet-cache-b128-c8-s100-20260818/=
