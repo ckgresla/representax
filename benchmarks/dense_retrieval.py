@@ -14,6 +14,7 @@ import sys
 import time
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
+from datetime import datetime
 from pathlib import Path
 from typing import Any, TextIO
 
@@ -305,6 +306,69 @@ def _training_compile_seconds(run_directory: Path) -> float:
     raise ValueError("Representax run did not report first executable use")
 
 
+def _final_training_loss(run_directory: Path) -> float:
+    final_loss: float | None = None
+    with (run_directory / "metrics.jsonl").open() as stream:
+        for line in stream:
+            row = json.loads(line)
+            value = row["metrics"].get("train/loss")
+            if value is not None:
+                final_loss = float(value)
+    if final_loss is None:
+        raise ValueError("Representax run did not report a training loss")
+    return final_loss
+
+
+def _representax_evaluation_history(run_directory: Path) -> list[dict[str, Any]]:
+    started: datetime | None = None
+    with (run_directory / "events.jsonl").open() as stream:
+        for line in stream:
+            row = json.loads(line)
+            if row.get("event") == "training_started":
+                started = datetime.fromisoformat(row["timestamp"])
+                break
+    if started is None:
+        raise ValueError("Representax run did not report training start")
+    losses: dict[int, float] = {}
+    history = []
+    evaluation_seconds = 0.0
+    with (run_directory / "metrics.jsonl").open() as stream:
+        for line in stream:
+            row = json.loads(line)
+            iteration = int(row["iteration"])
+            metrics = row["metrics"]
+            if "train/loss" in metrics:
+                losses[iteration] = float(metrics["train/loss"])
+            if row.get("event") != "evaluation":
+                continue
+            duration = float(metrics["perf/evaluation_seconds"])
+            elapsed = (
+                (datetime.fromisoformat(row["timestamp"]) - started).total_seconds()
+                - evaluation_seconds
+                - duration
+            )
+            evaluation_seconds += duration
+            history.append(
+                {
+                    "updates": iteration,
+                    "metrics": {
+                        name: float(value)
+                        for name, value in metrics.items()
+                        if name.startswith("valid/")
+                    },
+                    "final_train_loss": losses.get(iteration),
+                    "evaluation_seconds": duration,
+                    "evaluation_compilation_seconds": float(
+                        metrics["perf/evaluation_compilation_seconds"]
+                    ),
+                    "training_elapsed_seconds": max(elapsed, 0.0),
+                }
+            )
+    if not history:
+        raise ValueError("Representax run did not report periodic evaluation")
+    return history
+
+
 def _representax_report(
     spec: ModelSpec,
     *,
@@ -315,6 +379,7 @@ def _representax_report(
     maximum_length: int,
     cache_chunk_size: int | None,
     evaluation_batch_size: int,
+    evaluation_every_steps: int | None,
     data_threads: int,
     prefetch_buffer_size: int,
     seed: int,
@@ -325,6 +390,8 @@ def _representax_report(
         BatchConfig,
         ComponentConfig,
         DataConfig,
+        EvaluationConfig,
+        EvaluatorConfig,
         ExportConfig,
         GradCacheConfig,
         JobConfig,
@@ -348,6 +415,19 @@ def _representax_report(
         data_directory,
         TRAIN_DATASET_ID,
         TRAIN_DATASET_FILE,
+    )
+    training_data = DataConfig(
+        recipe=mix(source(str(training_path), map=identity), shuffle=False),
+        collate=ComponentConfig(
+            target="representax.integrations.RetrievalPairCollator",
+            parameters={
+                "checkpoint": str(checkpoint),
+                "maximum_length": maximum_length,
+            },
+        ),
+        drop_remainder=True,
+        num_threads=data_threads,
+        prefetch_buffer_size=prefetch_buffer_size,
     )
     job = JobConfig(
         name=f"matched-dense-retrieval-{spec.name}",
@@ -376,19 +456,7 @@ def _representax_report(
             ),
             max_gradient_norm=1.0,
         ),
-        data=DataConfig(
-            recipe=mix(source(str(training_path), map=identity), shuffle=False),
-            collate=ComponentConfig(
-                target="representax.integrations.RetrievalPairCollator",
-                parameters={
-                    "checkpoint": str(checkpoint),
-                    "maximum_length": maximum_length,
-                },
-            ),
-            drop_remainder=True,
-            num_threads=data_threads,
-            prefetch_buffer_size=prefetch_buffer_size,
-        ),
+        data=training_data,
         training=TrainingConfig(
             global_batch_size=batch_size,
             max_steps=steps,
@@ -403,6 +471,21 @@ def _representax_report(
             donate_buffers=True,
         ),
         logging=LoggingConfig(console_every=steps),
+        evaluation=(
+            None
+            if evaluation_every_steps is None
+            else EvaluationConfig(
+                data=training_data,
+                batch_size=evaluation_batch_size,
+                evaluators=(EvaluatorConfig(name=EVALUATION_SUBSET),),
+                every_steps=evaluation_every_steps,
+                on_start=True,
+                on_end=True,
+                primary_metric=(f"valid/{EVALUATION_SUBSET}/cosine_ndcg@10"),
+                primary_metric_mode="max",
+                save_best=False,
+            )
+        ),
         export=ExportConfig(enabled=False),
     )
 
@@ -410,13 +493,19 @@ def _representax_report(
     runtime = build_job_runtime(job)
     model_and_data_seconds = time.perf_counter() - load_started
     evaluation_runner = _native_retrieval_runner(evaluation_data)
-    initial, initial_seconds, initial_compile_seconds = _native_retrieval_metrics(
-        evaluation_runner,
-        runtime.state.model,
-        evaluation_data,
-        evaluation_collator,
-        evaluation_batch_size,
-    )
+    periodic_evaluation = evaluation_every_steps is not None
+    if periodic_evaluation:
+        initial = None
+        initial_seconds = None
+        initial_compile_seconds = None
+    else:
+        initial, initial_seconds, initial_compile_seconds = _native_retrieval_metrics(
+            evaluation_runner,
+            runtime.state.model,
+            evaluation_data,
+            evaluation_collator,
+            evaluation_batch_size,
+        )
     training_started = time.perf_counter()
     result = run_training(
         state=runtime.state,
@@ -425,19 +514,48 @@ def _representax_report(
         job=job,
         run_directory=run_directory,
         place_batch=runtime.place_batch,
+        evaluation_runners=(evaluation_runner,) if periodic_evaluation else (),
+        evaluation_batches=(
+            (
+                lambda: _native_evaluation_batches(
+                    evaluation_data,
+                    evaluation_collator,
+                    evaluation_batch_size,
+                )
+            )
+            if periodic_evaluation
+            else None
+        ),
     )
     jax.block_until_ready(result.state)
     training_seconds = time.perf_counter() - training_started
-    final, final_seconds, final_compile_seconds = _native_retrieval_metrics(
-        evaluation_runner,
-        result.state.model,
-        evaluation_data,
-        evaluation_collator,
-        evaluation_batch_size,
-    )
+    if periodic_evaluation:
+        evaluation_history = _representax_evaluation_history(run_directory)
+        initial = evaluation_history[0]["metrics"]
+        final = evaluation_history[-1]["metrics"]
+        initial_seconds = evaluation_history[0]["evaluation_seconds"]
+        initial_compile_seconds = evaluation_history[0][
+            "evaluation_compilation_seconds"
+        ]
+        final_seconds = evaluation_history[-1]["evaluation_seconds"]
+        final_compile_seconds = evaluation_history[-1]["evaluation_compilation_seconds"]
+        evaluation_during_training_seconds = sum(
+            item["evaluation_seconds"] for item in evaluation_history
+        )
+    else:
+        final, final_seconds, final_compile_seconds = _native_retrieval_metrics(
+            evaluation_runner,
+            result.state.model,
+            evaluation_data,
+            evaluation_collator,
+            evaluation_batch_size,
+        )
+        evaluation_history = []
+        evaluation_during_training_seconds = 0.0
+    training_compute_seconds = training_seconds - evaluation_during_training_seconds
     compilation_and_first_step_seconds = _training_compile_seconds(run_directory)
     sustained_seconds = max(
-        training_seconds - compilation_and_first_step_seconds,
+        training_compute_seconds - compilation_and_first_step_seconds,
         0.0,
     )
     return {
@@ -454,20 +572,23 @@ def _representax_report(
         "seed": seed,
         "model_and_data_seconds": model_and_data_seconds,
         "training_seconds": training_seconds,
+        "training_compute_seconds": training_compute_seconds,
         "compilation_and_first_step_seconds": compilation_and_first_step_seconds,
         "sustained_seconds_after_first_step": sustained_seconds,
-        "amortized_examples_per_second": batch_size * steps / training_seconds,
+        "amortized_examples_per_second": batch_size * steps / training_compute_seconds,
         "sustained_examples_per_second_after_first_step": (
             batch_size * max(steps - 1, 0) / sustained_seconds
             if sustained_seconds > 0
             else None
         ),
+        "final_train_loss": _final_training_loss(run_directory),
         "initial_evaluation": initial,
         "final_evaluation": final,
         "initial_evaluation_seconds": initial_seconds,
         "initial_evaluation_compilation_seconds": initial_compile_seconds,
         "final_evaluation_seconds": final_seconds,
         "final_evaluation_compilation_seconds": final_compile_seconds,
+        "evaluation_history": evaluation_history,
         "maximum_host_rss_bytes": _maximum_host_rss_bytes(),
     }
 
@@ -566,6 +687,7 @@ def _sentence_transformers_report(
     maximum_length: int,
     cache_chunk_size: int | None,
     evaluation_batch_size: int,
+    evaluation_every_steps: int | None,
     data_threads: int,
     prefetch_buffer_size: int,
     seed: int,
@@ -586,6 +708,7 @@ def _sentence_transformers_report(
         CachedMultipleNegativesRankingLoss,
         MultipleNegativesRankingLoss,
     )
+    from transformers import TrainerCallback
 
     from benchmarks.samplers import sequential_sentence_transformers_batches
 
@@ -652,7 +775,77 @@ def _sentence_transformers_report(
         seed=seed,
         data_seed=seed,
     )
-    trainer = SentenceTransformerTrainer(
+
+    class RecordingTrainer(SentenceTransformerTrainer):
+        final_train_loss: Any = None
+
+        def compute_loss(self, *args: Any, **kwargs: Any) -> Any:
+            result = super().compute_loss(*args, **kwargs)
+            loss = result[0] if isinstance(result, tuple) else result
+            self.final_train_loss = loss.detach()
+            return result
+
+    initial, initial_seconds = _oracle_retrieval_metrics(
+        model,
+        evaluation_data,
+        evaluation_batch_size,
+        maximum_length,
+    )
+    evaluation_history = [
+        {
+            "updates": 0,
+            "metrics": initial,
+            "final_train_loss": None,
+            "evaluation_seconds": initial_seconds,
+            "training_elapsed_seconds": 0.0,
+        }
+    ]
+    training_started_at: float | None = None
+    evaluation_during_training_seconds = 0.0
+
+    class PeriodicRetrievalCallback(TrainerCallback):
+        trainer: RecordingTrainer | None = None
+
+        def on_step_end(
+            self, args: Any, state: Any, control: Any, **kwargs: Any
+        ) -> Any:
+            nonlocal evaluation_during_training_seconds
+            if evaluation_every_steps is None:
+                return control
+            updates = int(state.global_step)
+            if updates % evaluation_every_steps != 0 and updates != steps:
+                return control
+            if self.trainer is None or self.trainer.final_train_loss is None:
+                raise AssertionError("trainer loss is unavailable at evaluation")
+            if training_started_at is None:
+                raise AssertionError("training timer is unavailable at evaluation")
+            elapsed = (
+                time.perf_counter()
+                - training_started_at
+                - evaluation_during_training_seconds
+            )
+            was_training = model.training
+            metrics, duration = _oracle_retrieval_metrics(
+                model,
+                evaluation_data,
+                evaluation_batch_size,
+                maximum_length,
+            )
+            model.train(was_training)
+            evaluation_during_training_seconds += duration
+            evaluation_history.append(
+                {
+                    "updates": updates,
+                    "metrics": metrics,
+                    "final_train_loss": float(self.trainer.final_train_loss),
+                    "evaluation_seconds": duration,
+                    "training_elapsed_seconds": elapsed,
+                }
+            )
+            return control
+
+    callback = PeriodicRetrievalCallback()
+    trainer = RecordingTrainer(
         model=model,
         args=arguments,
         train_dataset=training_data,
@@ -662,23 +855,31 @@ def _sentence_transformers_report(
             valid_label_columns=[],
         ),
     )
-    initial, initial_seconds = _oracle_retrieval_metrics(
-        model,
-        evaluation_data,
-        evaluation_batch_size,
-        maximum_length,
-    )
+    callback.trainer = trainer
+    trainer.add_callback(callback)
     torch.cuda.reset_peak_memory_stats()
     training_started = time.perf_counter()
+    training_started_at = training_started
     output = trainer.train()
     torch.cuda.synchronize()
     training_seconds = time.perf_counter() - training_started
-    final, final_seconds = _oracle_retrieval_metrics(
-        model,
-        evaluation_data,
-        evaluation_batch_size,
-        maximum_length,
-    )
+    if trainer.final_train_loss is None:  # pragma: no cover - trainer invariant
+        raise AssertionError("Sentence Transformers did not compute a training loss")
+    final_train_loss = float(trainer.final_train_loss)
+    training_compute_seconds = training_seconds - evaluation_during_training_seconds
+    if evaluation_every_steps is None:
+        final, final_seconds = _oracle_retrieval_metrics(
+            model,
+            evaluation_data,
+            evaluation_batch_size,
+            maximum_length,
+        )
+        evaluation_history = []
+    else:
+        if evaluation_history[-1]["updates"] != steps:
+            raise AssertionError("final periodic retrieval evaluation is missing")
+        final = evaluation_history[-1]["metrics"]
+        final_seconds = evaluation_history[-1]["evaluation_seconds"]
     return {
         "schema_version": "representax-dense-retrieval-worker-v1",
         "framework": "sentence-transformers",
@@ -695,12 +896,17 @@ def _sentence_transformers_report(
         "seed": seed,
         "model_and_data_seconds": model_and_data_seconds,
         "training_seconds": training_seconds,
-        "amortized_examples_per_second": batch_size * steps / training_seconds,
+        "training_compute_seconds": training_compute_seconds,
+        "amortized_examples_per_second": (
+            batch_size * steps / training_compute_seconds
+        ),
         "trainer_metrics": output.metrics,
+        "final_train_loss": final_train_loss,
         "initial_evaluation": initial,
         "final_evaluation": final,
         "initial_evaluation_seconds": initial_seconds,
         "final_evaluation_seconds": final_seconds,
+        "evaluation_history": evaluation_history,
         "torch_peak_allocated_bytes": torch.cuda.max_memory_allocated(),
         "torch_peak_reserved_bytes": torch.cuda.max_memory_reserved(),
         "maximum_host_rss_bytes": _maximum_host_rss_bytes(),
@@ -717,6 +923,7 @@ def _worker(arguments: argparse.Namespace) -> None:
         "maximum_length": arguments.maximum_length,
         "cache_chunk_size": arguments.cache_chunk_size,
         "evaluation_batch_size": arguments.evaluation_batch_size,
+        "evaluation_every_steps": arguments.evaluation_every_steps,
         "data_threads": arguments.data_threads,
         "prefetch_buffer_size": arguments.prefetch_buffer_size,
         "seed": arguments.seed,
@@ -963,6 +1170,10 @@ def _pair(arguments: argparse.Namespace) -> None:
         "--seed",
         str(arguments.seed),
     ]
+    if arguments.evaluation_every_steps is not None:
+        common.extend(
+            ("--evaluation-every-steps", str(arguments.evaluation_every_steps))
+        )
     if arguments.cache_chunk_size is not None:
         common.extend(("--cache-chunk-size", str(arguments.cache_chunk_size)))
     commands = [
@@ -1004,7 +1215,7 @@ def _pair(arguments: argparse.Namespace) -> None:
         arguments.steps - 1,
         1,
     )
-    oracle_step_seconds = oracle["training_seconds"] / arguments.steps
+    oracle_step_seconds = oracle["training_compute_seconds"] / arguments.steps
     seconds_saved_per_step = oracle_step_seconds - native_step_seconds
     compilation_break_even_steps = (
         native["compilation_and_first_step_seconds"] / seconds_saved_per_step
@@ -1026,6 +1237,7 @@ def _pair(arguments: argparse.Namespace) -> None:
             "maximum_length": arguments.maximum_length,
             "cache_chunk_size": arguments.cache_chunk_size,
             "seed": arguments.seed,
+            "evaluation_every_steps": arguments.evaluation_every_steps,
             "representax_data_threads": arguments.data_threads,
             "representax_prefetch_buffer_size": arguments.prefetch_buffer_size,
             "optimizer": "AdamW",
@@ -1060,15 +1272,149 @@ def _pair(arguments: argparse.Namespace) -> None:
     print(json.dumps(summary["comparison"], indent=2, sort_keys=True))
 
 
-def _worker_arguments(parser: argparse.ArgumentParser) -> None:
+def _time_to_quality_summary(
+    summary: Mapping[str, Any],
+    *,
+    quality_target: float,
+) -> dict[str, Any]:
+    if summary.get("schema_version") != "representax-dense-retrieval-comparison-v1":
+        raise ValueError("time-to-quality input is not a paired comparison")
+    metric = f"valid/{EVALUATION_SUBSET}/cosine_ndcg@10"
+    native_history = summary["representax"]["evaluation_history"]
+    oracle_history = summary["sentence_transformers"]["evaluation_history"]
+    if not native_history or not oracle_history:
+        raise ValueError("time-to-quality requires in-trajectory evaluation history")
+    native_updates = [int(item["updates"]) for item in native_history]
+    oracle_updates = [int(item["updates"]) for item in oracle_history]
+    if native_updates != oracle_updates:
+        raise ValueError(
+            "time-to-quality evaluation checkpoints differ: "
+            f"native={native_updates}, oracle={oracle_updates}"
+        )
+    points: list[dict[str, Any]] = []
+    for native, oracle in zip(native_history, oracle_history, strict=True):
+        updates = int(native["updates"])
+        points.append(
+            {
+                "updates": updates,
+                "representax": {
+                    "ndcg@10": float(native["metrics"][metric]),
+                    "train_loss": native["final_train_loss"],
+                    "training_seconds": float(native["training_elapsed_seconds"]),
+                },
+                "sentence_transformers": {
+                    "ndcg@10": float(oracle["metrics"][metric]),
+                    "train_loss": oracle["final_train_loss"],
+                    "training_seconds": float(oracle["training_elapsed_seconds"]),
+                },
+            }
+        )
+
+    def first_crossing(framework: str) -> dict[str, float | int] | None:
+        for point in points:
+            values = point[framework]
+            if values["ndcg@10"] >= quality_target:
+                return {
+                    "updates": point["updates"],
+                    "training_seconds": values["training_seconds"],
+                    "ndcg@10": values["ndcg@10"],
+                }
+        return None
+
+    return {
+        "schema_version": "representax-dense-retrieval-time-to-quality-v1",
+        "contract": summary["contract"],
+        "quality_metric": metric,
+        "quality_target": quality_target,
+        "first_observed_crossing": {
+            "representax": first_crossing("representax"),
+            "sentence_transformers": first_crossing("sentence_transformers"),
+        },
+        "points": points,
+    }
+
+
+def _curve(arguments: argparse.Namespace) -> None:
+    spec = _model_spec(arguments)
+    result_directory = arguments.result_directory.expanduser().resolve()
+    result_directory.mkdir(parents=True, exist_ok=False)
+    checkpoints = sorted(set(arguments.checkpoint_step))
+    if len(checkpoints) != len(arguments.checkpoint_step) or any(
+        value <= 0 for value in checkpoints
+    ):
+        raise ValueError("checkpoint steps must be unique positive integers")
+    interval = checkpoints[0]
+    maximum = checkpoints[-1]
+    if checkpoints != list(range(interval, maximum + 1, interval)):
+        raise ValueError(
+            "in-trajectory checkpoints must be uniform multiples of the first step"
+        )
+    pair_directory = result_directory / "pair"
+    command = [
+        sys.executable,
+        "-m",
+        "benchmarks.dense_retrieval",
+        "pair",
+        "--model",
+        spec.name,
+        "--checkpoint",
+        str(_checkpoint(spec)),
+        "--data-directory",
+        str(arguments.data_directory.resolve()),
+        "--batch-size",
+        str(arguments.batch_size),
+        "--steps",
+        str(maximum),
+        "--maximum-length",
+        str(arguments.maximum_length),
+        "--evaluation-batch-size",
+        str(arguments.evaluation_batch_size),
+        "--evaluation-every-steps",
+        str(interval),
+        "--data-threads",
+        str(arguments.data_threads),
+        "--prefetch-buffer-size",
+        str(arguments.prefetch_buffer_size),
+        "--seed",
+        str(arguments.seed),
+        "--result-directory",
+        str(pair_directory),
+        "--representax-gpu",
+        str(arguments.representax_gpu),
+        "--sentence-transformers-gpu",
+        str(arguments.sentence_transformers_gpu),
+    ]
+    if arguments.cache_chunk_size is not None:
+        command.extend(("--cache-chunk-size", str(arguments.cache_chunk_size)))
+    subprocess.run(
+        command,
+        check=True,
+        cwd=Path(__file__).resolve().parents[1],
+    )
+    summary = json.loads((pair_directory / "summary.json").read_text())
+    result = _time_to_quality_summary(
+        summary,
+        quality_target=arguments.quality_target,
+    )
+    _atomic_json(result_directory / "time-to-quality.json", result)
+    print(json.dumps(result["first_observed_crossing"], indent=2, sort_keys=True))
+
+
+def _worker_arguments(
+    parser: argparse.ArgumentParser,
+    *,
+    include_steps: bool = True,
+) -> None:
     parser.add_argument("--model", choices=tuple(MODEL_SPECS), required=True)
     parser.add_argument("--checkpoint", type=Path, required=True)
     parser.add_argument("--data-directory", type=Path, required=True)
     parser.add_argument("--batch-size", type=int, default=32)
-    parser.add_argument("--steps", type=int, default=100)
+    if include_steps:
+        parser.add_argument("--steps", type=int, default=100)
     parser.add_argument("--maximum-length", type=int, default=128)
     parser.add_argument("--cache-chunk-size", type=int)
     parser.add_argument("--evaluation-batch-size", type=int, default=128)
+    parser.add_argument("--evaluation-every-steps", type=int)
     parser.add_argument("--data-threads", type=int, default=4)
     parser.add_argument("--prefetch-buffer-size", type=int, default=8)
     parser.add_argument("--seed", type=int, default=42)
@@ -1093,6 +1439,13 @@ def _parser() -> argparse.ArgumentParser:
     pair.add_argument("--result-directory", type=Path, required=True)
     pair.add_argument("--representax-gpu", type=int, default=4)
     pair.add_argument("--sentence-transformers-gpu", type=int, default=5)
+    curve = commands.add_parser("curve")
+    _worker_arguments(curve, include_steps=False)
+    curve.add_argument("--checkpoint-step", type=int, action="append", required=True)
+    curve.add_argument("--quality-target", type=float, default=0.4)
+    curve.add_argument("--result-directory", type=Path, required=True)
+    curve.add_argument("--representax-gpu", type=int, default=4)
+    curve.add_argument("--sentence-transformers-gpu", type=int, default=5)
     aggregate = commands.add_parser("aggregate")
     aggregate.add_argument("--summary", type=Path, action="append", required=True)
     aggregate.add_argument("--output", type=Path, required=True)
@@ -1107,6 +1460,8 @@ def main() -> None:
         _worker(arguments)
     elif arguments.command == "pair":
         _pair(arguments)
+    elif arguments.command == "curve":
+        _curve(arguments)
     else:
         _aggregate(arguments)
 

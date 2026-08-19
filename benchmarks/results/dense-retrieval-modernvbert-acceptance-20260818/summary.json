@@ -1,0 +1,97 @@
+{
+  "schema_version": "representax-modernvbert-dense-acceptance-v1",
+  "one_step_update_parity": {
+    "batch_size": 128,
+    "sequence_length": 128,
+    "chunk_size": 8,
+    "loss_absolute_difference": 9.5367431640625e-07,
+    "gradient_norm_relative_difference": 5.062731008530302e-05,
+    "global_gradient_relative_difference": 0.0022909182289073205,
+    "global_gradient_cosine": 0.9999973758469208,
+    "global_update_relative_difference": 0.012850370158491078,
+    "global_update_cosine": 0.9999174337494164,
+    "tensor_count": 134,
+    "representax_repeat_gradient_relative_difference": 3.3198998958774447e-10,
+    "representax_repeat_update_relative_difference": 6.590545024816206e-08
+  },
+  "continuous_time_to_quality": {
+    "batch_size": 128,
+    "sequence_length": 128,
+    "chunk_size": 8,
+    "updates": 100,
+    "quality_metric": "valid/NanoMSMARCO/cosine_ndcg@10",
+    "quality_target": 0.4,
+    "representax_sustained_examples_per_second": 77.32426648736438,
+    "sentence_transformers_examples_per_second": 61.82833693840897,
+    "sustained_training_speedup": 1.2506282768755672,
+    "amortized_training_speedup": 1.0436931147379707,
+    "compilation_and_first_step_seconds": 34.47665555216372,
+    "compilation_break_even_updates": 83.09997649776817,
+    "first_quality_crossing": {
+      "representax": {
+        "updates": 25,
+        "training_seconds": 74.58640363776529,
+        "ndcg@10": 0.4786906043098968
+      },
+      "sentence_transformers": {
+        "updates": 25,
+        "training_seconds": 54.898576932027936,
+        "ndcg@10": 0.4790974950092584
+      }
+    },
+    "points": [
+      {
+        "updates": 0,
+        "representax_loss": null,
+        "sentence_transformers_loss": null,
+        "representax_ndcg@10": 0.047309163079875705,
+        "sentence_transformers_ndcg@10": 0.047309163079875705
+      },
+      {
+        "updates": 25,
+        "representax_loss": 3.639643669128418,
+        "sentence_transformers_loss": 3.641838312149048,
+        "representax_ndcg@10": 0.4786906043098968,
+        "sentence_transformers_ndcg@10": 0.4790974950092584
+      },
+      {
+        "updates": 50,
+        "representax_loss": 3.719615936279297,
+        "sentence_transformers_loss": 3.7197093963623047,
+        "representax_ndcg@10": 0.42452016373462986,
+        "sentence_transformers_ndcg@10": 0.4166148497743155
+      },
+      {
+        "updates": 75,
+        "representax_loss": 3.7679150104522705,
+        "sentence_transformers_loss": 3.7679083347320557,
+        "representax_ndcg@10": 0.43112316687078456,
+        "sentence_transformers_ndcg@10": 0.38290019014564386
+      },
+      {
+        "updates": 100,
+        "representax_loss": 3.6509320735931396,
+        "sentence_transformers_loss": 3.6793947219848633,
+        "representax_ndcg@10": 0.40863646045335605,
+        "sentence_transformers_ndcg@10": 0.41925717525801687
+      }
+    ]
+  },
+  "sequence_512_capacity": {
+    "device": "NVIDIA GeForce RTX 4090",
+    "direct": {
+      "largest_passing_batch": 32,
+      "first_failing_batch": 64,
+      "passing_allocator_gib": 9.411136388778687,
+      "passing_process_gib": 12.40234375,
+      "first_failure": "RESOURCE_EXHAUSTED: Out of memory while trying to allocate 14.14GiB"
+    },
+    "grad_cache_global_batch_128": {
+      "largest_passing_chunk": 64,
+      "first_failing_chunk": 128,
+      "passing_allocator_gib": 12.121363401412964,
+      "passing_process_gib": 20.404296875,
+      "first_failure": "RESOURCE_EXHAUSTED: Out of memory while trying to allocate 29.32GiB"
+    }
+  }
+}

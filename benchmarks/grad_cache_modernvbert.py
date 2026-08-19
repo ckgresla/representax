@@ -34,6 +34,10 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument("--warmup-steps", type=int, default=1)
     parser.add_argument("--measured-steps", type=int, default=2)
     parser.add_argument("--seed", type=int, default=1729)
+    parser.add_argument("--learning-rate", type=float, default=0.0)
+    parser.add_argument("--max-gradient-norm", type=float)
+    parser.add_argument("--updated-text-weights", type=Path)
+    parser.add_argument("--text-gradients", type=Path)
     parser.add_argument(
         "--rematerialization",
         choices=("none", "selective", "full"),
@@ -176,7 +180,13 @@ def _representax(arguments: argparse.Namespace) -> dict[str, Any]:
             compute_dtype=jnp.float32,
             rematerialization=arguments.rematerialization,
         )
-        optimizer = optax.adamw(learning_rate=0.0, weight_decay=0.0)
+        optimizer = optax.adamw(
+            learning_rate=arguments.learning_rate,
+            b1=0.9,
+            b2=0.999,
+            eps=1e-8,
+            weight_decay=0.0,
+        )
         state = make_train_state(model, optimizer)
     device = jax.devices("gpu")[0]
     state = jax.device_put(state, device)
@@ -194,7 +204,13 @@ def _representax(arguments: argparse.Namespace) -> dict[str, Any]:
         document=document,
         positive_mask=positive_mask,
     )
-    optimizer = optax.adamw(learning_rate=0.0, weight_decay=0.0)
+    optimizer = optax.adamw(
+        learning_rate=arguments.learning_rate,
+        b1=0.9,
+        b2=0.999,
+        eps=1e-8,
+        weight_decay=0.0,
+    )
     execution = (
         None
         if arguments.runtime == "direct"
@@ -207,7 +223,7 @@ def _representax(arguments: argparse.Namespace) -> dict[str, Any]:
     step = build_train_step(
         MNRTask(scale=20.0),
         optimizer,
-        max_grad_norm=None,
+        max_grad_norm=arguments.max_gradient_norm,
         execution=execution,
         donate_state=True,
     )
@@ -245,6 +261,37 @@ def _representax(arguments: argparse.Namespace) -> dict[str, Any]:
         state = result.state
         losses.append(float(result.metrics.loss))
     memory = device.memory_stats() or {}
+    if arguments.text_gradients is not None:
+        if arguments.warmup_steps != 0 or arguments.measured_steps != 0:
+            raise ValueError("gradient export requires exactly one optimizer update")
+        from safetensors.numpy import save_file
+
+        adam_state = state.optimizer_state[0]
+        clipped_gradients = jax.tree.map(
+            lambda value: value / jnp.asarray(0.1, dtype=value.dtype),
+            adam_state.mu,
+        )
+        gradients = ModernVBERTTextCheckpointAdapter().state_dict(clipped_gradients)
+        arguments.text_gradients.parent.mkdir(parents=True, exist_ok=True)
+        save_file(
+            {
+                name: np.asarray(jax.device_get(value))
+                for name, value in gradients.items()
+            },
+            arguments.text_gradients,
+        )
+    if arguments.updated_text_weights is not None:
+        from safetensors.numpy import save_file
+
+        updated = ModernVBERTTextCheckpointAdapter().state_dict(state.model)
+        arguments.updated_text_weights.parent.mkdir(parents=True, exist_ok=True)
+        save_file(
+            {
+                name: np.asarray(jax.device_get(value))
+                for name, value in updated.items()
+            },
+            arguments.updated_text_weights,
+        )
     return {
         "framework": "representax",
         "framework_version": _version("representax"),
@@ -330,7 +377,9 @@ def _sentence_transformers(arguments: argparse.Namespace) -> dict[str, Any]:
     )
     optimizer = torch.optim.AdamW(
         model.parameters(),
-        lr=0.0,
+        lr=arguments.learning_rate,
+        betas=(0.9, 0.999),
+        eps=1e-8,
         weight_decay=0.0,
         fused=True,
     )
@@ -361,6 +410,11 @@ def _sentence_transformers(arguments: argparse.Namespace) -> dict[str, Any]:
                 if parameter.grad is not None
             ]
         )
+        if arguments.max_gradient_norm is not None:
+            torch.nn.utils.clip_grad_norm_(
+                model.parameters(),
+                arguments.max_gradient_norm,
+            )
         optimizer.step()
         torch.cuda.synchronize()
         return float(loss.detach()), float(norm.detach())
@@ -400,6 +454,28 @@ def _sentence_transformers(arguments: argparse.Namespace) -> dict[str, Any]:
             for value in item.values()
         ),
     }
+    if arguments.updated_text_weights is not None:
+        from safetensors.torch import save_file
+
+        text_names = {
+            f"model.{name}": value.detach().cpu().contiguous()
+            for name, value in base.state_dict().items()
+            if name.startswith("text_model.")
+        }
+        arguments.updated_text_weights.parent.mkdir(parents=True, exist_ok=True)
+        save_file(text_names, arguments.updated_text_weights)
+    if arguments.text_gradients is not None:
+        if arguments.warmup_steps != 0 or arguments.measured_steps != 0:
+            raise ValueError("gradient export requires exactly one optimizer update")
+        from safetensors.torch import save_file
+
+        text_gradients = {
+            f"model.{name}": parameter.grad.detach().cpu().contiguous()
+            for name, parameter in base.named_parameters()
+            if name.startswith("text_model.") and parameter.grad is not None
+        }
+        arguments.text_gradients.parent.mkdir(parents=True, exist_ok=True)
+        save_file(text_gradients, arguments.text_gradients)
     return {
         "framework": "sentence-transformers",
         "framework_version": _version("sentence-transformers"),
@@ -475,6 +551,16 @@ def main() -> None:
             "warmup_steps": arguments.warmup_steps,
             "measured_steps": arguments.measured_steps,
             "seed": arguments.seed,
+            "learning_rate": arguments.learning_rate,
+            "max_gradient_norm": arguments.max_gradient_norm,
+            "optimizer_updates": (
+                1 + arguments.warmup_steps + arguments.measured_steps
+            ),
+            "updated_text_weights": (
+                None
+                if arguments.updated_text_weights is None
+                else str(arguments.updated_text_weights)
+            ),
             "jax_enable_compilation_cache": os.environ.get(
                 "JAX_ENABLE_COMPILATION_CACHE"
             ),
@@ -489,7 +575,7 @@ def main() -> None:
             "python": platform.python_version(),
         }
     )
-    if result["status"] == "completed":
+    if result["status"] == "completed" and result["steady_state_seconds"]:
         samples = result["steady_state_seconds"]
         median = statistics.median(samples)
         result["steady_state_median_seconds"] = median

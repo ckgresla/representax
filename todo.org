@@ -728,12 +728,23 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      not independent quality seeds. Native final nDCG@10 is =0.0112= lower on
      average despite closely matched mean training loss; diagnose the full update
      trajectory before making a quality-equivalence claim.
-**** TODO Complete true time-to-quality and direct/cached OOM-frontier runs
+**** DONE Complete true time-to-quality and direct/cached OOM-frontier runs
      Record held-out metrics and matched losses at fixed optimizer-update
      checkpoints rather than only initial/final endpoints. Use truly stochastic
      seeds where the model has stochastic training behavior, verify one-step
      parameter-update parity for deterministic ModernVBERT, and establish
      direct/cached OOM frontiers rather than extrapolating them.
+     Accepted with full one-step comparison over all 134 ModernVBERT text
+     tensors, one continuous batch-128/chunk-8 trajectory evaluated at updates
+     0/25/50/75/100, and explicit sequence-512 first-failure brackets. Loss
+     differs by =9.54e-7= at the first step; clipped-gradient and AdamW-update
+     vectors have cosines =0.999997= and =0.999917=. Sustained native throughput
+     is =1.251x= upstream and cold compilation amortizes after about 83 updates.
+     Both systems first cross nDCG@10 =0.4= at update 25, before compilation
+     amortizes; the 50-query curve is non-monotonic and is not a quality-win
+     claim. Direct batch 32 passes and 64 OOMs; cached global batch 128 passes
+     at chunk 64 and OOMs at chunk 128. Tracked evidence and replay live in
+     =benchmarks/results/dense-retrieval-modernvbert-acceptance-20260818/=.
 **** DONE Accept the pinned ModernVBERT GradCache device-step matrix against 5.6.1
      For logical batches 32, 128, 512, and 1,024 at sequence length 512 and
      chunk two, require identical checkpoint/input/scientific fingerprints,

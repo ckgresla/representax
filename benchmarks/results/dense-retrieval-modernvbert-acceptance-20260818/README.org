@@ -1,0 +1,78 @@
+#+title: ModernVBERT dense-retrieval acceptance — 2026-08-18
+
+* Decision
+
+The deterministic one-step model/update contract, one continuous held-out
+quality curve, and the direct/cached sequence-512 capacity brackets are now
+measured. Representax sustains =1.251x= the Sentence Transformers 5.6.1 training
+throughput on the batch-128/chunk-8 job. Cold compilation amortizes after about
+=83= updates. This is a systems advantage, not a quality-superiority claim.
+
+* Full update parity
+
+The paired job uses the pinned =ModernVBERT/modernvbert-embed= checkpoint, the
+same batch-128 sequence-128 tensors, cosine MNR scale 20, exact GradCache chunk
+8, FP32 highest precision, AdamW at =2e-5=, and global-norm clipping at 1.0.
+All 134 text tensors change.
+
+| measure | result |
+|---------+--------|
+| loss absolute difference | =9.54e-7= |
+| gradient-norm relative difference | =5.06e-5= |
+| concatenated clipped-gradient relative difference | =0.2291%= |
+| concatenated clipped-gradient cosine | =0.99999738= |
+| concatenated AdamW-update relative difference | =1.2850%= |
+| concatenated AdamW-update cosine | =0.99991743= |
+
+The gradient residual is dominated by the token-embedding scatter; every other
+leaf is below =0.139%= relative difference. Ordinary JAX gather autodiff is in
+use, so this is cross-backend repeated-token accumulation order, not a custom
+Representax VJP. A second native run agrees to =3.32e-10= gradient-relative and
+=6.59e-8= update-relative difference.
+
+* One continuous time-to-quality trajectory
+
+Each framework compiles once, consumes the same ordered MS MARCO rows, and
+evaluates the same evolving model at updates 0, 25, 50, 75, and 100. Evaluation
+wall time is recorded but excluded from training throughput. This replaces an
+exploratory independent-prefix run whose separate compilations introduced an
+unwanted numerical variable.
+
+| update | Representax loss | ST loss | Representax nDCG@10 | ST nDCG@10 |
+|--------+------------------+---------+---------------------+------------|
+|      0 |                - |       - |            0.047309 |   0.047309 |
+|     25 |         3.639644 | 3.641838 |            0.478691 |   0.479097 |
+|     50 |         3.719616 | 3.719709 |            0.424520 |   0.416615 |
+|     75 |         3.767915 | 3.767908 |            0.431123 |   0.382900 |
+|    100 |         3.650932 | 3.679395 |            0.408636 |   0.419257 |
+
+Both systems first cross the declared =0.4= nDCG target at update 25. Sentence
+Transformers reaches that early target in less cold wall time because JAX has
+not amortized compilation. Representax is =1.251x= faster after compilation,
+=1.044x= faster over all 100 training updates including compilation, and crosses
+the compilation deficit after about 83 updates.
+
+NanoMSMARCO has only 50 queries and both curves are non-monotonic. The update-75
+and update-100 reversals therefore preclude a quality-superiority claim from
+this single trajectory; a larger, statistically powered held-out study belongs
+at the parent dense-system milestone.
+
+* Sequence-512 capacity
+
+On one RTX 4090, direct execution passes batch 32 at 9.411 GiB allocator peak
+and OOMs at batch 64. Exact GradCache preserves global batch 128 while chunk 64
+passes at 12.121 GiB allocator and 20.404 GiB process peak; chunk 128 OOMs. Thus
+the measured brackets are direct =[32, 64)= and cached microbatch =[64, 128)= at
+their stated scientific batches, not extrapolated maxima.
+
+* Raw evidence
+
+- update tensors and reports:
+  =/raid/representax/benchmarks/modernvbert-update-parity-20260818/=
+- continuous paired curve:
+  =/raid/representax/benchmarks/modernvbert-time-to-quality-continuous-b128-c8-20260818/=
+- capacity probes:
+  =/raid/representax/benchmarks/modernvbert-oom-frontier-20260818/=
+
+The compact machine-readable acceptance record is =summary.json= beside this
+file. Raw =safetensors= remain outside Git.

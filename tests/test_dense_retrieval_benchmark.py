@@ -7,7 +7,11 @@ import json
 from pathlib import Path
 
 import pytest
-from benchmarks.dense_retrieval import _aggregate, _three_run_interval
+from benchmarks.dense_retrieval import (
+    _aggregate,
+    _three_run_interval,
+    _time_to_quality_summary,
+)
 
 
 def _summary(seed: int, speedup: float) -> dict:
@@ -71,3 +75,77 @@ def test_dense_retrieval_aggregate_rejects_contract_drift(tmp_path):
         _aggregate(
             argparse.Namespace(summary=summaries, output=tmp_path / "aggregate.json")
         )
+
+
+def _curve_point(updates: int, quality: float, seconds: float) -> dict:
+    metric = "valid/NanoMSMARCO/cosine_ndcg@10"
+    return {
+        "updates": updates,
+        "metrics": {metric: quality},
+        "final_train_loss": None if updates == 0 else 1.0 / updates,
+        "evaluation_seconds": 1.0,
+        "training_elapsed_seconds": seconds,
+    }
+
+
+def test_time_to_quality_sorts_checkpoints_and_reports_first_crossing():
+    result = _time_to_quality_summary(
+        {
+            "schema_version": "representax-dense-retrieval-comparison-v1",
+            "contract": {"model": "tiny", "steps": 100},
+            "representax": {
+                "evaluation_history": [
+                    _curve_point(0, 0.2, 0.0),
+                    _curve_point(50, 0.35, 25.0),
+                    _curve_point(100, 0.42, 50.0),
+                ]
+            },
+            "sentence_transformers": {
+                "evaluation_history": [
+                    _curve_point(0, 0.2, 0.0),
+                    _curve_point(50, 0.41, 37.5),
+                    _curve_point(100, 0.39, 75.0),
+                ]
+            },
+        },
+        quality_target=0.4,
+    )
+
+    assert [point["updates"] for point in result["points"]] == [0, 50, 100]
+    assert result["first_observed_crossing"]["representax"] == {
+        "updates": 100,
+        "training_seconds": 50.0,
+        "ndcg@10": 0.42,
+    }
+    assert result["first_observed_crossing"]["sentence_transformers"] == {
+        "updates": 50,
+        "training_seconds": 37.5,
+        "ndcg@10": 0.41,
+    }
+
+
+def test_tracked_modernvbert_dense_acceptance_meets_its_declared_gates():
+    root = Path(__file__).resolve().parents[1]
+    path = (
+        root
+        / "benchmarks/results/dense-retrieval-modernvbert-acceptance-20260818"
+        / "summary.json"
+    )
+    evidence = json.loads(path.read_text())
+    update = evidence["one_step_update_parity"]
+    curve = evidence["continuous_time_to_quality"]
+    capacity = evidence["sequence_512_capacity"]
+
+    assert update["tensor_count"] == 134
+    assert update["loss_absolute_difference"] <= 2e-6
+    assert update["global_gradient_relative_difference"] <= 0.003
+    assert update["global_gradient_cosine"] >= 0.99999
+    assert update["global_update_relative_difference"] <= 0.015
+    assert update["global_update_cosine"] >= 0.9999
+    assert curve["sustained_training_speedup"] >= 1.2
+    assert curve["amortized_training_speedup"] >= 1.0
+    assert curve["first_quality_crossing"]["representax"]["updates"] == 25
+    assert capacity["direct"]["largest_passing_batch"] == 32
+    assert capacity["direct"]["first_failing_batch"] == 64
+    assert capacity["grad_cache_global_batch_128"]["largest_passing_chunk"] == 64
+    assert capacity["grad_cache_global_batch_128"]["first_failing_chunk"] == 128
