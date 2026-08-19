@@ -944,6 +944,10 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   supply a compiled step and semantic constraints without depending on
   Representax. Representax integrates only through its =ExecutionPlanner=
   protocol.
+** TODO Write the Profilax paper, working title: =So you like to go fast?= :profilax:research:paper:
+  Introduce the semantics-preserving execution planner, demonstrate its
+  integration into Representax and other downstream JAX repositories, and
+  separate portable profiling/planning contributions from any one trainer.
 ** TODO Profile arbitrary compiled JAX programs through a small adapter :profilax:
 ** TODO Inventory devices, topology, memory, and compiler versions :profilax:
 ** TODO Search only =Execution[T]= mesh, batch, GradCache, prefetch, donation, and activation-rematerialization paths :profilax:
