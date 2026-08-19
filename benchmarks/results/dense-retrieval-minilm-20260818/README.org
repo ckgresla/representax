@@ -61,6 +61,19 @@ not yet establish a model-quality advantage: the final nDCG@10 deltas span
 =-0.00325= to =+0.01127= in single-seed jobs whose dropout RNG streams are not
 identical across frameworks.
 
-Before closing the roadmap item, repeat the meaningful plans for at least three
-seeds, add MPNet and ModernVBERT, record direct and cached OOM frontiers, and
-report confidence intervals and time-to-quality.
+* Three-run cached replication
+
+The accepted batch-512/chunk-32 plan was repeated with explicit paired seeds 17,
+42, and 73. Representax wins all three sustained comparisons at =1.029x=,
+=1.063x=, and =1.081x=. Mean sustained throughput is 628.7 versus 594.8
+examples/s, a mean =1.057x= speedup with a small-sample 95% Student-t interval
+of =[0.992, 1.123]=. The evidence is directionally consistent but not yet
+statistically decisive.
+
+The mean final nDCG@10 difference is =+0.00099= with interval
+=[-0.05207, +0.05406]=, so the three-run endpoint evidence supports no quality
+advantage or regression. Exact inputs, hashes, values, and intervals are in
+=three-seed-aggregate.json=.
+
+ModernVBERT, fixed-checkpoint time-to-quality curves, and direct/cached OOM
+frontiers remain before closing the parent roadmap item.

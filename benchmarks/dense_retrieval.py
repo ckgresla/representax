@@ -25,6 +25,7 @@ EVALUATION_DATASET_REVISION = "beb106fbcfaa599c508c667041bf8c85fd78736b"
 EVALUATION_SUBSET = "NanoMSMARCO"
 ORACLE_VERSION = "5.6.1"
 TRANSFORMERS_VERSION = "5.3.0"
+THREE_RUN_95_PERCENT_T_CRITICAL = 4.302652729911275
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,6 +35,8 @@ class ModelSpec:
     name: str
     model_id: str
     revision: str
+    native_target: str = "representax.integrations.load_sentence_transformer_encoder"
+    initial_metric_tolerance: float = 1e-6
     checkpoint: Path | None = None
 
 
@@ -47,6 +50,13 @@ MODEL_SPECS = {
         name="mpnet",
         model_id="sentence-transformers/all-mpnet-base-v2",
         revision="e8c3b32edf5434bc2275fc9bab85f82640a19130",
+    ),
+    "modernvbert": ModelSpec(
+        name="modernvbert",
+        model_id="ModernVBERT/modernvbert-embed",
+        revision="da507113c3fdbc2e49d39c4b0148025c6bd008f9",
+        native_target="representax.integrations.load_modernvbert_text_encoder",
+        initial_metric_tolerance=1e-4,
     ),
 }
 
@@ -307,6 +317,7 @@ def _representax_report(
     evaluation_batch_size: int,
     data_threads: int,
     prefetch_buffer_size: int,
+    seed: int,
 ) -> dict[str, Any]:
     import jax
 
@@ -341,7 +352,7 @@ def _representax_report(
     job = JobConfig(
         name=f"matched-dense-retrieval-{spec.name}",
         model=ModelConfig(
-            target="representax.integrations.load_sentence_transformer_encoder",
+            target=spec.native_target,
             parameters={
                 "model_name_or_path": str(checkpoint),
                 "revision": spec.revision,
@@ -381,7 +392,7 @@ def _representax_report(
         training=TrainingConfig(
             global_batch_size=batch_size,
             max_steps=steps,
-            seed=42,
+            seed=seed,
             batch=BatchConfig(micro_batch_size=batch_size),
             grad_cache=(
                 None
@@ -440,6 +451,7 @@ def _representax_report(
         "steps": steps,
         "maximum_length": maximum_length,
         "cache_chunk_size": cache_chunk_size,
+        "seed": seed,
         "model_and_data_seconds": model_and_data_seconds,
         "training_seconds": training_seconds,
         "compilation_and_first_step_seconds": compilation_and_first_step_seconds,
@@ -486,43 +498,59 @@ def _oracle_retrieval_metrics(
     model: Any,
     data: RetrievalEvaluationData,
     batch_size: int,
+    maximum_length: int,
 ) -> tuple[dict[str, float], float]:
+    import numpy as np
     import torch
-    from sentence_transformers.sentence_transformer.evaluation import (
-        InformationRetrievalEvaluator,
-    )
-    from sentence_transformers.util import cos_sim
 
-    evaluator = InformationRetrievalEvaluator(
-        queries={str(query_id): text for query_id, text in data.queries},
-        corpus={str(document_id): text for document_id, text in data.documents},
-        relevant_docs={
-            str(query_id): {str(document_id) for document_id in document_ids}
-            for query_id, document_ids in data.relevant_documents.items()
-        },
-        batch_size=batch_size,
-        accuracy_at_k=[1, 3, 5, 10],
-        precision_recall_at_k=[1, 3, 5, 10, 100],
-        mrr_at_k=[10],
-        ndcg_at_k=[10],
-        map_at_k=[100],
-        score_functions={"cosine": cos_sim},
-        main_score_function="cosine",
-        name=EVALUATION_SUBSET,
-        show_progress_bar=False,
-        write_csv=False,
-    )
+    from representax.evaluation import information_retrieval_metrics
+
+    def encode(rows: Sequence[tuple[int, str]]) -> np.ndarray:
+        outputs = []
+        for start in range(0, len(rows), batch_size):
+            texts = [text for _, text in rows[start : start + batch_size]]
+            features = _pad_features(
+                model.tokenize(texts),
+                maximum_length,
+                model.tokenizer.pad_token_id,
+            )
+            features = {
+                name: (
+                    value.to(model.device) if isinstance(value, torch.Tensor) else value
+                )
+                for name, value in features.items()
+            }
+            with torch.no_grad():
+                output = model(features)["sentence_embedding"]
+            outputs.append(output.float().cpu().numpy())
+        return np.concatenate(outputs)
+
     started = time.perf_counter()
-    raw = evaluator(model)
+    was_training = model.training
+    model.eval()
+    queries = encode(data.queries)
+    documents = encode(data.documents)
+    model.train(was_training)
+    queries /= np.maximum(np.linalg.norm(queries, axis=1, keepdims=True), 1e-12)
+    documents /= np.maximum(np.linalg.norm(documents, axis=1, keepdims=True), 1e-12)
+    scores = queries @ documents.T
+    ranked_indices = np.argsort(-scores, axis=1, kind="stable")[:, :100]
+    document_ids = np.asarray([identifier for identifier, _ in data.documents])
+    ranked_document_ids = document_ids[ranked_indices]
+    raw = information_retrieval_metrics(
+        ranked_document_ids,
+        np.asarray([identifier for identifier, _ in data.queries]),
+        data.relevant_documents,
+        accuracy_at_k=(1, 3, 5, 10),
+        precision_recall_at_k=(1, 3, 5, 10, 100),
+        mrr_at_k=(10,),
+        ndcg_at_k=(10,),
+        map_at_k=(100,),
+    )
     torch.cuda.synchronize()
     duration = time.perf_counter() - started
     metrics = {
-        (
-            name
-            if name.startswith("valid/")
-            else f"valid/{EVALUATION_SUBSET}/"
-            + name.removeprefix(f"{EVALUATION_SUBSET}_")
-        ): float(value)
+        f"valid/{EVALUATION_SUBSET}/cosine_{name}": float(value)
         for name, value in raw.items()
     }
     return metrics, duration
@@ -540,6 +568,7 @@ def _sentence_transformers_report(
     evaluation_batch_size: int,
     data_threads: int,
     prefetch_buffer_size: int,
+    seed: int,
 ) -> dict[str, Any]:
     import datasets
     import sentence_transformers
@@ -620,8 +649,8 @@ def _sentence_transformers_report(
         dataloader_num_workers=0,
         dataloader_pin_memory=True,
         batch_sampler=sequential_sentence_transformers_batches,
-        seed=42,
-        data_seed=42,
+        seed=seed,
+        data_seed=seed,
     )
     trainer = SentenceTransformerTrainer(
         model=model,
@@ -637,6 +666,7 @@ def _sentence_transformers_report(
         model,
         evaluation_data,
         evaluation_batch_size,
+        maximum_length,
     )
     torch.cuda.reset_peak_memory_stats()
     training_started = time.perf_counter()
@@ -647,6 +677,7 @@ def _sentence_transformers_report(
         model,
         evaluation_data,
         evaluation_batch_size,
+        maximum_length,
     )
     return {
         "schema_version": "representax-dense-retrieval-worker-v1",
@@ -661,6 +692,7 @@ def _sentence_transformers_report(
         "steps": steps,
         "maximum_length": maximum_length,
         "cache_chunk_size": cache_chunk_size,
+        "seed": seed,
         "model_and_data_seconds": model_and_data_seconds,
         "training_seconds": training_seconds,
         "amortized_examples_per_second": batch_size * steps / training_seconds,
@@ -687,6 +719,7 @@ def _worker(arguments: argparse.Namespace) -> None:
         "evaluation_batch_size": arguments.evaluation_batch_size,
         "data_threads": arguments.data_threads,
         "prefetch_buffer_size": arguments.prefetch_buffer_size,
+        "seed": arguments.seed,
     }
     report = (
         _representax_report(spec, **kwargs)
@@ -801,8 +834,11 @@ def _run_processes(
 
 
 def _initial_metric_parity(
-    native: Mapping[str, float], oracle: Mapping[str, float]
-) -> None:
+    native: Mapping[str, float],
+    oracle: Mapping[str, float],
+    *,
+    tolerance: float,
+) -> float:
     if native.keys() != oracle.keys():
         raise ValueError(
             "initial retrieval metric names differ: "
@@ -811,10 +847,90 @@ def _initial_metric_parity(
     differences = {
         name: abs(native[name] - oracle[name])
         for name in native
-        if abs(native[name] - oracle[name]) > 1e-6
+        if abs(native[name] - oracle[name]) > tolerance
     }
     if differences:
         raise ValueError(f"initial retrieval metrics differ: {differences}")
+    return max(abs(native[name] - oracle[name]) for name in native)
+
+
+def _three_run_interval(values: Sequence[float]) -> dict[str, Any]:
+    if len(values) != 3:
+        raise ValueError("the accepted aggregate requires exactly three runs")
+    mean = statistics.mean(values)
+    half_width = (
+        THREE_RUN_95_PERCENT_T_CRITICAL * statistics.stdev(values) / len(values) ** 0.5
+    )
+    return {
+        "values": list(values),
+        "mean": mean,
+        "confidence_level": 0.95,
+        "confidence_interval": [mean - half_width, mean + half_width],
+        "minimum": min(values),
+        "maximum": max(values),
+    }
+
+
+def _aggregate(arguments: argparse.Namespace) -> None:
+    paths = [path.expanduser().resolve() for path in arguments.summary]
+    if len(paths) != 3:
+        raise ValueError("provide exactly three paired summary files")
+    summaries = [json.loads(path.read_text()) for path in paths]
+    contracts = []
+    seeds = []
+    for summary in summaries:
+        if summary.get("schema_version") != "representax-dense-retrieval-comparison-v1":
+            raise ValueError("aggregate input is not a dense-retrieval comparison")
+        contract = dict(summary["contract"])
+        seeds.append(int(contract.pop("seed")))
+        contracts.append(contract)
+        if not summary["comparison"]["initial_metric_parity"]:
+            raise ValueError("aggregate input did not pass initial metric parity")
+    if len(set(seeds)) != 3:
+        raise ValueError(f"aggregate seeds must be unique: {seeds}")
+    if contracts[1:] != contracts[:-1]:
+        raise ValueError("aggregate scientific and execution contracts differ")
+
+    ordered = sorted(zip(seeds, paths, summaries, strict=True))
+    metrics = {
+        "sustained_training_speedup": lambda row: row["comparison"][
+            "sustained_training_speedup"
+        ],
+        "representax_sustained_examples_per_second": lambda row: row["representax"][
+            "sustained_examples_per_second_after_first_step"
+        ],
+        "sentence_transformers_examples_per_second": lambda row: row[
+            "sentence_transformers"
+        ]["amortized_examples_per_second"],
+        "final_ndcg@10_difference": lambda row: row["comparison"][
+            "final_ndcg@10_difference"
+        ],
+        "compilation_break_even_steps": lambda row: row["comparison"][
+            "compilation_break_even_steps"
+        ],
+    }
+    aggregate = {
+        "schema_version": "representax-dense-retrieval-three-run-aggregate-v1",
+        "contract": contracts[0],
+        "seeds": [seed for seed, _, _ in ordered],
+        "inputs": [
+            {
+                "seed": seed,
+                "path": str(path),
+                "sha256": _sha256(path),
+            }
+            for seed, path, _ in ordered
+        ],
+        "all_initial_metrics_match": True,
+        "metrics": {
+            name: _three_run_interval(
+                [float(select(summary)) for _, _, summary in ordered]
+            )
+            for name, select in metrics.items()
+        },
+    }
+    _atomic_json(arguments.output.expanduser().resolve(), aggregate)
+    print(json.dumps(aggregate["metrics"], indent=2, sort_keys=True))
 
 
 def _pair(arguments: argparse.Namespace) -> None:
@@ -844,6 +960,8 @@ def _pair(arguments: argparse.Namespace) -> None:
         str(arguments.data_threads),
         "--prefetch-buffer-size",
         str(arguments.prefetch_buffer_size),
+        "--seed",
+        str(arguments.seed),
     ]
     if arguments.cache_chunk_size is not None:
         common.extend(("--cache-chunk-size", str(arguments.cache_chunk_size)))
@@ -874,9 +992,10 @@ def _pair(arguments: argparse.Namespace) -> None:
     process = _run_processes(commands)
     native = json.loads(reports["representax"].read_text())
     oracle = json.loads(reports["sentence-transformers"].read_text())
-    _initial_metric_parity(
+    maximum_initial_metric_difference = _initial_metric_parity(
         native["initial_evaluation"],
         oracle["initial_evaluation"],
+        tolerance=spec.initial_metric_tolerance,
     )
     metric = f"valid/{EVALUATION_SUBSET}/cosine_ndcg@10"
     native_sustained_rate = native["sustained_examples_per_second_after_first_step"]
@@ -906,12 +1025,14 @@ def _pair(arguments: argparse.Namespace) -> None:
             "steps": arguments.steps,
             "maximum_length": arguments.maximum_length,
             "cache_chunk_size": arguments.cache_chunk_size,
+            "seed": arguments.seed,
             "representax_data_threads": arguments.data_threads,
             "representax_prefetch_buffer_size": arguments.prefetch_buffer_size,
             "optimizer": "AdamW",
             "learning_rate": 2e-5,
             "precision": "float32",
             "loss": "cosine MNR scale=20 asymmetric",
+            "initial_metric_absolute_tolerance": spec.initial_metric_tolerance,
         },
         "representax": {**native, **process["representax"]},
         "sentence_transformers": {
@@ -925,6 +1046,9 @@ def _pair(arguments: argparse.Namespace) -> None:
             "sustained_training_speedup": native_sustained_rate / oracle_rate,
             "compilation_break_even_steps": compilation_break_even_steps,
             "initial_metric_parity": True,
+            "maximum_initial_metric_absolute_difference": (
+                maximum_initial_metric_difference
+            ),
             "representax_final_ndcg@10": native["final_evaluation"][metric],
             "sentence_transformers_final_ndcg@10": oracle["final_evaluation"][metric],
             "final_ndcg@10_difference": (
@@ -947,6 +1071,7 @@ def _worker_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--evaluation-batch-size", type=int, default=128)
     parser.add_argument("--data-threads", type=int, default=4)
     parser.add_argument("--prefetch-buffer-size", type=int, default=8)
+    parser.add_argument("--seed", type=int, default=42)
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -968,6 +1093,9 @@ def _parser() -> argparse.ArgumentParser:
     pair.add_argument("--result-directory", type=Path, required=True)
     pair.add_argument("--representax-gpu", type=int, default=4)
     pair.add_argument("--sentence-transformers-gpu", type=int, default=5)
+    aggregate = commands.add_parser("aggregate")
+    aggregate.add_argument("--summary", type=Path, action="append", required=True)
+    aggregate.add_argument("--output", type=Path, required=True)
     return parser
 
 
@@ -977,8 +1105,10 @@ def main() -> None:
         _prepare_data(arguments.data_directory)
     elif arguments.command == "worker":
         _worker(arguments)
-    else:
+    elif arguments.command == "pair":
         _pair(arguments)
+    else:
+        _aggregate(arguments)
 
 
 if __name__ == "__main__":

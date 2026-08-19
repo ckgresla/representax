@@ -706,10 +706,34 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      retrieval metrics match exactly; the final single-seed nDCG@10 delta is
      =+0.00104= and is not a quality-superiority claim. Raw reports live under
      =/raid/representax/benchmarks/dense-retrieval-mpnet-*=.
-**** TODO Complete multi-seed MiniLM, MPNet, and ModernVBERT time-to-quality runs
-     Run at least three seeds, preserve the same row order within each seed,
-     report confidence intervals for held-out retrieval quality and throughput,
-     and establish direct/cached OOM frontiers rather than extrapolating them.
+**** DONE Replicate cached MiniLM and MPNet over three explicit paired seeds
+     Seeds 17, 42, and 73 preserve the same ordered rows and matched scientific
+     contract. MiniLM batch 512/chunk 32 wins all three sustained comparisons
+     and averages =1.057x=, although its small-sample 95% t interval
+     =[0.992, 1.123]= is not yet decisive. MPNet batch 128/chunk 8 averages
+     =1.160x= with interval =[1.156, 1.163]=. Endpoint nDCG@10 differences are
+     inconclusive for both models: MiniLM =+0.00099 [-0.05207, +0.05406]= and
+     MPNet =+0.01302 [-0.01633, +0.04238]=. The benchmark now treats seed as a
+     first-class paired-contract field and reproducibly aggregates exactly three
+     contract-identical reports with input hashes.
+**** DONE Replicate end-to-end cached ModernVBERT training over three runs
+     Add one pinned native ModernVBERT loader to the same generic job and one
+     typed collator branch; do not fork the trainer, task, loss, evaluator, or
+     Grain path. Match Sentence Transformers' structured-message chat-template
+     preprocessing before the static tensor ABI. The accepted batch 128/chunk 8
+     job averages 78.38 versus 60.92 examples/s, a =1.287x= speedup with 95%
+     systems-replication interval =[1.273, 1.301]=, and is faster including
+     compilation within 100 updates. Initial metrics agree within =6.18e-5=.
+     Because checkpoint dropout is disabled, seeds 17/42/73 are systems repeats,
+     not independent quality seeds. Native final nDCG@10 is =0.0112= lower on
+     average despite closely matched mean training loss; diagnose the full update
+     trajectory before making a quality-equivalence claim.
+**** TODO Complete true time-to-quality and direct/cached OOM-frontier runs
+     Record held-out metrics and matched losses at fixed optimizer-update
+     checkpoints rather than only initial/final endpoints. Use truly stochastic
+     seeds where the model has stochastic training behavior, verify one-step
+     parameter-update parity for deterministic ModernVBERT, and establish
+     direct/cached OOM frontiers rather than extrapolating them.
 **** DONE Accept the pinned ModernVBERT GradCache device-step matrix against 5.6.1
      For logical batches 32, 128, 512, and 1,024 at sequence length 512 and
      chunk two, require identical checkpoint/input/scientific fingerprints,

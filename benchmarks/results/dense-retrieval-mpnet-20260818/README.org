@@ -34,6 +34,23 @@ seed and the two frameworks do not share an identical dropout RNG stream.
 Multi-seed time-to-quality, direct/cached OOM frontiers, and the end-to-end
 ModernVBERT replication remain required before closing the dense-training proof.
 
+* Three-run cached replication
+
+The accepted batch-128/chunk-8 plan was repeated with explicit paired seeds 17,
+42, and 73. Representax sustains 111.1 versus 95.8 examples/s on average, a mean
+=1.160x= speedup with a small-sample 95% Student-t interval of
+=[1.156, 1.163]=. All three runs pass exact initial evaluator parity and favor
+Representax individually. Compilation amortizes after 232 updates on average,
+with interval =[214, 250]=.
+
+The mean final nDCG@10 difference is =+0.01302= with interval
+=[-0.01633, +0.04238]=, so the endpoint evidence supports no quality advantage
+or regression. Exact inputs, hashes, values, and intervals are in
+=three-seed-aggregate.json=.
+
+ModernVBERT, fixed-checkpoint time-to-quality curves, and direct/cached OOM
+frontiers remain before closing the parent roadmap item.
+
 Raw reports:
 
 - =/raid/representax/benchmarks/dense-retrieval-mpnet-direct-b32-s100-20260818/=

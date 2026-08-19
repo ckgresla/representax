@@ -21,6 +21,7 @@ from representax.integrations import (
     load_sentence_transformer_modules,
 )
 from representax.models.bert import BertCheckpointAdapter, BertConfig, BertEncoder
+from representax.models.modernvbert import ModernVBERTTextBatch
 from representax.models.mpnet import (
     MPNetCheckpointAdapter,
     MPNetConfig,
@@ -68,6 +69,30 @@ class _Tokenizer:
             input_ids[index, : len(row)] = row
             attention_mask[index, : len(row)] = 1
         return {"input_ids": input_ids, "attention_mask": attention_mask}
+
+    def apply_chat_template(
+        self,
+        messages,
+        *,
+        tokenize,
+        add_generation_prompt,
+        padding,
+        truncation,
+        max_length,
+        return_tensors,
+        return_dict,
+    ):
+        assert tokenize is True
+        assert add_generation_prompt is False
+        assert return_dict is True
+        texts = [f"User: {row[0]['content'][0]['text']}" for row in messages]
+        return self(
+            texts,
+            padding=padding,
+            truncation=truncation,
+            max_length=max_length,
+            return_tensors=return_tensors,
+        )
 
 
 def _write_json(path: Path, value) -> None:
@@ -323,6 +348,24 @@ def test_sentence_text_collator_is_the_shared_static_preprocessing_boundary(
     assert collator.data_contract()["schema_version"] == (
         "representax-sentence-text-collator-v1"
     )
+
+
+def test_sentence_text_collator_supports_modernvbert_without_a_new_data_path(
+    tmp_path,
+    monkeypatch,
+):
+    checkpoint = tmp_path / "modernvbert"
+    _write_json(checkpoint / "config.json", {"model_type": "modernvbert"})
+    monkeypatch.setattr(
+        "transformers.AutoTokenizer.from_pretrained",
+        lambda *_args, **_kwargs: _Tokenizer(),
+    )
+
+    batch = SentenceTextCollator(checkpoint, maximum_length=8)(("first", "second"))
+
+    assert isinstance(batch, ModernVBERTTextBatch)
+    assert batch.input_ids.shape == (2, 8)
+    assert batch.attention_mask.shape == (2, 8)
 
 
 def test_host_embed_uses_fixed_shapes_routes_and_partial_batch_padding(tmp_path):

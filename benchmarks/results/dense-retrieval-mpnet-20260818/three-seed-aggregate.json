@@ -1,0 +1,159 @@
+{
+  "all_initial_metrics_match": true,
+  "contract": {
+    "batch_size": 128,
+    "cache_chunk_size": 8,
+    "checkpoint_model_sha256": "sha256:78c0197b6159d92658e319bc1d72e4c73a9a03dd03815e70e555c5ef05615658",
+    "data": {
+      "evaluation": {
+        "dataset_id": "sentence-transformers/NanoBEIR-en",
+        "files": [
+          "queries/NanoMSMARCO-00000-of-00001.parquet",
+          "corpus/NanoMSMARCO-00000-of-00001.parquet",
+          "qrels/NanoMSMARCO-00000-of-00001.parquet"
+        ],
+        "revision": "beb106fbcfaa599c508c667041bf8c85fd78736b",
+        "subset": "NanoMSMARCO"
+      },
+      "files": {
+        "sentence-transformers/NanoBEIR-en/corpus/NanoMSMARCO-00000-of-00001.parquet": {
+          "path": "artifacts/sentence-transformers/NanoBEIR-en/corpus/NanoMSMARCO-00000-of-00001.parquet",
+          "rows": 5043,
+          "sha256": "sha256:685715c7e0a66d0219572dcd43c3905782868d1aae885259768431f7d7eda830"
+        },
+        "sentence-transformers/NanoBEIR-en/qrels/NanoMSMARCO-00000-of-00001.parquet": {
+          "path": "artifacts/sentence-transformers/NanoBEIR-en/qrels/NanoMSMARCO-00000-of-00001.parquet",
+          "rows": 50,
+          "sha256": "sha256:6cd84c97a6ed813ffccbbb0b7aacc3051641f40a5869e0a15415823caf65c0d1"
+        },
+        "sentence-transformers/NanoBEIR-en/queries/NanoMSMARCO-00000-of-00001.parquet": {
+          "path": "artifacts/sentence-transformers/NanoBEIR-en/queries/NanoMSMARCO-00000-of-00001.parquet",
+          "rows": 50,
+          "sha256": "sha256:7cb9d7534660847f303211b9bdf84bcb3a3530f6e20e3c6050e77fc7ae77d0cd"
+        },
+        "sentence-transformers/msmarco-msmarco-MiniLM-L6-v3/triplet-all/train-00000-of-00039.parquet": {
+          "path": "artifacts/sentence-transformers/msmarco-msmarco-MiniLM-L6-v3/triplet-all/train-00000-of-00039.parquet",
+          "rows": 669531,
+          "sha256": "sha256:e00986bed2e4e5914691f6d03271322cd3615abc70583a569937281f3459b84a"
+        }
+      },
+      "schema_version": "representax-dense-retrieval-data-v1",
+      "training": {
+        "dataset_id": "sentence-transformers/msmarco-msmarco-MiniLM-L6-v3",
+        "file": "triplet-all/train-00000-of-00039.parquet",
+        "revision": "0d54352548089199bde15ad7e06efe895dc80b56"
+      }
+    },
+    "learning_rate": 2e-05,
+    "loss": "cosine MNR scale=20 asymmetric",
+    "maximum_length": 128,
+    "model": "mpnet",
+    "model_id": "sentence-transformers/all-mpnet-base-v2",
+    "optimizer": "AdamW",
+    "precision": "float32",
+    "representax_data_threads": 4,
+    "representax_prefetch_buffer_size": 8,
+    "revision": "e8c3b32edf5434bc2275fc9bab85f82640a19130",
+    "steps": 100
+  },
+  "inputs": [
+    {
+      "path": "/raid/representax/benchmarks/dense-retrieval-mpnet-cache-b128-c8-s100-seed17-20260818/summary.json",
+      "seed": 17,
+      "sha256": "sha256:242876ffa7303775b7ba8944ba5e54236be200651331ae91d5638e88cd0464c3"
+    },
+    {
+      "path": "/raid/representax/benchmarks/dense-retrieval-mpnet-cache-b128-c8-s100-seed42-20260818/summary.json",
+      "seed": 42,
+      "sha256": "sha256:5fe2738a15ba11e74d276ed685a00ec7995203495d7de4ee24ca00487e1fd557"
+    },
+    {
+      "path": "/raid/representax/benchmarks/dense-retrieval-mpnet-cache-b128-c8-s100-seed73-20260818/summary.json",
+      "seed": 73,
+      "sha256": "sha256:82380412a2f25eae1a35d9829ba61612cfa9714111e94c28be679f6d03ecc934"
+    }
+  ],
+  "metrics": {
+    "compilation_break_even_steps": {
+      "confidence_interval": [
+        213.97196355490013,
+        249.5619849262414
+      ],
+      "confidence_level": 0.95,
+      "maximum": 239.97756237622602,
+      "mean": 231.76697424057076,
+      "minimum": 226.79289897679567,
+      "values": [
+        226.79289897679567,
+        239.97756237622602,
+        228.5304613686906
+      ]
+    },
+    "final_ndcg@10_difference": {
+      "confidence_interval": [
+        -0.01633016288274501,
+        0.0423786346948777
+      ],
+      "confidence_level": 0.95,
+      "maximum": 0.02466098399776795,
+      "mean": 0.013024235906066347,
+      "minimum": 0.0010353827018215744,
+      "values": [
+        0.02466098399776795,
+        0.0010353827018215744,
+        0.013376341018609517
+      ]
+    },
+    "representax_sustained_examples_per_second": {
+      "confidence_interval": [
+        109.95828309696974,
+        112.14963178562475
+      ],
+      "confidence_level": 0.95,
+      "maximum": 111.51112155732044,
+      "mean": 111.05395744129724,
+      "minimum": 110.63097385387232,
+      "values": [
+        111.01977691269899,
+        111.51112155732044,
+        110.63097385387232
+      ]
+    },
+    "sentence_transformers_examples_per_second": {
+      "confidence_interval": [
+        94.97915443057866,
+        96.54129743971035
+      ],
+      "confidence_level": 0.95,
+      "maximum": 96.02633264339681,
+      "mean": 95.7602259351445,
+      "minimum": 95.41327398208252,
+      "values": [
+        95.84107117995418,
+        96.02633264339681,
+        95.41327398208252
+      ]
+    },
+    "sustained_training_speedup": {
+      "confidence_interval": [
+        1.1560980019036482,
+        1.163316558971646
+      ],
+      "confidence_level": 0.95,
+      "maximum": 1.1612556523576496,
+      "mean": 1.1597072804376471,
+      "minimum": 1.1583737070743376,
+      "values": [
+        1.1583737070743376,
+        1.1612556523576496,
+        1.159492481880954
+      ]
+    }
+  },
+  "schema_version": "representax-dense-retrieval-three-run-aggregate-v1",
+  "seeds": [
+    17,
+    42,
+    73
+  ]
+}

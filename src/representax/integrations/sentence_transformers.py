@@ -550,7 +550,12 @@ class SentenceTextCollator:
         self.checkpoint = Path(checkpoint).expanduser().resolve()
         config = load_hf_config(self.checkpoint)
         self.model_type = str(config.get("model_type", ""))
-        if self.model_type not in {"bert", "mpnet", "qwen3_vl_audio"}:
+        if self.model_type not in {
+            "bert",
+            "modernvbert",
+            "mpnet",
+            "qwen3_vl_audio",
+        }:
             raise ValueError(
                 f"native text collation does not support {self.model_type!r}"
             )
@@ -577,13 +582,34 @@ class SentenceTextCollator:
 
     def __call__(self, texts: Sequence[str]) -> Any:
         tokenizer = cast(Callable[..., Any], self.tokenizer)
-        encoded = tokenizer(
-            list(texts),
-            padding="max_length",
-            truncation=True,
-            max_length=self.maximum_length,
-            return_tensors="np",
-        )
+        encoded: Mapping[str, Any]
+        if self.model_type == "modernvbert":
+            messages = [
+                [{"role": "user", "content": [{"type": "text", "text": text}]}]
+                for text in texts
+            ]
+            chat_tokenizer = cast(Any, self.tokenizer)
+            encoded = cast(
+                Mapping[str, Any],
+                chat_tokenizer.apply_chat_template(
+                    messages,
+                    tokenize=True,
+                    add_generation_prompt=False,
+                    padding="max_length",
+                    truncation=True,
+                    max_length=self.maximum_length,
+                    return_tensors="np",
+                    return_dict=True,
+                ),
+            )
+        else:
+            encoded = tokenizer(
+                list(texts),
+                padding="max_length",
+                truncation=True,
+                max_length=self.maximum_length,
+                return_tensors="np",
+            )
         input_ids = jnp.asarray(encoded["input_ids"])
         attention_mask = jnp.asarray(encoded["attention_mask"])
         if self.model_type == "bert":
@@ -601,6 +627,13 @@ class SentenceTextCollator:
             from representax.models.jina_v5 import JinaV5TextBatch
 
             return JinaV5TextBatch(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+            )
+        if self.model_type == "modernvbert":
+            from representax.models.modernvbert import ModernVBERTTextBatch
+
+            return ModernVBERTTextBatch(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
             )

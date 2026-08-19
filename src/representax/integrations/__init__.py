@@ -28,6 +28,7 @@ from .huggingface import (
     resolve_hf_checkpoint,
 )
 from .jina import load_jina_v5_small_text_encoder
+from .modernvbert import load_modernvbert_text_encoder
 from .sentence_transformers import (
     SENTENCE_TRANSFORMERS_ORACLE_VERSION,
     LoadedSentenceTransformer,
@@ -68,6 +69,7 @@ __all__ = [
     "get_model_type_family",
     "load_hf_config",
     "load_jina_v5_small_text_encoder",
+    "load_modernvbert_text_encoder",
     "load_safetensor_subset",
     "load_sentence_transformer",
     "load_sentence_transformer_artifact",
