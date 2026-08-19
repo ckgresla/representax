@@ -24,7 +24,9 @@ not a substitute for the public CI and published-package readback gates.
 - Fast source tests run on CPU across Python 3.11, 3.12, and 3.13.
 - Generic trainer, Grain, GradCache, and Orbax runtime tests run on the primary
   Python version.
-- Two- and four-device sharding semantics run with virtual CPU devices in CI.
+- Two- and four-device DDP, FSDP, hybrid, and custom-sharding semantics run with
+  virtual CPU devices in CI; physical-GPU gates additionally inspect memory
+  placement and NCCL collectives.
 - Model parity and matched throughput/memory gates remain explicit accelerator
   lanes with pinned upstream environments.
 

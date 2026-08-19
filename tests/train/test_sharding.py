@@ -2,16 +2,26 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 import jax
 import jax.numpy as jnp
 import numpy as np
+import optax
 import pytest
+from jax.sharding import PartitionSpec as P
 
+from representax.models import DenseEncoder
 from representax.tasks.retrieval import (
     ProcessLocalRetrievalBatch,
     process_local_retrieval_batch,
 )
-from representax.train import DataParallel
+from representax.train import (
+    DataParallel,
+    ShardingPlan,
+    init_train_state,
+    parameter_specs_from_rules,
+)
 
 
 def test_process_local_retrieval_batch_keeps_global_relation_columns():
@@ -56,3 +66,45 @@ def test_data_parallel_assembles_process_local_rows_on_one_process():
         global_batch.positive_mask,
         local_batch.positive_mask,
     )
+
+
+def test_custom_parameter_rules_build_model_shaped_specs():
+    model = DenseEncoder(4, 4, key=jax.random.key(3))
+
+    specs = cast(
+        DenseEncoder,
+        parameter_specs_from_rules(
+            model,
+            ((r"\.projection\.weight$", P("model", None)),),
+        ),
+    )
+
+    assert specs.projection.weight == P("model", None)
+    assert specs.projection.bias == P()
+
+
+def test_fsdp_rejects_specs_that_do_not_match_parameter_divisibility():
+    devices = jax.devices()
+    if len(devices) < 2:
+        pytest.skip("requires two JAX devices")
+    model = DenseEncoder(3, 3, key=jax.random.key(3))
+    optimizer = optax.adamw(1e-3)
+    state = init_train_state(model, optimizer)
+    mesh = jax.make_mesh((2,), ("model",), devices=devices[:2])
+    specs = cast(
+        DenseEncoder,
+        parameter_specs_from_rules(
+            model,
+            ((r"\.projection\.weight$", P("model", None)),),
+        ),
+    )
+
+    with pytest.raises(ValueError, match="not divisible"):
+        ShardingPlan.custom(
+            state,
+            optimizer,
+            mesh,
+            specs,
+            parameter_axis_names=("model",),
+            data_axis_name=None,
+        )

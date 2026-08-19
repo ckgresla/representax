@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import math
+import re
 from collections.abc import Mapping
-from typing import Literal, Self
+from typing import Annotated, Literal, Self
 
 from pydantic import (
     Field,
@@ -31,6 +32,7 @@ from .data.recipe import MixtureRecipe
 from .tasks.config import LossConfig, LossModifierConfig, TaskConfig
 
 RematerializationPolicy = Literal["none", "selective", "full"]
+ParameterMaterializationBoundary = Literal["model", "layer"]
 MetricMode = Literal["min", "max"]
 ExportSelection = Literal["final", "best"]
 JsonScalar = str | int | float | bool | None
@@ -227,6 +229,125 @@ class MeshConfig(FrozenConfig):
         return self.axis_shapes[index]
 
 
+PartitionAxis = NonEmptyString | tuple[NonEmptyString, ...] | None
+
+
+class PartitionRuleConfig(FrozenConfig):
+    """Map model-leaf paths to one serializable ``PartitionSpec``."""
+
+    pattern: NonEmptyString
+    axes: tuple[PartitionAxis, ...] = ()
+
+    @field_validator("pattern")
+    @classmethod
+    def validate_pattern(cls, value: str) -> str:
+        try:
+            re.compile(value)
+        except re.error as error:
+            raise ValueError(
+                f"invalid partition-rule regular expression: {error}"
+            ) from error
+        return value
+
+    @field_validator("axes")
+    @classmethod
+    def validate_partition_axes(
+        cls,
+        value: tuple[PartitionAxis, ...],
+    ) -> tuple[PartitionAxis, ...]:
+        names: list[str] = []
+        for axis in value:
+            if isinstance(axis, tuple) and not axis:
+                raise ValueError("a grouped partition axis cannot be empty")
+            if axis is None:
+                continue
+            names.extend(axis if isinstance(axis, tuple) else (axis,))
+        if len(set(names)) != len(names):
+            raise ValueError("a partition rule cannot reuse one mesh axis")
+        return value
+
+
+class DDPConfig(FrozenConfig):
+    """Named replicated-state data parallelism preset."""
+
+    kind: Literal["ddp"] = "ddp"
+    axis: NonEmptyString = "data"
+    gradient_bucket_bytes: PositiveInt = Field(
+        default=256 * 2**20,
+        description="Maximum bytes in one explicit replicated-gradient bucket.",
+    )
+
+
+class FSDPConfig(FrozenConfig):
+    """Named fully-sharded data parallelism preset."""
+
+    kind: Literal["fsdp"] = "fsdp"
+    data_axis: NonEmptyString = "data"
+    parameter_axis: NonEmptyString | None = None
+    minimum_parameter_elements: PositiveInt = 2**18
+    materialization_boundary: ParameterMaterializationBoundary = Field(
+        default="layer",
+        description=(
+            "Gather the complete model call or one supported scanned layer at a "
+            "time; layer minimizes the full-parameter live range."
+        ),
+    )
+    materialization_bucket_bytes: PositiveInt = Field(
+        default=256 * 2**20,
+        description="Maximum local shard bytes in one parameter gather bucket.",
+    )
+    rematerialize_gathers: bool = True
+    gradient_bucket_bytes: PositiveInt = Field(
+        default=256 * 2**20,
+        description="Maximum bytes in one replicated-gradient bucket.",
+    )
+
+    @property
+    def resolved_parameter_axis(self) -> str:
+        return self.parameter_axis or self.data_axis
+
+
+class CustomShardingConfig(FrozenConfig):
+    """Explicit parameter layouts over a compatible named JAX mesh."""
+
+    kind: Literal["custom"] = "custom"
+    data_axis: NonEmptyString | None = None
+    parameter_axes: tuple[NonEmptyString, ...]
+    parameter_rules: tuple[PartitionRuleConfig, ...]
+    default_parameter_axes: tuple[PartitionAxis, ...] = ()
+    materialization_boundary: ParameterMaterializationBoundary = Field(
+        default="model",
+        description=(
+            "Gather the complete model call or one supported scanned layer at a time."
+        ),
+    )
+    materialization_bucket_bytes: PositiveInt = Field(
+        default=256 * 2**20,
+        description="Maximum local shard bytes in one parameter gather bucket.",
+    )
+    rematerialize_gathers: bool = True
+    gradient_bucket_bytes: PositiveInt = Field(
+        default=256 * 2**20,
+        description="Maximum bytes in one replicated-gradient bucket.",
+    )
+
+    @model_validator(mode="after")
+    def validate_custom_sharding(self) -> Self:
+        if not self.parameter_axes:
+            raise ValueError("custom sharding requires at least one parameter axis")
+        if len(set(self.parameter_axes)) != len(self.parameter_axes):
+            raise ValueError("custom parameter axes must be unique")
+        if not self.parameter_rules:
+            raise ValueError("custom sharding requires at least one parameter rule")
+        return self
+
+
+ShardingConfig = Annotated[
+    DDPConfig | FSDPConfig | CustomShardingConfig,
+    Field(discriminator="kind"),
+]
+
+
 class BatchConfig(FrozenConfig):
     """Per-data-replica batch size and optimizer accumulation."""
 
@@ -293,6 +414,7 @@ class TrainingConfig(FrozenConfig):
     max_steps: Scientific[PositiveInt]
     seed: Scientific[NonNegativeInt]
     mesh: Execution[MeshConfig] = MeshConfig()
+    sharding: Execution[ShardingConfig] = DDPConfig()
     batch: Execution[BatchConfig]
     grad_cache: Execution[GradCacheConfig | None] = None
     mega_batch_mining: Execution[MegaBatchMiningConfig | None] = None
@@ -309,6 +431,47 @@ class TrainingConfig(FrozenConfig):
     def validate_loss_execution(self) -> Self:
         if self.grad_cache is not None and self.mega_batch_mining is not None:
             raise ValueError("configure only one specialized loss execution")
+        return self
+
+    @model_validator(mode="after")
+    def validate_sharding_axes(self) -> Self:
+        mesh_axes = set(self.mesh.axis_names)
+        sharding = self.sharding
+        if isinstance(sharding, DDPConfig):
+            referenced_axes = {sharding.axis}
+        elif isinstance(sharding, FSDPConfig):
+            referenced_axes = {
+                sharding.data_axis,
+                sharding.resolved_parameter_axis,
+            }
+        else:
+            referenced_axes = set(sharding.parameter_axes)
+            if sharding.data_axis is not None:
+                referenced_axes.add(sharding.data_axis)
+            rule_axes = {
+                name
+                for rule in sharding.parameter_rules
+                for axis in rule.axes
+                if axis is not None
+                for name in (axis if isinstance(axis, tuple) else (axis,))
+            }
+            default_axes = {
+                name
+                for axis in sharding.default_parameter_axes
+                if axis is not None
+                for name in (axis if isinstance(axis, tuple) else (axis,))
+            }
+            unsupported = (rule_axes | default_axes) - set(sharding.parameter_axes)
+            if unsupported:
+                raise ValueError(
+                    "partition rules use axes absent from parameter_axes: "
+                    f"{sorted(unsupported)}"
+                )
+        unknown = referenced_axes - mesh_axes
+        if unknown:
+            raise ValueError(
+                f"sharding axes are absent from the mesh: {sorted(unknown)}"
+            )
         return self
 
 
@@ -523,11 +686,14 @@ __all__ = [
     "BatchConfig",
     "CheckpointConfig",
     "ComponentConfig",
+    "CustomShardingConfig",
     "DataConfig",
+    "DDPConfig",
     "EmbeddingSimilarityEvaluatorConfig",
     "EvaluationConfig",
     "EvaluatorConfig",
     "ExportConfig",
+    "FSDPConfig",
     "GradCacheConfig",
     "HuggingFaceExportConfig",
     "JobConfig",
@@ -537,6 +703,9 @@ __all__ = [
     "ModelConfig",
     "OptimizationConfig",
     "ParameterRole",
+    "PartitionAxis",
+    "PartitionRuleConfig",
     "RematerializationPolicy",
+    "ShardingConfig",
     "TrainingConfig",
 ]

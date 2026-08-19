@@ -1,0 +1,146 @@
+#+title: Single-host DDP/FSDP ModernVBERT profile — 2026-08-19
+
+* Decision
+
+Representax physically shards the complete ModernVBERT model and Adam state
+across two and four RTX 4090 GPUs, materializes parameters with NCCL AllGather,
+and returns sharded gradients with NCCL ReduceScatter. Named DDP, named FSDP,
+and explicit custom partition rules execute through one =ShardingPlan= trainer.
+
+The accepted implementation exposes two FSDP materialization boundaries:
+
+- =model= gathers bounded flat parameter buckets around the complete model call;
+  it retains the sharded persistent state while favoring throughput.
+- =layer= gathers bounded flat buckets for one scanned transformer layer at a
+  time and rematerializes that layer during backward; it favors capacity.
+
+The boundary changes physical execution only. Both modes match the same
+one-device loss, complete parameter update, and complete Optax-state update on
+two- and four-device meshes.
+
+* Workload and evidentiary boundary
+
+The matched physical workload uses the real 149M-parameter
+=ModernVBERT/modernvbert-embed= checkpoint, four physical RTX 4090s (GPUs 2--5),
+global batch 16 (four rows per GPU), sequence length 128, exact GradCache chunks
+of 2, FP32/highest precision, AdamW, one warmup, and ten synchronized measured
+optimizer steps. Inputs are deterministic random token IDs with an identity
+query/document positive relation.
+
+This is a complete forward/backward/optimizer systems program. Model-ready
+synthetic tensors deliberately remove storage, tokenization, and semantic data
+quality as confounders. The result proves numerical, placement, memory,
+communication, and sustained-step behavior; it is not evidence of retrieval
+quality or end-to-end dataset-to-quality time.
+
+* Four-GPU execution frontier
+
+All measurements below come from isolated processes with
+=XLA_PYTHON_CLIENT_PREALLOCATE=false=.
+
+| measurement | DDP | FSDP model | FSDP layer |
+|-------------+-----+------------+------------|
+| model bytes / GPU | 596,179,990 | 149,049,622 | 149,049,622 |
+| Adam bytes / GPU | 1,192,359,940 | 298,099,204 | 298,099,204 |
+| compiler temporary bytes / GPU | 596,217,904 | 2,236,698,672 | 502,624,560 |
+| peak live JAX bytes / GPU | 6,524,894,464 | 3,718,931,200 | 1,984,857,088 |
+| peak NVML process bytes / GPU | 9,231,663,104 | 6,012,534,784 | 2,791,309,312 |
+| median synchronized step | 0.4745 s | 0.4856 s | 2.4093 s |
+| examples / second | 33.72 | 32.95 | 6.64 |
+| compile time | 18.41 s | 18.75 s | 23.06 s |
+| StableHLO AllGather / ReduceScatter / AllReduce | 5 / 2 / 16 | 6 / 3 / 31 | 12 / 5 / 31 |
+
+The named modes therefore form a real capacity/communication frontier on this
+PCIe-only host:
+
+- DDP is fastest when replicated model and optimizer state fit.
+- model-boundary FSDP is within 2.4% of DDP throughput while quartering
+  persistent model and Adam storage and lowering the live peak by 43%.
+- layer-boundary FSDP lowers the live peak another 47%, to 30% of DDP, but each
+  step takes 5.08x as long because every GradCache encoder replay transports
+  the layer parameters over PCIe.
+
+These are execution choices, not different scientific jobs. A future Profilax
+planner should select the fastest feasible boundary from model shape, batch,
+sequence length, precision, mesh topology, and the required memory margin.
+
+* DDP gradient synchronization diagnosis
+
+The first DDP implementation combined explicit gradient synchronization with
+=shard_map= VMA transposition. XLA sank implicit per-parameter reductions into
+the scanned encoder backward, producing 740 FP32 AllReduce kernels per GPU over
+one warmup and three measured steps. The resulting 1.895 s median step was an
+implementation pathology, not a defensible DDP baseline.
+
+The accepted DDP path disables automatic VMA transposition only for the named
+replicated-state preset, groups compatible gradient leaves by dtype and
+replicated axes, packs bounded 256 MiB buckets after the complete backward, and
+explicitly averages each bucket. The exact 2/4-device gates still pass. Nsight
+now records 20 FP32 AllReduce kernels per GPU over the same four traced steps,
+and the median step falls to 0.4745 s. FSDP/custom plans retain VMA checking for
+their declared AllGather/ReduceScatter transpose contract.
+
+* FSDP materialization diagnosis
+
+Whole-model materialization keeps the full parameter tree live around each
+encoder call. It is throughput-efficient here, but its compiler-estimated
+temporary is 2.24 GB. ModernVBERT now implements a model-side
+=fsdp_materialize= boundary: the depth-major layer stack remains sharded, one
+scan slice is gathered immediately before its layer computation, and full
+activation rematerialization replays the gather during backward instead of
+retaining the materialized layer.
+
+Compatible leaves inside a materialization boundary are packed by dtype and
+mesh axis into bounded flat buckets before AllGather, then reconstructed in
+their original shapes. This reduces layer-FSDP static AllGather operations from
+37 to 12, ReduceScatter operations from 14 to 5, compile time from 28.90 to
+23.06 seconds, and compiler temporary storage from 529 to 503 MB. Nsight still
+records essentially the same transported NCCL work because the PCIe run is
+bandwidth-bound by parameter volume rather than kernel-launch-bound after
+coalescing.
+
+* Physical placement and communication
+
+The four cards have no NVLink and span two PCIe host bridges. Both the model and
+layer FSDP programs store exactly one quarter of every sharded parameter and
+Adam moment on each GPU. Nsight records balanced NCCL execution across all four
+cards. The traces distinguish actual collectives from inferred output
+shardings; StableHLO and memory placement remain separate acceptance gates.
+
+The earlier equal =nvidia-smi= values on two GPUs were a JAX BFC allocator-pool
+bucket coincidence. With preallocation disabled on four GPUs, both live JAX
+bytes and NVML-visible process bytes fall with the narrower FSDP boundary.
+
+* Numerical acceptance
+
+The full-checkpoint two-GPU correctness artifact compares one FSDP optimizer
+update with the same one-device update and records:
+
+- absolute loss error: =9.54e-7=;
+- model-update relative L2 error: =2.35e-7=; and
+- complete Adam-state relative L2 error: =4.28e-5=.
+
+The final focused suite additionally accepts both materialization boundaries on
+physical two- and four-GPU meshes. The broader virtual matrix covers DDP,
+same-axis FSDP, parameter-only FSDP, 2x2 hybrid data/model sharding, custom
+partition rules, and Orbax sharded restore.
+
+* Raw artifacts
+
+Raw profiling output is intentionally kept out of Git. The accepted four-GPU
+artifacts live under
+=/raid/representax/benchmarks/sharding-modernvbert-20260819/=:
+
+- =ddp-bucketed-manual-sustained-world4-b16-s128.json=;
+- =ddp-bucketed-manual-world4-b16-s128.stablehlo.mlir=;
+- =ddp-bucketed-manual-runtime-world4-b16-s128.nsys-rep=;
+- =fsdp-model-bucketed-sustained-world4-b16-s128.json=;
+- =fsdp-model-bucketed-world4-b16-s128.stablehlo.mlir=;
+- =fsdp-layerwise-bucketed-sustained-world4-b16-s128.json=;
+- =fsdp-layerwise-bucketed-world4-b16-s128.stablehlo.mlir=; and
+- =fsdp-layerwise-bucketed-runtime-world4-b16-s128-retry.nsys-rep=.
+
+The initial, superseded DDP and unbucketed FSDP artifacts remain in the same
+directory for diagnosis provenance. Reproduce isolated measurements with
+=benchmarks/profile_sharding_modernvbert.py= and do not co-reside the
+one-device correctness oracle when interpreting memory.

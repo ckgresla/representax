@@ -32,7 +32,14 @@ from .logging import MetricRecord, Reporter, RunLogger
 from .loop import TrainingRunResult, run_training
 from .mega_batch import MegaBatchMining
 from .optimizer import build_optimizer, build_schedule
-from .sharding import DataParallel, build_data_parallel_train_step
+from .sharding import (
+    DataParallel,
+    ShardingPlan,
+    build_data_parallel_train_step,
+    build_sharded_train_step,
+    fsdp_partition_spec,
+    parameter_specs_from_rules,
+)
 from .state import StepMetrics, StepResult, TrainState
 from .step import (
     TrainStep,
@@ -52,6 +59,7 @@ __all__ = [
     "CheckpointWriteError",
     "Direct",
     "DataParallel",
+    "ShardingPlan",
     "ExecutionContext",
     "EvaluationResult",
     "EvaluationRunner",
@@ -74,6 +82,7 @@ __all__ = [
     "build_train_step",
     "build_loss_execution",
     "build_data_parallel_train_step",
+    "build_sharded_train_step",
     "build_batches",
     "build_collate",
     "build_component",
@@ -82,6 +91,8 @@ __all__ = [
     "build_optimizer",
     "build_schedule",
     "evaluate",
+    "fsdp_partition_spec",
+    "parameter_specs_from_rules",
     "init_train_state",
     "make_train_state",
     "run_training",

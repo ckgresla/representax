@@ -15,8 +15,11 @@ import jax
 
 from representax.config import (
     ComponentConfig,
+    CustomShardingConfig,
     DataConfig,
+    DDPConfig,
     EmbeddingSimilarityEvaluatorConfig,
+    FSDPConfig,
     JobConfig,
     ModelConfig,
 )
@@ -28,7 +31,11 @@ from .config import build_loss_execution
 from .evaluation import EvaluationRunner
 from .loop import TrainingRunResult, run_training
 from .optimizer import build_optimizer
-from .sharding import DataParallel, build_data_parallel_train_step
+from .sharding import (
+    ShardingPlan,
+    build_sharded_train_step,
+    parameter_specs_from_rules,
+)
 from .state import TrainState
 from .step import TrainStep, build_train_step, init_train_state
 
@@ -190,26 +197,103 @@ def build_job_runtime(
         )
         place_batch = jax.device_put
     else:
-        if len(job.training.mesh.axis_shapes) != 1:
-            raise ValueError(
-                "the standard data-parallel runtime currently requires one mesh axis"
-            )
         mesh = jax.make_mesh(
             job.training.mesh.axis_shapes,
             job.training.mesh.axis_names,
             devices=jax.devices()[:mesh_size],
         )
-        plan = DataParallel(mesh, axis_name=job.training.mesh.axis_names[0])
-        state = plan.place_replicated(state)
-        step = build_data_parallel_train_step(
-            task,
-            optimizer,
-            plan,
-            max_grad_norm=job.optimization.max_gradient_norm,
-            execution=execution,
-            donate_state=job.training.donate_buffers,
+        sharding = job.training.sharding
+        if job.training.batch.gradient_accumulation_steps != 1:
+            raise NotImplementedError(
+                "distributed gradient accumulation is not implemented; use the "
+                "scientific global batch directly or exact GradCache"
+            )
+        if isinstance(sharding, DDPConfig):
+            plan = ShardingPlan.ddp(
+                state,
+                optimizer,
+                mesh,
+                axis_name=sharding.axis,
+                gradient_bucket_bytes=sharding.gradient_bucket_bytes,
+            )
+            state = plan.place_state(state)
+            step = build_sharded_train_step(
+                task,
+                optimizer,
+                plan,
+                max_grad_norm=job.optimization.max_gradient_norm,
+                execution=execution,
+                donate_state=job.training.donate_buffers,
+            )
+            place_batch = plan.place_batch
+            data_axis_name = sharding.axis
+        elif isinstance(sharding, FSDPConfig):
+            plan = ShardingPlan.fsdp(
+                state,
+                optimizer,
+                mesh,
+                parameter_axis_name=sharding.resolved_parameter_axis,
+                data_axis_name=sharding.data_axis,
+                minimum_parameter_elements=sharding.minimum_parameter_elements,
+                materialization_boundary=sharding.materialization_boundary,
+                materialization_bucket_bytes=sharding.materialization_bucket_bytes,
+                rematerialize_gathers=sharding.rematerialize_gathers,
+                gradient_bucket_bytes=sharding.gradient_bucket_bytes,
+            )
+            state = plan.place_state(state)
+            step = build_sharded_train_step(
+                task,
+                optimizer,
+                plan,
+                max_grad_norm=job.optimization.max_gradient_norm,
+                execution=execution,
+                donate_state=job.training.donate_buffers,
+            )
+            place_batch = plan.place_batch
+            data_axis_name = sharding.data_axis
+        elif isinstance(sharding, CustomShardingConfig):
+            parameter_specs = parameter_specs_from_rules(
+                state.model,
+                tuple(
+                    (rule.pattern, jax.sharding.PartitionSpec(*rule.axes))
+                    for rule in sharding.parameter_rules
+                ),
+                default=jax.sharding.PartitionSpec(*sharding.default_parameter_axes),
+            )
+            plan = ShardingPlan.custom(
+                state,
+                optimizer,
+                mesh,
+                parameter_specs,
+                parameter_axis_names=sharding.parameter_axes,
+                data_axis_name=sharding.data_axis,
+                materialization_boundary=sharding.materialization_boundary,
+                materialization_bucket_bytes=sharding.materialization_bucket_bytes,
+                rematerialize_gathers=sharding.rematerialize_gathers,
+                gradient_bucket_bytes=sharding.gradient_bucket_bytes,
+            )
+            state = plan.place_state(state)
+            step = build_sharded_train_step(
+                task,
+                optimizer,
+                plan,
+                max_grad_norm=job.optimization.max_gradient_norm,
+                execution=execution,
+                donate_state=job.training.donate_buffers,
+            )
+            place_batch = plan.place_batch
+            data_axis_name = sharding.data_axis
+        else:  # pragma: no cover - the Pydantic discriminator closes the union
+            raise TypeError(f"unsupported sharding config {type(sharding).__name__}")
+        data_axis_size = (
+            1 if data_axis_name is None else int(mesh.shape[data_axis_name])
         )
-        place_batch = plan.place_batch
+        realized_batch_size = job.training.batch.micro_batch_size * data_axis_size
+        if realized_batch_size != job.training.global_batch_size:
+            raise ValueError(
+                "distributed batch plan differs from global_batch_size: "
+                f"{realized_batch_size} != {job.training.global_batch_size}"
+            )
     batches = build_batches(
         job.data,
         batch_size=job.training.global_batch_size,

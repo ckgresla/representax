@@ -7,44 +7,85 @@ This file is the canonical Representax roadmap and shared source of truth.
 Keep decisions and work items here; record evidence in commits, tests, and
 benchmark artifacts rather than duplicating the roadmap elsewhere.
 
-* DONE Establish =representax= as a standalone Git repository :foundation:
-* DONE Adopt the MIT license and public-project policies :foundation:
-* DONE Use permissive Python and dependency ranges with optional extras :foundation:
-* DONE Keep accelerator-specific JAX and PyTorch out of the base install :foundation:
-* DONE Document pip-managed CUDA and =LD_LIBRARY_PATH= conflicts :docs:release:
-* DONE Exclude private history, experiments, Studio, and compiled assets :foundation:
-* DONE Make native Equinox models the supported execution path :architecture:
-* DONE Define a model-neutral task protocol for future task families :architecture:
-* DONE Define one route-aware =encode= API with bound-route convenience :api:
-* DONE Implement direct, symmetric, graded, and Matryoshka MNR :retrieval:
-* DONE Implement a generic compiled Equinox and Optax update step :runtime:
-* DONE Separate scientific configuration from execution choices :planning:
-* DONE Define unit, runtime, parity, distributed, and performance test lanes :testing:
-* DONE Use pytest with out-of-tree tests mirrored by model, task, and subsystem :testing:
-* DONE Select environment-sensitive test lanes with orthogonal pytest markers :testing:
-* DONE Require every checkpoint-backed model to register numerical and systems gates :testing:models:
-* DONE Isolate upstream Torch references in the optional =parity= extra :testing:
-* DONE Define lazy artifact recipes and sampling policies for Grain :data:
-* DONE Make Python and Hydra-Zen recipes Git-trackable :data:
-* DONE Treat one dataset as the one-source form of a sampling policy :data:
-* DONE Borrow Levanter's mixture semantics without depending on its LM stack :data:
+* Initial paper
+  This section is the finite acceptance program for the first Representax
+  systems whitepaper. Establish numerical and scientific equivalence first,
+  then demonstrate statistically supported systems improvements on shared
+  workloads and capabilities enabled by native JAX execution. Sentence
+  Transformers 5.4 and later support text, image, audio, and video, so those are
+  shared comparisons rather than absence claims. The differentiating claims are
+  JEPA-style learning, integrated evaluation/checkpoint-safe arbitrary sharding,
+  and semantics-preserving execution planning. Keep exactly one =NEXT= item.
+  Freeze the implementation surface by end of Saturday, 2026-08-22: arbitrary
+  sharding/FSDP first, unified AnyModality data execution second, JEPA third,
+  then late-interaction, cross/reranking, sparse, and reward recipes. Run the
+  long paired evidence campaign after that implementation freeze through the
+  following Monday or Tuesday. Do not pull general-development work into this
+  finite paper path.
 
-* DONE Review and land the first clean public commit :release:
-* DONE Land the verified ModernVBERT port as the second public commit :models:release:
+** TODO Define measurable monotonic-improvement gates over existing trainers :research:
+   Pin the initial model, tokenizer/processor, raw examples and order, objective,
+   optimizer and schedule, precision, global batch, update count, and evaluation
+   contract. Require numerical parity and non-inferior held-out quality before a
+   systems claim. Then report synchronized sustained throughput, accelerator
+   utilization and starvation, the feasible-workload frontier, and time to a
+   declared quality target over paired repetitions. Report compilation and
+   lifecycle latency separately; allocator reservation matters only when it
+   reduces feasible work or exposes avoidable materialization.
+** TODO Benchmark quality, throughput, feasible workload, utilization, and model coverage :research:benchmark:
+** TODO Benchmark compile time separately from steady-state step time :research:benchmark:
+** TODO Benchmark direct MNR and GradCache at equal scientific semantics :research:benchmark:
+** TODO Benchmark text retrieval against Sentence Transformers :research:benchmark:
+** TODO Benchmark multimodal retrieval including audio and video :research:benchmark:
+   Treat text-image, audio-text, and video-text training as shared workloads
+   against Sentence Transformers rather than claiming that upstream cannot train
+   those modalities. Compare identical decoded examples and model-ready shapes.
+** TODO Benchmark reward modeling and JEPA workloads against their maintained systems oracles :research:benchmark:
+** TODO Benchmark bounded streaming evaluation during training and checkpoint overlap :research:benchmark:
+   Evaluate a configured validation objective and reusable semantic-similarity,
+   query/corpus/qrels retrieval, reranking, and task-specific protocols both
+   during training and offline. Shard examples or corpus chunks over the named
+   data mesh axes, reduce metrics exactly, overlap bounded evaluation with
+   asynchronous checkpointing where safe, and prove that neither path starves
+   training or changes best-model selection.
+** TODO Measure single-device and single-host multi-device scaling :research:benchmark:
+   Cover replicated DDP, exact global-negative GradCache, FSDP, and at least one
+   hybrid data/model plan. Physical multi-host and TPU claims remain deferred
+   until the corresponding hardware is available.
+** TODO Publish reproducible configs, manifests, tests, and benchmark artifacts :research:reproducibility:
+** TODO Write the first paper on the monotonic JAX representation-training system :research:paper:
+** TODO Release the systems paper as an arXiv preprint :research:paper:
+** DONE Make native Equinox models the supported execution path :architecture:
+** DONE Define a model-neutral task protocol for future task families :architecture:
+** DONE Define one route-aware =encode= API with bound-route convenience :api:
+** DONE Implement direct, symmetric, graded, and Matryoshka MNR :retrieval:
+** DONE Implement a generic compiled Equinox and Optax update step :runtime:
+** DONE Separate scientific configuration from execution choices :planning:
+** DONE Define unit, runtime, parity, distributed, and performance test lanes :testing:
+** DONE Use pytest with out-of-tree tests mirrored by model, task, and subsystem :testing:
+** DONE Select environment-sensitive test lanes with orthogonal pytest markers :testing:
+** DONE Require every checkpoint-backed model to register numerical and systems gates :testing:models:
+** DONE Isolate upstream Torch references in the optional =parity= extra :testing:
+** DONE Define lazy artifact recipes and sampling policies for Grain :data:
+** DONE Make Python and Hydra-Zen recipes Git-trackable :data:
+** DONE Treat one dataset as the one-source form of a sampling policy :data:
+** DONE Borrow Levanter's mixture semantics without depending on its LM stack :data:
+
+** DONE Land the verified ModernVBERT port as the second public commit :models:release:
   Scope: native text, vision, connector, checkpoint adapters, mirrored tests,
   and public interoperability documentation. Do not add another subsystem.
   Done when the public diff is reviewed; lint, fast, runtime, pinned parity,
   and matched performance gates pass; and one =models: ...= commit is created.
-* DONE Port the ModernVBERT text tower and bidirectional HF weight mapping :models:hf:
-* DONE Add pinned ModernVBERT text forward and input-gradient parity :models:testing:
-* DONE Add matched ModernVBERT Transformers speed and peak-memory gates :models:testing:performance:
-* DONE Complete ModernVBERT with its native vision tower and connector :models:multimodal:
-* DONE Add upstream vision, fused, multicrop, and pixel-gradient parity for ModernVBERT :models:testing:
-* DONE Add Grain resolvers for Hugging Face and local artifacts :data:
+** DONE Port the ModernVBERT text tower and bidirectional HF weight mapping :models:hf:
+** DONE Add pinned ModernVBERT text forward and input-gradient parity :models:testing:
+** DONE Add matched ModernVBERT Transformers speed and peak-memory gates :models:testing:performance:
+** DONE Complete ModernVBERT with its native vision tower and connector :models:multimodal:
+** DONE Add upstream vision, fused, multicrop, and pixel-gradient parity for ModernVBERT :models:testing:
+** DONE Add Grain resolvers for Hugging Face and local artifacts :data:
   Resolve revision-pinned upstream records lazily into Grain and apply the
   recipe's importable mapper directly. Do not materialize an intermediate copy
   or expand this slice to S3, media decoding, bucketing, or packing.
-* DONE Complete the end-to-end single-device training loop inspired by Lasso :runtime:data:logging:
+** DONE Complete the end-to-end single-device training loop inspired by Lasso :runtime:data:logging:
   Audit Lasso's trainer, logging, checkpoint, config, and data boundaries, then
   connect a lazy Grain iterator to the generic compiled Equinox/Optax step.
   Preserve deterministic per-iteration RNG, metrics on every update, separate
@@ -55,7 +96,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   multiple compiled updates end to end, the public API and import convention are
   documented, fast and runtime tests cover success and failure lifecycles, and
   the resulting run artifacts are inspectable without an external service.
-* DONE Add non-blocking Orbax checkpointing and exact resume :runtime:
+** DONE Add non-blocking Orbax checkpointing and exact resume :runtime:
   Keep training asynchronous with at most one in-flight checkpoint, explicit
   backpressure only when the writer falls behind, and atomic publication of
   complete checkpoints. Restore model, optimizer, accepted optimizer step,
@@ -66,7 +107,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   steady-state step measurements. Runtime acceptance uses eight batch-16
   updates over continuous paired views with independent nuisance features and
   requires the learned retrieval loss to fall by more than half.
-* DONE Validate configuration, data-compatible resume, and async reporting :runtime:config:data:logging:
+** DONE Validate configuration, data-compatible resume, and async reporting :runtime:config:data:logging:
   Use frozen Pydantic models as the serializable Python and Hydra-Zen boundary;
   keep those objects outside compiled JAX programs and let builders consume
   them.  Resume must fingerprint the pinned recipe, mapper/resolver implementations, batch
@@ -79,7 +120,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   Validated with a real Hydra-Zen CLI override, 61 fast tests, 10 GPU runtime
   tests on GPUs 0 and 1, the two-GPU distributed contract, and all three
   distributed cases over a four-device virtual CPU topology.
-* DONE Organize job configuration by domain and annotate parameter roles :config:tasks:runtime:
+** DONE Organize job configuration by domain and annotate parameter roles :config:tasks:runtime:
   Make =JobConfig= own first-class model, task, loss, optimization, data,
   training, logging, and checkpointing configs.  Unify execution values beneath
   =TrainingConfig= and mark individual values or nested sets as =Scientific[T]=
@@ -100,45 +141,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   one-device CPU training smoke from the installed wheel.  A concrete 2x2 JAX
   probe also verifies that =P("fsdp", None)= shards batch rows over =fsdp= and
   replicates them over =tensor=; the mesh config itself assigns no sharding.
-* DONE Adopt =jaxtyping= at stable numerical boundaries :typing:models:tasks:
-  Declare it directly and annotate model forwards, encoder/task protocols,
-  retrieval relations, scalar losses, PRNG keys, and compiled-step boundaries
-  with symbolic axes.  Do not annotate host configuration and orchestration for
-  decoration's sake, and do not enable a production-wide runtime import hook.
-  Preserve explicit domain validation and add focused trace-time checks only
-  where they improve errors without changing compiled performance.
-  Accepted with direct, introspectable dtype and symbolic-shape annotations on
-  encoder/model forwards, text and multimodal batches, attention, RoPE, pooling,
-  vision patching, MNR relations and losses, PRNG keys, train state, GradCache,
-  and compiled-step boundaries.  No decorator or runtime import hook is
-  installed.  Explicit semantic validation remains authoritative.  Ruff and
-  formatting pass, annotation contracts pass, all 78 fast tests pass, and the
-  public Python 3.11-3.13, runtime, distributed, and wheel-install CI matrix is
-  green.
-* DONE Add a fast Ruff and ty static-analysis gate :tooling:typing:ci:
-  Treat this as Representax's =cargo clippy=: one canonical repository command
-  runs =ruff format --check=, =ruff check=, and =ty check= without importing JAX,
-  compiling models, or executing tests. Keep the default =pytest= lane as the
-  longer behavioral equivalent of =cargo test=, with runtime, distributed,
-  parity, and performance markers remaining separate evidence lanes.
-
-  Pin =ty= in a repository-only development dependency group while its
-  diagnostics and configuration remain beta. Baseline =src/representax= first,
-  then extend the clean boundary to tests, examples, and scripts; fix genuine
-  errors and use narrow, explained exceptions only at dynamic third-party or
-  generated-code boundaries. Configure ty in =pyproject.toml= and emit native
-  GitHub annotations in the single static CI job rather than repeating it in
-  every Python-version test job. Record cold and warm timings and keep the local
-  gate tight enough to run continuously during development.
-  Accepted with =ty==0.0.72= and Ruff in a repository-only static dependency
-  group, one =python scripts/check.py= entry point, native GitHub diagnostics,
-  and a clean boundary over =src=, tests, examples, and scripts. The first ty
-  pass found 28 source diagnostics; all were resolved without global rule
-  suppression. The complete warm static gate checks 116 files in 2.14 seconds.
-  Behavioral evidence is 93 fast tests, eight CPU training-runtime tests, two
-  ModernVBERT GPU runtime tests, and all three pinned BERT forward, gradient,
-  optimizer-update, and export/reload parity tests.
-* DONE Implement exact native-JAX GradCache as an execution plan for MNR :retrieval:runtime:
+** DONE Implement exact native-JAX GradCache as an execution plan for MNR :retrieval:runtime:
   Preserve =MNRTask= and one shared row-level MNR primitive as the sole
   scientific definition.
   GradCache changes only the differentiation schedule: encode fixed-shape chunks
@@ -177,11 +180,11 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   failure, but this item is complete only when Representax fits every matched
   batch the reference fits and is faster and tighter at steady state. Extend the
   same semantics to global negatives across devices and hosts only afterward.
-** DONE Land the exact single-device native-JAX execution :runtime:correctness:
+*** DONE Land the exact single-device native-JAX execution :runtime:correctness:
    The rematerialized scan, one canonical MNR objective, one optimizer path,
    explicit stochastic replay keys, partial-chunk padding, Dense update parity,
    and compiled ModernVBERT integration are covered by fast and runtime tests.
-** DONE Add the pinned ModernVBERT target-to-beat benchmark :performance:reference:
+*** DONE Add the pinned ModernVBERT target-to-beat benchmark :performance:reference:
    The isolated FP32 sequence-512 matrix, raw JSON, fingerprints, replay commands,
    and analysis live in
    =benchmarks/results/grad-cache-modernvbert-20260813/=.  At chunk four,
@@ -189,11 +192,11 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
    and both cached runtimes fit every tested batch.  This historical matrix
    exposed the fixed-memory and cold-compile gaps that the later scanned,
    chunk-two acceptance matrix closes.
-** DONE Add a native-JAX tiled representation-loss implementation :runtime:memory:
+*** DONE Add a native-JAX tiled representation-loss implementation :runtime:memory:
    Direct diagnostics and cached training share one canonical row formula.  A
    rematerialized scan bounds live score rows and is the numerical oracle and
    unsupported-accelerator fallback for any future custom kernel.
-** DONE Close the remaining allocator and compilation gaps against the pinned reference :performance:
+*** DONE Close the remaining allocator and compilation gaps against the pinned reference :performance:
    The canonical transaction is now one ordinary Equinox/Optax update followed
    by =optax.tree.where= over a named proposed =TrainState=.  The controlled
    final sequence-512, chunk-two matrix in
@@ -208,8 +211,8 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
    explicit at the generic callable boundary; the linear loop may combine it
    with Orbax V1 async saves after their blocking device-to-host snapshot
    returns.
-** DONE Validate exact GradCache across single-host device and process topologies :distributed:
-*** DONE Verify exact replicated data parallel GradCache on two and four GPUs
+*** DONE Validate exact GradCache across single-host device and process topologies :distributed:
+**** DONE Verify exact replicated data parallel GradCache on two and four GPUs
     Keep model and optimizer placement separate from GradCache semantics through
     a named =DataParallel= sharding plan.  Shard query and document records over
     the =data= mesh axis, gather only compact representations and relation
@@ -232,7 +235,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
     symmetric Matryoshka test separately proves the complete optimizer update
     and a cross-device hard-negative canary on both topologies.  See
     =benchmarks/results/distributed-grad-cache-modernvbert-20260814/=.
-*** DONE Accept process-local data and global negatives across JAX processes
+**** DONE Accept process-local data and global negatives across JAX processes
     Construct globally sharded batches with
     =jax.make_array_from_process_local_data= so each process supplies only its
     local query/document records and validity vectors.  A process-local
@@ -256,104 +259,8 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
     =9.43e-4= relative L2 at =0.99999956= cosine.  Median steady-state time is
     =0.630= seconds for global batch 16 at sequence length 512.  See
     =benchmarks/results/multiprocess-grad-cache-modernvbert-20260814/=.
-* DONE Publish =representax= 0.0.1 and reserve the package name :release:
-  Published from signed tag =v0.0.1= at commit =8a9bcf6= through GitHub Actions
-  run =31852459601=.  The registered pending publisher created and reserved
-  [[https://pypi.org/project/representax/0.0.1/][representax on PyPI]], and the workflow created the corresponding GitHub
-  [[https://github.com/ckgresla/representax/releases/tag/v0.0.1][Release]] from the same accepted artifact bundle.
-* TODO Cut the next release after dense-system acceptance :release:
-  Choose and set the next version only after the dense trainer, evaluator, and
-  disk-to-final-model systems gates are complete. Tag only after the exact
-  release-ready commit passes public CI and its wheel passes fresh CPU and CUDA
-  13 smoke installs through the protected PyPI environment; do not reuse or
-  replace the published 0.0.1 artifacts.
-* DONE Publish a minimal CPU-first installation and compatibility matrix :release:
-** DONE Build bounded wheel and source-distribution artifacts
-   The universal wheel contains only =representax=, package metadata, the MIT
-   license, and =THIRD_PARTY.md=.  The sdist retains source, tests, docs,
-   examples, and benchmark programs while excluding raw result bundles, CI
-   internals, and this roadmap.  Both rebuild successfully through isolated
-   Hatch environments.
-** DONE Install and execute the wheel in a fresh CPU-only environment
-   Fresh Python 3.11, 3.12, and 3.13 environments installed the built =0.0.1=
-   wheel outside the source tree and completed the same compiled
-   Dense/MNR/Optax update on CPU.  The resolved JAX versions were 0.10.2,
-   0.11.0, and 0.11.0 respectively.  See =docs/compatibility.md=.
-** DONE Accept the public CPU compatibility workflow
-   Run fast tests on Python 3.11, 3.12, and 3.13; run the generic runtime tree
-   once; exercise two- and four-device sharding through virtual CPU devices;
-   validate wheel/sdist metadata; and smoke-test the installed wheel outside
-   the source checkout.  Accepted on 2026-08-14 in GitHub Actions run
-   =31819008237=: all seven lint, Python 3.11/3.12/3.13, generic runtime,
-   virtual distributed, and release-artifact jobs passed with Node 24 actions.
-** DONE Configure the protected GitHub OIDC release workflow
-   The dedicated =release.yml= builds and validates one artifact set, verifies
-   that a pushed =v*= tag exactly matches project metadata, smoke-tests the
-   installed wheel on CPU, and passes the same artifacts to PyPI with only
-   =id-token: write=. After PyPI succeeds, it creates the corresponding GitHub
-   Release and attaches that exact wheel and source distribution. GitHub
-   Packages is deliberately unused. The =pypi= environment accepts only =v*=
-   tags and requires approval from =ckgresla=. Release-ready commit =e0ebc76=
-   passed all seven public lint, Python, runtime, virtual-distributed, and
-   artifact jobs in GitHub Actions run =31822635802=.  The tag-driven revision
-   was accepted end to end in release run =31852459601=: build, exact-version
-   validation, CPU smoke, OIDC publish, and GitHub Release creation all passed.
-** DONE Publish through the registered PyPI trusted publisher
-   The trusted publisher is registered in the PyPI account for
-   =ckgresla@gmail.com= against owner/repository =ckgresla/representax=,
-   workflow =release.yml=, and environment =pypi=. The accepted release scope was
-   Alpha metadata, mandatory Grain and safetensors, optional =hf= ecosystem
-   dependencies, explicit =cuda12=/=cuda13= extras, and repository-only parity
-   groups.
-   The dependency-boundary release candidate passed strict Twine metadata,
-   =58= fast tests, =8= runtime tests, =3= virtual four-device distributed
-   tests, and fresh CPU, CUDA 13, and =hf= installs on 2026-08-14. CPU and GPU
-   produced the same compiled-update loss; both installed Grain and safetensors,
-   the =hf= environment installed Transformers 5.3.0 without PyTorch, and the
-   published wheel metadata exposes no parity extras.
-   Published on 2026-08-14.  PyPI and GitHub independently report the same
-   wheel SHA-256 =f51a7cc8cc81044897bb14b9a780c36ce7219ca22fa4f16412da8767b78b930b=
-   and sdist SHA-256
-   =56f68c804a734bb2dd41f70d24d8ef966dfc13c155fb612d438408237d6b0efe=.
-   A fresh Python 3.13 environment installed =representax==0.0.1= from PyPI,
-   resolved JAX 0.11.0 on CPU, and passed the compiled update smoke with loss
-   =2.3512461185455322=.
-** DONE Accept clean CPU and NVIDIA GPU installs from the exact release wheel
-   The base wheel must resolve and execute a compiled update on CPU without
-   accelerator packages. The =cuda13= extra must resolve JAX's pip-managed CUDA
-   runtime and execute the same update on an RTX 4090. Keep =cuda12= available
-   for older drivers; defer TPU until suitable hardware is available.
-   Accepted on 2026-08-14 from the rebuilt =0.0.1= wheel in fresh Python
-   3.13.14 environments. Both paths resolved JAX 0.11.0 and produced the same
-   compiled-update loss. The base environment contained no CUDA/NVIDIA package;
-   the =cuda13= environment used GPU 0, driver 580.159.03, and JAX's pip-managed
-   CUDA 13 runtime.
-* DONE Audit source provenance and third-party licenses before release :release:
-  The standalone history contains only commits authored by Chris Kerwell Gresla
-  and no private monorepo history. The wheel contains only the public package,
-  MIT license, and third-party notice; the sdist excludes benchmark result
-  bundles, CI internals, and this roadmap. No checkpoints, datasets, private
-  paths, or vendored dependency/model source are present. The mechanically
-  generated Transformers 5.3.0 identifier catalog is attributed under Apache
-  2.0 in =THIRD_PARTY.md=.
-* TODO Define the stable public API and deprecation policy :release:api:
-** DONE Build optimizers from job configs and initialize train state canonically
-   =build_optimizer(job.optimization)= resolves the trusted dotted Optax factory
-   and passes its serialized parameters exactly once. =init_train_state= filters
-   the trainable model leaves and delegates optimizer-state construction to
-   =optimizer.init(parameters)=; =make_train_state= remains a compatibility alias
-   for the published =0.0.1= API.
-* DONE Freeze every Transformers 5.3.0 architecture definition for v0 :models:hf:
-  Mechanically snapshot every config model type and task-neutral =AutoModel=
-  mapping into a Torch-free catalog. Keep =catalogued=, =native=, and =verified=
-  as distinct states: a catalog row is not a model-support claim. Verify the
-  complete snapshot against the exact optional Transformers environment and
-  regenerate it only when deliberately advancing the reference version.
-  Accepted with 475 configuration model types and 441 task-neutral =AutoModel=
-  registrations. A fresh installed-wheel environment matched every model type,
-  module, config class, and base-model class against Transformers 5.3.0.
-* DONE Document what qualifies an architecture as supported :models:testing:
-* TODO Grow verified native model families from representation-learning needs :models:hf:
+** DONE Document what qualifies an architecture as supported :models:testing:
+** TODO Grow verified native model families from representation-learning needs :models:hf:
   Keep the pinned Transformers 5.3.0 catalogue as a versioned compatibility
   index and code-generation input, not as a promise to backfill every
   =AutoModel=. Add a native family when a representation task, modality, model,
@@ -367,7 +274,41 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   Jina v5 Omni's CC-BY-NC-4.0 weights remain an external compatibility oracle;
   native code support must not imply that Representax redistributes those
   weights or grants commercial rights to them.
-** DONE Generate a semantic model-family implementation manifest :models:codegen:
+*** TODO Wrap the official Sentence Transformers multimodal checkpoint panel :models:multimodal:paper:
+   Treat every embedding and reranker linked by the April 2026 Hugging Face
+   multimodal release as a minimum integration target.  Resolve them through a
+   small set of native backbone families and shared static module-graph forms,
+   never as 34 bespoke forwards or a public PyTorch fallback.  Keep catalogue,
+   native, and verified states distinct; pin immutable revisions and audit
+   remote code plus weight licenses before implementation.  The exact model
+   list, family grouping, ordering, and acceptance contract live in
+   =docs/multimodal-sentence-transformers.md=.
+**** TODO Generalize the static Sentence Transformers graph loader beyond text
+     Support modality-neutral =Transformer -> Pooling -> Normalize=,
+     =Transformer -> LogitScore=, =Transformer -> Pooling -> Dense=, legacy
+     =CLIPModel=, and routed encoder graphs over registered native backbones.
+**** TODO Accept Qwen3-VL embedding and reranking variants
+     Start with the 2B embedder and reranker, then require the 8B variants to
+     reuse the same forward while exercising FSDP and larger-model capacity.
+**** TODO Accept Qwen2.5-Omni embedding variants
+     Use LCO Omni 3B as the first linked text/image/audio/video checkpoint, then
+     reuse the family for LCO 7B and both E5-Omni variants.
+**** TODO Accept the linked CLIP and BGE-VL small-model variants
+     Establish inexpensive image-text training, processor parity, export, and
+     performance gates that can run more frequently than multi-billion-parameter
+     VLM jobs.
+**** TODO Grow through the remaining linked backbone families
+     Cover Nemotron VL, NVIDIA Omni Embed, BidirLM Omni, LLaVA-NeXT retrieval,
+     Qwen2.5-VL screenshot retrieval, Nomic multimodal, Qwen2-VL ranking, and
+     Qwen2/Qwen3 text ranking according to capability and paper relevance.
+*** TODO Select and accept the paper's 25-model compatibility panel :models:paper:
+   Snapshot a transparent Hugging Face popularity and relevance ranking, then
+   select 25 checkpoints spanning the native families and four modalities used
+   by the paper. Implement shared architecture families rather than 25 bespoke
+   forwards. Each listed checkpoint must pass its required processor, tensor,
+   forward, gradient/update, export, and systems gates before it appears in the
+   paper support table; popularity alone never creates a support claim.
+*** DONE Generate a semantic model-family implementation manifest :models:codegen:
    Maintain one reviewed family specification that names its pinned model
    types, modalities, reusable components, configuration mapping, input/output
    contract, and checkpoint layout.  Generate Torch-free registry entries,
@@ -380,28 +321,28 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
    reject stale catalogue fingerprints, unknown or multiply owned model types,
    and verified status without configuration, checkpoint, forward,
    input-gradient, and performance evidence.
-** TODO Build reusable native transformer and modality components :models:
-*** DONE Extract shared projection, normalization, embedding, and pooling primitives
+*** TODO Build reusable native transformer and modality components :models:
+**** DONE Extract shared projection, normalization, embedding, and pooling primitives
     ModernVBERT now consumes the public Equinox components without changing its
     model tree or numerics.  Fast unit tests cover Hugging Face linear layout,
     FP32 layer-normalization statistics, repeated-token embedding gradients,
     masked mean pooling, and stable L2 normalization.
-*** DONE Prove shared attention, activation, dropout, and rematerialization with BERT
+**** DONE Prove shared attention, activation, dropout, and rematerialization with BERT
     Native BERT reuses the common primitives, executes homogeneous depth with
     =lax.scan=, preserves inference and keyed-training dropout semantics, and
     passes a generated pinned Transformers 5.3.0 forward, pooler,
     input-embedding, and input-gradient oracle.
-*** TODO Generalize positional, residual, MLP, and layer-stack policies through another family
+**** TODO Generalize positional, residual, MLP, and layer-stack policies through another family
     Extract a policy only when at least two native consumers demonstrate the
     same semantics; do not force superficially similar model graphs together.
-** TODO Port encoder-only text families :models:text:
-*** DONE Port the standard bidirectional BERT base model :models:bert:
+*** TODO Port encoder-only text families :models:text:
+**** DONE Port the standard bidirectional BERT base model :models:bert:
     Native configuration, scanned Equinox forward, Hugging Face safetensor
     import/export, deterministic inference, keyed dropout, representation
     pooling, and pinned forward/input-gradient parity pass.  Decoder cache and
     cross-attention modes are rejected explicitly.  Support remains =native=
     until those configuration modes are implemented and accepted.
-*** DONE Complete BERT parameter, optimizer, export/reload, and performance gates :models:bert:testing:
+**** DONE Complete BERT parameter, optimizer, export/reload, and performance gates :models:bert:testing:
     The generated Transformers 5.3.0 oracle covers the complete parameter tree
     and one canonical AdamW update.  Analytically null gradient directions use
     an absolute update bound because Adam amplifies backend roundoff; all
@@ -412,9 +353,9 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
     with 8.57e-8 maximum output error.  Native allocator peak is 0.764 GiB
     versus 0.547 GiB and remains an explicit warning.  Compile-plus-first is
     15.93 seconds versus 0.268 seconds and remains a cold-start optimization.
-*** TODO Implement and accept BERT decoder cache and cross-attention modes :models:bert:
-** TODO Port decoder-only, state-space, and mixture-of-experts text families :models:text:
-*** DONE Port the pinned Jina v5 Omni Small text path :models:jina:
+**** TODO Implement and accept BERT decoder cache and cross-attention modes :models:bert:
+*** TODO Port decoder-only, state-space, and mixture-of-experts text families :models:text:
+**** DONE Port the pinned Jina v5 Omni Small text path :models:jina:
     Load only the 494M-parameter language path from the immutable Safetensors
     checkpoint, execute its 28 causal GQA/SwiGLU layers with one rematerializable
     =lax.scan=, last-token pool, Matryoshka truncate, and L2 normalize. The BF16
@@ -423,13 +364,13 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
     40-update STSB job, native export, and fresh reload pass at batch four.
     Support remains =native= until parameter-gradient, optimizer-update,
     source-compatible export, and isolated model-performance gates are added.
-** TODO Port encoder-decoder text families :models:text:
-** TODO Port vision and image-representation families :models:vision:
-** TODO Port audio and speech representation families :models:audio:
-** TODO Port video representation families :models:video:
-** TODO Port multimodal and composite families :models:multimodal:
-** TODO Port remaining time-series, graph, table, and specialist families :models:
-* DONE Stack homogeneous transformer layers and execute model depth with =scan= :models:runtime:performance:
+*** TODO Port encoder-decoder text families :models:text:
+*** TODO Port vision and image-representation families :models:vision:
+*** TODO Port audio and speech representation families :models:audio:
+*** TODO Port video representation families :models:video:
+*** TODO Port multimodal and composite families :models:multimodal:
+*** TODO Port remaining time-series, graph, table, and specialist families :models:
+** DONE Stack homogeneous transformer layers and execute model depth with =scan= :models:runtime:performance:
   ModernVBERT text parameters are depth-major arrays, with the 21 real
   post-layer-zero attention norms kept separately so the trainable tree exactly
   matches the upstream checkpoint.  One rematerialized =lax.scan= preserves the
@@ -439,8 +380,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   peak; the unscanned program had not compiled after several minutes and XLA
   planned 20.17 GiB.  Evidence lives in
   =benchmarks/results/modernvbert-scan-20260813/=.
-* TODO Evaluate Haliax for named axes, model composition, and sharding ergonomics :models:distributed:research:
-* TODO Unify native and Hugging Face loading without duplicate weights :models:hf:export:
+** TODO Unify native and Hugging Face loading without duplicate weights :models:hf:export:
   Expose one public model loader that detects a Representax bundle, local Hugging
   Face directory, or Hub reference. Reuse standard =config.json=,
   Safetensors, tokenizer, and processor assets, while keeping Representax-only
@@ -450,36 +390,30 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   checkpoint merely to obtain tree structure before deserializing an export.
   Memory mapping or lazy Safetensors reads may bound host memory, but the loader
   must explicitly place every executable JAX array in its destination sharding.
-* TODO Export trained models back to Hugging Face-compatible artifacts :models:hf:
-* TODO Test tokenizer and processor parity with upstream Transformers :models:testing:
-* TODO Test layer-level and full-forward FP32 parity :models:testing:
-* TODO Test BF16 parity with explicit numerical tolerances :models:testing:
-* TODO Test parameter gradients and objective gradients against upstream :models:testing:
-* TODO Test one optimizer update against the upstream reference :models:testing:
-* TODO Test safetensor export and upstream reload :models:testing:
-* DONE Require numerically equivalent model ports to beat matched upstream throughput :models:testing:performance:
-* DONE Measure matched upstream allocator and process peak memory with explicit warnings :models:testing:performance:
-* DONE Run upstream and native performance probes in isolated fresh processes :models:testing:performance:
-* TODO Reduce and amortize ModernVBERT compilation cold-start cost :models:testing:performance:
-* TODO Reduce ModernVBERT multimodal-forward allocator and process peak memory :models:testing:performance:
-* TODO Revisit a maintained fused-attention kernel after profiling standard JAX :models:testing:performance:pallas:
-* TODO Keep small golden tensors in ordinary CI :models:testing:
-* TODO Run live upstream parity on a scheduled compatibility lane :models:testing:
-* TODO Run accelerator-specific parity for fused kernels separately :models:testing:
-* WAITING Evaluate TorchAX only as an optional compatibility backend :models:research:
-* TODO Port a legally clean text-image encoder such as SigLIP2 :models:multimodal:
-* DONE Audit Jina licensing before its pinned native text port :models:release:
-  Representax ships an independent implementation and no upstream code or
-  weights. The optional =jina-embeddings-v5-omni-small-retrieval= checkpoint is
-  CC BY-NC 4.0, is pinned by revision, and is called out in =THIRD_PARTY.md=.
-* TODO Audit LCO licensing before considering a native port :models:release:
-* TODO Select native audio and video architecture families :models:multimodal:
+** TODO Export trained models back to Hugging Face-compatible artifacts :models:hf:
+** TODO Test tokenizer and processor parity with upstream Transformers :models:testing:
+** TODO Test layer-level and full-forward FP32 parity :models:testing:
+** TODO Test BF16 parity with explicit numerical tolerances :models:testing:
+** TODO Test parameter gradients and objective gradients against upstream :models:testing:
+** TODO Test one optimizer update against the upstream reference :models:testing:
+** TODO Test safetensor export and upstream reload :models:testing:
+** DONE Require numerically equivalent model ports to beat matched upstream throughput :models:testing:performance:
+** DONE Measure matched upstream allocator and process peak memory with explicit warnings :models:testing:performance:
+** DONE Run upstream and native performance probes in isolated fresh processes :models:testing:performance:
+** TODO Reduce and amortize ModernVBERT compilation cold-start cost :models:testing:performance:
+** TODO Reduce ModernVBERT multimodal-forward allocator and process peak memory :models:testing:performance:
+** TODO Revisit a maintained fused-attention kernel after profiling standard JAX :models:testing:performance:pallas:
+** TODO Keep small golden tensors in ordinary CI :models:testing:
+** TODO Run live upstream parity on a scheduled compatibility lane :models:testing:
+** TODO Run accelerator-specific parity for fused kernels separately :models:testing:
+** TODO Port a legally clean text-image encoder such as SigLIP2 :models:multimodal:
+** TODO Select native audio and video architecture families :models:multimodal:
 
-* TODO Add the host-side =embed= API for preprocessing and batching :api:
-* TODO Keep compiled =encode= arrays-in and arrays-out :api:
-* TODO Support reusable pooling, normalization, projection, and routing modules :api:
-* TODO Add evaluator protocols and standard representation metrics :api:eval:
-* TODO Reach Sentence Transformers 5.6.1 capability parity without copying its API :api:parity:
+** TODO Add the host-side =embed= API for preprocessing and batching :api:
+** TODO Keep compiled =encode= arrays-in and arrays-out :api:
+** TODO Support reusable pooling, normalization, projection, and routing modules :api:
+** TODO Add evaluator protocols and standard representation metrics :api:eval:
+** TODO Reach Sentence Transformers 5.6.1 capability parity without copying its API :api:parity:
   Pin =sentence-transformers==5.6.1= as the repository-only oracle. Maintain a
   reviewed capability ledger rather than equating upstream class names with our
   public API. Dense bi-encoders, late-interaction/multi-vector encoders,
@@ -487,8 +421,8 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   text, image, audio, video, and fused inputs cut across those contracts.
   The system-level dense audit and the exact boundary we intend to implement
   live in =docs/dense-system-audit.md=.
-** TODO Complete the dense bi-encoder route :api:models:retrieval:
-*** DONE Load the standard serialized dense module chain
+*** TODO Complete the dense bi-encoder route :api:models:retrieval:
+**** DONE Load the standard serialized dense module chain
     Resolve a pinned Hub revision or local directory, parse =modules.json= and
     =config_sentence_transformers.json= without importing PyTorch, and compose a
     native Transformer, all released pooling modes, optional Dense projections,
@@ -496,14 +430,14 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
     The Torch-free loader resolves local or revision-pinned Hub artifacts,
     validates a contiguous static module graph, and supports all six released
     pooling modes plus allowlisted Dense activations and Normalize modules.
-*** DONE Reproduce =all-MiniLM-L6-v2= from text through normalized embeddings
+**** DONE Reproduce =all-MiniLM-L6-v2= from text through normalized embeddings
     Use the already accepted native BERT family so this gate isolates artifact
     loading, tokenization, pooling, normalization, route handling, and batching.
     Sentence Transformers 5.6.1 and Transformers 5.3.0 at Hub revision
     =1110a243fdf4706b3f48f1d95db1a4f5529b4d41= produce normalized embeddings
     with maximum absolute error =1.0803342e-7=, relative L2 =5.2440890e-7=,
     and cosine =1.0= on the full host string-to-embedding path.
-*** DONE Reproduce =all-mpnet-base-v2= through a native MPNet family
+**** DONE Reproduce =all-mpnet-base-v2= through a native MPNet family
     Use MPNet to generalize positional, residual, MLP, and layer-stack policies
     only where a second consumer proves the shared semantics.
     The native family implements padding-aware positions, shared bucketed
@@ -518,12 +452,12 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
     examples/s versus 1,254 upstream, a =1.153x= speedup, and compiles in 15.99
     seconds. Allocator and process peaks are 27.5% and 33.6% higher; both remain
     explicit warnings and memory-optimization targets.
-*** DONE Complete the released dense loss inventory
+**** DONE Complete the released dense loss inventory
     Cover MNR and cached MNR variants, symmetric ranking, Matryoshka and adaptive
     layer objectives, triplet families, cosine/CoSENT/AnglE/contrastive families,
     distillation and MSE families, classification, GISTEmbed, orthogonal
     regularization, denoising, and mega-batch mining through task-native losses.
-**** DONE Add the labeled-pair loss family
+***** DONE Add the labeled-pair loss family
      Add one modality-neutral fixed-shape pair batch with task-owned semantic
      routes. Native cosine regression, ordinary and online-mined contrastive
      losses over cosine, Euclidean, and Manhattan distance, CoSENT, and AnglE
@@ -531,7 +465,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      across seven pinned oracle cases. All four scientific loss configs run
      through the generic compiled optimizer step; online mining is a policy on
      contrastive loss rather than a duplicate task class.
-**** DONE Add explicit and in-batch-mined triplet objectives
+***** DONE Add explicit and in-batch-mined triplet objectives
      Keep supplied anchor-positive-negative rows distinct from reusable
      class-labeled example batches. Native cosine, Euclidean, and Manhattan
      explicit triplets plus all, hard, hard soft-margin, and semi-hard in-batch
@@ -541,7 +475,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      positive Euclidean and Manhattan distance semantics instead of reproducing
      the pinned oracle's sign-reversed explicit callbacks; that class is gated
      through its correct cosine path.
-**** DONE Add embedding, score-margin, and distribution distillation objectives
+***** DONE Add embedding, score-margin, and distribution distillation objectives
      Add separate fixed-shape contracts for broadcast or per-column teacher
      embeddings, positive-minus-negative teacher margins, and candidate-score
      distributions. Native MSE, L2, cosine, margin MSE, and temperature-scaled
@@ -556,29 +490,29 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      compilation. This is precomputed-representation objective math, not an
      encoder or full optimizer-step speed claim. Learned dimensional
      projections remain explicit model state.
-**** DONE Generalize Matryoshka and adaptive-layer composition across losses
+***** DONE Generalize Matryoshka and adaptive-layer composition across losses
      Registered scientific modifier configs now build one-pass Matryoshka,
      adaptive-layer, and 2D compositions over representation-native tasks.
      BERT, MPNet, ModernVBERT, and serialized sentence chains expose layerwise
      results from one scanned forward. Matryoshka composes with local and
      distributed cached MNR and local cached GIST; 2- and 4-GPU global-update
      equivalence remains green.
-**** DONE Add GIST-guided negative selection and its cached execution
+***** DONE Add GIST-guided negative selection and its cached execution
      Keep guide representations as explicit offline batch artifacts. Native
      absolute/relative filtering, explicit negative columns, bounded encoder
      replay, and score-row chunks match direct values and gradients.
-**** DONE Add classification and contrastive-tension objectives
+***** DONE Add classification and contrastive-tension objectives
      Keep classifier heads, dual encoder branches, and trainable temperature
      in explicit Equinox model state. Pair softmax, aligned BCE tension, and
      symmetric in-batch cosine/dot tension match the pinned oracle.
-**** DONE Add orthogonal regularization as a composable loss term
+***** DONE Add orthogonal regularization as a composable loss term
      Native mean and second-moment penalties support named metrics, modality-
      neutral representation batches, and mean/sum aggregation.
-**** DONE Add denoising autoencoding and mega-batch mining execution
+***** DONE Add denoising autoencoding and mega-batch mining execution
      Denoising uses explicit encoder/decoder composition and padding-aware
      shifted token reconstruction. Mega-batch margins are scientific loss
      parameters; bounded candidate mining and replay are execution policy.
-*** TODO Complete the released dense evaluator inventory
+**** TODO Complete the released dense evaluator inventory
     Treat semantic similarity and information retrieval as different evaluation
     geometries. Semantic-similarity evaluators consume labeled pairs and report
     correlation or classification behavior; retrieval evaluators consume
@@ -586,25 +520,25 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
     as nDCG, MRR, MAP, and recall. Cover both families plus triplet, reranking,
     paraphrase mining, translation, MSE, NanoBEIR, and sequential composition
     through reusable metric protocols.
-**** DONE Define one typed evaluator protocol and namespaced =valid/...= results
+***** DONE Define one typed evaluator protocol and namespaced =valid/...= results
      Keep compiled batch inference separate from host corpus accumulation and
      finalization so exact correlation/ranking metrics do not enter JIT. The
      same runner is reusable during training and offline.
-**** DONE Implement embedding-similarity evaluation and 5.6.1 parity
+***** DONE Implement embedding-similarity evaluation and 5.6.1 parity
      Cosine, dot, Euclidean, and Manhattan Pearson/Spearman metrics match the
      pinned Sentence Transformers oracle on identical representations, including
      average-rank tie behavior. Evaluation always uses deterministic inference;
      training keys no longer accidentally enable model dropout.
-**** DONE Implement streaming information-retrieval evaluation and 5.6.1 parity
+***** DONE Implement streaming information-retrieval evaluation and 5.6.1 parity
      Encode all query batches before corpus batches, stream each corpus chunk
      through bounded top-k state rather than retaining the complete corpus
      embedding matrix, and report accuracy, precision, recall, MRR, nDCG, and
      MAP. Exact same-ranking metric parity passes against Sentence Transformers
      5.6.1, including multiple relevant documents and every configured cutoff.
-**** TODO Implement classification, triplet, and MSE evaluators
-**** TODO Implement reranking, paraphrase, translation, and NanoBEIR adapters
-**** TODO Add sequential composition and explicit primary-metric selection
-*** DONE Land configuration-driven end-to-end training jobs
+***** TODO Implement classification, triplet, and MSE evaluators
+***** TODO Implement reranking, paraphrase, translation, and NanoBEIR adapters
+***** TODO Add sequential composition and explicit primary-metric selection
+**** DONE Land configuration-driven end-to-end training jobs
     Support source-neutral single and multi-source training, per-source tasks and
     losses, deterministic samplers, hard-negative mining, prompts and typed
     routes, truncation/quantization/Matryoshka outputs, evaluators, callbacks,
@@ -618,22 +552,22 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
     primary metric, and preserve its best inference-ready checkpoint.  Final
     publication must atomically emit a self-describing native artifact and an
     optional verified Hugging Face artifact that reloads without training state.
-**** DONE Build a complete job from =JobConfig= without separately wired objects
+***** DONE Build a complete job from =JobConfig= without separately wired objects
      Construct the model, task/loss/modifiers, optimizer and schedule, Grain
      source, execution policy, reporters, evaluators, and final exporter from
      validated declarative configuration at the Python/JAX boundary.
-**** DONE Implement exact capability-gated compiled gradient accumulation
+***** DONE Implement exact capability-gated compiled gradient accumulation
      Accumulate equal-size microbatches with one =lax.scan= and one Optax update
      only for losses whose batch reduction decomposes exactly.  Reject unsafe
      objectives rather than shrinking an MNR negative population; those retain
      their full scientific batch through GradCache.
-**** DONE Add reusable offline and in-training evaluation with best selection
+***** DONE Add reusable offline and in-training evaluation with best selection
      Keep inference/reduction task-owned, cache compiled batch signatures across
      validation runs, and let Representax provide cadence, metric naming,
      primary-metric comparison, lifecycle events, and checkpoint association.
      Pass scalar checkpoint metrics into Orbax and compose latest-N plus best-N
      preservation rather than reimplementing array storage.
-**** DONE Publish and reload the first inference-ready final/best artifacts
+***** DONE Publish and reload the first inference-ready final/best artifacts
      Restore only the selected model, atomically serialize a universal native
      artifact with its exact job/model identity, optionally map back into the
      source-compatible Hugging Face checkpoint, and verify a clean reload before
@@ -650,13 +584,13 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
     tests, 12 runtime CPU tests, 3 four-device virtual distributed tests, and 4
     compiled GPU-4 lifecycle/accumulation tests; Ruff, ty, strict wheel/sdist
     metadata, and a fresh installed-wheel CPU smoke also pass at version 0.0.1.
-*** TODO Expand trainer input and integration capabilities
-**** TODO Add default, no-duplicate, hashed no-duplicate, and label-group samplers
-**** TODO Add proportional/round-robin multi-source and per-source task/loss routing
-**** TODO Make prompts and typed routes first-class preprocessing configuration
-**** TODO Add W&B reporting through the existing asynchronous reporter protocol
-**** TODO Add source-neutral offline hard-negative mining with artifact provenance
-*** NEXT Prove a matched dense-retrieval training advantage over Sentence Transformers
+**** TODO Expand trainer input and integration capabilities
+***** TODO Add default, no-duplicate, hashed no-duplicate, and label-group samplers
+***** TODO Add proportional/round-robin multi-source and per-source task/loss routing
+***** TODO Make prompts and typed routes first-class preprocessing configuration
+***** TODO Add W&B reporting through the existing asynchronous reporter protocol
+***** TODO Add source-neutral offline hard-negative mining with artifact provenance
+**** TODO Prove a matched dense-retrieval training advantage over Sentence Transformers
     Use a pinned local retrieval dataset, identical raw examples, tokenizer,
     checkpoint, pooling, MNR or exact GradCache objective, optimizer, precision,
     logical negative population, validation corpus, and update count. Gate
@@ -678,7 +612,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
     seconds under a 60-second acceptance ceiling. Allocator peak remains 37.0%
     higher and end-to-end process peak 12.3% higher, recorded as explicit
     warnings and remaining optimization work rather than correctness failures.
-**** DONE Establish the first pinned MS MARCO to NanoMSMARCO MiniLM evidence
+***** DONE Establish the first pinned MS MARCO to NanoMSMARCO MiniLM evidence
      Read one revision-pinned 669,531-row MS MARCO text-triplet Parquet directly
      in both systems, train the same MiniLM checkpoint on the same ordered rows,
      and evaluate the same 50 queries, 5,043 passages, and qrels. Initial
@@ -694,7 +628,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      range from -0.00325 to +0.01127; treat them as preliminary, not a quality
      superiority claim. Raw reports live under
      =/raid/representax/benchmarks/dense-retrieval-minilm-*=.
-**** DONE Establish the first pinned MPNet architecture replication
+***** DONE Establish the first pinned MPNet architecture replication
      Reuse the exact MiniLM data, evaluation, optimizer, precision, and initial
      metric-parity contract with =sentence-transformers/all-mpnet-base-v2=.
      Direct batch 32 is not competitive: Representax sustains 165.4 versus
@@ -706,7 +640,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      retrieval metrics match exactly; the final single-seed nDCG@10 delta is
      =+0.00104= and is not a quality-superiority claim. Raw reports live under
      =/raid/representax/benchmarks/dense-retrieval-mpnet-*=.
-**** DONE Replicate cached MiniLM and MPNet over three explicit paired seeds
+***** DONE Replicate cached MiniLM and MPNet over three explicit paired seeds
      Seeds 17, 42, and 73 preserve the same ordered rows and matched scientific
      contract. MiniLM batch 512/chunk 32 wins all three sustained comparisons
      and averages =1.057x=, although its small-sample 95% t interval
@@ -716,7 +650,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      MPNet =+0.01302 [-0.01633, +0.04238]=. The benchmark now treats seed as a
      first-class paired-contract field and reproducibly aggregates exactly three
      contract-identical reports with input hashes.
-**** DONE Replicate end-to-end cached ModernVBERT training over three runs
+***** DONE Replicate end-to-end cached ModernVBERT training over three runs
      Add one pinned native ModernVBERT loader to the same generic job and one
      typed collator branch; do not fork the trainer, task, loss, evaluator, or
      Grain path. Match Sentence Transformers' structured-message chat-template
@@ -728,7 +662,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      not independent quality seeds. Native final nDCG@10 is =0.0112= lower on
      average despite closely matched mean training loss; diagnose the full update
      trajectory before making a quality-equivalence claim.
-**** DONE Complete true time-to-quality and direct/cached OOM-frontier runs
+***** DONE Complete true time-to-quality and direct/cached OOM-frontier runs
      Record held-out metrics and matched losses at fixed optimizer-update
      checkpoints rather than only initial/final endpoints. Use truly stochastic
      seeds where the model has stochastic training behavior, verify one-step
@@ -745,7 +679,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      claim. Direct batch 32 passes and 64 OOMs; cached global batch 128 passes
      at chunk 64 and OOMs at chunk 128. Tracked evidence and replay live in
      =benchmarks/results/dense-retrieval-modernvbert-acceptance-20260818/=.
-**** DONE Accept the pinned ModernVBERT GradCache device-step matrix against 5.6.1
+***** DONE Accept the pinned ModernVBERT GradCache device-step matrix against 5.6.1
      For logical batches 32, 128, 512, and 1,024 at sequence length 512 and
      chunk two, require identical checkpoint/input/scientific fingerprints,
      FP32 highest precision, loss and gradient-norm agreement, no OOM, separate
@@ -757,7 +691,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      Native allocator usage is 5.1%--5.6% higher while process-visible device
      usage is 0.8%--1.5% lower. Raw reports, replay, and the validated summary
      live in =benchmarks/results/grad-cache-st56-20260817/=.
-**** DONE Record the paired dataset-on-disk through durable-final-model baseline
+***** DONE Record the paired dataset-on-disk through durable-final-model baseline
      Start timing at process launch with pinned raw local data and an initial
      checkpoint already on disk. Stop only after preprocessing, nonzero-rate
      training, validation, asynchronous checkpoint synchronization, final model
@@ -766,7 +700,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      memory, restart cost, and final validation quality. The exact contract is
      =docs/dense-system-audit.md=. Retain this as lifecycle evidence and a paper
      appendix, not as the primary claim about training throughput.
-***** DONE Establish cold MiniLM and Jina Small paired baselines
+****** DONE Establish cold MiniLM and Jina Small paired baselines
       The immutable STSB JSONL flow now covers raw Grain/Sentence Transformers
       input through training, start/end embedding-similarity evaluation,
       checkpoint synchronization, final export, and fresh-process reload.
@@ -777,14 +711,14 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
       process-visible device peaks are =2.356x= and =1.274x= upstream, so this is
       a recorded failing systems baseline, not a superiority claim. Evidence is
       in =benchmarks/results/dense-e2e-20260817/=.
-***** TODO Remove duplicate source-checkpoint reconstruction from native reload
+****** TODO Remove duplicate source-checkpoint reconstruction from native reload
       Complete the unified model-loader milestone: reconstruct a typed,
       weightless template from bundled Hugging Face-compatible architecture
       metadata, then materialize the exported native weights exactly once.
-***** TODO Reduce cold train/evaluator compilation and steady-state update time
+****** TODO Reduce cold train/evaluator compilation and steady-state update time
       Preserve the exact model, task, precision, batch, and validation contract;
       report persistent-cache behavior separately from an honest cold process.
-** TODO Implement late-interaction and multi-vector representation learning :tasks:late_interaction:
+*** TODO Implement late-interaction and multi-vector representation learning :tasks:late_interaction:
    Support token-level and learned multi-vector embeddings, ColBERT-style MaxSim,
    masking and compression, in-batch negatives, cached/replayed representations,
    retrieval evaluators, and efficient indexing. Treat the released 5.6.1 oracle
@@ -794,7 +728,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
    token embeddings, masks, MaxSim values and gradients before benchmarking a
    Pallas MaxSim kernel, GradCache over token matrices, compressed indexing,
    index size, retrieval QPS, and quality at fixed latency.
-** TODO Implement cross-encoder and reranker training :tasks:cross_encoder:
+*** TODO Implement cross-encoder and reranker training :tasks:cross_encoder:
    Cover encoder and generative scoring modules; pointwise, pairwise, and listwise
    losses; classification, correlation, reranking, and NanoBEIR evaluators; and
    text/image/audio/video pair routing under the shared trainer.
@@ -802,7 +736,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
    BCE, multiclass cross-entropy, MSE and MarginMSE, RankNet, LambdaLoss, ListNet,
    ListMLE/PListMLE, and cached MNR through paired tensor tests before matched
    candidate-list jobs.
-** TODO Implement sparse encoder training and retrieval :tasks:sparse_encoder:
+*** TODO Implement sparse encoder training and retrieval :tasks:sparse_encoder:
    Cover MLM and static sparse backbones, SPLADE and sparse-autoencoder pooling,
    sparse MNR/CoSENT/triplet/MSE/distillation losses, FLOPS regularization, CSR
    reconstruction, sparse retrieval metrics, and reciprocal-rank fusion.
@@ -810,87 +744,88 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
    oracle and SPLADE-v3 as the scientific reference. Treat the noncommercial
    SPLADE repository as an external oracle only. Measure effectiveness jointly
    with active dimensions, sparsity, index size, encoding rate, and retrieval QPS.
-** TODO Validate multimodal capability across every supported encoder route :multimodal:
+*** TODO Validate multimodal capability across every supported encoder route :multimodal:
    Exercise text, image, audio, video, and composed multimodal examples through
    preprocessing, model forwards, losses, evaluators, batching, export, and
    matched systems gates rather than treating multimodality as inference-only
    metadata.
-*** TODO Make modality identifiers and input contracts extensible
+**** TODO Make modality identifiers and input contracts extensible
     Register typed built-in text, image, audio, and video contracts while
     allowing downstream projects to add named modalities at the Python build
     boundary. Resolve adapters before JIT so compiled programs receive only
     static array PyTrees, never arbitrary raw Python payloads.
-*** TODO Express fusion as composition rather than a fifth modality
+**** TODO Express fusion as composition rather than a fifth modality
     Represent one example as named modality components with explicit fusion
     semantics. Do not encode =fused= as a mutually exclusive modality value.
-*** TODO Define decode, preprocess, collate, bucket, and placement adapters
+**** TODO Define decode, preprocess, collate, bucket, and placement adapters
     Keep raw artifact handling outside the model. Require each adapter to expose
     reproducible fingerprints, model-ready tensor contracts, padding masks,
     finite shape choices, and iterator-resume state.
-* TODO Support =encode_query= and =encode_document= behavior through typed routes :api:retrieval:
-* TODO Add Hugging Face Hub loading, local loading, and model export :api:hf:
-* TODO Add multi-dataset functionality through source sampling policies :api:data:
-* TODO Add LoRA and parameter-selection recipes :api:training:
+**** TODO Preserve artifact references and decode only admitted media selections
+    Carry URI, revision/ETag, archive member, byte range, checksum, and probed
+    metadata through lazy sampling. Choose deterministic audio windows and video
+    frames before decoding, decode directly toward an admitted bucket, and do
+    not materialize a proprietary intermediate dataset or whole media column.
+**** TODO Bound preprocessing memory and make starvation observable and fatal
+    Keep workers model-free; use bounded queues, heartbeats, timeouts, clean
+    failure propagation, and explicit host-memory budgets. Emit
+    =train/data_wait_seconds=, queue occupancy, decode/preprocess/placement time,
+    and device-idle telemetry. Checkpoint the logical consumed cursor and require
+    identical resumed batches across worker and prefetch configurations.
+** TODO Support =encode_query= and =encode_document= behavior through typed routes :api:retrieval:
+** TODO Add Hugging Face Hub loading, local loading, and model export :api:hf:
+** TODO Add multi-dataset functionality through source sampling policies :api:data:
+** TODO Add LoRA and parameter-selection recipes :api:training:
 
-* DONE Implement triplet losses :tasks:metric_learning:
-* DONE Implement cosine-similarity losses :tasks:metric_learning:
-* DONE Implement CoSENT losses :tasks:metric_learning:
-* TODO Expand classification beyond paired softmax :tasks:classification:
+** DONE Implement triplet losses :tasks:metric_learning:
+** DONE Implement cosine-similarity losses :tasks:metric_learning:
+** DONE Implement CoSENT losses :tasks:metric_learning:
+** TODO Expand classification beyond paired softmax :tasks:classification:
   Add single-example and multi-label heads, class weighting, evaluator metrics,
   and source mappings without coupling them to the paired SoftmaxLoss contract.
-* DONE Implement representation distillation tasks and losses :tasks:distillation:
+** DONE Implement representation distillation tasks and losses :tasks:distillation:
   Native embedding matching, score-margin regression, and distribution KL keep
   teacher artifacts in fixed-shape batch data and trainable projections in the
   explicit model tree.
-* TODO Implement pairwise reward modeling :tasks:reward_modeling:
-* TODO Implement listwise reward modeling :tasks:reward_modeling:
-* TODO Implement pointwise and process reward modeling :tasks:reward_modeling:
-* TODO Implement JEPA-style self-supervised learning :tasks:jepa:
+** TODO Implement pairwise reward modeling :tasks:reward_modeling:
+** TODO Implement listwise reward modeling :tasks:reward_modeling:
+** TODO Implement pointwise and process reward modeling :tasks:reward_modeling:
+** TODO Implement JEPA-style self-supervised learning :tasks:jepa:
   Use TRL RewardTrainer for pairwise/outcome parity, formula-level
   Plackett--Luce references for listwise rewards, and the pinned experimental TRL
   PRM trainer plus PRM800K/ProcessBench for process rewards. Use Meta V-JEPA 2.1
   as the maintained JEPA implementation and systems oracle; require exact masks,
   EMA target updates, latent objectives, and collapse diagnostics before matched
   video jobs and frozen probes.
-* TODO Ship reward modeling and JEPA before the first research release :tasks:release:
+** TODO Ship reward modeling and JEPA before the first research release :tasks:release:
 
-* DONE Resolve Hugging Face datasets without proprietary intermediate copies :data:hf:
-* DONE Resolve local JSONL, Parquet, Arrow, and dataset directories :data:local:
+** DONE Resolve Hugging Face datasets without proprietary intermediate copies :data:hf:
+** DONE Resolve local JSONL, Parquet, Arrow, and dataset directories :data:local:
   Local Parquet now uses memory-mapped, bounded row-group caching directly;
   it does not rewrite an immutable upstream Parquet into a Hugging Face Arrow
   cache before Grain can consume it.
-* TODO Resolve local WebDataset artifacts :data:local:
-* TODO Resolve S3 and object-store artifacts first-class :data:s3:
-* DONE Let users map upstream records directly into canonical task examples :data:
-* TODO Flesh out post-resolver data execution slices :data:planning:
+** DONE Let users map upstream records directly into canonical task examples :data:
+** TODO Flesh out post-resolver data execution slices :data:planning:
   Define implementation contracts and acceptance gates for S3 and object
   stores, image/audio/video decoding and streaming, length- and modality-aware
   bucketing, scientifically valid packing, and deterministic distributed
   iterator resume. Keep JEST as the separate online selection method below.
-* TODO Fingerprint artifact revisions, mapping code, recipes, and Git state :data:reproducibility:
-* TODO Persist sampling policies instead of materialized mixture datasets :data:reproducibility:
-* TODO Support static and scheduled mixture weights :data:sampling:
-* TODO Implement objective-general online joint batch selection from [[https://arxiv.org/abs/2406.17711][JEST]] :data:sampling:runtime:
-  Select a training sub-batch from a larger super-batch using interactions
-  exposed by the task objective, rather than scoring examples independently.
-  Support easy-reference and learner-minus-reference learnability criteria,
-  deterministic sequential chunk sampling without replacement, and arbitrary
-  task-provided score matrices. Match the paper's reference algorithm exactly
-  before adding cached reference scores, approximate scoring, asynchronous
-  selection, distributed selection, or modality-specific accelerations.
-* TODO Support deterministic shuffling, sharding, and iterator resume :data:runtime:
-* TODO Add length and modality-aware bucketing :data:performance:
-* TODO Add sequence and multimodal packing where scientifically valid :data:performance:
+** TODO Fingerprint artifact revisions, mapping code, recipes, and Git state :data:reproducibility:
+** TODO Persist sampling policies instead of materialized mixture datasets :data:reproducibility:
+** TODO Support static and scheduled mixture weights :data:sampling:
+** TODO Support deterministic shuffling, sharding, and iterator resume :data:runtime:
+** TODO Add length and modality-aware bucketing :data:performance:
+** TODO Add sequence and multimodal packing where scientifically valid :data:performance:
   Packing concatenates variable-length examples into fixed physical tensors to
   reduce padding.  Define segment IDs, reset positions, block cross-example
   attention, and preserve task loss/example boundaries before exposing a config;
   register compatibility explicitly for each data, model, and task family.
-* TODO Stream text examples from source through the model forward :data:text:
-* TODO Stream image examples from source through the model forward :data:image:
-* TODO Decode and stream audio efficiently through the model forward :data:audio:
-* TODO Decode, sample, and stream video efficiently through the model forward :data:video:
-* TODO Train mixed text, image, audio, video, and composed multimodal batches efficiently :data:multimodal:
-* TODO Enforce a static model-ready ABI at the compiled step boundary :data:multimodal:runtime:
+** TODO Stream text examples from source through the model forward :data:text:
+** TODO Stream image examples from source through the model forward :data:image:
+** TODO Decode and stream audio efficiently through the model forward :data:audio:
+** TODO Decode, sample, and stream video efficiently through the model forward :data:video:
+** TODO Train mixed text, image, audio, video, and composed multimodal batches efficiently :data:multimodal:
+** TODO Enforce a static model-ready ABI at the compiled step boundary :data:multimodal:runtime:
   Keep =train_step= as the canonical JIT boundary. Resolve variable records,
   decoding, tokenization, sampling, collation, and padding before it, and pass
   only clean tensors in one declared static signature or a small explicitly
@@ -899,38 +834,80 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   run. Measure padding waste per signature; do not regain compile stability by
   unconditionally materializing the largest multimodal bucket.
 
-* TODO Implement arbitrary named single-host sharding :distributed:
-  Start after the matched dense-retrieval systems proof. Keep replicated
-  =DataParallel= as one standard plan and make FSDP one named preset over the
-  same generic mesh and partition-rule machinery, not a task-specific runtime.
-  Initialize parameter and optimizer shards directly in their destination
-  layouts and verify complete updates against the replicated oracle.
-** TODO Accept FSDP and hybrid data/model presets on one host
-** TODO Accept user-supplied compatible meshes and partition rules
-** TODO Inspect expected AllReduce, AllGather, and ReduceScatter collectives
+** DONE Implement arbitrary named single-host sharding :distributed:
+  Resolve DDP, FSDP, and explicit partition rules into one internal
+  =ShardingPlan=: mesh, batch layouts, complete model layouts, differentiable
+  gradient layouts, Optax-state layouts, materialization collectives, gradient
+  synchronization, and global numeric reductions.  All presets use the same
+  task-generic compiled trainer; FSDP remains orthogonal to GradCache.
+*** DONE Resolve named DDP and FSDP presets through one =ShardingPlan=
+    Replicated DDP and fully sharded parameter/Adam state now differ only in
+    their resolved layouts and collectives, not in trainer control flow.
+*** DONE Accept user-supplied compatible meshes and parameter partition rules
+    Ordered model-path regular expressions resolve to a model-shaped
+    =PartitionSpec= tree, validate mesh axes, ranks, and divisibility, and flow
+    through the same =JobConfig= runtime on two- and four-device topologies.
+*** DONE Verify exact complete updates on two- and four-device topologies
+    DDP, FSDP, and custom plans match the one-device GradCache loss, metrics,
+    model update, and complete Optax state.  Native ModernVBERT passes the same
+    two- and four-device virtual-topology gate; its FSDP update also passes on
+    physical GPUs 4 and 5.
+*** DONE Inspect expected AllReduce, AllGather, and ReduceScatter collectives
+    The lowered StableHLO contains parameter and global-representation
+    AllGathers, topology-correct sum or mean parameter-gradient ReduceScatters,
+    and global reductions.  Nsight Systems additionally records the resulting
+    NCCL AllGather, ReduceScatter, and AllReduce kernels on both physical GPUs;
+    keep both gates rather than inferring execution solely from output
+    shardings.
+*** DONE Preserve FSDP parameter and optimizer shardings through Orbax resume
+    A real asynchronous save and fresh-manager restore preserves every value,
+    training cursor, and explicit JAX sharding.
+*** DONE Bucket replicated DDP gradient synchronization
+    Compatible gradients are flattened into bounded, dtype/replication-aware
+    256 MiB buckets after the complete backward and averaged explicitly. Named
+    DDP disables =shard_map= VMA transposition so XLA cannot sink a second set
+    of implicit reductions into the scanned encoder backward; FSDP and custom
+    transpose contracts retain VMA checking. Exact 2/4-device updates pass.
+    Nsight reduces FP32 AllReduce launches from 740 to 20 per GPU across one
+    warmup plus three measured steps, and the four-GPU ModernVBERT median falls
+    from 1.895 to 0.474 seconds.
+*** DONE Materialize FSDP parameters at measured module boundaries
+    The plan exposes =model= and =layer= materialization without changing the
+    task or trainer. ModernVBERT keeps its depth-major stack sharded and gathers
+    one scan slice immediately before execution; full activation
+    rematerialization replays that gather in backward. Compatible parameter
+    leaves are coalesced into bounded dtype/axis buckets. Both boundaries match
+    complete one-device updates on 2/4-device meshes. On four RTX 4090s, the
+    layer boundary lowers peak live JAX memory from 3.719 to 1.985 GB and the
+    compiler temporary from 2.237 GB to 503 MB, while the model boundary retains
+    0.486-second steps. The layer boundary takes 2.409 seconds because exact
+    GradCache replay repeatedly transports parameters over this PCIe topology;
+    preserve the measured capacity/communication frontier for Profilax rather
+    than claiming one boundary is universally optimal.
+** NEXT Establish the physical FSDP capacity and throughput frontier
+    Compare DDP and FSDP on full ModernVBERT and at least one model that cannot
+    fit replicated optimizer state.  Sweep useful batch/sequence/model sizes,
+    report sustained examples or tokens per second and feasible workloads, and
+    run the four-physical-GPU topology when those devices are available.
 
-* WAITING Validate fully distributed multi-host training :distributed:
-  This milestone requires at least two physical accelerator hosts with a
-  routable coordinator and is intentionally deferred until those resources are
-  available.  Single-host replicated data parallelism and exact GradCache are
-  already accepted and remain the local numerical oracle.
-** TODO Validate model and optimizer-state sharding across hosts
-   Compare complete updates against the replicated oracle, measure collective
-   and resharding costs, and verify that parameter, optimizer, and activation
-   placement match the declared plan.
-** TODO Validate exact GradCache and global negatives across physical hosts
-   Re-run the accepted process-local ModernVBERT contract with positives and
-   negatives crossing the host boundary.  Preserve local encoder replay and
-   exactly one final parameter-gradient synchronization.
-** TODO Validate multi-host checkpoint, restore, and failure behavior
-   Restore into the same and different topologies, publish checkpoints without
-   host races, and fail clearly on coordinator, worker, or storage loss.
-** TODO Record multi-host scaling and transport evidence
-   Record topology, interconnect, compile time, steady-state throughput, peak
-   memory, communication cost, and failure behavior before making a
-   fully-distributed support claim.
-* TODO Make precision policy explicit at parameter, compute, activation, and loss boundaries :runtime:precision:
-* DONE Support activation rematerialization as a measured execution choice :runtime:memory:
+    The first full-checkpoint correctness artifact is
+    =/raid/representax/benchmarks/fsdp-modernvbert-20260819/world2-b8-s128.json=:
+    two RTX 4090s, batch 8, sequence 128, exact GradCache, accepted with
+    =9.54e-7= loss error, =2.35e-7= model relative L2 error, and =4.28e-5=
+    optimizer-state relative L2 error.  Its mixed oracle/FSDP process is a
+    correctness probe, not clean standalone memory or throughput evidence.
+
+    The accepted isolated systems profile is tracked in
+    =benchmarks/results/fsdp-modernvbert-20260819/README.org=. On GPUs 2--5,
+    global batch 16, and sequence 128, corrected DDP sustains 33.72 examples/s
+    at a 6.525 GB live peak. Model-boundary FSDP sustains 32.95 examples/s at
+    3.719 GB; layer-boundary FSDP sustains 6.64 examples/s at 1.985 GB. All
+    modes pass complete-update numerical gates and balanced physical NCCL
+    traces. This deterministic synthetic-token program isolates the compiled
+    trainer; it is not dataset-to-quality evidence.
+
+** TODO Make precision policy explicit at parameter, compute, activation, and loss boundaries :runtime:precision:
+** DONE Support activation rematerialization as a measured execution choice :runtime:memory:
   Expose =none=, =selective=, and =full= as topology-dependent policies without
   changing model parameters or scientific semantics.  =selective= uses JAX's
   transformer-oriented =dots_with_no_batch_dims_saveable= policy; do not expose
@@ -951,47 +928,233 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   pinned Transformers forward/input-gradient parity, 53 fast tests, and 9
   runtime tests pass.  Evidence lives in
   =benchmarks/results/modernvbert-rematerialization-20260813/=.
-* DONE Verify buffer donation with Orbax V1 asynchronous checkpoint/resume :runtime:performance:
-* TODO Overlap device placement with Grain input prefetching :runtime:performance:
+** DONE Verify buffer donation with Orbax V1 asynchronous checkpoint/resume :runtime:performance:
+** TODO Overlap device placement with Grain input prefetching :runtime:performance:
   First prove from =data_wait_seconds=, placement timing, queue depth, and device
   traces that input or transfer bubbles reduce sustained training throughput.
   Only then build device-ready iterators with non-blocking =jax.device_put= on
   one host and =jax.make_array_from_process_local_data= for distributed input,
   and accept the change only when the observed bottleneck improves.
-* TODO Precompile and cache the declared static step signatures :runtime:performance:
+** TODO Precompile and cache the declared static step signatures :runtime:performance:
   Reuse the exact compiled =train_step= for every batch with the same model-ready
   ABI. Bound any finite signature set in configuration and never let raw record
   variability create an uncontrolled executable population.
-* TODO Benchmark JAX =Ref= state against functional Equinox/Optax donation :runtime:performance:research:
+** TODO Create =profilax= as a separate installable JAX profiling and planning project :profilax:
+  Publish it independently as =pip install profilax= so any JAX trainer can
+  supply a compiled step and semantic constraints without depending on
+  Representax. Representax integrates only through its =ExecutionPlanner=
+  protocol.
+** TODO Profile arbitrary compiled JAX programs through a small adapter :profilax:
+** TODO Inventory devices, topology, memory, and compiler versions :profilax:
+** TODO Search only =Execution[T]= mesh, batch, GradCache, prefetch, donation, and activation-rematerialization paths :profilax:
+** TODO Measure compilation separately from warmup and steady-state execution :profilax:
+** TODO Reject plans that alter the =Scientific[T]= projection or fingerprint :profilax:
+** TODO Reject plans that violate numerical tolerances :profilax:
+** TODO Report when the experiment probably needs more accelerators :profilax:
+** TODO Select Pareto-optimal plans for throughput, memory, and compile cost :profilax:
+** TODO Cache plans by model, task, shapes, hardware, and JAX/XLA versions :profilax:
+** TODO Guarantee feasibility for accepted Profilax execution plans :profilax:correctness:
+  Combine analytic tensor/liveness estimates from model and objective shapes
+  with device topology, world size, precision, sharding, rematerialization,
+  GradCache, optimizer, and measured compiled-program profiles. Return either a
+  plan demonstrated under a configurable safety margin on the exact hardware
+  and executable fingerprint, or a structured refusal naming the limiting
+  resource. Never promise that arbitrary external storage, decoding, drivers,
+  or runtime faults cannot fail; guarantee only the admitted compiled workload
+  under the fingerprinted environment and continuously reject telemetry drift.
+** TODO Integrate Profilax through Representax's =ExecutionPlanner= protocol :profilax:integration:
+
+
+* General development
+  This section tracks release engineering, optional integrations, exploratory
+  research, deferred hardware validation, and work that is useful but is not a
+  blocker for the first systems whitepaper.
+
+** DONE Establish =representax= as a standalone Git repository :foundation:
+** DONE Adopt the MIT license and public-project policies :foundation:
+** DONE Use permissive Python and dependency ranges with optional extras :foundation:
+** DONE Keep accelerator-specific JAX and PyTorch out of the base install :foundation:
+** DONE Document pip-managed CUDA and =LD_LIBRARY_PATH= conflicts :docs:release:
+** DONE Exclude private history, experiments, Studio, and compiled assets :foundation:
+** DONE Review and land the first clean public commit :release:
+** DONE Adopt =jaxtyping= at stable numerical boundaries :typing:models:tasks:
+  Declare it directly and annotate model forwards, encoder/task protocols,
+  retrieval relations, scalar losses, PRNG keys, and compiled-step boundaries
+  with symbolic axes.  Do not annotate host configuration and orchestration for
+  decoration's sake, and do not enable a production-wide runtime import hook.
+  Preserve explicit domain validation and add focused trace-time checks only
+  where they improve errors without changing compiled performance.
+  Accepted with direct, introspectable dtype and symbolic-shape annotations on
+  encoder/model forwards, text and multimodal batches, attention, RoPE, pooling,
+  vision patching, MNR relations and losses, PRNG keys, train state, GradCache,
+  and compiled-step boundaries.  No decorator or runtime import hook is
+  installed.  Explicit semantic validation remains authoritative.  Ruff and
+  formatting pass, annotation contracts pass, all 78 fast tests pass, and the
+  public Python 3.11-3.13, runtime, distributed, and wheel-install CI matrix is
+  green.
+** DONE Add a fast Ruff and ty static-analysis gate :tooling:typing:ci:
+  Treat this as Representax's =cargo clippy=: one canonical repository command
+  runs =ruff format --check=, =ruff check=, and =ty check= without importing JAX,
+  compiling models, or executing tests. Keep the default =pytest= lane as the
+  longer behavioral equivalent of =cargo test=, with runtime, distributed,
+  parity, and performance markers remaining separate evidence lanes.
+
+  Pin =ty= in a repository-only development dependency group while its
+  diagnostics and configuration remain beta. Baseline =src/representax= first,
+  then extend the clean boundary to tests, examples, and scripts; fix genuine
+  errors and use narrow, explained exceptions only at dynamic third-party or
+  generated-code boundaries. Configure ty in =pyproject.toml= and emit native
+  GitHub annotations in the single static CI job rather than repeating it in
+  every Python-version test job. Record cold and warm timings and keep the local
+  gate tight enough to run continuously during development.
+  Accepted with =ty==0.0.72= and Ruff in a repository-only static dependency
+  group, one =python scripts/check.py= entry point, native GitHub diagnostics,
+  and a clean boundary over =src=, tests, examples, and scripts. The first ty
+  pass found 28 source diagnostics; all were resolved without global rule
+  suppression. The complete warm static gate checks 116 files in 2.14 seconds.
+  Behavioral evidence is 93 fast tests, eight CPU training-runtime tests, two
+  ModernVBERT GPU runtime tests, and all three pinned BERT forward, gradient,
+  optimizer-update, and export/reload parity tests.
+** DONE Publish =representax= 0.0.1 and reserve the package name :release:
+  Published from signed tag =v0.0.1= at commit =8a9bcf6= through GitHub Actions
+  run =31852459601=.  The registered pending publisher created and reserved
+  [[https://pypi.org/project/representax/0.0.1/][representax on PyPI]], and the workflow created the corresponding GitHub
+  [[https://github.com/ckgresla/representax/releases/tag/v0.0.1][Release]] from the same accepted artifact bundle.
+** TODO Cut the next release after dense-system acceptance :release:
+  Choose and set the next version only after the dense trainer, evaluator, and
+  disk-to-final-model systems gates are complete. Tag only after the exact
+  release-ready commit passes public CI and its wheel passes fresh CPU and CUDA
+  13 smoke installs through the protected PyPI environment; do not reuse or
+  replace the published 0.0.1 artifacts.
+** DONE Publish a minimal CPU-first installation and compatibility matrix :release:
+*** DONE Build bounded wheel and source-distribution artifacts
+   The universal wheel contains only =representax=, package metadata, the MIT
+   license, and =THIRD_PARTY.md=.  The sdist retains source, tests, docs,
+   examples, and benchmark programs while excluding raw result bundles, CI
+   internals, and this roadmap.  Both rebuild successfully through isolated
+   Hatch environments.
+*** DONE Install and execute the wheel in a fresh CPU-only environment
+   Fresh Python 3.11, 3.12, and 3.13 environments installed the built =0.0.1=
+   wheel outside the source tree and completed the same compiled
+   Dense/MNR/Optax update on CPU.  The resolved JAX versions were 0.10.2,
+   0.11.0, and 0.11.0 respectively.  See =docs/compatibility.md=.
+*** DONE Accept the public CPU compatibility workflow
+   Run fast tests on Python 3.11, 3.12, and 3.13; run the generic runtime tree
+   once; exercise two- and four-device sharding through virtual CPU devices;
+   validate wheel/sdist metadata; and smoke-test the installed wheel outside
+   the source checkout.  Accepted on 2026-08-14 in GitHub Actions run
+   =31819008237=: all seven lint, Python 3.11/3.12/3.13, generic runtime,
+   virtual distributed, and release-artifact jobs passed with Node 24 actions.
+*** DONE Configure the protected GitHub OIDC release workflow
+   The dedicated =release.yml= builds and validates one artifact set, verifies
+   that a pushed =v*= tag exactly matches project metadata, smoke-tests the
+   installed wheel on CPU, and passes the same artifacts to PyPI with only
+   =id-token: write=. After PyPI succeeds, it creates the corresponding GitHub
+   Release and attaches that exact wheel and source distribution. GitHub
+   Packages is deliberately unused. The =pypi= environment accepts only =v*=
+   tags and requires approval from =ckgresla=. Release-ready commit =e0ebc76=
+   passed all seven public lint, Python, runtime, virtual-distributed, and
+   artifact jobs in GitHub Actions run =31822635802=.  The tag-driven revision
+   was accepted end to end in release run =31852459601=: build, exact-version
+   validation, CPU smoke, OIDC publish, and GitHub Release creation all passed.
+*** DONE Publish through the registered PyPI trusted publisher
+   The trusted publisher is registered in the PyPI account for
+   =ckgresla@gmail.com= against owner/repository =ckgresla/representax=,
+   workflow =release.yml=, and environment =pypi=. The accepted release scope was
+   Alpha metadata, mandatory Grain and safetensors, optional =hf= ecosystem
+   dependencies, explicit =cuda12=/=cuda13= extras, and repository-only parity
+   groups.
+   The dependency-boundary release candidate passed strict Twine metadata,
+   =58= fast tests, =8= runtime tests, =3= virtual four-device distributed
+   tests, and fresh CPU, CUDA 13, and =hf= installs on 2026-08-14. CPU and GPU
+   produced the same compiled-update loss; both installed Grain and safetensors,
+   the =hf= environment installed Transformers 5.3.0 without PyTorch, and the
+   published wheel metadata exposes no parity extras.
+   Published on 2026-08-14.  PyPI and GitHub independently report the same
+   wheel SHA-256 =f51a7cc8cc81044897bb14b9a780c36ce7219ca22fa4f16412da8767b78b930b=
+   and sdist SHA-256
+   =56f68c804a734bb2dd41f70d24d8ef966dfc13c155fb612d438408237d6b0efe=.
+   A fresh Python 3.13 environment installed =representax==0.0.1= from PyPI,
+   resolved JAX 0.11.0 on CPU, and passed the compiled update smoke with loss
+   =2.3512461185455322=.
+*** DONE Accept clean CPU and NVIDIA GPU installs from the exact release wheel
+   The base wheel must resolve and execute a compiled update on CPU without
+   accelerator packages. The =cuda13= extra must resolve JAX's pip-managed CUDA
+   runtime and execute the same update on an RTX 4090. Keep =cuda12= available
+   for older drivers; defer TPU until suitable hardware is available.
+   Accepted on 2026-08-14 from the rebuilt =0.0.1= wheel in fresh Python
+   3.13.14 environments. Both paths resolved JAX 0.11.0 and produced the same
+   compiled-update loss. The base environment contained no CUDA/NVIDIA package;
+   the =cuda13= environment used GPU 0, driver 580.159.03, and JAX's pip-managed
+   CUDA 13 runtime.
+** DONE Audit source provenance and third-party licenses before release :release:
+  The standalone history contains only commits authored by Chris Kerwell Gresla
+  and no private monorepo history. The wheel contains only the public package,
+  MIT license, and third-party notice; the sdist excludes benchmark result
+  bundles, CI internals, and this roadmap. No checkpoints, datasets, private
+  paths, or vendored dependency/model source are present. The mechanically
+  generated Transformers 5.3.0 identifier catalog is attributed under Apache
+  2.0 in =THIRD_PARTY.md=.
+** TODO Define the stable public API and deprecation policy :release:api:
+*** DONE Build optimizers from job configs and initialize train state canonically
+   =build_optimizer(job.optimization)= resolves the trusted dotted Optax factory
+   and passes its serialized parameters exactly once. =init_train_state= filters
+   the trainable model leaves and delegates optimizer-state construction to
+   =optimizer.init(parameters)=; =make_train_state= remains a compatibility alias
+   for the published =0.0.1= API.
+** DONE Freeze every Transformers 5.3.0 architecture definition for v0 :models:hf:
+  Mechanically snapshot every config model type and task-neutral =AutoModel=
+  mapping into a Torch-free catalog. Keep =catalogued=, =native=, and =verified=
+  as distinct states: a catalog row is not a model-support claim. Verify the
+  complete snapshot against the exact optional Transformers environment and
+  regenerate it only when deliberately advancing the reference version.
+  Accepted with 475 configuration model types and 441 task-neutral =AutoModel=
+  registrations. A fresh installed-wheel environment matched every model type,
+  module, config class, and base-model class against Transformers 5.3.0.
+** TODO Evaluate Haliax for named axes, model composition, and sharding ergonomics :models:distributed:research:
+** WAITING Evaluate TorchAX only as an optional compatibility backend :models:research:
+** DONE Audit Jina licensing before its pinned native text port :models:release:
+  Representax ships an independent implementation and no upstream code or
+  weights. The optional =jina-embeddings-v5-omni-small-retrieval= checkpoint is
+  CC BY-NC 4.0, is pinned by revision, and is called out in =THIRD_PARTY.md=.
+** TODO Audit LCO licensing before considering a native port :models:release:
+** TODO Resolve local WebDataset artifacts :data:local:
+** TODO Resolve S3 and object-store artifacts first-class :data:s3:
+** TODO Implement objective-general online joint batch selection from [[https://arxiv.org/abs/2406.17711][JEST]] :data:sampling:runtime:
+  Select a training sub-batch from a larger super-batch using interactions
+  exposed by the task objective, rather than scoring examples independently.
+  Support easy-reference and learner-minus-reference learnability criteria,
+  deterministic sequential chunk sampling without replacement, and arbitrary
+  task-provided score matrices. Match the paper's reference algorithm exactly
+  before adding cached reference scores, approximate scoring, asynchronous
+  selection, distributed selection, or modality-specific accelerations.
+** WAITING Validate fully distributed multi-host training :distributed:
+  This milestone requires at least two physical accelerator hosts with a
+  routable coordinator and is intentionally deferred until those resources are
+  available.  Single-host replicated data parallelism and exact GradCache are
+  already accepted and remain the local numerical oracle.
+*** TODO Validate model and optimizer-state sharding across hosts
+   Compare complete updates against the replicated oracle, measure collective
+   and resharding costs, and verify that parameter, optimizer, and activation
+   placement match the declared plan.
+*** TODO Validate exact GradCache and global negatives across physical hosts
+   Re-run the accepted process-local ModernVBERT contract with positives and
+   negatives crossing the host boundary.  Preserve local encoder replay and
+   exactly one final parameter-gradient synchronization.
+*** TODO Validate multi-host checkpoint, restore, and failure behavior
+   Restore into the same and different topologies, publish checkpoints without
+   host races, and fail clearly on coordinator, worker, or storage loss.
+*** TODO Record multi-host scaling and transport evidence
+   Record topology, interconnect, compile time, steady-state throughput, peak
+   memory, communication cost, and failure behavior before making a
+   fully-distributed support claim.
+** TODO Benchmark JAX =Ref= state against functional Equinox/Optax donation :runtime:performance:research:
   Keep the canonical functional update unless measured memory or throughput
   evidence shows that mutable =Ref= state from the JAX Training Cookbook is a
   monotonic improvement without weakening checkpoint or model ergonomics.
-* TODO Evaluate Pallas for performance-critical fused kernels :runtime:performance:research:
-* TODO Add optional experiment logging without coupling the training core :runtime:logging:
+** TODO Evaluate Pallas for performance-critical fused kernels :runtime:performance:research:
+** TODO Add optional experiment logging without coupling the training core :runtime:logging:
+** TODO Measure GPU and TPU behavior where hardware is available :research:benchmark:
 
-* TODO Create =profilax= as a focused JAX profiling and planning project :profilax:
-* TODO Profile arbitrary compiled JAX programs through a small adapter :profilax:
-* TODO Inventory devices, topology, memory, and compiler versions :profilax:
-* TODO Search only =Execution[T]= mesh, batch, GradCache, prefetch, donation, and activation-rematerialization paths :profilax:
-* TODO Measure compilation separately from warmup and steady-state execution :profilax:
-* TODO Reject plans that alter the =Scientific[T]= projection or fingerprint :profilax:
-* TODO Reject plans that violate numerical tolerances :profilax:
-* TODO Report when the experiment probably needs more accelerators :profilax:
-* TODO Select Pareto-optimal plans for throughput, memory, and compile cost :profilax:
-* TODO Cache plans by model, task, shapes, hardware, and JAX/XLA versions :profilax:
-* TODO Integrate Profilax through Representax's =ExecutionPlanner= protocol :profilax:integration:
-
-* TODO Define measurable monotonic-improvement gates over existing trainers :research:
-* TODO Benchmark quality, throughput, peak memory, and model coverage :research:benchmark:
-* TODO Benchmark compile time separately from steady-state step time :research:benchmark:
-* TODO Benchmark direct MNR and GradCache at equal scientific semantics :research:benchmark:
-* TODO Benchmark text retrieval against Sentence Transformers :research:benchmark:
-* TODO Benchmark multimodal retrieval including audio and video :research:benchmark:
-* TODO Benchmark reward modeling and JEPA workloads :research:benchmark:
-* TODO Measure single-device, multi-device, and multi-host scaling :research:benchmark:
-* TODO Measure GPU and TPU behavior where hardware is available :research:benchmark:
-* TODO Publish reproducible configs, manifests, tests, and benchmark artifacts :research:reproducibility:
-* TODO Write the first paper on the state-of-the-art training system :research:paper:
-* TODO Release the systems paper as an arXiv preprint :research:paper:
-* TODO Use the completed trainer to train a state-of-the-art representation model :research:model:
-* TODO Write the subsequent model paper from that training program :research:paper:
+** TODO Use the completed trainer to train a state-of-the-art representation model :research:model:
+** TODO Write the subsequent model paper from that training program :research:paper:

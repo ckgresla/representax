@@ -70,10 +70,17 @@ training strategies. This keeps retrieval semantics distinct from MNR and lets
 
 Logical mesh config mirrors the serializable `jax.make_mesh` arguments: axis
 shapes and names unpack directly into JAX, while concrete topology-bound devices
-remain runtime state. Mesh names alone do not define array placement;
-actual batch and state `PartitionSpec` configs remain part of the arbitrary
-sharding roadmap. The current loop validates global batch against its model-ready
-Grain source instead of inferring it from names such as `fsdp` or `tensor`.
+remain runtime state. Mesh names alone do not define array placement. Named DDP,
+named FSDP, or ordered model-path rules resolve model-shaped parameter,
+gradient, Optax-state, batch, and output `PartitionSpec` trees through one
+`ShardingPlan`. The current loop validates global batch against the resolved
+data-axis size and its model-ready Grain source instead of inferring semantics
+from names such as `fsdp` or `tensor`.
+Replicated DDP gradients and materialized FSDP parameters are coalesced into
+bounded dtype/axis-compatible buckets. FSDP can materialize a whole model call
+or one supported scanned layer at a time; the boundary is an execution
+parameter whose throughput/memory tradeoff belongs in the future Profilax
+search space.
 Packing remains deferred until its segment IDs, position handling, attention
 masking, and example-boundary preservation are implemented for compatible data,
 models, and tasks.

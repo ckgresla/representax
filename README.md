@@ -411,6 +411,32 @@ strategy, evaluator cache, Orbax lifecycle, and selected inference artifact.
 The lower-level builders and `run_training` remain public for research programs
 that need to assemble those pieces directly.
 
+Named DDP and FSDP are configuration presets, not separate trainers. Explicit
+partition rules resolve through the same internal plan:
+
+```python
+from representax.config import FSDPConfig, MeshConfig
+
+training = TrainingConfig(
+    global_batch_size=32,
+    max_steps=10_000,
+    seed=17,
+    mesh=MeshConfig(axis_shapes=(2,), axis_names=("data",)),
+    sharding=FSDPConfig(
+        data_axis="data",
+        materialization_boundary="layer",
+    ),
+    batch=BatchConfig(micro_batch_size=16),
+)
+```
+
+DDP uses bounded gradient buckets; FSDP uses bounded parameter buckets and
+supports `model` or memory-first `layer` materialization without a separate
+trainer. The acceptance profile records per-device model/Adam shards, JAX live
+and pool memory, NVML process memory/utilization, lowered StableHLO collectives,
+and actual NCCL kernels on four GPUs. See
+[`fsdp-modernvbert-20260819`](benchmarks/results/fsdp-modernvbert-20260819/README.org).
+
 Array-facing APIs use `jaxtyping` to state dtype and symbolic shape contracts
 directly on model forwards, tasks, losses, and compiled-step keys. Representax
 does not install a runtime type-checking hook; explicit domain validation remains

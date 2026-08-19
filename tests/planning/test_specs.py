@@ -9,6 +9,9 @@ from pydantic import ValidationError
 from representax.config import (
     BatchConfig,
     ComponentConfig,
+    CustomShardingConfig,
+    DDPConfig,
+    FSDPConfig,
     GradCacheConfig,
     JobConfig,
     LoggingConfig,
@@ -16,6 +19,7 @@ from representax.config import (
     ModelConfig,
     OptimizationConfig,
     ParameterRole,
+    PartitionRuleConfig,
     TrainingConfig,
 )
 from representax.data import mix, source
@@ -79,12 +83,13 @@ def test_training_config_rejects_unknown_activation_rematerialization_policy():
         _training(activation_rematerialization="automatic")
 
 
-def test_mesh_config_names_logical_axes_without_assigning_sharding_semantics():
+def test_mesh_config_preserves_logical_axis_names_for_sharding():
     training = _training(
         mesh=MeshConfig(
             axis_shapes=(4, 2),
             axis_names=("fsdp", "tensor"),
         ),
+        sharding=DDPConfig(axis="fsdp"),
     )
 
     assert training.mesh.device_count == 8
@@ -107,6 +112,76 @@ def test_mesh_config_unpacks_directly_into_jax_make_mesh(monkeypatch):
 
     assert jax.make_mesh(**config.model_dump()) is sentinel
     assert calls == [((128, 4), ("fsdp", "tensor"))]
+
+
+def test_named_and_custom_sharding_configs_round_trip():
+    ddp = _job(training=_training(sharding=DDPConfig(axis="data")))
+    fsdp = _job(
+        training=_training(
+            sharding=FSDPConfig(
+                data_axis="data",
+                minimum_parameter_elements=1024,
+                materialization_boundary="layer",
+            )
+        )
+    )
+    custom = _job(
+        training=_training(
+            mesh=MeshConfig(
+                axis_shapes=(2, 2),
+                axis_names=("data", "model"),
+            ),
+            sharding=CustomShardingConfig(
+                data_axis="data",
+                parameter_axes=("model",),
+                materialization_boundary="model",
+                parameter_rules=(
+                    PartitionRuleConfig(
+                        pattern=r"\.layers\..*\.weight$",
+                        axes=("model", None),
+                    ),
+                ),
+            ),
+        )
+    )
+
+    restored_ddp = JobConfig.model_validate_json(ddp.model_dump_json())
+    restored_fsdp = JobConfig.model_validate_json(fsdp.model_dump_json())
+    restored_custom = JobConfig.model_validate_json(custom.model_dump_json())
+
+    assert isinstance(restored_ddp.training.sharding, DDPConfig)
+    assert isinstance(restored_fsdp.training.sharding, FSDPConfig)
+    assert restored_fsdp.training.sharding.resolved_parameter_axis == "data"
+    assert restored_fsdp.training.sharding.materialization_boundary == "layer"
+    assert isinstance(restored_custom.training.sharding, CustomShardingConfig)
+    assert restored_custom.training.sharding.materialization_boundary == "model"
+    assert restored_custom.training.sharding.parameter_rules[0].axes == (
+        "model",
+        None,
+    )
+
+
+def test_custom_sharding_rejects_invalid_rules():
+    with pytest.raises(ValidationError, match="regular expression"):
+        PartitionRuleConfig(pattern="[", axes=("model",))
+    with pytest.raises(ValidationError, match="cannot reuse"):
+        PartitionRuleConfig(
+            pattern="weight",
+            axes=("model", ("tensor", "model")),
+        )
+    with pytest.raises(ValidationError, match="at least one parameter rule"):
+        CustomShardingConfig(parameter_axes=("model",), parameter_rules=())
+    with pytest.raises(ValidationError, match="absent from parameter_axes"):
+        _training(
+            sharding=CustomShardingConfig(
+                parameter_axes=("data",),
+                parameter_rules=(
+                    PartitionRuleConfig(pattern="weight", axes=("model",)),
+                ),
+            )
+        )
+    with pytest.raises(ValidationError, match="absent from the mesh"):
+        _training(sharding=FSDPConfig(parameter_axis="model"))
 
 
 def test_job_round_trips_registered_configs_and_is_frozen():

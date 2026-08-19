@@ -109,6 +109,10 @@ def _build_train_step_body(
     execution: LossExecution | None = None,
     context: ExecutionContext = _LOCAL_EXECUTION_CONTEXT,
     gradient_accumulation_steps: int = 1,
+    materialize_model: Callable[[eqx.Module], eqx.Module] | None = None,
+    synchronize_gradients: Callable[[Any], Any] | None = None,
+    norm_fn: Callable[[Any], Float[Array, ""]] = tree_global_norm,
+    finite_fn: Callable[..., Bool[Array, ""]] = tree_all_finite,
 ) -> TrainStep:
     if max_grad_norm is not None and max_grad_norm <= 0:
         raise ValueError("max_grad_norm must be positive or None")
@@ -156,8 +160,8 @@ def _build_train_step_body(
         batch: Any,
         key: PRNGKeyArray | None,
     ) -> tuple[Float[Array, ""], Any]:
-        loss_model = model
-        if context.data_axis_name is not None:
+        loss_model = model if materialize_model is None else materialize_model(model)
+        if context.data_axis_name is not None and synchronize_gradients is None:
             # The replicated model participates in rank-local encoder replay.
             # pvary's transpose performs the one final parameter-gradient sum
             # after the complete loss has been differentiated.
@@ -288,7 +292,9 @@ def _build_train_step_body(
                 lambda value: value * reciprocal_weight,
                 gradients,
             )
-        gradient_norm = tree_global_norm(gradients)
+        if synchronize_gradients is not None:
+            gradients = synchronize_gradients(gradients)
+        gradient_norm = norm_fn(gradients)
         if max_grad_norm is None:
             clipped_gradients = gradients
             clipped_gradient_norm = gradient_norm
@@ -301,7 +307,7 @@ def _build_train_step_body(
             clipped_gradients = optax.tree.scale(coefficient, gradients)
             clipped_gradient_norm = gradient_norm * coefficient
 
-        finite = tree_all_finite(
+        finite = finite_fn(
             loss,
             task_metrics,
             gradients,
@@ -323,7 +329,7 @@ def _build_train_step_body(
         new_state = optax.tree.where(finite, proposed_state, state)
         update_norm = jnp.where(
             finite,
-            tree_global_norm(updates),
+            norm_fn(updates),
             jnp.asarray(0.0, dtype=jnp.float32),
         )
         return StepResult(

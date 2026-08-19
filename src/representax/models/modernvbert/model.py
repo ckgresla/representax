@@ -8,7 +8,7 @@ execution path.
 from __future__ import annotations
 
 from collections.abc import Iterator
-from typing import Any, overload
+from typing import Any, cast, overload
 
 import equinox as eqx
 import jax
@@ -25,6 +25,10 @@ from representax.models.components import (
     l2_normalize,
     mean_pool,
     rematerialize,
+)
+from representax.models.materialization import (
+    FSDPMaterializer,
+    materialize_deferred,
 )
 from representax.planning import RematerializationPolicy
 
@@ -537,6 +541,7 @@ class ModernVBERTTextTower(eqx.Module):
                 Float[Array, "batch sequence hidden"],
             ]:
                 index, layer = values
+                layer = materialize_deferred(layer)
                 if self.layers.attention_norms is None:
                     attention_input = carry
                 else:
@@ -585,6 +590,42 @@ class ModernVBERTTextEncoder(eqx.Module):
     compute_dtype: Any = eqx.field(static=True)
     attention_implementation: AttentionImplementation = eqx.field(static=True)
     rematerialization: RematerializationPolicy = eqx.field(static=True)
+
+    def fsdp_materialize(
+        self,
+        specs: ModernVBERTTextEncoder,
+        materializer: FSDPMaterializer,
+    ) -> ModernVBERTTextEncoder:
+        """Gather non-layer state now and each scanned layer on demand."""
+
+        blocks = self.tower.layers.blocks
+        block_specs = specs.tower.layers.blocks
+        if blocks is None or block_specs is None:
+            return cast(
+                ModernVBERTTextEncoder,
+                materializer.tree(self, specs),
+            )
+        without_blocks = eqx.tree_at(
+            lambda model: model.tower.layers.blocks,
+            self,
+            replace=None,
+        )
+        specs_without_blocks = eqx.tree_at(
+            lambda model: model.tower.layers.blocks,
+            specs,
+            replace=None,
+        )
+        materialized = cast(
+            ModernVBERTTextEncoder,
+            materializer.tree(without_blocks, specs_without_blocks),
+        )
+        deferred = materializer.scanned(blocks, block_specs)
+        return eqx.tree_at(
+            lambda model: model.tower.layers.blocks,
+            materialized,
+            replace=deferred,
+            is_leaf=lambda value: value is None,
+        )
 
     @classmethod
     def init(

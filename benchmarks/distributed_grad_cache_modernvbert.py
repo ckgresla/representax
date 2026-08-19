@@ -22,6 +22,7 @@ def _arguments() -> argparse.Namespace:
         default="ModernVBERT/modernvbert-embed",
     )
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--strategy", choices=("ddp", "fsdp"), default="ddp")
     parser.add_argument("--world-size", type=int, choices=(2, 4), required=True)
     parser.add_argument("--process-count", type=int, default=1)
     parser.add_argument("--process-id", type=int, default=0)
@@ -123,6 +124,8 @@ def main() -> None:
         raise ValueError("process id must be in [0, process_count)")
     if arguments.global_batch_size % arguments.process_count:
         raise ValueError("global batch size must be divisible by process count")
+    if arguments.strategy == "fsdp" and arguments.process_count != 1:
+        raise ValueError("the current FSDP acceptance probe is single-host only")
 
     import jax
 
@@ -158,7 +161,9 @@ def main() -> None:
     from representax.train import (
         DataParallel,
         GradCache,
+        ShardingPlan,
         build_data_parallel_train_step,
+        build_sharded_train_step,
         build_train_step,
         make_train_state,
     )
@@ -235,21 +240,54 @@ def main() -> None:
         execution=execution,
         donate_state=False,
     )
-    plan = DataParallel.from_devices(devices)
-    distributed_step = build_data_parallel_train_step(
-        task,
-        optimizer,
-        plan,
-        max_grad_norm=None,
-        execution=execution,
-        donate_state=False,
-    )
     reference_state = jax.device_put(host_state, local_devices[0])
     reference_batch = jax.device_put(host_batch, local_devices[0])
-    distributed_state = plan.place_replicated(host_state)
     if arguments.process_count == 1:
-        distributed_batch = plan.place_batch(host_batch)
+        mesh = jax.make_mesh(
+            (arguments.world_size,),
+            ("data",),
+            devices=devices,
+        )
+        if arguments.strategy == "ddp":
+            sharding_plan = ShardingPlan.ddp(
+                host_state,
+                optimizer,
+                mesh,
+                axis_name="data",
+            )
+        else:
+            sharding_plan = ShardingPlan.fsdp(
+                host_state,
+                optimizer,
+                mesh,
+                parameter_axis_name="data",
+                data_axis_name="data",
+            )
+        distributed_step = build_sharded_train_step(
+            task,
+            optimizer,
+            sharding_plan,
+            max_grad_norm=None,
+            execution=execution,
+            donate_state=False,
+        )
+        distributed_state = sharding_plan.place_state(host_state)
+        distributed_batch = sharding_plan.place_batch(host_batch)
+
+        def place_key(value: Any) -> Any:
+            return jax.device_put(value, sharding_plan.replicated_sharding)
+
     else:
+        data_parallel = DataParallel.from_devices(devices)
+        distributed_step = build_data_parallel_train_step(
+            task,
+            optimizer,
+            data_parallel,
+            max_grad_norm=None,
+            execution=execution,
+            donate_state=False,
+        )
+        distributed_state = data_parallel.place_replicated(host_state)
         process_batch_size = arguments.global_batch_size // arguments.process_count
         start = arguments.process_id * process_batch_size
         stop = start + process_batch_size
@@ -273,7 +311,11 @@ def main() -> None:
             query_valid=host_batch.query_valid[start:stop],
             document_valid=host_batch.document_valid[start:stop],
         )
-        distributed_batch = plan.place_process_local_batch(local_batch)
+        distributed_batch = data_parallel.place_process_local_batch(local_batch)
+
+        def place_key(value: Any) -> Any:
+            return data_parallel.place_replicated(value)
+
     _progress(arguments.process_id, "reference and distributed inputs placed")
     key = jax.random.key(arguments.seed)
 
@@ -287,7 +329,7 @@ def main() -> None:
     distributed = distributed_step(
         distributed_state,
         distributed_batch,
-        plan.place_replicated(key),
+        place_key(key),
     )
     jax.block_until_ready(distributed)
     distributed_compile_plus_first = time.perf_counter() - started
@@ -322,7 +364,7 @@ def main() -> None:
         result = distributed_step(
             state,
             distributed_batch,
-            plan.place_replicated(jax.random.fold_in(key, index + 1)),
+            place_key(jax.random.fold_in(key, index + 1)),
         )
         jax.block_until_ready(result)
         state = result.state
@@ -332,9 +374,7 @@ def main() -> None:
         result = distributed_step(
             state,
             distributed_batch,
-            plan.place_replicated(
-                jax.random.fold_in(key, arguments.warmup_steps + index + 1)
-            ),
+            place_key(jax.random.fold_in(key, arguments.warmup_steps + index + 1)),
         )
         jax.block_until_ready(result)
         samples.append(time.perf_counter() - started)
@@ -352,6 +392,7 @@ def main() -> None:
         },
         "checkpoint": arguments.checkpoint_id,
         "checkpoint_revision": arguments.checkpoint.name,
+        "strategy": arguments.strategy,
         "devices": [str(device) for device in devices],
         "local_devices": [str(device) for device in local_devices],
         "world_size": arguments.world_size,

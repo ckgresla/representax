@@ -57,12 +57,20 @@ negative population; exact GradCache remains their bounded-memory execution.
 
 `MeshConfig` stores the portable logical axis shapes and names accepted by
 `jax.make_mesh(**config.model_dump())`. Concrete JAX `Device` objects are never
-serialized. Mesh axis names do not themselves assign array sharding semantics;
-a future sharding config will store the actual batch and state partition specs.
-Until then, the host loop validates the scientific global batch against the
-model-ready Grain source rather than guessing a replica count. Packing remains
-absent until a task-, data-, and model-compatible segment/masking contract is
-implemented.
+serialized. `training.sharding` is a discriminated union of named DDP, named
+FSDP, and explicit custom partition rules. All three resolve to one
+model-shaped `ShardingPlan` containing batch, parameter, gradient, Optax-state,
+and output layouts plus their collective semantics. The host loop validates the
+scientific global batch against the resolved data-axis size and the model-ready
+Grain source. Packing remains absent until a task-, data-, and model-compatible
+segment/masking contract is implemented.
+
+Named DDP explicitly synchronizes bounded, dtype-compatible gradient buckets
+after the complete backward pass. Named FSDP defaults to a memory-first `layer`
+parameter-materialization boundary when a model supplies one, and also accepts
+`model` for a throughput-oriented whole-model live range. Both use bounded
+parameter buckets. These are execution choices: they do not change the task,
+loss, global batch, or optimizer semantics.
 
 These models are declarative, validated, serializable, and compatible with
 Hydra-Zen composition and CLI overrides. They contain no live JAX mesh, Equinox model,
@@ -186,22 +194,21 @@ for offline evaluation of a loaded inference bundle.
 
 ## Deliberately deferred
 
-The current configured runtime does not yet construct arbitrary named sharding
-plans or provide concrete W&B/TensorBoard adapters. Grain owns lazy
-reading, mapping, batching, prefetch, and iterator state. Task-owned collation
-is the bridge from data examples to the compiled batch contract.
+The configured runtime does not yet provide concrete W&B/TensorBoard adapters.
+Grain owns lazy reading, mapping, batching, prefetch, and iterator state.
+Task-owned collation is the bridge from data examples to the compiled batch
+contract.
 
-MNR can use exact GradCache execution through the single-device
-`build_train_step` boundary or the accepted two- and four-device data-parallel
-boundary. Physical multi-host execution, FSDP-style model-state sharding, and
-arbitrary sharding configurations remain separately scoped roadmap work.
+Single-host DDP, FSDP, hybrid data/model meshes, and arbitrary model-path
+partition rules execute through the same `build_sharded_train_step` boundary.
+Two- and four-device topology gates cover exact updates, StableHLO collectives,
+and asynchronous Orbax restore; physical GPUs additionally cover complete
+ModernVBERT updates, memory placement, and NCCL execution. Physical multi-host
+acceptance remains deferred until suitable hardware is available. ModernVBERT
+supports both whole-model and scanned-layer FSDP materialization. The accepted
+four-GPU profile records the resulting DDP/FSDP throughput-memory frontier;
+larger sequence/model capacity sweeps remain open paper evidence.
 
-The existing `DataParallel` plan already uses a named mesh, replicated state,
-batch-axis sharding, `jax.make_array_from_process_local_data` for process-local
-rows, and explicit collective semantics. Completing the cookbook's high-
-performance sharding picture means wiring the annotated training mesh and batch
-fields into placement and step construction, initializing state directly into
-its declared sharding, and adding measured FSDP and tensor/hybrid plans.
-Representax will also benchmark
-JAX `Ref`-based state mutation against canonical functional Equinox/Optax plus
-buffer donation before changing the model-state contract.
+Representax will also benchmark JAX `Ref`-based state mutation against canonical
+functional Equinox/Optax plus buffer donation before changing the model-state
+contract.
