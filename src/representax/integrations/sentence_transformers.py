@@ -536,8 +536,8 @@ def load_sentence_transformer_encoder(
     ).encoder
 
 
-class _NativeTextTokenizer:
-    """Shared fixed-shape tokenizer for native sentence-model collators."""
+class SentenceTextCollator:
+    """Tokenize text into one native, fixed-shape sentence-model batch."""
 
     def __init__(
         self,
@@ -569,12 +569,13 @@ class _NativeTextTokenizer:
 
     def data_contract(self) -> Mapping[str, Any]:
         return {
+            "schema_version": "representax-sentence-text-collator-v1",
             "checkpoint": str(self.checkpoint),
             "model_type": self.model_type,
             "maximum_length": self.maximum_length,
         }
 
-    def tokenize(self, texts: Sequence[str]) -> Any:
+    def __call__(self, texts: Sequence[str]) -> Any:
         tokenizer = cast(Callable[..., Any], self.tokenizer)
         encoded = tokenizer(
             list(texts),
@@ -621,7 +622,7 @@ class SentencePairCollator:
         label_field: str = "score",
         pad_to_size: int | None = None,
     ) -> None:
-        self._text = _NativeTextTokenizer(
+        self._text = SentenceTextCollator(
             checkpoint,
             maximum_length=maximum_length,
         )
@@ -636,8 +637,8 @@ class SentencePairCollator:
         """Return stable state incorporated into Grain resume fingerprints."""
 
         return {
-            "schema_version": "representax-sentence-pair-collator-v1",
             **self._text.data_contract(),
+            "schema_version": "representax-sentence-pair-collator-v1",
             "left_field": self.left_field,
             "right_field": self.right_field,
             "label_field": self.label_field,
@@ -665,8 +666,8 @@ class SentencePairCollator:
             labels = (*labels, *(0.0 for _ in range(padding)))
             valid.extend(False for _ in range(padding))
         return pairwise_batch(
-            left=self._text.tokenize(left),
-            right=self._text.tokenize(right),
+            left=self._text(left),
+            right=self._text(right),
             labels=jnp.asarray(labels, dtype=jnp.float32),
             valid=jnp.asarray(valid),
         )
@@ -683,7 +684,7 @@ class RetrievalPairCollator:
         query_field: str = "query",
         document_field: str = "positive",
     ) -> None:
-        self._text = _NativeTextTokenizer(
+        self._text = SentenceTextCollator(
             checkpoint,
             maximum_length=maximum_length,
         )
@@ -694,8 +695,8 @@ class RetrievalPairCollator:
         """Return stable state incorporated into Grain resume fingerprints."""
 
         return {
-            "schema_version": "representax-retrieval-pair-collator-v1",
             **self._text.data_contract(),
+            "schema_version": "representax-retrieval-pair-collator-v1",
             "query_field": self.query_field,
             "document_field": self.document_field,
         }
@@ -712,8 +713,8 @@ class RetrievalPairCollator:
             ) from error
         size = len(examples)
         return retrieval_batch(
-            query=self._text.tokenize(queries),
-            document=self._text.tokenize(documents),
+            query=self._text(queries),
+            document=self._text(documents),
             positive_mask=jnp.eye(size, dtype=jnp.bool_),
         )
 
@@ -723,6 +724,7 @@ __all__ = [
     "RetrievalPairCollator",
     "SENTENCE_TRANSFORMERS_ORACLE_VERSION",
     "SentencePairCollator",
+    "SentenceTextCollator",
     "SentenceTransformerModuleSpec",
     "SimilarityFunction",
     "load_sentence_transformer",

@@ -672,12 +672,32 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
     with the already supported MiniLM/BERT, MPNet, and ModernVBERT families,
     then extend the same contract through SigLIP2 and Jina v5 Omni after the
     modality substrate is accepted.
-    The first 4090 gate at batch 16 and sequence 128 passes numerical and
+    The first model-step microbenchmark at batch 16 and sequence 128 passes numerical and
     throughput requirements: Representax sustains 6,938 examples/s versus
     5,290 for Sentence Transformers, a =1.312x= speedup, and compiles in 15.34
     seconds under a 60-second acceptance ceiling. Allocator peak remains 37.0%
     higher and end-to-end process peak 12.3% higher, recorded as explicit
     warnings and remaining optimization work rather than correctness failures.
+**** DONE Establish the first pinned MS MARCO to NanoMSMARCO MiniLM evidence
+     Read one revision-pinned 669,531-row MS MARCO text-triplet Parquet directly
+     in both systems, train the same MiniLM checkpoint on the same ordered rows,
+     and evaluate the same 50 queries, 5,043 passages, and qrels. Initial
+     nDCG/MRR/recall/MAP metrics match exactly. A measured four-thread/eight-batch
+     Grain prefetch reduces 200-step data wait from 5.57 seconds to 0.020 seconds
+     and raises direct batch-32 sustained throughput from 435.8 to 626.5
+     examples/s versus 600.7 upstream (=1.043x=).
+     At scientific batch 128, direct Representax is slower (=0.891x=) and peaks
+     at 17.41 GiB, while exact GradCache with chunk 32 sustains 601.8 versus
+     542.9 examples/s (=1.108x=) at 3.42 GiB. At batch 512/chunk 32 it sustains
+     632.0 versus 568.4 examples/s (=1.112x=) and amortizes its 45.6-second
+     compile after about 503 optimizer updates. Final single-seed nDCG@10 deltas
+     range from -0.00325 to +0.01127; treat them as preliminary, not a quality
+     superiority claim. Raw reports live under
+     =/raid/representax/benchmarks/dense-retrieval-minilm-*=.
+**** TODO Complete multi-seed MiniLM, MPNet, and ModernVBERT time-to-quality runs
+     Run at least three seeds, preserve the same row order within each seed,
+     report confidence intervals for held-out retrieval quality and throughput,
+     and establish direct/cached OOM frontiers rather than extrapolating them.
 **** DONE Accept the pinned ModernVBERT GradCache device-step matrix against 5.6.1
      For logical batches 32, 128, 512, and 1,024 at sequence length 512 and
      chunk two, require identical checkpoint/input/scientific fingerprints,
@@ -789,6 +809,9 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
 
 * DONE Resolve Hugging Face datasets without proprietary intermediate copies :data:hf:
 * DONE Resolve local JSONL, Parquet, Arrow, and dataset directories :data:local:
+  Local Parquet now uses memory-mapped, bounded row-group caching directly;
+  it does not rewrite an immutable upstream Parquet into a Hugging Face Arrow
+  cache before Grain can consume it.
 * TODO Resolve local WebDataset artifacts :data:local:
 * TODO Resolve S3 and object-store artifacts first-class :data:s3:
 * DONE Let users map upstream records directly into canonical task examples :data:

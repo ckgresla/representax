@@ -14,6 +14,7 @@ from representax import Route
 from representax.integrations import (
     RetrievalPairCollator,
     SentencePairCollator,
+    SentenceTextCollator,
     load_sentence_transformer,
     load_sentence_transformer_artifact,
     load_sentence_transformer_encoder,
@@ -302,6 +303,26 @@ def test_retrieval_pair_collator_builds_aligned_static_mnr_batch(
         "query_field": "query",
         "document_field": "positive",
     }
+
+
+def test_sentence_text_collator_is_the_shared_static_preprocessing_boundary(
+    tmp_path,
+    monkeypatch,
+):
+    checkpoint = _checkpoint(tmp_path / "sentence-model")
+    monkeypatch.setattr(
+        "transformers.AutoTokenizer.from_pretrained",
+        lambda *_args, **_kwargs: _Tokenizer(),
+    )
+    collator = SentenceTextCollator(checkpoint, maximum_length=8)
+
+    batch = collator(("first", "second"))
+
+    assert batch.input_ids.shape == (2, 8)
+    assert batch.attention_mask.shape == (2, 8)
+    assert collator.data_contract()["schema_version"] == (
+        "representax-sentence-text-collator-v1"
+    )
 
 
 def test_host_embed_uses_fixed_shapes_routes_and_partial_batch_padding(tmp_path):

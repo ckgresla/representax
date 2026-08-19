@@ -1,0 +1,66 @@
+#+title: Matched MiniLM dense-retrieval training — 2026-08-18
+
+* Contract
+
+- Model: =sentence-transformers/all-MiniLM-L6-v2= revision
+  =1110a243fdf4706b3f48f1d95db1a4f5529b4d41=.
+- Training data: ordered rows from
+  =sentence-transformers/msmarco-msmarco-MiniLM-L6-v3= revision
+  =0d54352548089199bde15ad7e06efe895dc80b56=, Parquet shard
+  =triplet-all/train-00000-of-00039.parquet=.
+- Validation: =NanoMSMARCO= from =sentence-transformers/NanoBEIR-en=
+  revision =beb106fbcfaa599c508c667041bf8c85fd78736b=: 50 queries,
+  5,043 passages, and the same qrels.
+- Both systems use FP32, length 128, identical tokenizer/checkpoint/pooling,
+  asymmetric cosine MNR at scale 20, AdamW at =2e-5=, clipping at 1.0, the same
+  ordered examples and update count, and Sentence Transformers 5.6.1 as oracle.
+- Representax uses measured Grain execution settings: four host threads and an
+  eight-batch prefetch buffer. Initial nDCG, MRR, recall, precision, MAP, and
+  accuracy match the oracle exactly before training.
+
+The pinned source files and byte hashes are in the generated manifest at
+=/raid/representax/data/dense-retrieval-msmarco-v1/manifest.json=. The benchmark
+is replayable with =python -m benchmarks.dense_retrieval=.
+
+* Results
+
+Sustained rates exclude Representax compilation and its first execution.
+Sentence Transformers has no analogous compiled phase, so its measured trainer
+rate is used directly. Process peak is reported as a feasible-workload signal,
+not as a penalty for allocator policy.
+
+| execution | global batch | steps | native ex/s | ST ex/s | speedup | native compile+first | native peak GiB | ST peak GiB | native final nDCG@10 | ST final nDCG@10 |
+|-----------+--------------+-------+-------------+---------+---------+----------------------+-----------------+-------------+----------------------+------------------|
+| direct    |           32 |   200 |       626.5 |   600.7 |  1.043x |              33.54 s |            5.43 |        2.27 |             0.502506 |         0.503215 |
+| direct    |          128 |   200 |       735.9 |   825.5 |  0.891x |              36.23 s |           17.41 |        5.80 |             0.501117 |         0.504371 |
+| cache 32  |          128 |   200 |       601.8 |   542.9 |  1.108x |              43.55 s |            3.42 |        1.73 |             0.494958 |         0.497619 |
+| cache 32  |          512 |   100 |       632.0 |   568.4 |  1.112x |              45.62 s |            3.41 |        1.73 |             0.525592 |         0.514318 |
+
+The cached batch-128 job amortizes compilation after approximately 1,888
+updates; cached batch 512 does so after approximately 503. Direct batch 128 is
+both slower and much larger than the cached plan, so GradCache is a meaningful
+execution choice rather than a universally applied objective variant.
+
+* Data-pipeline finding
+
+With host prefetch deliberately disabled, the direct batch-32 run spent 5.57 of
+14.61 post-compile seconds waiting for data and sustained 435.8 examples/s.
+Four Grain threads and an eight-batch buffer reduced total data wait to 0.020
+seconds and raised sustained throughput to 626.5 examples/s. Placement consumed
+0.525 seconds total over 199 measured updates. This is the measured justification
+for prefetch; no device-prefetch layer was added.
+
+Local Parquet now uses memory-mapped, bounded row-group reads and does not build
+a duplicate Hugging Face Arrow cache before training.
+
+* Interpretation and remaining gate
+
+This establishes exact initial retrieval-metric parity and a first sustained
+training advantage for direct batch 32 and cached batches 128 and 512. It does
+not yet establish a model-quality advantage: the final nDCG@10 deltas span
+=-0.00325= to =+0.01127= in single-seed jobs whose dropout RNG streams are not
+identical across frameworks.
+
+Before closing the roadmap item, repeat the meaningful plans for at least three
+seeds, add MPNet and ModernVBERT, record direct and cached OOM frontiers, and
+report confidence intervals and time-to-quality.

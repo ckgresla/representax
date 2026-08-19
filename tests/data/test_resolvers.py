@@ -94,6 +94,32 @@ def test_local_artifacts_map_lazily_and_shuffle_deterministically(
     assert sorted(record["value"] for record in first_epoch) == [10, 20, 30]
 
 
+def test_local_parquet_uses_row_groups_without_a_datasets_cache(tmp_path, monkeypatch):
+    artifact_path = tmp_path / "records.parquet"
+    pq.write_table(
+        pa.Table.from_pylist([{"value": index} for index in range(7)]),
+        artifact_path,
+        row_group_size=3,
+    )
+    monkeypatch.setattr(
+        datasets,
+        "load_dataset",
+        lambda *_args, **_kwargs: pytest.fail(
+            "local Parquet must not construct a Hugging Face Arrow cache"
+        ),
+    )
+
+    source = data.resolve_local(data.source(artifact_path.as_uri(), map=project_record))
+
+    assert isinstance(source, data.ParquetSource)
+    assert len(source) == 7
+    assert source[0] == {"value": 0}
+    assert source[4] == {"value": 4}
+    assert source[-1] == {"value": 6}
+    with pytest.raises(IndexError):
+        source[7]
+
+
 def test_huggingface_resolver_forwards_pinned_identity(monkeypatch):
     calls = []
     source_dataset = datasets.Dataset.from_dict({"value": [4, 5]})

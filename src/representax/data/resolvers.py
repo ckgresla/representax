@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import json
+import threading
+from bisect import bisect_right
+from collections import OrderedDict
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 from urllib.parse import unquote, urlparse
@@ -64,6 +67,75 @@ class JsonLinesSource:
         with self.path.open("rb") as stream:
             stream.seek(self.offsets[index])
             return json.loads(stream.readline())
+
+
+@dataclass
+class ParquetSource:
+    """Memory-mapped, row-group-cached Parquet without an Arrow cache rewrite."""
+
+    path: Path
+    row_group_offsets: tuple[int, ...]
+    columns: tuple[str, ...]
+    _file: Any = field(repr=False)
+    _cache_size: int = field(default=2, repr=False)
+    _cache: OrderedDict[int, Any] = field(
+        default_factory=OrderedDict,
+        init=False,
+        repr=False,
+    )
+    _lock: threading.Lock = field(
+        default_factory=threading.Lock,
+        init=False,
+        repr=False,
+    )
+
+    @classmethod
+    def open(cls, path: Path, *, cache_size: int = 2) -> ParquetSource:
+        if cache_size <= 0:
+            raise ValueError("Parquet row-group cache size must be positive")
+        try:
+            import pyarrow.parquet as parquet
+        except ImportError as error:  # pragma: no cover - optional HF extra
+            raise ImportError(
+                "local Parquet resolution requires `pip install representax[hf]`"
+            ) from error
+        parquet_file = parquet.ParquetFile(path, memory_map=True)
+        offsets = []
+        position = 0
+        for index in range(parquet_file.num_row_groups):
+            offsets.append(position)
+            position += parquet_file.metadata.row_group(index).num_rows
+        return cls(
+            path=path,
+            row_group_offsets=tuple(offsets),
+            columns=tuple(parquet_file.schema_arrow.names),
+            _file=parquet_file,
+            _cache_size=cache_size,
+        )
+
+    def __len__(self) -> int:
+        return self._file.metadata.num_rows
+
+    def __getitem__(self, index: int) -> Any:
+        if index < 0:
+            index += len(self)
+        if index < 0 or index >= len(self):
+            raise IndexError(index)
+        row_group = bisect_right(self.row_group_offsets, index) - 1
+        offset = index - self.row_group_offsets[row_group]
+        with self._lock:
+            table = self._cache.get(row_group)
+            if table is None:
+                table = self._file.read_row_group(row_group)
+                self._cache[row_group] = table
+                if len(self._cache) > self._cache_size:
+                    self._cache.popitem(last=False)
+            else:
+                self._cache.move_to_end(row_group)
+        return {
+            name: table.column(column)[offset].as_py()
+            for column, name in enumerate(self.columns)
+        }
 
 
 def _datasets_module():
@@ -176,6 +248,8 @@ def resolve_local(artifact: ArtifactSpec) -> RandomAccessSource:
 
     if builder == "json":
         return JsonLinesSource.open(path)
+    if builder == "parquet":
+        return ParquetSource.open(path)
     datasets = _datasets_module()
     if builder == "arrow":
         resolved = datasets.Dataset.from_file(str(path), in_memory=False)
@@ -202,6 +276,7 @@ __all__ = [
     "ArtifactSpec",
     "BUILTIN_RESOLVERS",
     "JsonLinesSource",
+    "ParquetSource",
     "RandomAccessSource",
     "huggingface_dataset_id",
     "local_path",
