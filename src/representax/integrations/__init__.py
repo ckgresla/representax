@@ -31,6 +31,7 @@ from .jina import load_jina_v5_small_text_encoder
 from .sentence_transformers import (
     SENTENCE_TRANSFORMERS_ORACLE_VERSION,
     LoadedSentenceTransformer,
+    RetrievalPairCollator,
     SentencePairCollator,
     SentenceTransformerModuleSpec,
     load_sentence_transformer,
@@ -55,6 +56,7 @@ __all__ = [
     "ModelFamily",
     "ModelInputContract",
     "ResolvedHuggingFaceCheckpoint",
+    "RetrievalPairCollator",
     "SENTENCE_TRANSFORMERS_ORACLE_VERSION",
     "SentencePairCollator",
     "SentenceTransformerModuleSpec",

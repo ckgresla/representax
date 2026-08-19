@@ -12,6 +12,7 @@ from safetensors.numpy import save_file
 
 from representax import Route
 from representax.integrations import (
+    RetrievalPairCollator,
     SentencePairCollator,
     load_sentence_transformer,
     load_sentence_transformer_artifact,
@@ -268,6 +269,39 @@ def test_sentence_pair_collator_has_fixed_shapes_and_a_stable_contract(
     np.testing.assert_array_equal(batch.valid, [True, True, False, False])
     np.testing.assert_array_equal(batch.labels, [0.75, 0.25, 0.0, 0.0])
     assert collator.data_contract()["maximum_length"] == 8
+
+
+def test_retrieval_pair_collator_builds_aligned_static_mnr_batch(
+    tmp_path,
+    monkeypatch,
+):
+    checkpoint = _checkpoint(tmp_path / "sentence-model")
+    monkeypatch.setattr(
+        "transformers.AutoTokenizer.from_pretrained",
+        lambda *_args, **_kwargs: _Tokenizer(),
+    )
+    collator = RetrievalPairCollator(checkpoint, maximum_length=8)
+
+    batch = collator(
+        [
+            {"query": "first question", "positive": "first answer"},
+            {"query": "second question", "positive": "second answer"},
+        ]
+    )
+
+    assert batch.query.input_ids.shape == (2, 8)
+    assert batch.document.input_ids.shape == (2, 8)
+    np.testing.assert_array_equal(batch.positive_mask, np.eye(2, dtype=bool))
+    np.testing.assert_array_equal(batch.query_valid, [True, True])
+    np.testing.assert_array_equal(batch.document_valid, [True, True])
+    assert collator.data_contract() == {
+        "schema_version": "representax-retrieval-pair-collator-v1",
+        "checkpoint": str(checkpoint.resolve()),
+        "model_type": "bert",
+        "maximum_length": 8,
+        "query_field": "query",
+        "document_field": "positive",
+    }
 
 
 def test_host_embed_uses_fixed_shapes_routes_and_partial_batch_padding(tmp_path):

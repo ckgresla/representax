@@ -536,18 +536,14 @@ def load_sentence_transformer_encoder(
     ).encoder
 
 
-class SentencePairCollator:
-    """Tokenize raw labeled sentence pairs into one native static-shape batch."""
+class _NativeTextTokenizer:
+    """Shared fixed-shape tokenizer for native sentence-model collators."""
 
     def __init__(
         self,
         checkpoint: str | Path,
         *,
         maximum_length: int,
-        left_field: str = "sentence1",
-        right_field: str = "sentence2",
-        label_field: str = "score",
-        pad_to_size: int | None = None,
     ) -> None:
         if maximum_length <= 0:
             raise ValueError("maximum_length must be positive")
@@ -556,7 +552,7 @@ class SentencePairCollator:
         self.model_type = str(config.get("model_type", ""))
         if self.model_type not in {"bert", "mpnet", "qwen3_vl_audio"}:
             raise ValueError(
-                f"native sentence-pair collation does not support {self.model_type!r}"
+                f"native text collation does not support {self.model_type!r}"
             )
         try:
             from transformers import AutoTokenizer
@@ -570,28 +566,15 @@ class SentencePairCollator:
             trust_remote_code=self.model_type == "qwen3_vl_audio",
         )
         self.maximum_length = maximum_length
-        self.left_field = left_field
-        self.right_field = right_field
-        self.label_field = label_field
-        if pad_to_size is not None and pad_to_size <= 0:
-            raise ValueError("pad_to_size must be positive or None")
-        self.pad_to_size = pad_to_size
 
     def data_contract(self) -> Mapping[str, Any]:
-        """Return stable state incorporated into Grain resume fingerprints."""
-
         return {
-            "schema_version": "representax-sentence-pair-collator-v1",
             "checkpoint": str(self.checkpoint),
             "model_type": self.model_type,
             "maximum_length": self.maximum_length,
-            "left_field": self.left_field,
-            "right_field": self.right_field,
-            "label_field": self.label_field,
-            "pad_to_size": self.pad_to_size,
         }
 
-    def _tokenize(self, texts: Sequence[str]) -> Any:
+    def tokenize(self, texts: Sequence[str]) -> Any:
         tokenizer = cast(Callable[..., Any], self.tokenizer)
         encoded = tokenizer(
             list(texts),
@@ -624,6 +607,43 @@ class SentencePairCollator:
 
         return MPNetBatch(input_ids=input_ids, attention_mask=attention_mask)
 
+
+class SentencePairCollator:
+    """Tokenize raw labeled sentence pairs into one native static-shape batch."""
+
+    def __init__(
+        self,
+        checkpoint: str | Path,
+        *,
+        maximum_length: int,
+        left_field: str = "sentence1",
+        right_field: str = "sentence2",
+        label_field: str = "score",
+        pad_to_size: int | None = None,
+    ) -> None:
+        self._text = _NativeTextTokenizer(
+            checkpoint,
+            maximum_length=maximum_length,
+        )
+        self.left_field = left_field
+        self.right_field = right_field
+        self.label_field = label_field
+        if pad_to_size is not None and pad_to_size <= 0:
+            raise ValueError("pad_to_size must be positive or None")
+        self.pad_to_size = pad_to_size
+
+    def data_contract(self) -> Mapping[str, Any]:
+        """Return stable state incorporated into Grain resume fingerprints."""
+
+        return {
+            "schema_version": "representax-sentence-pair-collator-v1",
+            **self._text.data_contract(),
+            "left_field": self.left_field,
+            "right_field": self.right_field,
+            "label_field": self.label_field,
+            "pad_to_size": self.pad_to_size,
+        }
+
     def __call__(self, examples: Sequence[Mapping[str, Any]]) -> Any:
         from representax.tasks.pairwise import pairwise_batch
 
@@ -645,15 +665,62 @@ class SentencePairCollator:
             labels = (*labels, *(0.0 for _ in range(padding)))
             valid.extend(False for _ in range(padding))
         return pairwise_batch(
-            left=self._tokenize(left),
-            right=self._tokenize(right),
+            left=self._text.tokenize(left),
+            right=self._text.tokenize(right),
             labels=jnp.asarray(labels, dtype=jnp.float32),
             valid=jnp.asarray(valid),
         )
 
 
+class RetrievalPairCollator:
+    """Tokenize aligned query/positive rows for exact in-batch-negative MNR."""
+
+    def __init__(
+        self,
+        checkpoint: str | Path,
+        *,
+        maximum_length: int,
+        query_field: str = "query",
+        document_field: str = "positive",
+    ) -> None:
+        self._text = _NativeTextTokenizer(
+            checkpoint,
+            maximum_length=maximum_length,
+        )
+        self.query_field = query_field
+        self.document_field = document_field
+
+    def data_contract(self) -> Mapping[str, Any]:
+        """Return stable state incorporated into Grain resume fingerprints."""
+
+        return {
+            "schema_version": "representax-retrieval-pair-collator-v1",
+            **self._text.data_contract(),
+            "query_field": self.query_field,
+            "document_field": self.document_field,
+        }
+
+    def __call__(self, examples: Sequence[Mapping[str, Any]]) -> Any:
+        from representax.tasks.retrieval import retrieval_batch
+
+        try:
+            queries = tuple(str(example[self.query_field]) for example in examples)
+            documents = tuple(str(example[self.document_field]) for example in examples)
+        except KeyError as error:
+            raise KeyError(
+                f"retrieval-pair record is missing field {error.args[0]!r}"
+            ) from error
+        size = len(examples)
+        return retrieval_batch(
+            query=self._text.tokenize(queries),
+            document=self._text.tokenize(documents),
+            positive_mask=jnp.eye(size, dtype=jnp.bool_),
+        )
+
+
 __all__ = [
     "LoadedSentenceTransformer",
+    "RetrievalPairCollator",
     "SENTENCE_TRANSFORMERS_ORACLE_VERSION",
     "SentencePairCollator",
     "SentenceTransformerModuleSpec",

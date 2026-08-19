@@ -353,13 +353,20 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   registrations. A fresh installed-wheel environment matched every model type,
   module, config class, and base-model class against Transformers 5.3.0.
 * DONE Document what qualifies an architecture as supported :models:testing:
-* TODO Implement every pinned Transformers 5.3.0 =AutoModel= architecture natively :models:hf:
-  The target is all 441 task-neutral registrations in the pinned catalog, not
-  task-specific prediction heads.  The 34 config-only types remain catalogued
-  until they expose a task-neutral representation-bearing model.  Upstream
-  =AutoModel= dispatch is not the reuse boundary: 441 registrations contain 439
-  distinct model classes and roughly 379 pretrained base classes.  Reuse must
-  therefore occur through semantic components and family specifications.
+* TODO Grow verified native model families from representation-learning needs :models:hf:
+  Keep the pinned Transformers 5.3.0 catalogue as a versioned compatibility
+  index and code-generation input, not as a promise to backfill every
+  =AutoModel=. Add a native family when a representation task, modality, model,
+  or research result requires it, and claim support only after the complete
+  numerical, gradient, export, and systems gates pass.
+  The first acceptance panel spans BERT-family embedders such as MiniLM or BGE,
+  MPNet, ModernBERT/ModernVBERT, SigLIP2, and Jina v5 Omni. Grow beyond it
+  organically through multilingual XLM-R-style encoders, modern decoder
+  embedders, audio and video towers, state-space models, and mixture-of-experts
+  only when they create a concrete capability or scientific comparison.
+  Jina v5 Omni's CC-BY-NC-4.0 weights remain an external compatibility oracle;
+  native code support must not imply that Representax redistributes those
+  weights or grants commercial rights to them.
 ** DONE Generate a semantic model-family implementation manifest :models:codegen:
    Maintain one reviewed family specification that names its pinned model
    types, modalities, reusable components, configuration mapping, input/output
@@ -373,7 +380,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
    reject stale catalogue fingerprints, unknown or multiply owned model types,
    and verified status without configuration, checkpoint, forward,
    input-gradient, and performance evidence.
-** NEXT Build reusable native transformer and modality components :models:
+** TODO Build reusable native transformer and modality components :models:
 *** DONE Extract shared projection, normalization, embedding, and pooling primitives
     ModernVBERT now consumes the public Equinox components without changing its
     model tree or numerics.  Fast unit tests cover Hugging Face linear layout,
@@ -384,7 +391,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
     =lax.scan=, preserves inference and keyed-training dropout semantics, and
     passes a generated pinned Transformers 5.3.0 forward, pooler,
     input-embedding, and input-gradient oracle.
-*** NEXT Generalize positional, residual, MLP, and layer-stack policies through another family
+*** TODO Generalize positional, residual, MLP, and layer-stack policies through another family
     Extract a policy only when at least two native consumers demonstrate the
     same semantics; do not force superficially similar model graphs together.
 ** TODO Port encoder-only text families :models:text:
@@ -405,7 +412,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
     with 8.57e-8 maximum output error.  Native allocator peak is 0.764 GiB
     versus 0.547 GiB and remains an explicit warning.  Compile-plus-first is
     15.93 seconds versus 0.268 seconds and remains a cold-start optimization.
-*** NEXT Implement and accept BERT decoder cache and cross-attention modes :models:bert:
+*** TODO Implement and accept BERT decoder cache and cross-attention modes :models:bert:
 ** TODO Port decoder-only, state-space, and mixture-of-experts text families :models:text:
 *** DONE Port the pinned Jina v5 Omni Small text path :models:jina:
     Load only the 494M-parameter language path from the immutable Safetensors
@@ -433,7 +440,16 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   planned 20.17 GiB.  Evidence lives in
   =benchmarks/results/modernvbert-scan-20260813/=.
 * TODO Evaluate Haliax for named axes, model composition, and sharding ergonomics :models:distributed:research:
-* TODO Load Hugging Face configs, safetensors, tokenizers, and processors :models:hf:
+* TODO Unify native and Hugging Face loading without duplicate weights :models:hf:export:
+  Expose one public model loader that detects a Representax bundle, local Hugging
+  Face directory, or Hub reference. Reuse standard =config.json=,
+  Safetensors, tokenizer, and processor assets, while keeping Representax-only
+  pooling, route, prompt, precision, and task metadata in a small manifest.
+  Construct a typed weightless Equinox template from architecture metadata and
+  materialize the selected native weights exactly once; never reread a source
+  checkpoint merely to obtain tree structure before deserializing an export.
+  Memory mapping or lazy Safetensors reads may bound host memory, but the loader
+  must explicitly place every executable JAX array in its destination sharding.
 * TODO Export trained models back to Hugging Face-compatible artifacts :models:hf:
 * TODO Test tokenizer and processor parity with upstream Transformers :models:testing:
 * TODO Test layer-level and full-forward FP32 parity :models:testing:
@@ -471,7 +487,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   text, image, audio, video, and fused inputs cut across those contracts.
   The system-level dense audit and the exact boundary we intend to implement
   live in =docs/dense-system-audit.md=.
-** NEXT Complete the dense bi-encoder route :api:models:retrieval:
+** TODO Complete the dense bi-encoder route :api:models:retrieval:
 *** DONE Load the standard serialized dense module chain
     Resolve a pinned Hub revision or local directory, parse =modules.json= and
     =config_sentence_transformers.json= without importing PyTorch, and compose a
@@ -563,9 +579,13 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      shifted token reconstruction. Mega-batch margins are scientific loss
      parameters; bounded candidate mining and replay are execution policy.
 *** TODO Complete the released dense evaluator inventory
-    Cover embedding similarity, binary and label classification, information
-    retrieval and NanoBEIR, triplet, reranking, paraphrase mining, translation,
-    MSE, and sequential composition through reusable metric protocols.
+    Treat semantic similarity and information retrieval as different evaluation
+    geometries. Semantic-similarity evaluators consume labeled pairs and report
+    correlation or classification behavior; retrieval evaluators consume
+    queries, corpora, and relevance judgments and report ranking behavior such
+    as nDCG, MRR, MAP, and recall. Cover both families plus triplet, reranking,
+    paraphrase mining, translation, MSE, NanoBEIR, and sequential composition
+    through reusable metric protocols.
 **** DONE Define one typed evaluator protocol and namespaced =valid/...= results
      Keep compiled batch inference separate from host corpus accumulation and
      finalization so exact correlation/ranking metrics do not enter JIT. The
@@ -575,8 +595,14 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      pinned Sentence Transformers oracle on identical representations, including
      average-rank tie behavior. Evaluation always uses deterministic inference;
      training keys no longer accidentally enable model dropout.
+**** DONE Implement streaming information-retrieval evaluation and 5.6.1 parity
+     Encode all query batches before corpus batches, stream each corpus chunk
+     through bounded top-k state rather than retaining the complete corpus
+     embedding matrix, and report accuracy, precision, recall, MRR, nDCG, and
+     MAP. Exact same-ranking metric parity passes against Sentence Transformers
+     5.6.1, including multiple relevant documents and every configured cutoff.
 **** TODO Implement classification, triplet, and MSE evaluators
-**** TODO Implement retrieval, reranking, paraphrase, translation, and NanoBEIR
+**** TODO Implement reranking, paraphrase, translation, and NanoBEIR adapters
 **** TODO Add sequential composition and explicit primary-metric selection
 *** DONE Land configuration-driven end-to-end training jobs
     Support source-neutral single and multi-source training, per-source tasks and
@@ -607,11 +633,13 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      primary-metric comparison, lifecycle events, and checkpoint association.
      Pass scalar checkpoint metrics into Orbax and compose latest-N plus best-N
      preservation rather than reimplementing array storage.
-**** DONE Publish and reload inference-ready final/best artifacts
+**** DONE Publish and reload the first inference-ready final/best artifacts
      Restore only the selected model, atomically serialize a universal native
      artifact with its exact job/model identity, optionally map back into the
      source-compatible Hugging Face checkpoint, and verify a clean reload before
-     marking the export complete.
+     marking the export complete. This accepted first slice still reconstructs
+     the native template from its source checkpoint; the source-independent,
+     single-load path remains explicitly open under the unified loader milestone.
     Accepted with one disk-to-final-model runtime test: local JSONL through
     Grain, compiled two-microbatch accumulation, three optimizer updates,
     validation at iterations 0--3, asynchronous Orbax latest/best retention,
@@ -628,13 +656,22 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
 **** TODO Make prompts and typed routes first-class preprocessing configuration
 **** TODO Add W&B reporting through the existing asynchronous reporter protocol
 **** TODO Add source-neutral offline hard-negative mining with artifact provenance
-*** TODO Beat matched dense Sentence Transformers systems performance
-    Hold checkpoint, preprocessing, pooling, objective, precision, shapes, and
-    effective batch fixed. Gate numerical and quality equivalence first, then
-    compilation latency, steady-state throughput, allocator and process peak,
-    maximum effective batch, and device scaling. Compilation is an explicit,
-    reported phase with bounded shape signatures, never an invisible training
-    stall.
+*** NEXT Prove a matched dense-retrieval training advantage over Sentence Transformers
+    Use a pinned local retrieval dataset, identical raw examples, tokenizer,
+    checkpoint, pooling, MNR or exact GradCache objective, optimizer, precision,
+    logical negative population, validation corpus, and update count. Gate
+    numerical and held-out retrieval quality first. The primary systems evidence
+    is sustained examples, tokens, and negatives per second; accelerator
+    utilization and input starvation; the maximum feasible workload before OOM;
+    time-to-quality; and device scaling. Report compilation separately and do
+    not score JAX allocator reservation as a regression unless it reduces the
+    feasible workload or reveals avoidable materialization.
+    Run two distinct batch studies: hold the scientific global batch fixed while
+    changing only GradCache chunks, placement, and sharding; then vary the
+    scientific global batch and report its quality/throughput frontier. Start
+    with the already supported MiniLM/BERT, MPNet, and ModernVBERT families,
+    then extend the same contract through SigLIP2 and Jina v5 Omni after the
+    modality substrate is accepted.
     The first 4090 gate at batch 16 and sequence 128 passes numerical and
     throughput requirements: Representax sustains 6,938 examples/s versus
     5,290 for Sentence Transformers, a =1.312x= speedup, and compiles in 15.34
@@ -653,14 +690,15 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      Native allocator usage is 5.1%--5.6% higher while process-visible device
      usage is 0.8%--1.5% lower. Raw reports, replay, and the validated summary
      live in =benchmarks/results/grad-cache-st56-20260817/=.
-**** NEXT Beat the dataset-on-disk through durable-final-model baseline
+**** DONE Record the paired dataset-on-disk through durable-final-model baseline
      Start timing at process launch with pinned raw local data and an initial
      checkpoint already on disk. Stop only after preprocessing, nonzero-rate
      training, validation, asynchronous checkpoint synchronization, final model
      export, and fresh-process reload verification. Compare cold and warm
      preprocessing separately and report total/stage wall time, host/device
      memory, restart cost, and final validation quality. The exact contract is
-     =docs/dense-system-audit.md=.
+     =docs/dense-system-audit.md=. Retain this as lifecycle evidence and a paper
+     appendix, not as the primary claim about training throughput.
 ***** DONE Establish cold MiniLM and Jina Small paired baselines
       The immutable STSB JSONL flow now covers raw Grain/Sentence Transformers
       input through training, start/end embedding-similarity evaluation,
@@ -673,9 +711,9 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
       a recorded failing systems baseline, not a superiority claim. Evidence is
       in =benchmarks/results/dense-e2e-20260817/=.
 ***** TODO Remove duplicate source-checkpoint reconstruction from native reload
-      Reconstruct a safe typed model template from bundle metadata without
-      rereading and placing the original checkpoint before deserializing the
-      exported weights.
+      Complete the unified model-loader milestone: reconstruct a typed,
+      weightless template from bundled Hugging Face-compatible architecture
+      metadata, then materialize the exported native weights exactly once.
 ***** TODO Reduce cold train/evaluator compilation and steady-state update time
       Preserve the exact model, task, precision, batch, and validation contract;
       report persistent-cache behavior separately from an honest cold process.
@@ -684,18 +722,44 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
    masking and compression, in-batch negatives, cached/replayed representations,
    retrieval evaluators, and efficient indexing. Treat the released 5.6.1 oracle
    as a baseline inventory, not as the ceiling for this track.
+   Use PyLate as the current implementation oracle, ColBERTv2 as the scientific
+   oracle, and PLAID as the retrieval-system reference. Accept exact projected
+   token embeddings, masks, MaxSim values and gradients before benchmarking a
+   Pallas MaxSim kernel, GradCache over token matrices, compressed indexing,
+   index size, retrieval QPS, and quality at fixed latency.
 ** TODO Implement cross-encoder and reranker training :tasks:cross_encoder:
    Cover encoder and generative scoring modules; pointwise, pairwise, and listwise
    losses; classification, correlation, reranking, and NanoBEIR evaluators; and
    text/image/audio/video pair routing under the shared trainer.
+   Pin Sentence Transformers CrossEncoder as the implementation oracle and cover
+   BCE, multiclass cross-entropy, MSE and MarginMSE, RankNet, LambdaLoss, ListNet,
+   ListMLE/PListMLE, and cached MNR through paired tensor tests before matched
+   candidate-list jobs.
 ** TODO Implement sparse encoder training and retrieval :tasks:sparse_encoder:
    Cover MLM and static sparse backbones, SPLADE and sparse-autoencoder pooling,
    sparse MNR/CoSENT/triplet/MSE/distillation losses, FLOPS regularization, CSR
    reconstruction, sparse retrieval metrics, and reciprocal-rank fusion.
+   Use the current Sentence Transformers SparseEncoder as the implementation
+   oracle and SPLADE-v3 as the scientific reference. Treat the noncommercial
+   SPLADE repository as an external oracle only. Measure effectiveness jointly
+   with active dimensions, sparsity, index size, encoding rate, and retrieval QPS.
 ** TODO Validate multimodal capability across every supported encoder route :multimodal:
-   Exercise text, image, audio, video, and fused examples through preprocessing,
-   model forwards, losses, evaluators, batching, export, and matched systems
-   gates rather than treating multimodality as inference-only metadata.
+   Exercise text, image, audio, video, and composed multimodal examples through
+   preprocessing, model forwards, losses, evaluators, batching, export, and
+   matched systems gates rather than treating multimodality as inference-only
+   metadata.
+*** TODO Make modality identifiers and input contracts extensible
+    Register typed built-in text, image, audio, and video contracts while
+    allowing downstream projects to add named modalities at the Python build
+    boundary. Resolve adapters before JIT so compiled programs receive only
+    static array PyTrees, never arbitrary raw Python payloads.
+*** TODO Express fusion as composition rather than a fifth modality
+    Represent one example as named modality components with explicit fusion
+    semantics. Do not encode =fused= as a mutually exclusive modality value.
+*** TODO Define decode, preprocess, collate, bucket, and placement adapters
+    Keep raw artifact handling outside the model. Require each adapter to expose
+    reproducible fingerprints, model-ready tensor contracts, padding masks,
+    finite shape choices, and iterator-resume state.
 * TODO Support =encode_query= and =encode_document= behavior through typed routes :api:retrieval:
 * TODO Add Hugging Face Hub loading, local loading, and model export :api:hf:
 * TODO Add multi-dataset functionality through source sampling policies :api:data:
@@ -715,6 +779,12 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
 * TODO Implement listwise reward modeling :tasks:reward_modeling:
 * TODO Implement pointwise and process reward modeling :tasks:reward_modeling:
 * TODO Implement JEPA-style self-supervised learning :tasks:jepa:
+  Use TRL RewardTrainer for pairwise/outcome parity, formula-level
+  Plackett--Luce references for listwise rewards, and the pinned experimental TRL
+  PRM trainer plus PRM800K/ProcessBench for process rewards. Use Meta V-JEPA 2.1
+  as the maintained JEPA implementation and systems oracle; require exact masks,
+  EMA target updates, latent objectives, and collapse diagnostics before matched
+  video jobs and frozen probes.
 * TODO Ship reward modeling and JEPA before the first research release :tasks:release:
 
 * DONE Resolve Hugging Face datasets without proprietary intermediate copies :data:hf:
@@ -749,23 +819,31 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
 * TODO Stream image examples from source through the model forward :data:image:
 * TODO Decode and stream audio efficiently through the model forward :data:audio:
 * TODO Decode, sample, and stream video efficiently through the model forward :data:video:
-* TODO Train mixed text, image, audio, video, and fused batches efficiently :data:multimodal:
-* TODO Avoid uncontrolled recompilation across modality and shape buckets :data:multimodal:
+* TODO Train mixed text, image, audio, video, and composed multimodal batches efficiently :data:multimodal:
+* TODO Enforce a static model-ready ABI at the compiled step boundary :data:multimodal:runtime:
+  Keep =train_step= as the canonical JIT boundary. Resolve variable records,
+  decoding, tokenization, sampling, collation, and padding before it, and pass
+  only clean tensors in one declared static signature or a small explicitly
+  configured set. Compile each allowed signature deliberately before sustained
+  training and reject unseen signatures rather than silently compiling inside a
+  run. Measure padding waste per signature; do not regain compile stability by
+  unconditionally materializing the largest multimodal bucket.
 
-* WAITING Validate fully distributed multi-host training and arbitrary sharding :distributed:
+* TODO Implement arbitrary named single-host sharding :distributed:
+  Start after the matched dense-retrieval systems proof. Keep replicated
+  =DataParallel= as one standard plan and make FSDP one named preset over the
+  same generic mesh and partition-rule machinery, not a task-specific runtime.
+  Initialize parameter and optimizer shards directly in their destination
+  layouts and verify complete updates against the replicated oracle.
+** TODO Accept FSDP and hybrid data/model presets on one host
+** TODO Accept user-supplied compatible meshes and partition rules
+** TODO Inspect expected AllReduce, AllGather, and ReduceScatter collectives
+
+* WAITING Validate fully distributed multi-host training :distributed:
   This milestone requires at least two physical accelerator hosts with a
   routable coordinator and is intentionally deferred until those resources are
   available.  Single-host replicated data parallelism and exact GradCache are
   already accepted and remain the local numerical oracle.
-** TODO Implement named arbitrary sharding configurations
-   Keep =DataParallel= as the replicated-state standard plan.  Add fully
-   sharded data parallel (FSDP) and hybrid data/model sharding plans without
-   coupling task semantics to one mesh shape.  Users must be able to supply a
-   compatible named mesh and partition rules rather than selecting from only a
-   closed topology registry.  Follow the JAX Training Cookbook's named-mesh and
-   =jax.P= contracts, initialize parameter and optimizer shards directly in
-   their destination layouts, and inspect the expected AllReduce, AllGather,
-   and ReduceScatter collectives in compiled traces.
 ** TODO Validate model and optimizer-state sharding across hosts
    Compare complete updates against the replicated oracle, measure collective
    and resharding costs, and verify that parameter, optimizer, and activation
@@ -805,10 +883,15 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   =benchmarks/results/modernvbert-rematerialization-20260813/=.
 * DONE Verify buffer donation with Orbax V1 asynchronous checkpoint/resume :runtime:performance:
 * TODO Overlap device placement with Grain input prefetching :runtime:performance:
-  Build device-ready iterators with non-blocking =jax.device_put= on one host and
-  =jax.make_array_from_process_local_data= for process-local distributed input,
-  then verify from traces that loading and transfer do not create step bubbles.
-* TODO Cache compiled static-shape signatures deliberately :runtime:performance:
+  First prove from =data_wait_seconds=, placement timing, queue depth, and device
+  traces that input or transfer bubbles reduce sustained training throughput.
+  Only then build device-ready iterators with non-blocking =jax.device_put= on
+  one host and =jax.make_array_from_process_local_data= for distributed input,
+  and accept the change only when the observed bottleneck improves.
+* TODO Precompile and cache the declared static step signatures :runtime:performance:
+  Reuse the exact compiled =train_step= for every batch with the same model-ready
+  ABI. Bound any finite signature set in configuration and never let raw record
+  variability create an uncontrolled executable population.
 * TODO Benchmark JAX =Ref= state against functional Equinox/Optax donation :runtime:performance:research:
   Keep the canonical functional update unless measured memory or throughput
   evidence shows that mutable =Ref= state from the JAX Training Cookbook is a
