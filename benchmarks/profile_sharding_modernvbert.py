@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import statistics
 import threading
 import time
@@ -20,11 +21,13 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument("--checkpoint", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--stablehlo-output", type=Path)
+    parser.add_argument("--compiled-hlo-output", type=Path)
     parser.add_argument("--strategy", choices=("ddp", "fsdp"), required=True)
+    parser.add_argument("--axis-type", choices=("auto", "explicit"), default="auto")
     parser.add_argument(
         "--materialization-boundary",
         choices=("model", "layer"),
-        default="layer",
+        default="model",
     )
     parser.add_argument("--world-size", type=int, default=2)
     parser.add_argument("--physical-device-ids", default="4,5")
@@ -86,6 +89,53 @@ def _layout_summary(tree: Any) -> dict[str, Any]:
         "partition_spec_counts": dict(sorted(specs.items())),
         "largest_arrays": largest,
     }
+
+
+def _metric_snapshot(metrics: Any) -> dict[str, Any]:
+    import jax
+
+    task = jax.device_get(metrics.task)
+    return {
+        "loss": float(metrics.loss),
+        "task": {str(name): float(value) for name, value in task.items()},
+        "gradient_global_norm": float(metrics.gradient_global_norm),
+        "clipped_gradient_global_norm": float(metrics.clipped_gradient_global_norm),
+        "update_global_norm": float(metrics.update_global_norm),
+        "numeric_finite": bool(metrics.numeric_finite),
+        "skipped_update": bool(metrics.skipped_update),
+    }
+
+
+def _tree_signature(tree: Any) -> list[dict[str, Any]]:
+    """Record compact per-leaf numerical evidence without exporting full state."""
+
+    import equinox as eqx
+    import jax
+    import jax.numpy as jnp
+
+    signature = []
+    for path, value in jax.tree.flatten_with_path(tree)[0]:
+        if not eqx.is_array(value):
+            continue
+        numeric = value.astype(jnp.float32)
+        total, squared_total, maximum = jax.device_get(
+            (
+                jnp.sum(numeric),
+                jnp.sum(jnp.square(numeric)),
+                jnp.max(jnp.abs(numeric)),
+            )
+        )
+        signature.append(
+            {
+                "path": jax.tree_util.keystr(path),
+                "shape": list(value.shape),
+                "dtype": str(value.dtype),
+                "sum": float(total),
+                "squared_sum": float(squared_total),
+                "absolute_maximum": float(maximum),
+            }
+        )
+    return signature
 
 
 class _NvmlSampler:
@@ -179,6 +229,12 @@ def _memory_analysis(compiled: Any) -> dict[str, int] | None:
     }
 
 
+def _compiled_collective_count(hlo: str, name: str) -> int:
+    """Count synchronous collectives or asynchronous starts, but not completions."""
+
+    return len(re.findall(rf"\b{re.escape(name)}(?:-start)?\(", hlo))
+
+
 def main() -> None:
     arguments = _arguments()
     if arguments.global_batch_size % arguments.world_size:
@@ -194,6 +250,7 @@ def main() -> None:
     import jax
     import jax.numpy as jnp
     import optax
+    from jax.sharding import AxisType
 
     from representax.models.modernvbert import (
         ModernVBERTTextBatch,
@@ -254,6 +311,9 @@ def main() -> None:
     mesh = jax.make_mesh(
         (arguments.world_size,),
         ("data",),
+        axis_types=(
+            AxisType.Auto if arguments.axis_type == "auto" else AxisType.Explicit,
+        ),
         devices=devices,
     )
     if arguments.strategy == "ddp":
@@ -296,11 +356,17 @@ def main() -> None:
     compile_started = time.perf_counter()
     compiled = lowered.compile()
     compile_seconds = time.perf_counter() - compile_started
+    compiled_hlo = "\n".join(
+        module.to_string() for module in compiled.runtime_executable().hlo_modules()
+    )
+    if arguments.compiled_hlo_output is not None:
+        arguments.compiled_hlo_output.parent.mkdir(parents=True, exist_ok=True)
+        arguments.compiled_hlo_output.write_text(compiled_hlo)
 
     current_state = placed_state
     for index in range(arguments.warmup_steps):
         result = compiled(
-            current_state,
+            placed_state,
             placed_batch,
             jax.device_put(
                 jax.random.fold_in(jax.random.key(arguments.seed), index),
@@ -308,8 +374,8 @@ def main() -> None:
             ),
         )
         jax.block_until_ready(result)
-        current_state = result.state
     step_seconds = []
+    metric_trajectory = []
     for index in range(arguments.measured_steps):
         key = jax.device_put(
             jax.random.fold_in(
@@ -327,12 +393,14 @@ def main() -> None:
             result = compiled(current_state, placed_batch, key)
             jax.block_until_ready(result)
         step_seconds.append(time.perf_counter() - started)
+        metric_trajectory.append(_metric_snapshot(result.metrics))
         current_state = result.state
     nvml = sampler.finish()
 
     artifact = {
-        "schema_version": "representax-sharding-profile-v1",
+        "schema_version": "representax-sharding-profile-v2",
         "strategy": arguments.strategy,
+        "axis_type": arguments.axis_type,
         "materialization_boundary": (
             arguments.materialization_boundary if arguments.strategy == "fsdp" else None
         ),
@@ -354,6 +422,11 @@ def main() -> None:
             if arguments.stablehlo_output is None
             else str(arguments.stablehlo_output)
         ),
+        "compiled_hlo_output": (
+            None
+            if arguments.compiled_hlo_output is None
+            else str(arguments.compiled_hlo_output)
+        ),
         "global_batch_size": arguments.global_batch_size,
         "local_batch_size": arguments.global_batch_size // arguments.world_size,
         "sequence_length": arguments.sequence_length,
@@ -361,6 +434,7 @@ def main() -> None:
         "lowering_seconds": lowering_seconds,
         "compile_seconds": compile_seconds,
         "step_seconds": step_seconds,
+        "metric_trajectory": metric_trajectory,
         "median_step_seconds": statistics.median(step_seconds),
         "examples_per_second": (
             arguments.global_batch_size / statistics.median(step_seconds)
@@ -370,9 +444,24 @@ def main() -> None:
             "reduce_scatter": stablehlo.count('"stablehlo.reduce_scatter"'),
             "all_reduce": stablehlo.count('"stablehlo.all_reduce"'),
         },
+        "compiled_hlo_collectives": {
+            "all_gather": _compiled_collective_count(compiled_hlo, "all-gather"),
+            "all_reduce": _compiled_collective_count(compiled_hlo, "all-reduce"),
+            "reduce_scatter": _compiled_collective_count(
+                compiled_hlo,
+                "reduce-scatter",
+            ),
+            "collective_permute": _compiled_collective_count(
+                compiled_hlo,
+                "collective-permute",
+            ),
+            "all_to_all": _compiled_collective_count(compiled_hlo, "all-to-all"),
+        },
         "compiled_memory_analysis": _memory_analysis(compiled),
         "model_layout": _layout_summary(current_state.model),
         "optimizer_layout": _layout_summary(current_state.optimizer_state),
+        "model_signature": _tree_signature(current_state.model),
+        "optimizer_signature": _tree_signature(current_state.optimizer_state),
         "batch_layout": _layout_summary(placed_batch),
         "jax_device_memory": {
             str(device): {

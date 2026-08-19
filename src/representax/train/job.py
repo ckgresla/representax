@@ -200,6 +200,9 @@ def build_job_runtime(
         mesh = jax.make_mesh(
             job.training.mesh.axis_shapes,
             job.training.mesh.axis_names,
+            axis_types=(
+                (jax.sharding.AxisType.Auto,) * len(job.training.mesh.axis_names)
+            ),
             devices=jax.devices()[:mesh_size],
         )
         sharding = job.training.sharding
@@ -214,7 +217,6 @@ def build_job_runtime(
                 optimizer,
                 mesh,
                 axis_name=sharding.axis,
-                gradient_bucket_bytes=sharding.gradient_bucket_bytes,
             )
             state = plan.place_state(state)
             step = build_sharded_train_step(

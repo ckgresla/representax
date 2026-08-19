@@ -7,10 +7,14 @@ from typing import Any, cast
 
 import equinox as eqx
 import jax
-import jax.numpy as jnp
 from jaxtyping import Array, Float, PRNGKeyArray
 
 from representax.core import Encoder, LossOutput, Route, Task, encode
+from representax.core.sharding import (
+    batch_to_scan,
+    constrain_activation,
+    scan_to_batch,
+)
 from representax.tasks.guided import GISTBatch, GISTTask
 from representax.tasks.modifiers import MatryoshkaTask
 from representax.tasks.retrieval import MNRTask, RetrievalBatch
@@ -39,18 +43,16 @@ def _pad_and_chunk(inputs: Any, *, batch_size: int, chunk_size: int) -> Any:
     if any(leaf.ndim == 0 or leaf.shape[0] != batch_size for leaf in leaves):
         raise ValueError("GradCache inputs must be row-major")
 
-    chunk_count = (batch_size + chunk_size - 1) // chunk_size
-    padded_size = chunk_count * chunk_size
-    padding = padded_size - batch_size
-
     def chunk(leaf: Array) -> Array:
-        widths = ((0, padding),) + ((0, 0),) * (leaf.ndim - 1)
         # Repeat a real row rather than synthesizing an all-zero example. The
         # padded outputs are discarded either way, while an all-zero row can
         # have undefined model derivatives (for example through L2 norm at 0)
         # and poison the otherwise zero cotangent during replay.
-        padded = jnp.pad(leaf, widths, mode="edge")
-        return padded.reshape((chunk_count, chunk_size, *leaf.shape[1:]))
+        return batch_to_scan(
+            leaf,
+            local_chunk_size=chunk_size,
+            pad_mode="edge",
+        )
 
     return jax.tree.map(chunk, inputs)
 
@@ -67,7 +69,8 @@ def _rematerialized_encode(
     """Encode chunks while retaining only representations across the forward scan."""
 
     chunks = _pad_and_chunk(inputs, batch_size=batch_size, chunk_size=chunk_size)
-    chunk_count = (batch_size + chunk_size - 1) // chunk_size
+    first_chunk = jax.tree.leaves(chunks)[0]
+    chunk_count = first_chunk.shape[0]
 
     if key is None:
 
@@ -94,7 +97,13 @@ def _rematerialized_encode(
         policy=jax.checkpoint_policies.nothing_saveable,
     )
     _, encoded_chunks = jax.lax.scan(rematerialized_body, None, scan_inputs)
-    embeddings = encoded_chunks.reshape((-1, encoded_chunks.shape[-1]))
+    embeddings = constrain_activation(
+        scan_to_batch(
+            encoded_chunks,
+            batch_size=batch_size,
+            local_chunk_size=chunk_size,
+        )
+    )
     return embeddings[:batch_size]
 
 

@@ -9,6 +9,10 @@ import jax
 import jax.numpy as jnp
 from jaxtyping import Array, Bool, Float, Int, PRNGKeyArray
 
+from representax.core.sharding import (
+    activation_out_sharding,
+    constrain_activation,
+)
 from representax.planning import RematerializationPolicy
 
 AttentionImplementation = Literal["xla", "cudnn"]
@@ -39,7 +43,10 @@ def embedding_lookup(
 ) -> Float[Array, "*batch hidden"]:
     """Gather embeddings; repeated-token gradients accumulate naturally."""
 
-    return table[indices]
+    output = table.at[indices].get(
+        out_sharding=activation_out_sharding(indices.ndim + 1)
+    )
+    return constrain_activation(output)
 
 
 class Linear(eqx.Module):
@@ -69,8 +76,14 @@ class Linear(eqx.Module):
         self,
         value: Float[Array, "*batch input"],
     ) -> Float[Array, "*batch output"]:
-        output = value @ self.weight.T
-        return output if self.bias is None else output + self.bias
+        output = jnp.matmul(
+            value,
+            self.weight.T,
+            out_sharding=activation_out_sharding(value.ndim),
+        )
+        if self.bias is not None:
+            output = output + self.bias
+        return constrain_activation(output)
 
 
 class LayerNorm(eqx.Module):
@@ -125,9 +138,8 @@ class RMSNorm(eqx.Module):
         inverse_rms = jax.lax.rsqrt(
             jnp.mean(jnp.square(value), axis=-1, keepdims=True) + self.epsilon
         )
-        return (value * inverse_rms * self.weight.astype(jnp.float32)).astype(
-            source_dtype
-        )
+        output = value * inverse_rms * self.weight.astype(jnp.float32)
+        return output.astype(source_dtype)
 
 
 def activate(

@@ -14,10 +14,10 @@ from jax.sharding import PartitionSpec as P
 from representax.models import DenseEncoder
 from representax.tasks.retrieval import (
     ProcessLocalRetrievalBatch,
+    place_process_local_retrieval_batch,
     process_local_retrieval_batch,
 )
 from representax.train import (
-    DataParallel,
     ShardingPlan,
     init_train_state,
     parameter_specs_from_rules,
@@ -51,14 +51,16 @@ def test_process_local_retrieval_batch_rejects_short_global_document_axis():
 
 
 def test_data_parallel_assembles_process_local_rows_on_one_process():
-    plan = DataParallel.from_devices([jax.devices("cpu")[0]])
+    device = jax.devices("cpu")[0]
+    mesh = jax.make_mesh((1,), ("data",), devices=[device])
+    sharding = jax.sharding.NamedSharding(mesh, P("data"))
     local_batch = process_local_retrieval_batch(
         query=jnp.arange(6).reshape(2, 3),
         document=jnp.arange(6, 12).reshape(2, 3),
         positive_mask=jnp.eye(2, dtype=jnp.bool_),
     )
 
-    global_batch = plan.place_process_local_batch(local_batch)
+    global_batch = place_process_local_retrieval_batch(local_batch, sharding)
 
     np.testing.assert_array_equal(global_batch.query, local_batch.query)
     np.testing.assert_array_equal(global_batch.document, local_batch.document)
@@ -107,4 +109,28 @@ def test_fsdp_rejects_specs_that_do_not_match_parameter_divisibility():
             specs,
             parameter_axis_names=("model",),
             data_axis_name=None,
+        )
+
+
+@pytest.mark.distributed
+def test_layer_fsdp_requires_an_explicit_model_capability():
+    devices = jax.devices()
+    if len(devices) < 2:
+        pytest.skip("requires two JAX devices")
+    model = DenseEncoder(4, 4, key=jax.random.key(3))
+    optimizer = optax.adamw(1e-3)
+    state = init_train_state(model, optimizer)
+    mesh = jax.make_mesh((2,), ("model",), devices=devices[:2])
+
+    with pytest.raises(
+        NotImplementedError,
+        match="does not implement layer-boundary FSDP",
+    ):
+        ShardingPlan.fsdp(
+            state,
+            optimizer,
+            mesh,
+            parameter_axis_name="model",
+            minimum_parameter_elements=1,
+            materialization_boundary="layer",
         )

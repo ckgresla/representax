@@ -219,6 +219,7 @@ def test_fsdp_grad_cache_matches_replicated_global_update(world_size: int):
         parameter_axis_name="data",
         data_axis_name="data",
         minimum_parameter_elements=1,
+        materialization_boundary="model",
     )
     distributed_step = build_sharded_train_step(
         task,
@@ -300,6 +301,7 @@ def test_pure_fsdp_direct_matches_replicated_update(world_size: int):
         parameter_axis_name="model",
         data_axis_name=None,
         minimum_parameter_elements=1,
+        materialization_boundary="model",
     )
     distributed_step = build_sharded_train_step(
         task,
@@ -356,6 +358,7 @@ def test_hybrid_data_and_fsdp_axes_match_replicated_update():
         parameter_axis_name="model",
         data_axis_name="data",
         minimum_parameter_elements=1,
+        materialization_boundary="model",
     )
     distributed_step = build_sharded_train_step(
         task,
@@ -396,6 +399,7 @@ def test_fsdp_lowering_contains_materialization_and_gradient_collectives():
         parameter_axis_name="data",
         data_axis_name="data",
         minimum_parameter_elements=1,
+        materialization_boundary="model",
     )
     step = build_sharded_train_step(
         task,
@@ -409,19 +413,21 @@ def test_fsdp_lowering_contains_materialization_and_gradient_collectives():
         ),
     )
 
-    lowered = (
+    compiled = (
         cast(Any, step)
         .lower(
             plan.place_state(state),
             plan.place_batch(_global_batch()),
             jax.device_put(jax.random.key(17), plan.replicated_sharding),
         )
-        .as_text()
+        .compile()
+    )
+    partitioned_hlo = "\n".join(
+        module.to_string() for module in compiled.runtime_executable().hlo_modules()
     )
 
-    assert '"stablehlo.all_gather"' in lowered
-    assert '"stablehlo.reduce_scatter"' in lowered
-    assert '"stablehlo.all_reduce"' in lowered
+    assert "all-gather(" in partitioned_hlo
+    assert "reduce-scatter(" in partitioned_hlo or "all-reduce(" in partitioned_hlo
 
 
 @pytest.mark.distributed
@@ -442,6 +448,7 @@ def test_fsdp_checkpoint_restore_preserves_state_and_shardings(tmp_path):
         parameter_axis_name="data",
         data_axis_name="data",
         minimum_parameter_elements=1,
+        materialization_boundary="model",
     )
     step = build_sharded_train_step(
         task,
@@ -525,6 +532,7 @@ def test_job_config_builds_and_runs_sharding_plan(
         FSDPConfig(
             data_axis="data",
             minimum_parameter_elements=1,
+            materialization_boundary="model",
         )
         if sharding_kind == "fsdp"
         else CustomShardingConfig(

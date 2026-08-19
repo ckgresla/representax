@@ -12,6 +12,13 @@ import jax.numpy as jnp
 from jaxtyping import Array, Bool, Float, PRNGKeyArray
 
 from representax.core import EncodeFunction, Encoder, LossOutput, Route, encode
+from representax.core.sharding import (
+    activation_out_sharding,
+    batch_to_scan,
+    constrain_activation,
+    replicate,
+    scan_to_batch,
+)
 
 from .batch import RetrievalBatch
 
@@ -130,8 +137,14 @@ def _direction_row_terms(
 ]:
     """Canonical MNR formula for one contiguous block of objective rows."""
 
-    cosine = _normalize(row_embeddings) @ _normalize(candidate_embeddings).T
+    cosine = jnp.matmul(
+        _normalize(row_embeddings),
+        _normalize(candidate_embeddings).T,
+        out_sharding=activation_out_sharding(2),
+    )
+    cosine = constrain_activation(cosine)
     raw_logits = cosine * jnp.asarray(scale, dtype=jnp.float32)
+    candidate_valid = replicate(candidate_valid)
     logits = jnp.where(candidate_valid[None, :], raw_logits, -jnp.inf)
     active = positive_mask & row_valid[:, None] & candidate_valid[None, :]
     weights = jnp.where(active, positive_weights, 0.0)
@@ -159,20 +172,22 @@ def _tiled_direction_loss(
     """Evaluate and differentiate MNR with only one score-row tile live."""
 
     row_count = row_embeddings.shape[0]
-    chunk_count = (row_count + row_chunk_size - 1) // row_chunk_size
-    padded_count = chunk_count * row_chunk_size
-    padding = padded_count - row_count
-
-    def pad_rows(value: Array, fill_value: int | float = 0) -> Array:
-        widths = ((0, padding),) + ((0, 0),) * (value.ndim - 1)
-        return jnp.pad(value, widths, constant_values=fill_value).reshape(
-            chunk_count, row_chunk_size, *value.shape[1:]
-        )
-
-    row_chunks = pad_rows(row_embeddings)
-    mask_chunks = pad_rows(positive_mask)
-    weight_chunks = pad_rows(positive_weights)
-    valid_chunks = pad_rows(row_valid)
+    row_chunks = batch_to_scan(
+        row_embeddings,
+        local_chunk_size=row_chunk_size,
+    )
+    mask_chunks = batch_to_scan(
+        positive_mask,
+        local_chunk_size=row_chunk_size,
+    )
+    weight_chunks = batch_to_scan(
+        positive_weights,
+        local_chunk_size=row_chunk_size,
+    )
+    valid_chunks = batch_to_scan(
+        row_valid,
+        local_chunk_size=row_chunk_size,
+    )
 
     def body(
         totals: tuple[Array, Array],
@@ -198,9 +213,6 @@ def _tiled_direction_loss(
         body,
         policy=jax.checkpoint_policies.nothing_saveable,
     )
-    # Derive zero carries from mapped inputs so shard_map's value-mapping
-    # analysis preserves the enclosing axis type without coupling MNR to a
-    # particular mesh-axis name.
     initial = (
         jnp.zeros_like(jnp.sum(row_embeddings, dtype=jnp.float32)),
         jnp.zeros_like(jnp.sum(row_valid, dtype=jnp.int32)),
@@ -211,7 +223,11 @@ def _tiled_direction_loss(
         (row_chunks, mask_chunks, weight_chunks, valid_chunks),
     )
     loss = loss_sum / jnp.maximum(active_count, 1).astype(jnp.float32)
-    return loss, loss_chunks.reshape(-1)[:row_count]
+    return loss, scan_to_batch(
+        loss_chunks,
+        batch_size=row_count,
+        local_chunk_size=row_chunk_size,
+    )
 
 
 def _mnr_loss_values(

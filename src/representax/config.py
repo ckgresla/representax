@@ -202,7 +202,7 @@ class ExportConfig(FrozenConfig):
 
 
 class MeshConfig(FrozenConfig):
-    """Serializable arguments that unpack directly into ``jax.make_mesh``."""
+    """Serializable logical mesh shape and axis names."""
 
     axis_shapes: tuple[PositiveInt, ...] = (1,)
     axis_names: tuple[NonEmptyString, ...] = ("data",)
@@ -272,10 +272,6 @@ class DDPConfig(FrozenConfig):
 
     kind: Literal["ddp"] = "ddp"
     axis: NonEmptyString = "data"
-    gradient_bucket_bytes: PositiveInt = Field(
-        default=256 * 2**20,
-        description="Maximum bytes in one explicit replicated-gradient bucket.",
-    )
 
 
 class FSDPConfig(FrozenConfig):
@@ -286,20 +282,29 @@ class FSDPConfig(FrozenConfig):
     parameter_axis: NonEmptyString | None = None
     minimum_parameter_elements: PositiveInt = 2**18
     materialization_boundary: ParameterMaterializationBoundary = Field(
-        default="layer",
+        default="model",
         description=(
             "Gather the complete model call or one supported scanned layer at a "
-            "time; layer minimizes the full-parameter live range."
+            "time; model is architecture-agnostic while layer minimizes the "
+            "full-parameter live range."
         ),
     )
     materialization_bucket_bytes: PositiveInt = Field(
         default=256 * 2**20,
-        description="Maximum local shard bytes in one parameter gather bucket.",
+        description=(
+            "Layer-boundary only: maximum local shard bytes in one explicit "
+            "parameter gather bucket."
+        ),
     )
-    rematerialize_gathers: bool = True
+    rematerialize_gathers: bool = Field(
+        default=True,
+        description="Layer-boundary only: replay parameter gathers in backward.",
+    )
     gradient_bucket_bytes: PositiveInt = Field(
         default=256 * 2**20,
-        description="Maximum bytes in one replicated-gradient bucket.",
+        description=(
+            "Layer-boundary only: maximum bytes in one explicit gradient bucket."
+        ),
     )
 
     @property
@@ -323,12 +328,20 @@ class CustomShardingConfig(FrozenConfig):
     )
     materialization_bucket_bytes: PositiveInt = Field(
         default=256 * 2**20,
-        description="Maximum local shard bytes in one parameter gather bucket.",
+        description=(
+            "Layer-boundary only: maximum local shard bytes in one explicit "
+            "parameter gather bucket."
+        ),
     )
-    rematerialize_gathers: bool = True
+    rematerialize_gathers: bool = Field(
+        default=True,
+        description="Layer-boundary only: replay parameter gathers in backward.",
+    )
     gradient_bucket_bytes: PositiveInt = Field(
         default=256 * 2**20,
-        description="Maximum bytes in one replicated-gradient bucket.",
+        description=(
+            "Layer-boundary only: maximum bytes in one explicit gradient bucket."
+        ),
     )
 
     @model_validator(mode="after")

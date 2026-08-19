@@ -2,145 +2,148 @@
 
 * Decision
 
-Representax physically shards the complete ModernVBERT model and Adam state
-across two and four RTX 4090 GPUs, materializes parameters with NCCL AllGather,
-and returns sharded gradients with NCCL ReduceScatter. Named DDP, named FSDP,
-and explicit custom partition rules execute through one =ShardingPlan= trainer.
+Representax expresses named DDP and full-model FSDP as one global JAX program
+with different input/output shardings. DDP keeps model and Adam state replicated
+and shards the example axis. FSDP keeps model and Adam state sharded at rest,
+logically replicates parameters at the complete-model compute boundary, and lets
+JAX transpose that program back into sharded gradients. Neither preset owns a
+separate trainer or hand-written gradient synchronization path.
 
-The accepted implementation exposes two FSDP materialization boundaries:
+An optional =materialization_boundary="layer"= mode remains for workloads that
+need a shorter gathered-parameter live range. That is a distinct capacity
+optimization: it uses an explicit model capability naming the scanned layer
+stack and rejects unsupported architectures. Full-model FSDP is the generic,
+annotation-driven default.
 
-- =model= gathers bounded flat parameter buckets around the complete model call;
-  it retains the sharded persistent state while favoring throughput.
-- =layer= gathers bounded flat buckets for one scanned transformer layer at a
-  time and rematerializes that layer during backward; it favors capacity.
+* Correction to the first profile
 
-The boundary changes physical execution only. Both modes match the same
-one-device loss, complete parameter update, and complete Optax-state update on
-two- and four-device meshes.
+The first version of this document accepted the manual DDP and model-FSDP
+programs because their one-step comparisons were close and their systems
+profiles looked favorable. A ten-update trajectory audit disproved that
+acceptance: their final loss was approximately =0.34= while a clean one-device
+execution of the same scientific program reached approximately =1.18=. Those
+timings therefore measured a different optimizer trajectory and are not valid
+DDP/FSDP performance baselines.
+
+The current benchmark discards warmup output, records every measured update,
+and fingerprints every model and optimizer leaf. The global-program form is
+accepted only against that complete evidence. Superseded artifacts remain under
+=/raid= for diagnosis provenance; no result below uses them.
 
 * Workload and evidentiary boundary
 
-The matched physical workload uses the real 149M-parameter
+The corrected matched workload uses the real 149M-parameter
 =ModernVBERT/modernvbert-embed= checkpoint, four physical RTX 4090s (GPUs 2--5),
-global batch 16 (four rows per GPU), sequence length 128, exact GradCache chunks
-of 2, FP32/highest precision, AdamW, one warmup, and ten synchronized measured
-optimizer steps. Inputs are deterministic random token IDs with an identity
+global batch 16, sequence length 128, exact GradCache chunks of 2, FP32/highest
+matmul precision, AdamW, one discarded warmup, and ten synchronized measured
+optimizer updates. Inputs are deterministic random token IDs with an identity
 query/document positive relation.
 
 This is a complete forward/backward/optimizer systems program. Model-ready
 synthetic tensors deliberately remove storage, tokenization, and semantic data
-quality as confounders. The result proves numerical, placement, memory,
-communication, and sustained-step behavior; it is not evidence of retrieval
-quality or end-to-end dataset-to-quality time.
+quality as confounders. It tests numerical trajectory, placement, memory, and
+sustained-step behavior; it is not retrieval-quality evidence.
 
-* Four-GPU execution frontier
+* Corrected four-GPU evidence
 
-All measurements below come from isolated processes with
-=XLA_PYTHON_CLIENT_PREALLOCATE=false=.
+All measurements below use =XLA_PYTHON_CLIENT_PREALLOCATE=false=. The single-GPU
+row is the reference scientific trajectory, not a scaling baseline: all rows
+retain the same small global batch of 16.
 
-| measurement | DDP | FSDP model | FSDP layer |
-|-------------+-----+------------+------------|
-| model bytes / GPU | 596,179,990 | 149,049,622 | 149,049,622 |
-| Adam bytes / GPU | 1,192,359,940 | 298,099,204 | 298,099,204 |
-| compiler temporary bytes / GPU | 596,217,904 | 2,236,698,672 | 502,624,560 |
-| peak live JAX bytes / GPU | 6,524,894,464 | 3,718,931,200 | 1,984,857,088 |
-| peak NVML process bytes / GPU | 9,231,663,104 | 6,012,534,784 | 2,791,309,312 |
-| median synchronized step | 0.4745 s | 0.4856 s | 2.4093 s |
-| examples / second | 33.72 | 32.95 | 6.64 |
-| compile time | 18.41 s | 18.75 s | 23.06 s |
-| StableHLO AllGather / ReduceScatter / AllReduce | 5 / 2 / 16 | 6 / 3 / 31 | 12 / 5 / 31 |
+| measurement | one GPU | DDP, four GPUs | full-model FSDP, four GPUs |
+|-------------+---------+----------------+----------------------------|
+| model bytes / GPU | 596,179,990 | 596,179,990 | 149,049,622 |
+| Adam bytes / GPU | 1,192,359,940 | 1,192,359,940 | 298,099,204 |
+| compiler temporary bytes / GPU | 56,914,992 | 58,459,952 | 2,239,981,616 |
+| peak live JAX bytes / GPU | 5,985,621,760 | 5,987,136,512 | 3,722,217,216 |
+| peak NVML process bytes / GPU | 9,026,142,208 | 9,269,411,840 | 6,012,534,784 |
+| median synchronized step | 0.3445 s | 0.3464 s | 1.5862 s |
+| examples / second | 46.44 | 46.19 | 10.09 |
+| final loss after ten updates | 0.49238 | 0.53335 | 0.55085 |
 
-The named modes therefore form a real capacity/communication frontier on this
-PCIe-only host:
+The annotation-driven DDP program is 0.5% slower than the one-device reference
+at this deliberately fixed, small global batch and is 26% faster than the
+superseded manual 0.4745-second path. Full-model FSDP quarters persistent model
+and Adam bytes and lowers peak live JAX memory by 38% relative to DDP, but is
+4.58x slower on this PCIe-only topology because its gathered full model remains
+live through each GradCache encoder replay. It is presently a valid capacity
+mode, not a throughput win.
 
-- DDP is fastest when replicated model and optimizer state fit.
-- model-boundary FSDP is within 2.4% of DDP throughput while quartering
-  persistent model and Adam storage and lowering the live peak by 43%.
-- layer-boundary FSDP lowers the live peak another 47%, to 30% of DDP, but each
-  step takes 5.08x as long because every GradCache encoder replay transports
-  the layer parameters over PCIe.
+The ten-step loss trajectories remain close:
 
-These are execution choices, not different scientific jobs. A future Profilax
-planner should select the fastest feasible boundary from model shape, batch,
-sequence length, precision, mesh topology, and the required memory margin.
+| update | one GPU | DDP | FSDP |
+|--------+---------+-----+------|
+| 1 | 2.719318 | 2.719317 | 2.719317 |
+| 2 | 2.553217 | 2.553218 | 2.557125 |
+| 3 | 2.375181 | 2.375174 | 2.385778 |
+| 4 | 2.158229 | 2.158288 | 2.174015 |
+| 5 | 1.905782 | 1.908294 | 1.931583 |
+| 6 | 1.624685 | 1.635231 | 1.655320 |
+| 7 | 1.321892 | 1.350603 | 1.357723 |
+| 8 | 1.011955 | 1.052138 | 1.065417 |
+| 9 | 0.732007 | 0.771510 | 0.794503 |
+| 10 | 0.492385 | 0.533347 | 0.550855 |
 
-* DDP gradient synchronization diagnosis
+The first update agrees to approximately =1e-6= absolute loss. Floating-point
+reduction-order differences then accumulate during this deliberately rapid
+overfit, reaching =0.0410= absolute loss for DDP and =0.0625= for FSDP at update
+ten. The final model squared-sum signature remains within =1.59e-6= relative
+error and the largest absolute parameter within =3.23e-5= relative error. Strict
+ten-update array parity is separately enforced on deterministic tiny
+ModernVBERT programs; the full-checkpoint trace records realistic topology
+drift rather than imposing a misleading relative-loss threshold near zero.
 
-The first DDP implementation combined explicit gradient synchronization with
-=shard_map= VMA transposition. XLA sank implicit per-parameter reductions into
-the scanned encoder backward, producing 740 FP32 AllReduce kernels per GPU over
-one warmup and three measured steps. The resulting 1.895 s median step was an
-implementation pathology, not a defensible DDP baseline.
+Nsight Systems traces of one warmup plus three measured steps confirm physical
+compiler-generated communication on all four GPUs. Across the complete trace,
+DDP launches 768 NCCL AllGather, 896 FP32 AllReduce, and 256 SendRecv kernels;
+the AllGathers exchange global GradCache representations. Full-model FSDP
+launches 160 NCCL AllGather, 32 FP32 ReduceScatter, and 3,068 FP32 AllReduce
+kernels. The latter communication schedule is valid but plainly not yet
+optimal, and it is now a measured target for the physical frontier work rather
+than hidden behind hand-authored collectives.
 
-The accepted DDP path disables automatic VMA transposition only for the named
-replicated-state preset, groups compatible gradient leaves by dtype and
-replicated axes, packs bounded 256 MiB buckets after the complete backward, and
-explicitly averages each bucket. The exact 2/4-device gates still pass. Nsight
-now records 20 FP32 AllReduce kernels per GPU over the same four traced steps,
-and the median step falls to 0.4745 s. FSDP/custom plans retain VMA checking for
-their declared AllGather/ReduceScatter transpose contract.
+The post-partition compiled HLO independently contains 6 AllGather, 7 AllReduce,
+and 2 AllToAll instructions for DDP; full-model FSDP contains 8 AllGather, 9
+AllReduce, and 1 ReduceScatter instruction. Pre-partition StableHLO correctly
+contains none of these compiler-inserted operations, which is why the benchmark
+now records both stages rather than searching only the initial lowering.
 
-* FSDP materialization diagnosis
+* Why full-model FSDP is annotatable
 
-Whole-model materialization keeps the full parameter tree live around each
-encoder call. It is throughput-efficient here, but its compiler-estimated
-temporary is 2.24 GB. ModernVBERT now implements a model-side
-=fsdp_materialize= boundary: the depth-major layer stack remains sharded, one
-scan slice is gathered immediately before its layer computation, and full
-activation rematerialization replays the gather during backward instead of
-retaining the materialized layer.
+The at-rest =PartitionSpec= tree is part of =ShardingPlan=. The compiled step
+accepts and returns that sharded model and the matching sharded Optax state.
+Immediately around the model call, Representax annotates each parameter as
+replicated. JAX inserts the communication required to reconcile those layouts;
+reverse-mode transposes the replicated read into a sharded parameter gradient.
+The task, optimizer, and training-loop control flow remain unchanged.
 
-Compatible leaves inside a materialization boundary are packed by dtype and
-mesh axis into bounded flat buckets before AllGather, then reconstructed in
-their original shapes. This reduces layer-FSDP static AllGather operations from
-37 to 12, ReduceScatter operations from 14 to 5, compile time from 28.90 to
-23.06 seconds, and compiler temporary storage from 529 to 503 MB. Nsight still
-records essentially the same transported NCCL work because the PCIe run is
-bandwidth-bound by parameter volume rather than kernel-launch-bound after
-coalescing.
+Layer-boundary FSDP asks for a stronger property: do not keep the complete
+materialized model live. The compiler cannot infer the semantic layer boundary
+from an arbitrary Equinox PyTree, so models opting into that mode identify their
+layer stack via =fsdp_materialize()=. This does not limit the generic full-model
+mode.
 
-* Physical placement and communication
+* Automated acceptance
 
-The four cards have no NVLink and span two PCIe host bridges. Both the model and
-layer FSDP programs store exactly one quarter of every sharded parameter and
-Adam moment on each GPU. Nsight records balanced NCCL execution across all four
-cards. The traces distinguish actual collectives from inferred output
-shardings; StableHLO and memory placement remain separate acceptance gates.
-
-The earlier equal =nvidia-smi= values on two GPUs were a JAX BFC allocator-pool
-bucket coincidence. With preallocation disabled on four GPUs, both live JAX
-bytes and NVML-visible process bytes fall with the narrower FSDP boundary.
-
-* Numerical acceptance
-
-The full-checkpoint two-GPU correctness artifact compares one FSDP optimizer
-update with the same one-device update and records:
-
-- absolute loss error: =9.54e-7=;
-- model-update relative L2 error: =2.35e-7=; and
-- complete Adam-state relative L2 error: =4.28e-5=.
-
-The final focused suite additionally accepts both materialization boundaries on
-physical two- and four-GPU meshes. The broader virtual matrix covers DDP,
-same-axis FSDP, parameter-only FSDP, 2x2 hybrid data/model sharding, custom
-partition rules, and Orbax sharded restore.
+The distributed suite exercises DDP, same-axis FSDP, parameter-only FSDP, 2x2
+hybrid data/model sharding, custom partition rules, and Orbax sharded restore on
+two- and four-device virtual topologies. ModernVBERT additionally runs ten
+optimizer updates for both full-model and layer-boundary FSDP on two- and
+four-device meshes, comparing every array leaf with the one-device state after
+each matched scientific program.
 
 * Raw artifacts
 
-Raw profiling output is intentionally kept out of Git. The accepted four-GPU
-artifacts live under
-=/raid/representax/benchmarks/sharding-modernvbert-20260819/=:
+Corrected raw profiles live under
+=/raid/representax/benchmarks/sharding-annotations-20260819/=:
 
-- =ddp-bucketed-manual-sustained-world4-b16-s128.json=;
-- =ddp-bucketed-manual-world4-b16-s128.stablehlo.mlir=;
-- =ddp-bucketed-manual-runtime-world4-b16-s128.nsys-rep=;
-- =fsdp-model-bucketed-sustained-world4-b16-s128.json=;
-- =fsdp-model-bucketed-world4-b16-s128.stablehlo.mlir=;
-- =fsdp-layerwise-bucketed-sustained-world4-b16-s128.json=;
-- =fsdp-layerwise-bucketed-world4-b16-s128.stablehlo.mlir=; and
-- =fsdp-layerwise-bucketed-runtime-world4-b16-s128-retry.nsys-rep=.
+- =single-reference-10-updates-b16-s128.json=;
+- =ddp-10-updates-world4-b16-s128.json=;
+- =fsdp-10-updates-world4-b16-s128.json=; and
+- their corresponding =.mlir= files;
+- =ddp-auto-runtime-world4-b16-s128.nsys-rep=; and
+- =fsdp-auto-model-runtime-world4-b16-s128.nsys-rep=.
 
-The initial, superseded DDP and unbucketed FSDP artifacts remain in the same
-directory for diagnosis provenance. Reproduce isolated measurements with
-=benchmarks/profile_sharding_modernvbert.py= and do not co-reside the
-one-device correctness oracle when interpreting memory.
+The earlier =/raid/representax/benchmarks/sharding-modernvbert-20260819/=
+artifacts are retained only as superseded diagnostic evidence. Reproduce the
+current isolated measurements with =benchmarks/profile_sharding_modernvbert.py=.

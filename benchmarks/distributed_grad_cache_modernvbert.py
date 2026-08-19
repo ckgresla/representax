@@ -155,14 +155,13 @@ def main() -> None:
     )
     from representax.tasks.retrieval import (
         MNRTask,
+        place_process_local_retrieval_batch,
         process_local_retrieval_batch,
         retrieval_batch,
     )
     from representax.train import (
-        DataParallel,
         GradCache,
         ShardingPlan,
-        build_data_parallel_train_step,
         build_sharded_train_step,
         build_train_step,
         make_train_state,
@@ -242,12 +241,12 @@ def main() -> None:
     )
     reference_state = jax.device_put(host_state, local_devices[0])
     reference_batch = jax.device_put(host_batch, local_devices[0])
+    mesh = jax.make_mesh(
+        (arguments.world_size,),
+        ("data",),
+        devices=devices,
+    )
     if arguments.process_count == 1:
-        mesh = jax.make_mesh(
-            (arguments.world_size,),
-            ("data",),
-            devices=devices,
-        )
         if arguments.strategy == "ddp":
             sharding_plan = ShardingPlan.ddp(
                 host_state,
@@ -278,16 +277,21 @@ def main() -> None:
             return jax.device_put(value, sharding_plan.replicated_sharding)
 
     else:
-        data_parallel = DataParallel.from_devices(devices)
-        distributed_step = build_data_parallel_train_step(
+        sharding_plan = ShardingPlan.ddp(
+            host_state,
+            optimizer,
+            mesh,
+            axis_name="data",
+        )
+        distributed_step = build_sharded_train_step(
             task,
             optimizer,
-            data_parallel,
+            sharding_plan,
             max_grad_norm=None,
             execution=execution,
             donate_state=False,
         )
-        distributed_state = data_parallel.place_replicated(host_state)
+        distributed_state = sharding_plan.place_state(host_state)
         process_batch_size = arguments.global_batch_size // arguments.process_count
         start = arguments.process_id * process_batch_size
         stop = start + process_batch_size
@@ -311,10 +315,13 @@ def main() -> None:
             query_valid=host_batch.query_valid[start:stop],
             document_valid=host_batch.document_valid[start:stop],
         )
-        distributed_batch = data_parallel.place_process_local_batch(local_batch)
+        distributed_batch = place_process_local_retrieval_batch(
+            local_batch,
+            sharding_plan.batch_sharding,
+        )
 
         def place_key(value: Any) -> Any:
-            return data_parallel.place_replicated(value)
+            return sharding_plan.place_replicated(value)
 
     _progress(arguments.process_id, "reference and distributed inputs placed")
     key = jax.random.key(arguments.seed)

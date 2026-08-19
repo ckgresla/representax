@@ -424,17 +424,22 @@ training = TrainingConfig(
     mesh=MeshConfig(axis_shapes=(2,), axis_names=("data",)),
     sharding=FSDPConfig(
         data_axis="data",
-        materialization_boundary="layer",
     ),
     batch=BatchConfig(micro_batch_size=16),
 )
 ```
 
-DDP uses bounded gradient buckets; FSDP uses bounded parameter buckets and
-supports `model` or memory-first `layer` materialization without a separate
-trainer. The acceptance profile records per-device model/Adam shards, JAX live
-and pool memory, NVML process memory/utilization, lowered StableHLO collectives,
-and actual NCCL kernels on four GPUs. See
+Named DDP and the default `materialization_boundary="model"` FSDP are global
+JAX programs: the plan declares batch, parameter, Optax-state, and result
+shardings, while JAX derives the required communication. Full-model FSDP is
+architecture-agnostic. The optional `materialization_boundary="layer"` mode
+shortens the live range of gathered parameters further, but requires an
+explicit model capability naming the layer stack; unsupported models fail at
+plan construction instead of silently gathering the whole model. Custom
+partition rules use the same compiled path. The acceptance profile records
+per-device model/Adam shards, JAX live and pool memory, NVML process
+memory/utilization, lowered programs, and ten-update numerical trajectories on
+four GPUs. See
 [`fsdp-modernvbert-20260819`](benchmarks/results/fsdp-modernvbert-20260819/README.org).
 
 Array-facing APIs use `jaxtyping` to state dtype and symbolic shape contracts

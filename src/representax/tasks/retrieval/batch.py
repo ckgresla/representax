@@ -7,6 +7,7 @@ from typing import Any
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+from jax.sharding import NamedSharding
 from jaxtyping import Array, Bool, Float
 
 
@@ -154,3 +155,43 @@ def process_local_retrieval_batch(
         query_valid=jnp.asarray(query_valid, dtype=jnp.bool_),
         document_valid=jnp.asarray(document_valid, dtype=jnp.bool_),
     )
+
+
+def place_process_local_retrieval_batch(
+    batch: ProcessLocalRetrievalBatch,
+    sharding: NamedSharding,
+) -> RetrievalBatch:
+    """Assemble process-local retrieval rows with a leading-axis sharding."""
+
+    def global_rows(tree: Any) -> Any:
+        return jax.tree.map(
+            lambda value: (
+                jax.make_array_from_process_local_data(sharding, value)
+                if eqx.is_array(value)
+                else value
+            ),
+            tree,
+            is_leaf=lambda value: value is None,
+        )
+
+    return RetrievalBatch(
+        query=global_rows(batch.query),
+        document=global_rows(batch.document),
+        positive_mask=global_rows(batch.positive_mask),
+        positive_weights=(
+            None
+            if batch.positive_weights is None
+            else global_rows(batch.positive_weights)
+        ),
+        query_valid=global_rows(batch.query_valid),
+        document_valid=global_rows(batch.document_valid),
+    )
+
+
+__all__ = [
+    "ProcessLocalRetrievalBatch",
+    "RetrievalBatch",
+    "place_process_local_retrieval_batch",
+    "process_local_retrieval_batch",
+    "retrieval_batch",
+]

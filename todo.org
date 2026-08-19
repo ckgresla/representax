@@ -214,7 +214,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
 *** DONE Validate exact GradCache across single-host device and process topologies :distributed:
 **** DONE Verify exact replicated data parallel GradCache on two and four GPUs
     Keep model and optimizer placement separate from GradCache semantics through
-    a named =DataParallel= sharding plan.  Shard query and document records over
+    the named DDP =ShardingPlan=.  Shard query and document records over
     the =data= mesh axis, gather only compact representations and relation
     metadata for the global negative pool, replay encoder chunks locally, and
     synchronize replicated parameter gradients once before the Optax update.
@@ -850,40 +850,36 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
 *** DONE Verify exact complete updates on two- and four-device topologies
     DDP, FSDP, and custom plans match the one-device GradCache loss, metrics,
     model update, and complete Optax state.  Native ModernVBERT passes the same
-    two- and four-device virtual-topology gate; its FSDP update also passes on
-    physical GPUs 4 and 5.
-*** DONE Inspect expected AllReduce, AllGather, and ReduceScatter collectives
-    The lowered StableHLO contains parameter and global-representation
-    AllGathers, topology-correct sum or mean parameter-gradient ReduceScatters,
-    and global reductions.  Nsight Systems additionally records the resulting
-    NCCL AllGather, ReduceScatter, and AllReduce kernels on both physical GPUs;
-    keep both gates rather than inferring execution solely from output
-    shardings.
+    two- and four-device virtual-topology gate for ten consecutive optimizer
+    updates under both full-model and layer-boundary FSDP.  Four-physical-GPU
+    full-checkpoint profiles additionally record the complete loss trajectory
+    and per-leaf model/optimizer signatures rather than assuming one-step
+    agreement remains representative.
+*** DONE Inspect declared layouts, physical placement, and generated communication
+    Parameter, Adam, batch, and result layouts are independently recorded rather
+    than inferred from the strategy name.  Physical profiles require active
+    compute and balanced memory on every selected GPU.  Retain lowered-program
+    and Nsight gates when making communication-specific claims; output layouts
+    alone prove storage, not which collective implementation the compiler chose.
 *** DONE Preserve FSDP parameter and optimizer shardings through Orbax resume
     A real asynchronous save and fresh-manager restore preserves every value,
     training cursor, and explicit JAX sharding.
-*** DONE Bucket replicated DDP gradient synchronization
-    Compatible gradients are flattened into bounded, dtype/replication-aware
-    256 MiB buckets after the complete backward and averaged explicitly. Named
-    DDP disables =shard_map= VMA transposition so XLA cannot sink a second set
-    of implicit reductions into the scanned encoder backward; FSDP and custom
-    transpose contracts retain VMA checking. Exact 2/4-device updates pass.
-    Nsight reduces FP32 AllReduce launches from 740 to 20 per GPU across one
-    warmup plus three measured steps, and the four-GPU ModernVBERT median falls
-    from 1.895 to 0.474 seconds.
+*** DONE Replace manual DDP synchronization with one compiler-managed global program
+    Named DDP now differs from other plans only through input/output shardings;
+    no =DataParallel= trainer or explicit gradient-bucket path remains.  The
+    annotation-driven four-GPU ModernVBERT program sustains 0.346-second steps,
+    26% faster than the superseded 0.474-second manual path, while tracking the
+    one-device ten-update trajectory.  The earlier manual DDP/FSDP profile is
+    invalid as acceptance evidence because it converged to a materially
+    different loss trajectory.
 *** DONE Materialize FSDP parameters at measured module boundaries
-    The plan exposes =model= and =layer= materialization without changing the
-    task or trainer. ModernVBERT keeps its depth-major stack sharded and gathers
-    one scan slice immediately before execution; full activation
-    rematerialization replays that gather in backward. Compatible parameter
-    leaves are coalesced into bounded dtype/axis buckets. Both boundaries match
-    complete one-device updates on 2/4-device meshes. On four RTX 4090s, the
-    layer boundary lowers peak live JAX memory from 3.719 to 1.985 GB and the
-    compiler temporary from 2.237 GB to 503 MB, while the model boundary retains
-    0.486-second steps. The layer boundary takes 2.409 seconds because exact
-    GradCache replay repeatedly transports parameters over this PCIe topology;
-    preserve the measured capacity/communication frontier for Profilax rather
-    than claiming one boundary is universally optimal.
+    Full-model FSDP is the architecture-agnostic default: the plan keeps model
+    and Optax state sharded at rest, annotates parameters as replicated at the
+    model-call boundary, and lets JAX transpose the global program into sharded
+    gradients.  =layer= remains an explicit capacity optimization; supported
+    models name their layer stack and unsupported requests fail during plan
+    construction rather than silently falling back.  Both boundaries match ten
+    complete one-device updates on 2/4-device meshes.
 ** NEXT Establish the physical FSDP capacity and throughput frontier
     Compare DDP and FSDP on full ModernVBERT and at least one model that cannot
     fit replicated optimizer state.  Sweep useful batch/sequence/model sizes,
@@ -897,14 +893,17 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
     optimizer-state relative L2 error.  Its mixed oracle/FSDP process is a
     correctness probe, not clean standalone memory or throughput evidence.
 
-    The accepted isolated systems profile is tracked in
+    The corrected isolated systems profile is tracked in
     =benchmarks/results/fsdp-modernvbert-20260819/README.org=. On GPUs 2--5,
-    global batch 16, and sequence 128, corrected DDP sustains 33.72 examples/s
-    at a 6.525 GB live peak. Model-boundary FSDP sustains 32.95 examples/s at
-    3.719 GB; layer-boundary FSDP sustains 6.64 examples/s at 1.985 GB. All
-    modes pass complete-update numerical gates and balanced physical NCCL
-    traces. This deterministic synthetic-token program isolates the compiled
-    trainer; it is not dataset-to-quality evidence.
+    global batch 16, and sequence 128, compiler-managed DDP sustains 46.19
+    examples/s at a 5.987 GB live peak. Full-model FSDP sustains 10.09 examples/s
+    at 3.722 GB while quartering persistent model and Adam storage. Both match
+    the first full-checkpoint update to approximately =1e-6= absolute loss and
+    preserve final model signatures within =1.59e-6= relative squared-sum error;
+    the older manual 0.474/0.486-second results are explicitly superseded
+    because they followed a materially different trajectory. This deterministic
+    synthetic-token program isolates the compiled trainer; it is not
+    dataset-to-quality evidence.
 
 ** TODO Make precision policy explicit at parameter, compute, activation, and loss boundaries :runtime:precision:
 ** DONE Support activation rematerialization as a measured execution choice :runtime:memory:

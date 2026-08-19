@@ -33,9 +33,7 @@ from .loop import TrainingRunResult, run_training
 from .mega_batch import MegaBatchMining
 from .optimizer import build_optimizer, build_schedule
 from .sharding import (
-    DataParallel,
     ShardingPlan,
-    build_data_parallel_train_step,
     build_sharded_train_step,
     fsdp_partition_spec,
     parameter_specs_from_rules,
@@ -58,7 +56,6 @@ __all__ = [
     "CheckpointTicket",
     "CheckpointWriteError",
     "Direct",
-    "DataParallel",
     "ShardingPlan",
     "ExecutionContext",
     "EvaluationResult",
@@ -81,7 +78,6 @@ __all__ = [
     "TrainingRunResult",
     "build_train_step",
     "build_loss_execution",
-    "build_data_parallel_train_step",
     "build_sharded_train_step",
     "build_batches",
     "build_collate",

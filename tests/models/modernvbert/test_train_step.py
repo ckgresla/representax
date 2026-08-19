@@ -75,7 +75,7 @@ def test_modernvbert_runs_one_compiled_grad_cache_retrieval_update():
 @pytest.mark.distributed
 @pytest.mark.parametrize("world_size", [2, 4])
 @pytest.mark.parametrize("materialization_boundary", ["model", "layer"])
-def test_modernvbert_fsdp_matches_one_device_grad_cache_update(
+def test_modernvbert_fsdp_matches_ten_one_device_grad_cache_updates(
     world_size: int,
     materialization_boundary: Literal["model", "layer"],
 ):
@@ -148,22 +148,34 @@ def test_modernvbert_fsdp_matches_one_device_grad_cache_update(
         ),
         positive_mask=jnp.eye(4, dtype=jnp.bool_),
     )
-    key = jax.random.key(1)
+    reference_state = state
+    distributed_state = plan.place_state(state)
+    distributed_batch = plan.place_batch(batch)
 
     with jax.default_matmul_precision("highest"):
-        reference = reference_step(state, batch, key)
-        distributed = distributed_step(
-            plan.place_state(state),
-            plan.place_batch(batch),
-            jax.device_put(key, plan.replicated_sharding),
-        )
-        jax.block_until_ready((reference, distributed))
+        for update_index in range(10):
+            key = jax.random.fold_in(jax.random.key(1), update_index)
+            reference = reference_step(reference_state, batch, key)
+            distributed = distributed_step(
+                distributed_state,
+                distributed_batch,
+                jax.device_put(key, plan.replicated_sharding),
+            )
+            jax.block_until_ready((reference, distributed))
+            assert bool(distributed.metrics.numeric_finite)
+            assert jnp.allclose(
+                distributed.metrics.loss,
+                reference.metrics.loss,
+                rtol=5e-5,
+                atol=5e-6,
+            )
+            reference_state = reference.state
+            distributed_state = distributed.state
 
-    assert bool(distributed.metrics.numeric_finite)
-    assert int(distributed.state.step) == 1
+    assert int(distributed_state.step) == 10
     for actual, expected in zip(
-        (leaf for leaf in jax.tree.leaves(distributed.state) if eqx.is_array(leaf)),
-        (leaf for leaf in jax.tree.leaves(reference.state) if eqx.is_array(leaf)),
+        (leaf for leaf in jax.tree.leaves(distributed_state) if eqx.is_array(leaf)),
+        (leaf for leaf in jax.tree.leaves(reference_state) if eqx.is_array(leaf)),
         strict=True,
     ):
         assert jnp.allclose(actual, expected, rtol=5e-5, atol=5e-6)

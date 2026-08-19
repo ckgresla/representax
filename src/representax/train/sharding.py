@@ -12,15 +12,14 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import optax
-from jax.sharding import Mesh, NamedSharding
+from jax.sharding import AxisType, Mesh, NamedSharding
 from jax.sharding import PartitionSpec as P
 
 from representax.core import Task
+from representax.core.sharding import activation_sharding, replicate
 from representax.models.materialization import FSDPMaterializer
-from representax.tasks.retrieval import ProcessLocalRetrievalBatch, RetrievalBatch
 
 from .execution import ExecutionContext, LossExecution
-from .grad_cache import GradCache
 from .state import StepResult, TrainState
 from .step import TrainStep, _build_train_step_body
 
@@ -107,15 +106,15 @@ def _gradient_specs(model: eqx.Module, parameter_specs: eqx.Module) -> eqx.Modul
 
 @dataclass(frozen=True)
 class ShardingPlan:
-    """Resolved layouts and collectives for one compiled training program.
+    """Resolved layouts for one compiled global training program.
 
     The plan is model- and task-neutral. ``parameter_specs`` selects the physical
-    at-rest layout, while the forward materializes complete Equinox parameters
-    with explicit AllGather operations. Reverse-mode uses a sum ReduceScatter
-    when that mesh axis also carries distinct examples, and a mean ReduceScatter
-    for parameter-only axes whose data is replicated. Ordinary Optax
-    transformations therefore update local shards without a separate trainer.
-    A separate optional data axis supports hybrid data/FSDP execution.
+    at-rest layout; batch, optimizer-state, and result layouts follow from the
+    same declaration. Full-model execution lets JAX derive communication from
+    these layouts and the replicated model-call annotation. The optional layer
+    boundary retains an explicit model hook and collectives solely to shorten the
+    gathered-parameter live range. A separate optional data axis supports hybrid
+    data/FSDP execution.
     """
 
     mesh: Mesh
@@ -166,7 +165,7 @@ class ShardingPlan:
         data_axis_name: str | None = None,
         minimum_parameter_elements: int = 1024,
         parameter_specs: eqx.Module | None = None,
-        materialization_boundary: Literal["model", "layer"] = "layer",
+        materialization_boundary: Literal["model", "layer"] = "model",
         materialization_bucket_bytes: int = 256 * 2**20,
         rematerialize_gathers: bool = True,
         gradient_bucket_bytes: int = 256 * 2**20,
@@ -203,6 +202,11 @@ class ShardingPlan:
             mesh=mesh,
             data_axis_name=data_axis_name,
             parameter_axis_names=(parameter_axis_name,),
+        )
+        cls._validate_materialization_boundary(
+            state.model,
+            parameter_specs,
+            materialization_boundary,
         )
         gradient_specs = _gradient_specs(state.model, parameter_specs)
         optimizer_specs = optax.tree.map_params(
@@ -251,6 +255,11 @@ class ShardingPlan:
             data_axis_name=data_axis_name,
             parameter_axis_names=parameter_axis_names,
         )
+        cls._validate_materialization_boundary(
+            state.model,
+            parameter_specs,
+            materialization_boundary,
+        )
         gradient_specs = _gradient_specs(state.model, parameter_specs)
         optimizer_specs = optax.tree.map_params(
             optimizer,
@@ -281,7 +290,6 @@ class ShardingPlan:
         mesh: Mesh,
         *,
         axis_name: str = "data",
-        gradient_bucket_bytes: int = 256 * 2**20,
     ) -> ShardingPlan:
         """Resolve the named replicated-state data parallelism preset."""
 
@@ -297,9 +305,9 @@ class ShardingPlan:
             parameter_axis_names=(axis_name,),
             data_axis_name=axis_name,
             materialization_boundary="model",
-            materialization_bucket_bytes=gradient_bucket_bytes,
+            materialization_bucket_bytes=256 * 2**20,
             rematerialize_gathers=False,
-            gradient_bucket_bytes=gradient_bucket_bytes,
+            gradient_bucket_bytes=256 * 2**20,
             strategy="ddp",
         )
 
@@ -348,6 +356,30 @@ class ShardingPlan:
                         f"partition count {partitions}"
                     )
 
+    @staticmethod
+    def _validate_materialization_boundary(
+        model: eqx.Module,
+        specs: eqx.Module,
+        boundary: Literal["model", "layer"],
+    ) -> None:
+        if boundary != "layer":
+            return
+        has_parameter_shards = any(
+            _spec_axis_names(spec)
+            for spec in jax.tree.leaves(
+                specs,
+                is_leaf=lambda value: isinstance(value, P),
+            )
+        )
+        if has_parameter_shards and not callable(
+            getattr(model, "fsdp_materialize", None)
+        ):
+            raise NotImplementedError(
+                f"{type(model).__name__} does not implement layer-boundary FSDP; "
+                "name its layer stack in fsdp_materialize() or configure "
+                "materialization_boundary='model'"
+            )
+
     @property
     def state_specs(self) -> TrainState:
         return TrainState(
@@ -375,7 +407,39 @@ class ShardingPlan:
     def place_state(self, state: TrainState) -> TrainState:
         """Place parameters and Optax state directly in their at-rest layouts."""
 
-        return jax.device_put(state, self.state_shardings)
+        def place(value: Any, sharding: NamedSharding) -> Any:
+            if not eqx.is_array(value):
+                return value
+            if sharding.is_fully_addressable:
+                return jax.device_put(value, sharding)
+            if tuple(sharding.spec):
+                raise NotImplementedError(
+                    "multi-host placement of sharded parameters requires "
+                    "process-local checkpoint restoration"
+                )
+            return jax.make_array_from_process_local_data(
+                sharding,
+                value,
+                global_shape=value.shape,
+            )
+
+        return jax.tree.map(place, state, self.state_shardings)
+
+    def place_replicated(self, tree: Any) -> Any:
+        """Place an array PyTree as replicas, including from every host."""
+
+        def place(value: Any) -> Any:
+            if not eqx.is_array(value):
+                return value
+            if self.replicated_sharding.is_fully_addressable:
+                return jax.device_put(value, self.replicated_sharding)
+            return jax.make_array_from_process_local_data(
+                self.replicated_sharding,
+                value,
+                global_shape=value.shape,
+            )
+
+        return jax.tree.map(place, tree, is_leaf=lambda value: value is None)
 
     def place_batch(self, batch: Any) -> Any:
         """Shard example rows on the data axis and replicate over FSDP axes."""
@@ -390,8 +454,11 @@ class ShardingPlan:
             is_leaf=lambda value: value is None,
         )
 
-    def materialize_model(self, model: eqx.Module) -> eqx.Module:
-        """Materialize parameters at the configured model-supported boundary."""
+    def materialize_layer_model(self, model: eqx.Module) -> eqx.Module:
+        """Materialize parameters through a model's explicit layer boundary."""
+
+        if self.materialization_boundary != "layer":  # pragma: no cover
+            raise AssertionError("explicit materialization is reserved for layer FSDP")
 
         materializer = FSDPMaterializer(
             axis_sizes=tuple(
@@ -402,12 +469,32 @@ class ShardingPlan:
             bucket_bytes=self.materialization_bucket_bytes,
         )
         bounded_materialize = getattr(model, "fsdp_materialize", None)
-        if self.materialization_boundary == "layer" and callable(bounded_materialize):
-            return cast(
-                eqx.Module,
-                bounded_materialize(self.parameter_specs, materializer),
+        if not callable(bounded_materialize):  # pragma: no cover - plan invariant
+            raise AssertionError("layer materialization capability disappeared")
+        return cast(
+            eqx.Module,
+            bounded_materialize(self.parameter_specs, materializer),
+        )
+
+    @property
+    def has_sharded_parameters(self) -> bool:
+        """Whether any trainable model leaf has non-replicated at-rest storage."""
+
+        return any(
+            _spec_axis_names(spec)
+            for spec in jax.tree.leaves(
+                self.parameter_specs,
+                is_leaf=lambda value: isinstance(value, P),
             )
-        return cast(eqx.Module, materializer.tree(model, self.parameter_specs))
+        )
+
+    @property
+    def requires_internal_annotations(self) -> bool:
+        """Whether explicit inference or parameter shards need layout guidance."""
+
+        return self.has_sharded_parameters or any(
+            axis_type is AxisType.Explicit for axis_type in self.mesh.axis_types
+        )
 
     def global_norm(self, tree: Any) -> jax.Array:
         """Compute one FP32 norm over local shards without materializing them."""
@@ -542,154 +629,6 @@ class ShardingPlan:
         return jax.tree.map(replicate, metrics)
 
 
-@dataclass(frozen=True)
-class DataParallel:
-    """Replicate training state and shard example rows over a named data axis."""
-
-    mesh: Mesh
-    axis_name: str = "data"
-
-    def __post_init__(self) -> None:
-        if self.axis_name not in self.mesh.axis_names:
-            raise ValueError(
-                f"data axis {self.axis_name!r} is absent from mesh axes "
-                f"{self.mesh.axis_names!r}"
-            )
-        if len(self.mesh.axis_names) != 1:
-            raise ValueError("DataParallel currently requires a one-dimensional mesh")
-
-    @classmethod
-    def from_devices(
-        cls,
-        devices: Sequence[jax.Device],
-        *,
-        axis_name: str = "data",
-    ) -> DataParallel:
-        """Build the standard replicated-data-parallel mesh."""
-
-        if not devices:
-            raise ValueError("DataParallel requires at least one device")
-        mesh = Mesh(np.asarray(devices), (axis_name,))
-        return cls(mesh=mesh, axis_name=axis_name)
-
-    @property
-    def world_size(self) -> int:
-        return int(self.mesh.shape[self.axis_name])
-
-    @property
-    def replicated_sharding(self) -> NamedSharding:
-        return NamedSharding(self.mesh, P())
-
-    @property
-    def batch_sharding(self) -> NamedSharding:
-        return NamedSharding(self.mesh, P(self.axis_name))
-
-    def place_replicated(self, tree: Any) -> Any:
-        """Place every array leaf as a replica over the data mesh."""
-
-        def place(value: Any) -> Any:
-            if not eqx.is_array(value):
-                return value
-            if self.replicated_sharding.is_fully_addressable:
-                return jax.device_put(value, self.replicated_sharding)
-            return jax.make_array_from_process_local_data(
-                self.replicated_sharding,
-                value,
-                global_shape=value.shape,
-            )
-
-        return jax.tree.map(
-            place,
-            tree,
-            is_leaf=lambda value: value is None,
-        )
-
-    def place_batch(self, batch: Any) -> Any:
-        """Shard a globally available batch on its leading record axis."""
-
-        return jax.tree.map(
-            lambda value: (
-                jax.device_put(value, self.batch_sharding)
-                if eqx.is_array(value)
-                else value
-            ),
-            batch,
-            is_leaf=lambda value: value is None,
-        )
-
-    def place_process_local_batch(
-        self,
-        batch: ProcessLocalRetrievalBatch,
-    ) -> RetrievalBatch:
-        """Assemble one global retrieval batch from process-local row shards."""
-
-        def global_rows(tree: Any) -> Any:
-            return jax.tree.map(
-                lambda value: (
-                    jax.make_array_from_process_local_data(
-                        self.batch_sharding,
-                        value,
-                    )
-                    if eqx.is_array(value)
-                    else value
-                ),
-                tree,
-                is_leaf=lambda value: value is None,
-            )
-
-        return RetrievalBatch(
-            query=global_rows(batch.query),
-            document=global_rows(batch.document),
-            positive_mask=global_rows(batch.positive_mask),
-            positive_weights=(
-                None
-                if batch.positive_weights is None
-                else global_rows(batch.positive_weights)
-            ),
-            query_valid=global_rows(batch.query_valid),
-            document_valid=global_rows(batch.document_valid),
-        )
-
-
-def build_data_parallel_train_step(
-    task: Task[Any],
-    optimizer: optax.GradientTransformationExtraArgs,
-    plan: DataParallel,
-    *,
-    max_grad_norm: float | None = 1.0,
-    execution: LossExecution,
-    donate_state: bool = False,
-) -> TrainStep:
-    """Compile one global-negative update over replicated training state.
-
-    Batch leaves are sharded on their leading record axis. For a retrieval
-    batch this means the positive relation is row-sharded while retaining its
-    global document axis. GradCache gathers compact representations and relation
-    rows, and reverse-mode transposition synchronizes replicated parameter
-    gradients exactly once after encoder replay.
-    """
-
-    if not isinstance(execution, GradCache):
-        raise TypeError("DataParallel currently requires GradCache execution")
-    train_step_body = _build_train_step_body(
-        task,
-        optimizer,
-        max_grad_norm=max_grad_norm,
-        execution=execution,
-        context=ExecutionContext(data_axis_name=plan.axis_name),
-    )
-
-    mapped_step = jax.shard_map(
-        train_step_body,
-        mesh=plan.mesh,
-        in_specs=(P(), P(plan.axis_name), P()),
-        out_specs=P(),
-        check_vma=True,
-    )
-    donate_argnums = (0,) if donate_state else ()
-    return jax.jit(mapped_step, donate_argnums=donate_argnums)
-
-
 def build_sharded_train_step(
     task: Task[Any],
     optimizer: optax.GradientTransformationExtraArgs,
@@ -701,18 +640,77 @@ def build_sharded_train_step(
 ) -> TrainStep:
     """Compile one ordinary task update from a resolved sharding plan.
 
-    Pure FSDP replicates the scientific batch over the parameter mesh. Hybrid
-    execution additionally shards rows over ``data_axis_name``; today that path
-    uses exact global-negative GradCache, matching the accepted data-parallel
-    semantics while parameter and optimizer leaves remain FSDP-sharded.
+    Pure FSDP replicates the scientific batch over the parameter mesh. A data
+    axis shards rows for any execution strategy that supplies the task's exact
+    distributed loss semantics; the sharding plan remains task-neutral.
     """
 
-    data_axis_name = plan.data_axis_name
-    if data_axis_name is not None and int(plan.mesh.shape[data_axis_name]) == 1:
-        data_axis_name = None
-    if data_axis_name is not None and not isinstance(execution, GradCache):
-        raise TypeError("hybrid data/FSDP execution currently requires GradCache")
-    materialize_model = plan.materialize_model
+    if plan.has_sharded_parameters and plan.materialization_boundary == "layer":
+        return _build_layer_sharded_train_step(
+            task,
+            optimizer,
+            plan,
+            max_grad_norm=max_grad_norm,
+            execution=execution,
+            donate_state=donate_state,
+        )
+
+    def materialize_model(model: eqx.Module) -> eqx.Module:
+        return cast(
+            eqx.Module,
+            jax.tree.map(
+                lambda value: replicate(value) if eqx.is_array(value) else value,
+                model,
+            ),
+        )
+
+    unannotated_train_step = _build_train_step_body(
+        task,
+        optimizer,
+        max_grad_norm=max_grad_norm,
+        execution=execution,
+        context=ExecutionContext(),
+        materialize_model=materialize_model if plan.has_sharded_parameters else None,
+    )
+
+    def train_step_body(
+        state: TrainState,
+        batch: Any,
+        key: jax.Array | None,
+    ) -> StepResult:
+        if not plan.requires_internal_annotations:
+            return unannotated_train_step(state, batch, key)
+        with activation_sharding(plan.mesh, plan.data_axis_name):
+            return unannotated_train_step(state, batch, key)
+
+    donate_argnums = (0,) if donate_state else ()
+    return jax.jit(
+        train_step_body,
+        in_shardings=(
+            plan.state_shardings,
+            plan.batch_sharding,
+            plan.replicated_sharding,
+        ),
+        out_shardings=StepResult(
+            state=plan.state_shardings,
+            metrics=cast(Any, plan.replicated_sharding),
+        ),
+        donate_argnums=donate_argnums,
+    )
+
+
+def _build_layer_sharded_train_step(
+    task: Task[Any],
+    optimizer: optax.GradientTransformationExtraArgs,
+    plan: ShardingPlan,
+    *,
+    max_grad_norm: float | None,
+    execution: LossExecution,
+    donate_state: bool,
+) -> TrainStep:
+    """Compile opt-in layer-bounded FSDP with explicit gather transposition."""
+
+    materialize_model = plan.materialize_layer_model
     if plan.rematerialize_gathers:
         materialize_model = jax.checkpoint(
             materialize_model,
@@ -723,7 +721,7 @@ def build_sharded_train_step(
         optimizer,
         max_grad_norm=max_grad_norm,
         execution=execution,
-        context=ExecutionContext(data_axis_name=data_axis_name),
+        context=ExecutionContext(data_axis_name=plan.data_axis_name),
         materialize_model=materialize_model,
         synchronize_gradients=plan.synchronize_gradients,
         norm_fn=plan.global_norm,
@@ -746,12 +744,7 @@ def build_sharded_train_step(
         mesh=plan.mesh,
         in_specs=(plan.state_specs, plan.batch_spec, P()),
         out_specs=StepResult(state=plan.state_specs, metrics=cast(Any, P())),
-        # DDP replication is made explicit and bucketed after the complete
-        # backward pass. Disabling shard_map's automatic VMA transpose there
-        # avoids sinking one implicit AllReduce per parameter into scanned
-        # layers. Sharded parameters retain VMA checking for their custom
-        # AllGather/ReduceScatter transpose contract.
-        check_vma=plan.strategy != "ddp",
+        check_vma=True,
     )
     donate_argnums = (0,) if donate_state else ()
     return jax.jit(mapped_step, donate_argnums=donate_argnums)

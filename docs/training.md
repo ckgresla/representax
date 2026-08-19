@@ -55,22 +55,23 @@ one Optax update. The loss registry capability-gates this path. Cross-example
 objectives such as MNR reject ordinary accumulation because it would change the
 negative population; exact GradCache remains their bounded-memory execution.
 
-`MeshConfig` stores the portable logical axis shapes and names accepted by
-`jax.make_mesh(**config.model_dump())`. Concrete JAX `Device` objects are never
-serialized. `training.sharding` is a discriminated union of named DDP, named
-FSDP, and explicit custom partition rules. All three resolve to one
-model-shaped `ShardingPlan` containing batch, parameter, gradient, Optax-state,
-and output layouts plus their collective semantics. The host loop validates the
-scientific global batch against the resolved data-axis size and the model-ready
-Grain source. Packing remains absent until a task-, data-, and model-compatible
-segment/masking contract is implemented.
+`MeshConfig` stores portable logical axis shapes and names; concrete JAX
+`Device` objects are never serialized. The runtime materializes an automatic
+JAX mesh from those values and the devices assigned to the job.
+`training.sharding` is a discriminated union of named DDP, named FSDP, and exact
+custom partition rules. All three resolve to one model-shaped `ShardingPlan`
+containing batch, parameter, gradient, Optax-state, and output layouts. The host
+loop validates the scientific global batch against the resolved data-axis size
+and the model-ready Grain source. Packing remains absent until a task-, data-,
+and model-compatible segment/masking contract is implemented.
 
-Named DDP explicitly synchronizes bounded, dtype-compatible gradient buckets
-after the complete backward pass. Named FSDP defaults to a memory-first `layer`
-parameter-materialization boundary when a model supplies one, and also accepts
-`model` for a throughput-oriented whole-model live range. Both use bounded
-parameter buckets. These are execution choices: they do not change the task,
-loss, global batch, or optimizer semantics.
+Named DDP and default full-model FSDP execute as global JAX programs whose
+communication follows from their declared input, output, and model-call
+shardings. The optional `materialization_boundary="layer"` mode uses bounded
+explicit parameter gathers to shorten the full-parameter live range; it
+requires a model to name its layer stack and fails during plan construction
+when that capability is absent. These are execution choices: they do not change
+the task, loss, global batch, or optimizer semantics.
 
 These models are declarative, validated, serializable, and compatible with
 Hydra-Zen composition and CLI overrides. They contain no live JAX mesh, Equinox model,
