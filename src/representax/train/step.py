@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import equinox as eqx
 import jax
@@ -20,6 +20,9 @@ from .execution import (
     LossExecution,
 )
 from .state import StepMetrics, StepResult, TrainState
+
+if TYPE_CHECKING:
+    from .sharding import ShardingPlan
 
 
 def tree_global_norm(tree: Any) -> Float[Array, ""]:
@@ -352,12 +355,13 @@ def build_train_step(
     task: Task[Any],
     optimizer: optax.GradientTransformationExtraArgs,
     *,
+    plan: ShardingPlan | None = None,
     max_grad_norm: float | None = 1.0,
     execution: LossExecution | None = None,
     donate_state: bool = False,
     gradient_accumulation_steps: int = 1,
 ) -> TrainStep:
-    """Build a compiled task-generic optimizer update.
+    """Build one compiled task-generic optimizer update.
 
     The task and optimizer are closed-over static program structure. Model,
     optimizer state, batch, and random key remain explicit JAX inputs. Exact
@@ -367,7 +371,26 @@ def build_train_step(
     donation is opt-in because callers may retain the old state for comparison,
     retry, or branching. Orbax asynchronous checkpointing is compatible with
     donation: its blocking device-to-host snapshot completes before save returns.
+    An optional resolved sharding plan changes physical layouts and collective
+    boundaries without selecting a different trainer or scientific program.
     """
+
+    if plan is not None:
+        if gradient_accumulation_steps != 1:
+            raise NotImplementedError(
+                "distributed gradient accumulation is not implemented; use the "
+                "scientific global batch directly or exact GradCache"
+            )
+        from .sharding import _build_train_step_from_sharding_plan
+
+        return _build_train_step_from_sharding_plan(
+            task,
+            optimizer,
+            plan,
+            max_grad_norm=max_grad_norm,
+            execution=Direct() if execution is None else execution,
+            donate_state=donate_state,
+        )
 
     train_step_body = _build_train_step_body(
         task,

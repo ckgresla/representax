@@ -162,7 +162,6 @@ def main() -> None:
     from representax.train import (
         GradCache,
         ShardingPlan,
-        build_sharded_train_step,
         build_train_step,
         make_train_state,
     )
@@ -262,10 +261,10 @@ def main() -> None:
                 parameter_axis_name="data",
                 data_axis_name="data",
             )
-        distributed_step = build_sharded_train_step(
+        distributed_step = build_train_step(
             task,
             optimizer,
-            sharding_plan,
+            plan=sharding_plan,
             max_grad_norm=None,
             execution=execution,
             donate_state=False,
@@ -283,10 +282,10 @@ def main() -> None:
             mesh,
             axis_name="data",
         )
-        distributed_step = build_sharded_train_step(
+        distributed_step = build_train_step(
             task,
             optimizer,
-            sharding_plan,
+            plan=sharding_plan,
             max_grad_norm=None,
             execution=execution,
             donate_state=False,

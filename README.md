@@ -114,6 +114,30 @@ installations intentionally use a system toolkit. This advice applies to the
 pip-managed extras documented above and follows JAX's
 [NVIDIA installation guidance](https://docs.jax.dev/en/latest/installation.html#pip-installation-nvidia-gpu-cuda-installed-via-pip-easier).
 
+### A near-capacity sharded job can fragment the default GPU pool
+
+First verify from the resolved `ShardingPlan` that the persistent model and
+optimizer shards really fit on every device. Did you then see this from a
+compiled step?
+
+```text
+RESOURCE_EXHAUSTED: Out of memory while trying to allocate 8.23GiB.
+[executable_name='jit_mapped_train_step_body']
+```
+
+JAXlib's CUDA-async allocator can make a physically feasible, near-capacity
+layout executable when the default BFC pool cannot provide one contiguous live
+workspace. Select it before importing JAX:
+
+```bash
+XLA_PYTHON_CLIENT_ALLOCATOR=cuda_async python train.py
+```
+
+`TF_GPU_ALLOCATOR=cuda_malloc_async` is a TensorFlow control and does not select
+the allocator in JAX. Treat CUDA async as a measured execution choice rather
+than a blanket default: an impossible at-rest layout will still OOM, and memory
+and throughput should be re-profiled for the actual job.
+
 ## Encoding
 
 The compiled primitive has one route-aware operation:

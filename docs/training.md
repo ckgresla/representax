@@ -201,7 +201,7 @@ Task-owned collation is the bridge from data examples to the compiled batch
 contract.
 
 Single-host DDP, FSDP, hybrid data/model meshes, and arbitrary model-path
-partition rules execute through the same `build_sharded_train_step` boundary.
+partition rules execute through the same `build_train_step` boundary.
 Two- and four-device topology gates cover exact updates, StableHLO collectives,
 and asynchronous Orbax restore; physical GPUs additionally cover complete
 ModernVBERT updates, memory placement, and NCCL execution. Physical multi-host

@@ -34,7 +34,6 @@ from .mega_batch import MegaBatchMining
 from .optimizer import build_optimizer, build_schedule
 from .sharding import (
     ShardingPlan,
-    build_sharded_train_step,
     fsdp_partition_spec,
     parameter_specs_from_rules,
 )
@@ -78,7 +77,6 @@ __all__ = [
     "TrainingRunResult",
     "build_train_step",
     "build_loss_execution",
-    "build_sharded_train_step",
     "build_batches",
     "build_collate",
     "build_component",

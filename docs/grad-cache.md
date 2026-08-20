@@ -45,7 +45,7 @@ from representax.tasks.retrieval import MNRTask
 from representax.train import (
     GradCache,
     ShardingPlan,
-    build_sharded_train_step,
+    build_train_step,
 )
 
 mesh = jax.make_mesh((len(jax.devices("gpu")),), ("data",))
@@ -56,10 +56,10 @@ plan = ShardingPlan.fsdp(
     parameter_axis_name="data",
     data_axis_name="data",
 )
-step = build_sharded_train_step(
+step = build_train_step(
     MNRTask(scale=20.0),
     optimizer,
-    plan,
+    plan=plan,
     execution=GradCache(query_chunk_size=16),
 )
 state = plan.place_state(state)

@@ -881,7 +881,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
     supported models name their layer stack and unsupported requests fail during
     plan construction rather than silently falling back.  Both boundaries match
     ten complete one-device updates on 2/4-device meshes.
-** NEXT Establish the physical FSDP capacity and throughput frontier
+** DONE Establish the physical FSDP capacity and throughput frontier
     Compare DDP and FSDP on full ModernVBERT and at least one model that cannot
     fit replicated optimizer state.  Sweep useful batch/sequence/model sizes,
     report sustained examples or tokens per second and feasible workloads, and
@@ -918,7 +918,23 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
     31.61 examples/s, but compiles in 18.55 seconds; keep it as a trace-time
     policy-validation lane and =Auto= as the measured runtime default.
 
-** TODO Make precision policy explicit at parameter, compute, activation, and loss boundaries :runtime:precision:
+    The two-GPU physical frontier is accepted in
+    =benchmarks/results/fsdp-frontier-20260819/README.org=.  It covers the 149M
+    checkpoint at batch/sequence points 8/128, 8/512, and 2/4096 plus a
+    1,979,520,768-parameter capacity model.  DDP wins the small communication-
+    dominated points; full-model FSDP is 34.8% faster and uses 14.3% less live
+    JAX memory at sequence 4096.  Layer FSDP completes the 1.9795B model at
+    20.995 GB peak live memory, while DDP already OOMs at the smaller 1.9105B
+    point.  The successful boundary uses JAX's explicitly recorded CUDA-async
+    allocator; the default BFC result and a 2.324B upper-bracket OOM remain
+    structured evidence.
+
+** TODO Optimize the packed full-model FSDP schedule across device counts :runtime:sharding:performance:
+   Preserve the clean global program while recovering the compact four-device
+   2 AllGather / 6 AllReduce / 2 ReduceScatter schedule on two-device meshes.
+   Accept only against matched numerical trajectories and physical throughput;
+   do not reintroduce a separate trainer or manual full-model collective path.
+** NEXT Make precision policy explicit at parameter, compute, activation, and loss boundaries :runtime:precision:
 ** DONE Support activation rematerialization as a measured execution choice :runtime:memory:
   Expose =none=, =selective=, and =full= as topology-dependent policies without
   changing model parameters or scientific semantics.  =selective= uses JAX's

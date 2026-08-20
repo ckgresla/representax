@@ -31,11 +31,7 @@ from .config import build_loss_execution
 from .evaluation import EvaluationRunner
 from .loop import TrainingRunResult, run_training
 from .optimizer import build_optimizer
-from .sharding import (
-    ShardingPlan,
-    build_sharded_train_step,
-    parameter_specs_from_rules,
-)
+from .sharding import ShardingPlan, parameter_specs_from_rules
 from .state import TrainState
 from .step import TrainStep, build_train_step, init_train_state
 
@@ -174,6 +170,8 @@ def build_job_runtime(
         raise ValueError(
             f"job mesh requires {mesh_size} devices; only {len(jax.devices())} visible"
         )
+    plan: ShardingPlan | None = None
+    place_batch = jax.device_put
     if mesh_size == 1:
         if job.training.grad_cache is None and job.training.mega_batch_mining is None:
             realized_batch_size = (
@@ -185,17 +183,6 @@ def build_job_runtime(
                     "direct execution batch plan differs from global_batch_size: "
                     f"{realized_batch_size} != {job.training.global_batch_size}"
                 )
-        step = build_train_step(
-            task,
-            optimizer,
-            max_grad_norm=job.optimization.max_gradient_norm,
-            execution=execution,
-            donate_state=job.training.donate_buffers,
-            gradient_accumulation_steps=(
-                job.training.batch.gradient_accumulation_steps
-            ),
-        )
-        place_batch = jax.device_put
     else:
         mesh = jax.make_mesh(
             job.training.mesh.axis_shapes,
@@ -206,11 +193,6 @@ def build_job_runtime(
             devices=jax.devices()[:mesh_size],
         )
         sharding = job.training.sharding
-        if job.training.batch.gradient_accumulation_steps != 1:
-            raise NotImplementedError(
-                "distributed gradient accumulation is not implemented; use the "
-                "scientific global batch directly or exact GradCache"
-            )
         if isinstance(sharding, DDPConfig):
             plan = ShardingPlan.ddp(
                 state,
@@ -218,16 +200,6 @@ def build_job_runtime(
                 mesh,
                 axis_name=sharding.axis,
             )
-            state = plan.place_state(state)
-            step = build_sharded_train_step(
-                task,
-                optimizer,
-                plan,
-                max_grad_norm=job.optimization.max_gradient_norm,
-                execution=execution,
-                donate_state=job.training.donate_buffers,
-            )
-            place_batch = plan.place_batch
             data_axis_name = sharding.axis
         elif isinstance(sharding, FSDPConfig):
             plan = ShardingPlan.fsdp(
@@ -242,16 +214,6 @@ def build_job_runtime(
                 rematerialize_gathers=sharding.rematerialize_gathers,
                 gradient_bucket_bytes=sharding.gradient_bucket_bytes,
             )
-            state = plan.place_state(state)
-            step = build_sharded_train_step(
-                task,
-                optimizer,
-                plan,
-                max_grad_norm=job.optimization.max_gradient_norm,
-                execution=execution,
-                donate_state=job.training.donate_buffers,
-            )
-            place_batch = plan.place_batch
             data_axis_name = sharding.data_axis
         elif isinstance(sharding, CustomShardingConfig):
             parameter_specs = parameter_specs_from_rules(
@@ -274,16 +236,6 @@ def build_job_runtime(
                 rematerialize_gathers=sharding.rematerialize_gathers,
                 gradient_bucket_bytes=sharding.gradient_bucket_bytes,
             )
-            state = plan.place_state(state)
-            step = build_sharded_train_step(
-                task,
-                optimizer,
-                plan,
-                max_grad_norm=job.optimization.max_gradient_norm,
-                execution=execution,
-                donate_state=job.training.donate_buffers,
-            )
-            place_batch = plan.place_batch
             data_axis_name = sharding.data_axis
         else:  # pragma: no cover - the Pydantic discriminator closes the union
             raise TypeError(f"unsupported sharding config {type(sharding).__name__}")
@@ -296,6 +248,17 @@ def build_job_runtime(
                 "distributed batch plan differs from global_batch_size: "
                 f"{realized_batch_size} != {job.training.global_batch_size}"
             )
+        state = plan.place_state(state)
+        place_batch = plan.place_batch
+    step = build_train_step(
+        task,
+        optimizer,
+        plan=plan,
+        max_grad_norm=job.optimization.max_gradient_norm,
+        execution=execution,
+        donate_state=job.training.donate_buffers,
+        gradient_accumulation_steps=job.training.batch.gradient_accumulation_steps,
+    )
     batches = build_batches(
         job.data,
         batch_size=job.training.global_batch_size,

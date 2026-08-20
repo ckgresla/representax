@@ -7,6 +7,7 @@ import json
 import os
 import re
 import statistics
+import sys
 import threading
 import time
 from collections import Counter
@@ -18,7 +19,9 @@ import numpy as np
 
 def _arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--checkpoint", type=Path, required=True)
+    model_source = parser.add_mutually_exclusive_group(required=True)
+    model_source.add_argument("--checkpoint", type=Path)
+    model_source.add_argument("--model-config", type=Path)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--stablehlo-output", type=Path)
     parser.add_argument("--compiled-hlo-output", type=Path)
@@ -29,6 +32,8 @@ def _arguments() -> argparse.Namespace:
         choices=("model", "layer"),
         default="model",
     )
+    parser.add_argument("--materialization-bucket-mib", type=int, default=256)
+    parser.add_argument("--gradient-bucket-mib", type=int, default=256)
     parser.add_argument("--world-size", type=int, default=2)
     parser.add_argument("--physical-device-ids", default="4,5")
     parser.add_argument("--global-batch-size", type=int, default=8)
@@ -36,6 +41,12 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument("--chunk-size", type=int, default=2)
     parser.add_argument("--warmup-steps", type=int, default=1)
     parser.add_argument("--measured-steps", type=int, default=3)
+    parser.add_argument("--donate-state", action="store_true")
+    parser.add_argument(
+        "--skip-signatures",
+        action="store_true",
+        help="Skip full-state numerical signatures for capacity-only probes.",
+    )
     parser.add_argument("--seed", type=int, default=1729)
     return parser.parse_args()
 
@@ -235,12 +246,16 @@ def _compiled_collective_count(hlo: str, name: str) -> int:
     return len(re.findall(rf"\b{re.escape(name)}(?:-start)?\(", hlo))
 
 
-def main() -> None:
-    arguments = _arguments()
+def main(arguments: argparse.Namespace, progress: dict[str, Any]) -> None:
+    progress["phase"] = "validation"
     if arguments.global_batch_size % arguments.world_size:
         raise ValueError("global batch size must be divisible by world size")
     if arguments.warmup_steps < 0 or arguments.measured_steps <= 0:
         raise ValueError("warmup must be non-negative and measured steps positive")
+    if arguments.materialization_bucket_mib <= 0:
+        raise ValueError("materialization bucket size must be positive")
+    if arguments.gradient_bucket_mib <= 0:
+        raise ValueError("gradient bucket size must be positive")
     physical_device_ids = tuple(
         int(value) for value in arguments.physical_device_ids.split(",")
     )
@@ -255,12 +270,14 @@ def main() -> None:
     from representax.models.modernvbert import (
         ModernVBERTTextBatch,
         ModernVBERTTextCheckpointAdapter,
+        ModernVBERTTextConfig,
+        ModernVBERTTextEncoder,
     )
     from representax.tasks.retrieval import MNRTask, retrieval_batch
     from representax.train import (
         GradCache,
         ShardingPlan,
-        build_sharded_train_step,
+        build_train_step,
         init_train_state,
     )
 
@@ -270,29 +287,46 @@ def main() -> None:
         raise RuntimeError(
             f"expected {arguments.world_size} visible GPUs, received {devices}"
         )
-    config = json.loads((arguments.checkpoint / "config.json").read_text())
-    text_config = config.get("text_config", config)
     generator = np.random.default_rng(arguments.seed)
     shape = (arguments.global_batch_size, arguments.sequence_length)
     cpu = jax.local_devices(backend="cpu")[0]
+    progress["phase"] = "initialization"
+    model_init_started = time.perf_counter()
     with jax.default_device(cpu):
-        model = ModernVBERTTextCheckpointAdapter().load(
-            arguments.checkpoint,
-            parameter_dtype=jnp.float32,
-            compute_dtype=jnp.float32,
-            rematerialization="full",
-        )
+        if arguments.checkpoint is not None:
+            raw_config = json.loads((arguments.checkpoint / "config.json").read_text())
+            text_config = ModernVBERTTextConfig.from_hf_config(raw_config)
+            model = ModernVBERTTextCheckpointAdapter().load(
+                arguments.checkpoint,
+                parameter_dtype=jnp.float32,
+                compute_dtype=jnp.float32,
+                rematerialization="full",
+            )
+        else:
+            if arguments.model_config is None:  # pragma: no cover - argparse invariant
+                raise AssertionError("a model source is required")
+            text_config = ModernVBERTTextConfig.model_validate_json(
+                arguments.model_config.read_text()
+            )
+            model = ModernVBERTTextEncoder.init(
+                text_config,
+                key=jax.random.key(arguments.seed),
+                parameter_dtype=jnp.float32,
+                compute_dtype=jnp.float32,
+                rematerialization="full",
+                model_id=f"representax/{arguments.model_config.stem}",
+            )
         optimizer = optax.adamw(learning_rate=1e-5, weight_decay=0.0)
         state = init_train_state(model, optimizer)
         input_ids = generator.integers(
             1,
-            int(text_config["vocab_size"]),
+            text_config.vocab_size,
             size=shape,
             dtype=np.int32,
         )
         document_ids = generator.integers(
             1,
-            int(text_config["vocab_size"]),
+            text_config.vocab_size,
             size=shape,
             dtype=np.int32,
         )
@@ -308,6 +342,17 @@ def main() -> None:
             ),
             positive_mask=jnp.eye(arguments.global_batch_size, dtype=jnp.bool_),
         )
+    model_init_seconds = time.perf_counter() - model_init_started
+    parameter_count = sum(
+        int(value.size)
+        for value in jax.tree.leaves(model)
+        if hasattr(value, "dtype") and jnp.issubdtype(value.dtype, jnp.inexact)
+    )
+    progress.update(
+        phase="planning",
+        parameter_count=parameter_count,
+        model_init_seconds=model_init_seconds,
+    )
     mesh = jax.make_mesh(
         (arguments.world_size,),
         ("data",),
@@ -326,26 +371,33 @@ def main() -> None:
             parameter_axis_name="data",
             data_axis_name="data",
             materialization_boundary=arguments.materialization_boundary,
+            materialization_bucket_bytes=arguments.materialization_bucket_mib * 2**20,
+            gradient_bucket_bytes=arguments.gradient_bucket_mib * 2**20,
         )
-    step = build_sharded_train_step(
+    step = build_train_step(
         MNRTask(scale=20.0),
         optimizer,
-        plan,
+        plan=plan,
         max_grad_norm=None,
         execution=GradCache(
             query_chunk_size=arguments.chunk_size,
             document_chunk_size=arguments.chunk_size,
             loss_row_chunk_size=arguments.chunk_size,
         ),
-        donate_state=False,
+        donate_state=arguments.donate_state,
     )
     sampler = _NvmlSampler(physical_device_ids)
     sampler.start()
+    progress["phase"] = "placement"
+    placement_started = time.perf_counter()
     placed_state = plan.place_state(state)
     placed_batch = plan.place_batch(batch)
     placed_key = jax.device_put(
         jax.random.key(arguments.seed), plan.replicated_sharding
     )
+    jax.block_until_ready((placed_state, placed_batch, placed_key))
+    placement_seconds = time.perf_counter() - placement_started
+    progress.update(phase="lowering", placement_seconds=placement_seconds)
     lowering_started = time.perf_counter()
     lowered = step.lower(placed_state, placed_batch, placed_key)
     stablehlo = lowered.as_text()
@@ -353,6 +405,7 @@ def main() -> None:
         arguments.stablehlo_output.parent.mkdir(parents=True, exist_ok=True)
         arguments.stablehlo_output.write_text(stablehlo)
     lowering_seconds = time.perf_counter() - lowering_started
+    progress.update(phase="compilation", lowering_seconds=lowering_seconds)
     compile_started = time.perf_counter()
     compiled = lowered.compile()
     compile_seconds = time.perf_counter() - compile_started
@@ -364,9 +417,10 @@ def main() -> None:
         arguments.compiled_hlo_output.write_text(compiled_hlo)
 
     current_state = placed_state
+    progress.update(phase="warmup", compile_seconds=compile_seconds)
     for index in range(arguments.warmup_steps):
         result = compiled(
-            placed_state,
+            current_state,
             placed_batch,
             jax.device_put(
                 jax.random.fold_in(jax.random.key(arguments.seed), index),
@@ -374,8 +428,11 @@ def main() -> None:
             ),
         )
         jax.block_until_ready(result)
+        if arguments.donate_state:
+            current_state = result.state
     step_seconds = []
     metric_trajectory = []
+    progress["phase"] = "measurement"
     for index in range(arguments.measured_steps):
         key = jax.device_put(
             jax.random.fold_in(
@@ -396,15 +453,24 @@ def main() -> None:
         metric_trajectory.append(_metric_snapshot(result.metrics))
         current_state = result.state
     nvml = sampler.finish()
+    median_step_seconds = statistics.median(step_seconds)
 
     artifact = {
-        "schema_version": "representax-sharding-profile-v2",
+        "schema_version": "representax-sharding-profile-v3",
+        "status": "completed",
         "strategy": arguments.strategy,
         "axis_type": arguments.axis_type,
         "materialization_boundary": (
             arguments.materialization_boundary if arguments.strategy == "fsdp" else None
         ),
-        "checkpoint": str(arguments.checkpoint),
+        "checkpoint": (
+            None if arguments.checkpoint is None else str(arguments.checkpoint)
+        ),
+        "model_config": (
+            None if arguments.model_config is None else str(arguments.model_config)
+        ),
+        "parameter_count": parameter_count,
+        "model_init_seconds": model_init_seconds,
         "world_size": arguments.world_size,
         "logical_devices": [str(device) for device in devices],
         "physical_device_ids": list(physical_device_ids),
@@ -417,6 +483,7 @@ def main() -> None:
             "XLA_PYTHON_CLIENT_PREALLOCATE",
             "default",
         ),
+        "tf_gpu_allocator": os.environ.get("TF_GPU_ALLOCATOR", "default"),
         "stablehlo_output": (
             None
             if arguments.stablehlo_output is None
@@ -431,13 +498,23 @@ def main() -> None:
         "local_batch_size": arguments.global_batch_size // arguments.world_size,
         "sequence_length": arguments.sequence_length,
         "chunk_size": arguments.chunk_size,
+        "warmup_steps": arguments.warmup_steps,
+        "measured_steps": arguments.measured_steps,
+        "donate_state": arguments.donate_state,
+        "materialization_bucket_mib": arguments.materialization_bucket_mib,
+        "gradient_bucket_mib": arguments.gradient_bucket_mib,
+        "placement_seconds": placement_seconds,
         "lowering_seconds": lowering_seconds,
         "compile_seconds": compile_seconds,
         "step_seconds": step_seconds,
         "metric_trajectory": metric_trajectory,
-        "median_step_seconds": statistics.median(step_seconds),
-        "examples_per_second": (
-            arguments.global_batch_size / statistics.median(step_seconds)
+        "median_step_seconds": median_step_seconds,
+        "examples_per_second": arguments.global_batch_size / median_step_seconds,
+        "training_tokens_per_second": (
+            2
+            * arguments.global_batch_size
+            * arguments.sequence_length
+            / median_step_seconds
         ),
         "stablehlo_collectives": {
             "all_gather": stablehlo.count('"stablehlo.all_gather"'),
@@ -460,8 +537,14 @@ def main() -> None:
         "compiled_memory_analysis": _memory_analysis(compiled),
         "model_layout": _layout_summary(current_state.model),
         "optimizer_layout": _layout_summary(current_state.optimizer_state),
-        "model_signature": _tree_signature(current_state.model),
-        "optimizer_signature": _tree_signature(current_state.optimizer_state),
+        "model_signature": (
+            None if arguments.skip_signatures else _tree_signature(current_state.model)
+        ),
+        "optimizer_signature": (
+            None
+            if arguments.skip_signatures
+            else _tree_signature(current_state.optimizer_state)
+        ),
         "batch_layout": _layout_summary(placed_batch),
         "jax_device_memory": {
             str(device): {
@@ -477,8 +560,92 @@ def main() -> None:
     }
     arguments.output.parent.mkdir(parents=True, exist_ok=True)
     arguments.output.write_text(json.dumps(artifact, indent=2, sort_keys=True) + "\n")
-    print(json.dumps(artifact, indent=2, sort_keys=True))
+    print(
+        json.dumps(
+            {
+                key: artifact[key]
+                for key in (
+                    "strategy",
+                    "world_size",
+                    "parameter_count",
+                    "global_batch_size",
+                    "sequence_length",
+                    "materialization_boundary",
+                    "materialization_bucket_mib",
+                    "gradient_bucket_mib",
+                    "model_init_seconds",
+                    "placement_seconds",
+                    "lowering_seconds",
+                    "compile_seconds",
+                    "median_step_seconds",
+                    "examples_per_second",
+                    "training_tokens_per_second",
+                    "final_loss",
+                    "numeric_finite",
+                    "compiled_hlo_collectives",
+                )
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
 
 
 if __name__ == "__main__":
-    main()
+    parsed_arguments = _arguments()
+    run_progress: dict[str, Any] = {}
+    try:
+        main(parsed_arguments, run_progress)
+    except Exception as error:
+        message = str(error)
+        category = (
+            "oom"
+            if any(
+                marker in message.lower()
+                for marker in ("out of memory", "resource_exhausted", "oom")
+            )
+            else "error"
+        )
+        failure = {
+            "schema_version": "representax-sharding-profile-v3",
+            "status": category,
+            "strategy": parsed_arguments.strategy,
+            "world_size": parsed_arguments.world_size,
+            "physical_device_ids": parsed_arguments.physical_device_ids,
+            "checkpoint": (
+                None
+                if parsed_arguments.checkpoint is None
+                else str(parsed_arguments.checkpoint)
+            ),
+            "model_config": (
+                None
+                if parsed_arguments.model_config is None
+                else str(parsed_arguments.model_config)
+            ),
+            "global_batch_size": parsed_arguments.global_batch_size,
+            "sequence_length": parsed_arguments.sequence_length,
+            "materialization_boundary": parsed_arguments.materialization_boundary,
+            "failed_phase": run_progress.get("phase", "argument_parsing"),
+            "parameter_count": run_progress.get("parameter_count"),
+            "model_init_seconds": run_progress.get("model_init_seconds"),
+            "placement_seconds": run_progress.get("placement_seconds"),
+            "lowering_seconds": run_progress.get("lowering_seconds"),
+            "compile_seconds": run_progress.get("compile_seconds"),
+            "xla_python_client_allocator": os.environ.get(
+                "XLA_PYTHON_CLIENT_ALLOCATOR",
+                "default",
+            ),
+            "xla_python_client_preallocate": os.environ.get(
+                "XLA_PYTHON_CLIENT_PREALLOCATE",
+                "default",
+            ),
+            "tf_gpu_allocator": os.environ.get("TF_GPU_ALLOCATOR", "default"),
+            "error_type": type(error).__name__,
+            "error": message[-8_000:],
+        }
+        parsed_arguments.output.parent.mkdir(parents=True, exist_ok=True)
+        parsed_arguments.output.write_text(
+            json.dumps(failure, indent=2, sort_keys=True) + "\n"
+        )
+        print(json.dumps(failure, indent=2, sort_keys=True), file=sys.stderr)
+        raise

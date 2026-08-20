@@ -21,7 +21,6 @@ from representax.tasks.retrieval import MNRTask, retrieval_batch
 from representax.train import (
     GradCache,
     ShardingPlan,
-    build_sharded_train_step,
     build_train_step,
     init_train_state,
 )
@@ -115,10 +114,10 @@ def test_modernvbert_fsdp_matches_ten_one_device_grad_cache_updates(
         minimum_parameter_elements=1,
         materialization_boundary=materialization_boundary,
     )
-    distributed_step = build_sharded_train_step(
+    distributed_step = build_train_step(
         task,
         optimizer,
-        plan,
+        plan=plan,
         execution=execution,
     )
     input_ids = jnp.asarray(

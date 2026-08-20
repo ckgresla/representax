@@ -1,0 +1,99 @@
+#+title: Physical ModernVBERT DDP/FSDP frontier — 2026-08-19
+
+* Decision
+
+The named DDP and FSDP plans use the same =build_train_step= API and scientific
+program.  On two PCIe-connected RTX 4090s, replicated DDP wins small,
+communication-dominated workloads.  Full-model FSDP becomes faster once
+long-sequence compute amortizes materialization, while using less live memory.
+Layer-boundary FSDP additionally trains a 1.9795B-parameter model after DDP has
+already crossed the physical capacity boundary.
+
+This closes the first physical capacity/throughput frontier.  It does not claim
+that FSDP is universally faster: the plan expands the feasible-workload set and
+its throughput depends on the compute/communication ratio and interconnect.
+
+* Matched scientific program
+
+- two physical RTX 4090s, GPUs 4 and 5, connected through one PCIe host bridge;
+- FP32 parameters and compute with highest JAX matmul precision;
+- AdamW, learning rate =1e-5=, no weight decay or gradient clipping;
+- MNR at scale 20 through exact GradCache, with identity positives;
+- deterministic synthetic token tensors, full activation rematerialization;
+- one synchronized warmup and three or five synchronized measured updates; and
+- =XLA_PYTHON_CLIENT_PREALLOCATE=false=.
+
+The 149M rows load the immutable =ModernVBERT/modernvbert-embed= snapshot.  They
+are complete forward/backward/optimizer programs, but deliberately begin at
+model-ready tensors and therefore isolate the trainer rather than data quality.
+
+* Full-model frontier
+
+Training tokens count both query and document tokens.  Memory columns are peak
+live JAX bytes per GPU, expressed as decimal GB.  Every row is finite and both
+devices have active compute and balanced at-rest layouts.
+
+| parameters | global batch | sequence | plan | median step (s) | examples/s | training tokens/s | peak JAX GB | result |
+|------------+--------------+----------+------+-----------------+------------+-------------------+-------------+--------|
+| 149,044,992 | 8 | 128 | DDP | 0.1783 | 44.87 | 11,485 | 5.987 | completed |
+| 149,044,992 | 8 | 128 | full FSDP | 1.0441 | 7.66 | 1,962 | 4.696 | completed |
+| 149,044,992 | 8 | 512 | DDP | 0.4480 | 17.86 | 18,285 | 6.157 | completed |
+| 149,044,992 | 8 | 512 | full FSDP | 1.1833 | 6.76 | 6,923 | 4.799 | completed |
+| 149,044,992 | 2 | 4096 | DDP | 2.5310 | 0.790 | 6,473 | 10.022 | completed |
+| 149,044,992 | 2 | 4096 | full FSDP | 1.8774 | 1.065 | 8,727 | 8.590 | completed |
+
+At sequence 4096, full-model FSDP is 34.8% faster in training-token throughput,
+uses 14.3% less peak live JAX memory, and 23.9% less peak process memory than
+DDP.  At sequence 128 and 512, communication dominates and DDP is materially
+faster.  The first measured losses agree within =2e-6= at all three points; the
+sequence-4096 trajectories remain within =8.6e-6= after three updates.
+
+The two-device compiler emits 10 AllGathers and 10 AllReduces for the small
+full-FSDP shapes, versus the accepted four-device packed schedule of 2 and 6.
+That topology-sensitive schedule explains the small-workload trough and remains
+a future compiler-plan optimization, not a hidden correctness exception.
+
+* Capacity frontier
+
+The largest successful capacity configuration is
+=benchmarks/configs/modernvbert-capacity-2.0b.json=.  Its exact parameter count
+is 1,979,520,768.  Its FP32 trainable arrays plus Adam moments require at least
+23,754,249,216 bytes per GPU under DDP before gradients, activations, or an
+output state.  The smaller 1,910,506,752-parameter configuration already OOMs
+under DDP with the same CUDA-async allocator.
+
+| plan | allocator | at-rest model/GPU | at-rest Adam/GPU | peak JAX/GPU | median step | result |
+|------+-----------+-------------------+------------------+--------------+-------------+--------|
+| DDP, 1.9105B | JAX CUDA async | 7.642 GB | 15.284 GB | — | — | OOM requesting 21.21 GiB result state |
+| layer FSDP, 1.9105B | JAX CUDA async | 3.821 GB | 7.642 GB | 20.300 GB | 12.024 s | completed |
+| layer FSDP, 1.9795B | JAX CUDA async | 3.959 GB | 7.918 GB | 20.995 GB | 12.524 s | completed |
+
+The successful layer-FSDP runs use global batch 2, sequence 128, buffer donation,
+one warmup, and three measured updates.  At 1.9795B, both devices store exactly
+3,959,041,563 model bytes and 7,918,083,076 Adam bytes, reach 100% sampled
+utilization, and complete finite non-skipped updates.  Its compiled HLO contains
+8 AllGathers, 5 AllReduces, and 4 ReduceScatters.
+
+The default BFC allocator could not find the required 8.23 GiB contiguous live
+workspace at this boundary.  =XLA_PYTHON_CLIENT_ALLOCATOR=cuda_async= completes
+the identical program.  The ignored TensorFlow variable =TF_GPU_ALLOCATOR= is
+retained only in the raw failed artifact as diagnostic provenance.
+
+The tested upper bracket is 2,324,590,880 parameters.  Its layer-FSDP run OOMs
+on a 10.13 GiB live allocation, so the evidence claims a demonstrated feasible
+point, not that every model whose sharded persistent state fits will train.
+
+* Compilation and communication evidence
+
+Compilation is reported separately from steady-state time.  The three 149M
+DDP/FSDP pairs compile in 18.6/19.2, 30.9/20.1, and 27.8/30.6 seconds.  The
+successful capacity retries compile from cache in approximately 0.86 seconds
+after the failed allocator trials, so that number is not a cold-compile
+comparison.
+
+Every successful raw artifact records placement, lowering, compilation,
+per-update timing, losses, logical and addressable layouts, JAX and NVML memory,
+physical device IDs, and StableHLO/compiled-HLO collective counts.  Raw evidence
+lives under =/raid/representax/benchmarks/fsdp-frontier-20260819/=.  Reproduce a
+point with =benchmarks/profile_sharding_modernvbert.py=; failed processes also
+write a structured =status="oom"= artifact before returning nonzero.

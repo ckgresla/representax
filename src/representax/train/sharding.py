@@ -633,7 +633,7 @@ class ShardingPlan:
         return jax.tree.map(replicate, metrics)
 
 
-def build_sharded_train_step(
+def _build_train_step_from_sharding_plan(
     task: Task[Any],
     optimizer: optax.GradientTransformationExtraArgs,
     plan: ShardingPlan,
