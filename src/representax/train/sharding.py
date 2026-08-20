@@ -16,8 +16,11 @@ from jax.sharding import AxisType, Mesh, NamedSharding
 from jax.sharding import PartitionSpec as P
 
 from representax.core import Task
-from representax.core.sharding import activation_sharding, replicate
-from representax.models.materialization import FSDPMaterializer
+from representax.core.sharding import activation_sharding
+from representax.models.materialization import (
+    FSDPMaterializer,
+    GlobalFSDPMaterializer,
+)
 
 from .execution import ExecutionContext, LossExecution
 from .state import StepResult, TrainState
@@ -110,10 +113,11 @@ class ShardingPlan:
 
     The plan is model- and task-neutral. ``parameter_specs`` selects the physical
     at-rest layout; batch, optimizer-state, and result layouts follow from the
-    same declaration. Full-model execution lets JAX derive communication from
-    these layouts and the replicated model-call annotation. The optional layer
-    boundary retains an explicit model hook and collectives solely to shorten the
-    gathered-parameter live range. A separate optional data axis supports hybrid
+    same declaration. Full-model execution coalesces compatible parameter shards
+    and annotates the packed materialization boundary so JAX derives compact
+    gather and gradient-transpose communication. The optional layer boundary
+    retains an explicit model hook and collectives solely to shorten the gathered
+    parameter live range. A separate optional data axis supports hybrid
     data/FSDP execution.
     """
 
@@ -655,14 +659,13 @@ def build_sharded_train_step(
             donate_state=donate_state,
         )
 
+    global_materializer = GlobalFSDPMaterializer(
+        mesh=plan.mesh,
+        bucket_bytes=plan.materialization_bucket_bytes,
+    )
+
     def materialize_model(model: eqx.Module) -> eqx.Module:
-        return cast(
-            eqx.Module,
-            jax.tree.map(
-                lambda value: replicate(value) if eqx.is_array(value) else value,
-                model,
-            ),
-        )
+        return cast(eqx.Module, global_materializer.tree(model, plan.parameter_specs))
 
     unannotated_train_step = _build_train_step_body(
         task,

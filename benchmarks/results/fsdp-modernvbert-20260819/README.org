@@ -5,9 +5,10 @@
 Representax expresses named DDP and full-model FSDP as one global JAX program
 with different input/output shardings. DDP keeps model and Adam state replicated
 and shards the example axis. FSDP keeps model and Adam state sharded at rest,
-logically replicates parameters at the complete-model compute boundary, and lets
-JAX transpose that program back into sharded gradients. Neither preset owns a
-separate trainer or hand-written gradient synchronization path.
+coalesces compatible parameter leaves into sharded global buckets, annotates the
+packed compute boundary as replicated, and lets JAX transpose that program back
+into sharded gradient buckets. Neither preset owns a separate trainer or a
+hand-written full-model collective path.
 
 An optional =materialization_boundary="layer"= mode remains for workloads that
 need a shorter gathered-parameter live range. That is a distinct capacity
@@ -17,13 +18,12 @@ annotation-driven default.
 
 * Correction to the first profile
 
-The first version of this document accepted the manual DDP and model-FSDP
-programs because their one-step comparisons were close and their systems
-profiles looked favorable. A ten-update trajectory audit disproved that
-acceptance: their final loss was approximately =0.34= while a clean one-device
-execution of the same scientific program reached approximately =1.18=. Those
-timings therefore measured a different optimizer trajectory and are not valid
-DDP/FSDP performance baselines.
+The first benchmark retained its warmup update before timing ten more updates.
+Its final loss of approximately =0.34= therefore describes eleven optimizer
+updates, whereas the corrected profiles below discard warmup state and describe
+ten. A corrected rerun established that the historical explicit-collective FSDP
+program was valid: it sustained 31.624 examples/s and reached a final loss of
+=0.530222=. It is retained as a control, not as the production implementation.
 
 The current benchmark discards warmup output, records every measured update,
 and fingerprints every model and optimizer leaf. The global-program form is
@@ -54,68 +54,89 @@ retain the same small global batch of 16.
 |-------------+---------+----------------+----------------------------|
 | model bytes / GPU | 596,179,990 | 596,179,990 | 149,049,622 |
 | Adam bytes / GPU | 1,192,359,940 | 1,192,359,940 | 298,099,204 |
-| compiler temporary bytes / GPU | 56,914,992 | 58,459,952 | 2,239,981,616 |
-| peak live JAX bytes / GPU | 5,985,621,760 | 5,987,136,512 | 3,722,217,216 |
+| compiler temporary bytes / GPU | 56,914,992 | 58,459,952 | 2,236,698,672 |
+| peak live JAX bytes / GPU | 5,985,621,760 | 5,987,136,512 | 3,718,931,200 |
 | peak NVML process bytes / GPU | 9,026,142,208 | 9,269,411,840 | 6,012,534,784 |
-| median synchronized step | 0.3445 s | 0.3464 s | 1.5862 s |
-| examples / second | 46.44 | 46.19 | 10.09 |
-| final loss after ten updates | 0.49238 | 0.53335 | 0.55085 |
+| compilation | — | 0.863 s | 0.891 s |
+| median synchronized step | 0.3445 s | 0.3479 s | 0.5051 s |
+| examples / second | 46.44 | 45.99 | 31.68 |
+| final loss after ten updates | 0.49238 | 0.53335 | 0.53022 |
 
-The annotation-driven DDP program is 0.5% slower than the one-device reference
-at this deliberately fixed, small global batch and is 26% faster than the
-superseded manual 0.4745-second path. Full-model FSDP quarters persistent model
-and Adam bytes and lowers peak live JAX memory by 38% relative to DDP, but is
-4.58x slower on this PCIe-only topology because its gathered full model remains
-live through each GradCache encoder replay. It is presently a valid capacity
-mode, not a throughput win.
+The annotation-driven DDP program is effectively tied with the one-device
+reference at this deliberately fixed, small global batch. Full-model FSDP
+quarters persistent model and Adam bytes, lowers peak live JAX memory by 38%
+relative to DDP, and is 3.14x faster than the unbucketed global annotation. It
+is 31% slower than DDP on this PCIe-only node because parameter materialization
+adds unavoidable peer traffic, but it is slightly faster than the corrected
+explicit-collective control while compiling in 0.891 rather than 18.66 seconds.
 
 The ten-step loss trajectories remain close:
 
 | update | one GPU | DDP | FSDP |
 |--------+---------+-----+------|
 | 1 | 2.719318 | 2.719317 | 2.719317 |
-| 2 | 2.553217 | 2.553218 | 2.557125 |
-| 3 | 2.375181 | 2.375174 | 2.385778 |
-| 4 | 2.158229 | 2.158288 | 2.174015 |
-| 5 | 1.905782 | 1.908294 | 1.931583 |
-| 6 | 1.624685 | 1.635231 | 1.655320 |
-| 7 | 1.321892 | 1.350603 | 1.357723 |
-| 8 | 1.011955 | 1.052138 | 1.065417 |
-| 9 | 0.732007 | 0.771510 | 0.794503 |
-| 10 | 0.492385 | 0.533347 | 0.550855 |
+| 2 | 2.553217 | 2.553218 | 2.553217 |
+| 3 | 2.375181 | 2.375174 | 2.375175 |
+| 4 | 2.158229 | 2.158288 | 2.158300 |
+| 5 | 1.905782 | 1.908294 | 1.907868 |
+| 6 | 1.624685 | 1.635231 | 1.635058 |
+| 7 | 1.321892 | 1.350603 | 1.345308 |
+| 8 | 1.011955 | 1.052138 | 1.042541 |
+| 9 | 0.732007 | 0.771510 | 0.767533 |
+| 10 | 0.492385 | 0.533347 | 0.530222 |
 
 The first update agrees to approximately =1e-6= absolute loss. Floating-point
 reduction-order differences then accumulate during this deliberately rapid
-overfit, reaching =0.0410= absolute loss for DDP and =0.0625= for FSDP at update
-ten. The final model squared-sum signature remains within =1.59e-6= relative
-error and the largest absolute parameter within =3.23e-5= relative error. Strict
-ten-update array parity is separately enforced on deterministic tiny
+overfit, reaching =0.0410= absolute loss for DDP and =0.0378= for FSDP at update
+ten. Strict ten-update array parity is separately enforced on deterministic tiny
 ModernVBERT programs; the full-checkpoint trace records realistic topology
 drift rather than imposing a misleading relative-loss threshold near zero.
 
-Nsight Systems traces of one warmup plus three measured steps confirm physical
-compiler-generated communication on all four GPUs. Across the complete trace,
-DDP launches 768 NCCL AllGather, 896 FP32 AllReduce, and 256 SendRecv kernels;
-the AllGathers exchange global GradCache representations. Full-model FSDP
-launches 160 NCCL AllGather, 32 FP32 ReduceScatter, and 3,068 FP32 AllReduce
-kernels. The latter communication schedule is valid but plainly not yet
-optimal, and it is now a measured target for the physical frontier work rather
-than hidden behind hand-authored collectives.
+The post-partition compiled HLO contains 6 AllGather, 7 AllReduce, and 2
+AllToAll instructions for DDP. Bucketed full-model FSDP contains 2 AllGather, 6
+AllReduce, and 2 ReduceScatter instructions. The earlier unbucketed trace
+contained 8/9/1 and diagnosed the fragmented materialization boundary. A fresh
+Nsight trace for the accepted program remains part of the larger capacity and
+topology frontier rather than a condition for this program-level acceptance.
 
-The post-partition compiled HLO independently contains 6 AllGather, 7 AllReduce,
-and 2 AllToAll instructions for DDP; full-model FSDP contains 8 AllGather, 9
-AllReduce, and 1 ReduceScatter instruction. Pre-partition StableHLO correctly
-contains none of these compiler-inserted operations, which is why the benchmark
-now records both stages rather than searching only the initial lowering.
+* Gradient and axis-type annotation experiment
+
+A follow-up experiment asked where to put the annotation that recovers the
+explicit-collective control's compact schedule:
+
+| global-program variant | examples / second | compiled AG / AR / RS |
+|------------------------+-------------------+-----------------------|
+| Auto, bucketed global boundary | 31.68 | 2 / 6 / 2 |
+| Explicit, bucketed global boundary | 31.61 | 2 / 6 / 2 |
+| plan-driven explicit-collective control | 31.62 | 2 / 6 / 2 |
+| Auto, unbucketed full-model boundary | 10.09 | 8 / 9 / 1 |
+| Auto, post-backward sharded-gradient constraint | 9.56 | 8 / 10 / 1 |
+| Explicit, post-backward sharded-gradient constraint | 9.50 | 8 / 10 / 1 |
+| Auto, parameter use-site materialization | 6.00 | 19 / 4 / 7 |
+
+The post-backward constraint is too late: autodiff has already selected the
+transpose of the replicated model boundary, so it only adds synchronization.
+Instead, the accepted program reshapes and concatenates compatible global
+parameter leaves while retaining their sharded annotation, annotates the packed
+bucket as replicated, then slices it for the ordinary model forward. Autodiff
+transposes that identity into the matching sharded gradient bucket. No custom
+VJP or full-model explicit collective is required.
+
+=AxisType.Explicit= remains valuable as a validation lane because illegal
+sharding propagation becomes a trace-time error. It reaches the same collective
+schedule and steady-state rate, but compiled in 18.55 seconds versus 0.89 for
+=Auto=. =Auto= therefore remains the measured runtime default.
 
 * Why full-model FSDP is annotatable
 
 The at-rest =PartitionSpec= tree is part of =ShardingPlan=. The compiled step
 accepts and returns that sharded model and the matching sharded Optax state.
-Immediately around the model call, Representax annotates each parameter as
-replicated. JAX inserts the communication required to reconcile those layouts;
-reverse-mode transposes the replicated read into a sharded parameter gradient.
-The task, optimizer, and training-loop control flow remain unchanged.
+Immediately around the model call, Representax coalesces leaves by dtype and
+mesh axis, annotates each packed bucket first in its at-rest layout and then as
+replicated, and reconstructs the ordinary model PyTree. JAX inserts the
+communication required to reconcile those layouts; reverse-mode transposes the
+replicated read into a matching sharded gradient bucket. The task, optimizer,
+and training-loop control flow remain unchanged.
 
 Layer-boundary FSDP asks for a stronger property: do not keep the complete
 materialized model live. The compiler cannot infer the semantic layer boundary
@@ -135,14 +156,22 @@ each matched scientific program.
 * Raw artifacts
 
 Corrected raw profiles live under
-=/raid/representax/benchmarks/sharding-annotations-20260819/=:
+=/raid/representax/benchmarks/sharding-annotations-20260819/= and
+=/raid/representax/benchmarks/sharding-gradient-annotations-20260819/=:
 
 - =single-reference-10-updates-b16-s128.json=;
 - =ddp-10-updates-world4-b16-s128.json=;
-- =fsdp-10-updates-world4-b16-s128.json=; and
-- their corresponding =.mlir= files;
-- =ddp-auto-runtime-world4-b16-s128.nsys-rep=; and
-- =fsdp-auto-model-runtime-world4-b16-s128.nsys-rep=.
+- =fsdp-10-updates-world4-b16-s128.json=;
+- =ddp-global-annotations-world4-b16-s128.json=;
+- =fsdp-global-packed-world4-b16-s128.json=;
+- =fsdp-global-packed-explicit-world4-b16-s128.json=;
+- their corresponding =.mlir= and compiled-HLO files; and
+- the corrected explicit-collective control under
+  =/raid/representax/benchmarks/sharding-manual-recheck-20260819/=.
+
+The older =ddp-auto-runtime-world4-b16-s128.nsys-rep= and
+=fsdp-auto-model-runtime-world4-b16-s128.nsys-rep= traces diagnose the
+unbucketed program and are not accepted profiles of the current implementation.
 
 The earlier =/raid/representax/benchmarks/sharding-modernvbert-20260819/=
 artifacts are retained only as superseded diagnostic evidence. Reproduce the

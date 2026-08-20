@@ -8,6 +8,7 @@ from typing import Any, cast
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+from jax.sharding import AxisType, Mesh, NamedSharding
 from jax.sharding import PartitionSpec as P
 
 
@@ -226,6 +227,109 @@ class FSDPMaterializer:
         )
 
 
+@dataclass(frozen=True)
+class GlobalFSDPMaterializer:
+    """Coalesce global parameter reshardings into annotated gather buckets."""
+
+    mesh: Mesh
+    bucket_bytes: int = 256 * 2**20
+
+    def __post_init__(self) -> None:
+        if self.bucket_bytes <= 0:
+            raise ValueError("bucket_bytes must be positive")
+
+    def _annotate(self, value: jax.Array, spec: P) -> jax.Array:
+        sharding = NamedSharding(self.mesh, spec)
+        if any(axis_type is AxisType.Auto for axis_type in self.mesh.axis_types):
+            return jax.lax.with_sharding_constraint(value, sharding)
+        return jax.reshard(value, sharding)
+
+    def tree(self, value: Any, specs: Any) -> Any:
+        """Materialize parameters after coalescing compatible global shards."""
+
+        parameters, structure = jax.tree.flatten(
+            value,
+            is_leaf=lambda item: item is None,
+        )
+        parameter_specs = jax.tree.leaves(
+            specs,
+            is_leaf=lambda item: item is None or isinstance(item, P),
+        )
+        if len(parameters) != len(parameter_specs):  # pragma: no cover
+            raise AssertionError("parameter and partition-spec trees must match")
+
+        materialized = list(parameters)
+        grouped: dict[
+            tuple[str, str],
+            list[tuple[int, jax.Array, int, int]],
+        ] = {}
+        for index, (parameter, spec) in enumerate(
+            zip(parameters, parameter_specs, strict=True)
+        ):
+            if parameter is None:
+                continue
+            if spec is None:  # pragma: no cover
+                raise AssertionError("an array parameter requires a partition spec")
+            sharded_axes = [
+                (array_axis, axis_name)
+                for array_axis, axis in enumerate(tuple(spec))
+                for axis_name in _axis_names(axis)
+            ]
+            if not sharded_axes:
+                continue
+            if len(sharded_axes) != 1:
+                materialized[index] = self._annotate(parameter, P())
+                continue
+            array_axis, axis_name = sharded_axes[0]
+            size_bytes = int(parameter.size * parameter.dtype.itemsize)
+            grouped.setdefault((str(parameter.dtype), axis_name), []).append(
+                (index, parameter, array_axis, size_bytes)
+            )
+
+        for (_dtype, axis_name), entries in grouped.items():
+            buckets: list[list[tuple[int, jax.Array, int, int]]] = []
+            bucket_sizes: list[int] = []
+            for entry in entries:
+                size_bytes = entry[-1]
+                if not buckets or bucket_sizes[-1] + size_bytes > self.bucket_bytes:
+                    buckets.append([])
+                    bucket_sizes.append(0)
+                buckets[-1].append(entry)
+                bucket_sizes[-1] += size_bytes
+            for bucket in buckets:
+                moved = [
+                    jnp.moveaxis(parameter, array_axis, 0)
+                    for _, parameter, array_axis, _ in bucket
+                ]
+                flattened = [parameter.reshape(-1) for parameter in moved]
+                offsets: list[tuple[int, int]] = []
+                offset = 0
+                for parameter in flattened:
+                    next_offset = offset + parameter.size
+                    offsets.append((offset, next_offset))
+                    offset = next_offset
+                packed = jnp.concatenate(flattened)
+                packed = self._annotate(packed, P(axis_name))
+                gathered = self._annotate(packed, P())
+                for entry, moved_parameter, (start, stop) in zip(
+                    bucket,
+                    moved,
+                    offsets,
+                    strict=True,
+                ):
+                    index, _parameter, array_axis, _size_bytes = entry
+                    global_parameter = gathered[start:stop].reshape(
+                        moved_parameter.shape
+                    )
+                    materialized[index] = jnp.moveaxis(
+                        global_parameter,
+                        0,
+                        array_axis,
+                    )
+
+        return jax.tree.unflatten(structure, materialized)
+
+
 class DeferredFSDPModule(eqx.Module):
     """A depth-major stack whose current scan slice is gathered on demand."""
 
@@ -255,5 +359,6 @@ def materialize_deferred(value: Any) -> Any:
 __all__ = [
     "DeferredFSDPModule",
     "FSDPMaterializer",
+    "GlobalFSDPMaterializer",
     "materialize_deferred",
 ]

@@ -292,8 +292,8 @@ class FSDPConfig(FrozenConfig):
     materialization_bucket_bytes: PositiveInt = Field(
         default=256 * 2**20,
         description=(
-            "Layer-boundary only: maximum local shard bytes in one explicit "
-            "parameter gather bucket."
+            "Maximum compatible parameter bytes coalesced into one materialization "
+            "bucket."
         ),
     )
     rematerialize_gathers: bool = Field(
@@ -329,8 +329,8 @@ class CustomShardingConfig(FrozenConfig):
     materialization_bucket_bytes: PositiveInt = Field(
         default=256 * 2**20,
         description=(
-            "Layer-boundary only: maximum local shard bytes in one explicit "
-            "parameter gather bucket."
+            "Maximum compatible parameter bytes coalesced into one materialization "
+            "bucket."
         ),
     )
     rematerialize_gathers: bool = Field(

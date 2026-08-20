@@ -874,12 +874,13 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
     different loss trajectory.
 *** DONE Materialize FSDP parameters at measured module boundaries
     Full-model FSDP is the architecture-agnostic default: the plan keeps model
-    and Optax state sharded at rest, annotates parameters as replicated at the
-    model-call boundary, and lets JAX transpose the global program into sharded
-    gradients.  =layer= remains an explicit capacity optimization; supported
-    models name their layer stack and unsupported requests fail during plan
-    construction rather than silently falling back.  Both boundaries match ten
-    complete one-device updates on 2/4-device meshes.
+    and Optax state sharded at rest, coalesces compatible leaves into global
+    sharded buckets, annotates each bucket as replicated at the model-call
+    boundary, and lets JAX transpose the global program into matching sharded
+    gradient buckets.  =layer= remains an explicit capacity optimization;
+    supported models name their layer stack and unsupported requests fail during
+    plan construction rather than silently falling back.  Both boundaries match
+    ten complete one-device updates on 2/4-device meshes.
 ** NEXT Establish the physical FSDP capacity and throughput frontier
     Compare DDP and FSDP on full ModernVBERT and at least one model that cannot
     fit replicated optimizer state.  Sweep useful batch/sequence/model sizes,
@@ -895,15 +896,27 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
 
     The corrected isolated systems profile is tracked in
     =benchmarks/results/fsdp-modernvbert-20260819/README.org=. On GPUs 2--5,
-    global batch 16, and sequence 128, compiler-managed DDP sustains 46.19
-    examples/s at a 5.987 GB live peak. Full-model FSDP sustains 10.09 examples/s
-    at 3.722 GB while quartering persistent model and Adam storage. Both match
+    global batch 16, and sequence 128, compiler-managed DDP sustains 45.99
+    examples/s at a 5.987 GB live peak. Bucketed full-model FSDP sustains 31.68
+    examples/s at 3.719 GB while quartering persistent model and Adam storage.
+    It matches the corrected explicit-collective control's 31.62 examples/s but
+    compiles in 0.89 rather than 18.66 seconds. Both match
     the first full-checkpoint update to approximately =1e-6= absolute loss and
-    preserve final model signatures within =1.59e-6= relative squared-sum error;
-    the older manual 0.474/0.486-second results are explicitly superseded
-    because they followed a materially different trajectory. This deterministic
+    preserve the same descending ten-update trajectory. The older manual
+    0.474/0.486-second profiles retained their warmup update and therefore
+    describe eleven rather than ten updates; a corrected rerun is retained only
+    as a communication-schedule control. This deterministic
     synthetic-token program isolates the compiled trainer; it is not
     dataset-to-quality evidence.
+
+    Post-backward parameter-matching gradient constraints were rejected because
+    they annotate after autodiff has chosen the materialization transpose.
+    Coalescing compatible parameter leaves before the replicated annotation
+    reduces the compiled schedule from 8 AllGather / 9 AllReduce / 1
+    ReduceScatter to 2 / 6 / 2 and improves throughput from 10.09 to 31.68
+    examples/s. =AxisType.Explicit= produces the same trajectory and schedule at
+    31.61 examples/s, but compiles in 18.55 seconds; keep it as a trace-time
+    policy-validation lane and =Auto= as the measured runtime default.
 
 ** TODO Make precision policy explicit at parameter, compute, activation, and loss boundaries :runtime:precision:
 ** DONE Support activation rematerialization as a measured execution choice :runtime:memory:
