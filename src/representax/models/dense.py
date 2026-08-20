@@ -10,6 +10,7 @@ from representax.core import EncoderMetadata, Modality, Route
 from representax.core.sharding import (
     activation_out_sharding,
     constrain_activation,
+    replicate,
 )
 
 
@@ -57,11 +58,11 @@ class DenseEncoder(eqx.Module):
             raise ValueError("DenseEncoder inputs must have shape [batch, features]")
         output = jnp.matmul(
             values,
-            self.projection.weight.T,
+            replicate(self.projection.weight).T,
             out_sharding=activation_out_sharding(2),
         )
         if self.projection.bias is not None:
-            output = output + self.projection.bias
+            output = output + replicate(self.projection.bias)
         output = constrain_activation(output.astype(jnp.float32))
         if not self.normalize:
             return output

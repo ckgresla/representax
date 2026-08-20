@@ -209,10 +209,6 @@ def build_job_runtime(
                 parameter_axis_name=sharding.resolved_parameter_axis,
                 data_axis_name=sharding.data_axis,
                 minimum_parameter_elements=sharding.minimum_parameter_elements,
-                materialization_boundary=sharding.materialization_boundary,
-                materialization_bucket_bytes=sharding.materialization_bucket_bytes,
-                rematerialize_gathers=sharding.rematerialize_gathers,
-                gradient_bucket_bytes=sharding.gradient_bucket_bytes,
             )
             data_axis_name = sharding.data_axis
         elif isinstance(sharding, CustomShardingConfig):
@@ -231,10 +227,6 @@ def build_job_runtime(
                 parameter_specs,
                 parameter_axis_names=sharding.parameter_axes,
                 data_axis_name=sharding.data_axis,
-                materialization_boundary=sharding.materialization_boundary,
-                materialization_bucket_bytes=sharding.materialization_bucket_bytes,
-                rematerialize_gathers=sharding.rematerialize_gathers,
-                gradient_bucket_bytes=sharding.gradient_bucket_bytes,
             )
             data_axis_name = sharding.data_axis
         else:  # pragma: no cover - the Pydantic discriminator closes the union

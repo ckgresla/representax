@@ -65,13 +65,13 @@ loop validates the scientific global batch against the resolved data-axis size
 and the model-ready Grain source. Packing remains absent until a task-, data-,
 and model-compatible segment/masking contract is implemented.
 
-Named DDP and default full-model FSDP execute as global JAX programs whose
-communication follows from their declared input, output, and model-call
-shardings. The optional `materialization_boundary="layer"` mode uses bounded
-explicit parameter gathers to shorten the full-parameter live range; it
-requires a model to name its layer stack and fails during plan construction
-when that capability is absent. These are execution choices: they do not change
-the task, loss, global batch, or optimizer semantics.
+Named DDP, FSDP, and custom layouts execute as global JAX programs whose
+communication follows from declared state, input, output, and primitive-use
+shardings. Shared linear and normalization primitives request replicated
+parameters only at their exact use sites; reverse-mode derives the matching
+sharded gradient communication. These are execution choices: they do not change
+the task, loss, global batch, or optimizer semantics, and no model-specific FSDP
+hook is required.
 
 These models are declarative, validated, serializable, and compatible with
 Hydra-Zen composition and CLI overrides. They contain no live JAX mesh, Equinox model,
@@ -204,11 +204,9 @@ Single-host DDP, FSDP, hybrid data/model meshes, and arbitrary model-path
 partition rules execute through the same `build_train_step` boundary.
 Two- and four-device topology gates cover exact updates, StableHLO collectives,
 and asynchronous Orbax restore; physical GPUs additionally cover complete
-ModernVBERT updates, memory placement, and NCCL execution. Physical multi-host
-acceptance remains deferred until suitable hardware is available. ModernVBERT
-supports both whole-model and scanned-layer FSDP materialization. The accepted
-four-GPU profile records the resulting DDP/FSDP throughput-memory frontier;
-larger sequence/model capacity sweeps remain open paper evidence.
+ModernVBERT updates, memory placement, NCCL execution, and a 1.9795B-parameter
+two-GPU capacity point. Physical multi-host acceptance remains deferred until
+suitable hardware is available.
 
 Representax will also benchmark JAX `Ref`-based state mutation against canonical
 functional Equinox/Optax plus buffer donation before changing the model-state

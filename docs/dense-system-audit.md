@@ -35,7 +35,7 @@ Hub publication. Those are the concrete upstream capabilities assessed below.
 | Offline hard-negative mining | Missing | Add a source-neutral mining transform that emits a new recipe/artifact manifest without hiding data provenance. |
 | Final dense artifact export | Partial | Atomic native export and source-compatible Hugging Face export/reload are complete; add prompt/truncation metadata, model cards, and optional Hub publication outside the training core. |
 | Reporters and lifecycle hooks | Partial | Keep namespaced asynchronous metrics; add W&B and a small typed lifecycle protocol rather than copying Trainer callbacks. |
-| Distributed execution | Single-host complete core | Named DDP/FSDP and custom partition rules share one configured runtime; exact 2/4-device updates, Orbax restore, StableHLO, bucketed DDP gradients, model/layer FSDP materialization, physical memory placement, and NCCL execution are accepted. Complete the larger-workload frontier and defer physical multi-host acceptance until hardware is available. |
+| Distributed execution | Single-host complete core | Named DDP/FSDP and custom partition rules share one global runtime; exact 2/4-device updates, Orbax restore, StableHLO, physical memory placement, NCCL execution, and a two-GPU 1.9795B FSDP capacity point are accepted. Complete physical multi-host acceptance when hardware is available. |
 
 ## What to add first
 

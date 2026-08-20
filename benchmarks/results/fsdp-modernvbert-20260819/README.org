@@ -1,20 +1,13 @@
 #+title: Single-host DDP/FSDP ModernVBERT profile — 2026-08-19
 
-* Decision
+* Historical decision
 
-Representax expresses named DDP and full-model FSDP as one global JAX program
-with different input/output shardings. DDP keeps model and Adam state replicated
-and shards the example axis. FSDP keeps model and Adam state sharded at rest,
-coalesces compatible parameter leaves into sharded global buckets, annotates the
-packed compute boundary as replicated, and lets JAX transpose that program back
-into sharded gradient buckets. Neither preset owns a separate trainer or a
-hand-written full-model collective path.
-
-An optional =materialization_boundary="layer"= mode remains for workloads that
-need a shorter gathered-parameter live range. That is a distinct capacity
-optimization: it uses an explicit model capability naming the scanned layer
-stack and rejects unsupported architectures. Full-model FSDP is the generic,
-annotation-driven default.
+This artifact records the packed model-boundary and explicit layer-control
+experiments that led to the final design.  Those implementations were removed
+on 2026-08-20 after shared primitive annotations recovered the 1.9795B capacity
+point 9.2% faster without a per-model hook.  Current acceptance is
+=../fsdp-annotations-20260820/README.org=; the measurements below remain useful
+historical controls.
 
 * Correction to the first profile
 
@@ -99,7 +92,7 @@ contained 8/9/1 and diagnosed the fragmented materialization boundary. A fresh
 Nsight trace for the accepted program remains part of the larger capacity and
 topology frontier rather than a condition for this program-level acceptance.
 
-* Gradient and axis-type annotation experiment
+* Superseded gradient and axis-type annotation experiment
 
 A follow-up experiment asked where to put the annotation that recovers the
 explicit-collective control's compact schedule:
@@ -114,9 +107,9 @@ explicit-collective control's compact schedule:
 | Explicit, post-backward sharded-gradient constraint | 9.50 | 8 / 10 / 1 |
 | Auto, parameter use-site materialization | 6.00 | 19 / 4 / 7 |
 
-The post-backward constraint is too late: autodiff has already selected the
+The post-backward constraint was too late: autodiff had already selected the
 transpose of the replicated model boundary, so it only adds synchronization.
-Instead, the accepted program reshapes and concatenates compatible global
+The then-accepted program reshaped and concatenated compatible global
 parameter leaves while retaining their sharded annotation, annotates the packed
 bucket as replicated, then slices it for the ordinary model forward. Autodiff
 transposes that identity into the matching sharded gradient bucket. No custom
@@ -127,31 +120,22 @@ sharding propagation becomes a trace-time error. It reaches the same collective
 schedule and steady-state rate, but compiled in 18.55 seconds versus 0.89 for
 =Auto=. =Auto= therefore remains the measured runtime default.
 
-* Why full-model FSDP is annotatable
+* Why the packed model boundary was removed
 
-The at-rest =PartitionSpec= tree is part of =ShardingPlan=. The compiled step
-accepts and returns that sharded model and the matching sharded Optax state.
-Immediately around the model call, Representax coalesces leaves by dtype and
-mesh axis, annotates each packed bucket first in its at-rest layout and then as
-replicated, and reconstructs the ordinary model PyTree. JAX inserts the
-communication required to reconcile those layouts; reverse-mode transposes the
-replicated read into a matching sharded gradient bucket. The task, optimizer,
-and training-loop control flow remain unchanged.
-
-Layer-boundary FSDP asks for a stronger property: do not keep the complete
-materialized model live. The compiler cannot infer the semantic layer boundary
-from an arbitrary Equinox PyTree, so models opting into that mode identify their
-layer stack via =fsdp_materialize()=. This does not limit the generic full-model
-mode.
+The packed boundary was fast on the four-device 149M probe, but it widened the
+materialized lifetime and required a separate layer-control path for the 1.9795B
+capacity point.  The final program instead keeps the same at-rest
+=PartitionSpec= tree and annotates shared linear and normalization operations at
+their exact use sites.  It preserves the large-model capacity frontier without
+the packed tree reconstruction, explicit collectives, or =fsdp_materialize()=.
 
 * Automated acceptance
 
-The distributed suite exercises DDP, same-axis FSDP, parameter-only FSDP, 2x2
+The current distributed suite exercises DDP, same-axis FSDP, parameter-only FSDP, 2x2
 hybrid data/model sharding, custom partition rules, and Orbax sharded restore on
 two- and four-device virtual topologies. ModernVBERT additionally runs ten
-optimizer updates for both full-model and layer-boundary FSDP on two- and
-four-device meshes, comparing every array leaf with the one-device state after
-each matched scientific program.
+optimizer updates on two- and four-device meshes, comparing every array leaf
+with the one-device state after each matched scientific program.
 
 * Raw artifacts
 

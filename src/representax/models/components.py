@@ -12,6 +12,7 @@ from jaxtyping import Array, Bool, Float, Int, PRNGKeyArray
 from representax.core.sharding import (
     activation_out_sharding,
     constrain_activation,
+    replicate,
 )
 from representax.planning import RematerializationPolicy
 
@@ -76,13 +77,14 @@ class Linear(eqx.Module):
         self,
         value: Float[Array, "*batch input"],
     ) -> Float[Array, "*batch output"]:
+        weight = replicate(self.weight)
         output = jnp.matmul(
             value,
-            self.weight.T,
+            weight.T,
             out_sharding=activation_out_sharding(value.ndim),
         )
         if self.bias is not None:
-            output = output + self.bias
+            output = output + replicate(self.bias)
         return constrain_activation(output)
 
 
@@ -117,9 +119,9 @@ class LayerNorm(eqx.Module):
         mean = jnp.mean(value, axis=-1, keepdims=True)
         variance = jnp.mean(jnp.square(value - mean), axis=-1, keepdims=True)
         output = (value - mean) * jax.lax.rsqrt(variance + self.epsilon)
-        output = output * self.weight.astype(jnp.float32)
+        output = output * replicate(self.weight).astype(jnp.float32)
         if self.bias is not None:
-            output = output + self.bias.astype(jnp.float32)
+            output = output + replicate(self.bias).astype(jnp.float32)
         return output.astype(source_dtype)
 
 
@@ -138,7 +140,7 @@ class RMSNorm(eqx.Module):
         inverse_rms = jax.lax.rsqrt(
             jnp.mean(jnp.square(value), axis=-1, keepdims=True) + self.epsilon
         )
-        output = value * inverse_rms * self.weight.astype(jnp.float32)
+        output = value * inverse_rms * replicate(self.weight).astype(jnp.float32)
         return output.astype(source_dtype)
 
 

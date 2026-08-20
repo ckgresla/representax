@@ -121,7 +121,6 @@ def test_named_and_custom_sharding_configs_round_trip():
             sharding=FSDPConfig(
                 data_axis="data",
                 minimum_parameter_elements=1024,
-                materialization_boundary="layer",
             )
         )
     )
@@ -134,7 +133,6 @@ def test_named_and_custom_sharding_configs_round_trip():
             sharding=CustomShardingConfig(
                 data_axis="data",
                 parameter_axes=("model",),
-                materialization_boundary="model",
                 parameter_rules=(
                     PartitionRuleConfig(
                         pattern=r"\.layers\..*\.weight$",
@@ -152,9 +150,7 @@ def test_named_and_custom_sharding_configs_round_trip():
     assert isinstance(restored_ddp.training.sharding, DDPConfig)
     assert isinstance(restored_fsdp.training.sharding, FSDPConfig)
     assert restored_fsdp.training.sharding.resolved_parameter_axis == "data"
-    assert restored_fsdp.training.sharding.materialization_boundary == "layer"
     assert isinstance(restored_custom.training.sharding, CustomShardingConfig)
-    assert restored_custom.training.sharding.materialization_boundary == "model"
     assert restored_custom.training.sharding.parameter_rules[0].axes == (
         "model",
         None,

@@ -32,7 +32,6 @@ from .data.recipe import MixtureRecipe
 from .tasks.config import LossConfig, LossModifierConfig, TaskConfig
 
 RematerializationPolicy = Literal["none", "selective", "full"]
-ParameterMaterializationBoundary = Literal["model", "layer"]
 MetricMode = Literal["min", "max"]
 ExportSelection = Literal["final", "best"]
 JsonScalar = str | int | float | bool | None
@@ -281,31 +280,6 @@ class FSDPConfig(FrozenConfig):
     data_axis: NonEmptyString = "data"
     parameter_axis: NonEmptyString | None = None
     minimum_parameter_elements: PositiveInt = 2**18
-    materialization_boundary: ParameterMaterializationBoundary = Field(
-        default="model",
-        description=(
-            "Gather the complete model call or one supported scanned layer at a "
-            "time; model is architecture-agnostic while layer minimizes the "
-            "full-parameter live range."
-        ),
-    )
-    materialization_bucket_bytes: PositiveInt = Field(
-        default=256 * 2**20,
-        description=(
-            "Maximum compatible parameter bytes coalesced into one materialization "
-            "bucket."
-        ),
-    )
-    rematerialize_gathers: bool = Field(
-        default=True,
-        description="Layer-boundary only: replay parameter gathers in backward.",
-    )
-    gradient_bucket_bytes: PositiveInt = Field(
-        default=256 * 2**20,
-        description=(
-            "Layer-boundary only: maximum bytes in one explicit gradient bucket."
-        ),
-    )
 
     @property
     def resolved_parameter_axis(self) -> str:
@@ -320,29 +294,6 @@ class CustomShardingConfig(FrozenConfig):
     parameter_axes: tuple[NonEmptyString, ...]
     parameter_rules: tuple[PartitionRuleConfig, ...]
     default_parameter_axes: tuple[PartitionAxis, ...] = ()
-    materialization_boundary: ParameterMaterializationBoundary = Field(
-        default="model",
-        description=(
-            "Gather the complete model call or one supported scanned layer at a time."
-        ),
-    )
-    materialization_bucket_bytes: PositiveInt = Field(
-        default=256 * 2**20,
-        description=(
-            "Maximum compatible parameter bytes coalesced into one materialization "
-            "bucket."
-        ),
-    )
-    rematerialize_gathers: bool = Field(
-        default=True,
-        description="Layer-boundary only: replay parameter gathers in backward.",
-    )
-    gradient_bucket_bytes: PositiveInt = Field(
-        default=256 * 2**20,
-        description=(
-            "Layer-boundary only: maximum bytes in one explicit gradient bucket."
-        ),
-    )
 
     @model_validator(mode="after")
     def validate_custom_sharding(self) -> Self:

@@ -27,13 +27,6 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument("--compiled-hlo-output", type=Path)
     parser.add_argument("--strategy", choices=("ddp", "fsdp"), required=True)
     parser.add_argument("--axis-type", choices=("auto", "explicit"), default="auto")
-    parser.add_argument(
-        "--materialization-boundary",
-        choices=("model", "layer"),
-        default="model",
-    )
-    parser.add_argument("--materialization-bucket-mib", type=int, default=256)
-    parser.add_argument("--gradient-bucket-mib", type=int, default=256)
     parser.add_argument("--world-size", type=int, default=2)
     parser.add_argument("--physical-device-ids", default="4,5")
     parser.add_argument("--global-batch-size", type=int, default=8)
@@ -252,10 +245,6 @@ def main(arguments: argparse.Namespace, progress: dict[str, Any]) -> None:
         raise ValueError("global batch size must be divisible by world size")
     if arguments.warmup_steps < 0 or arguments.measured_steps <= 0:
         raise ValueError("warmup must be non-negative and measured steps positive")
-    if arguments.materialization_bucket_mib <= 0:
-        raise ValueError("materialization bucket size must be positive")
-    if arguments.gradient_bucket_mib <= 0:
-        raise ValueError("gradient bucket size must be positive")
     physical_device_ids = tuple(
         int(value) for value in arguments.physical_device_ids.split(",")
     )
@@ -370,9 +359,6 @@ def main(arguments: argparse.Namespace, progress: dict[str, Any]) -> None:
             mesh,
             parameter_axis_name="data",
             data_axis_name="data",
-            materialization_boundary=arguments.materialization_boundary,
-            materialization_bucket_bytes=arguments.materialization_bucket_mib * 2**20,
-            gradient_bucket_bytes=arguments.gradient_bucket_mib * 2**20,
         )
     step = build_train_step(
         MNRTask(scale=20.0),
@@ -456,13 +442,10 @@ def main(arguments: argparse.Namespace, progress: dict[str, Any]) -> None:
     median_step_seconds = statistics.median(step_seconds)
 
     artifact = {
-        "schema_version": "representax-sharding-profile-v3",
+        "schema_version": "representax-sharding-profile-v4",
         "status": "completed",
         "strategy": arguments.strategy,
         "axis_type": arguments.axis_type,
-        "materialization_boundary": (
-            arguments.materialization_boundary if arguments.strategy == "fsdp" else None
-        ),
         "checkpoint": (
             None if arguments.checkpoint is None else str(arguments.checkpoint)
         ),
@@ -472,6 +455,7 @@ def main(arguments: argparse.Namespace, progress: dict[str, Any]) -> None:
         "parameter_count": parameter_count,
         "model_init_seconds": model_init_seconds,
         "world_size": arguments.world_size,
+        "seed": arguments.seed,
         "logical_devices": [str(device) for device in devices],
         "physical_device_ids": list(physical_device_ids),
         "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
@@ -501,8 +485,6 @@ def main(arguments: argparse.Namespace, progress: dict[str, Any]) -> None:
         "warmup_steps": arguments.warmup_steps,
         "measured_steps": arguments.measured_steps,
         "donate_state": arguments.donate_state,
-        "materialization_bucket_mib": arguments.materialization_bucket_mib,
-        "gradient_bucket_mib": arguments.gradient_bucket_mib,
         "placement_seconds": placement_seconds,
         "lowering_seconds": lowering_seconds,
         "compile_seconds": compile_seconds,
@@ -570,9 +552,6 @@ def main(arguments: argparse.Namespace, progress: dict[str, Any]) -> None:
                     "parameter_count",
                     "global_batch_size",
                     "sequence_length",
-                    "materialization_boundary",
-                    "materialization_bucket_mib",
-                    "gradient_bucket_mib",
                     "model_init_seconds",
                     "placement_seconds",
                     "lowering_seconds",
@@ -607,10 +586,11 @@ if __name__ == "__main__":
             else "error"
         )
         failure = {
-            "schema_version": "representax-sharding-profile-v3",
+            "schema_version": "representax-sharding-profile-v4",
             "status": category,
             "strategy": parsed_arguments.strategy,
             "world_size": parsed_arguments.world_size,
+            "seed": parsed_arguments.seed,
             "physical_device_ids": parsed_arguments.physical_device_ids,
             "checkpoint": (
                 None
@@ -624,7 +604,6 @@ if __name__ == "__main__":
             ),
             "global_batch_size": parsed_arguments.global_batch_size,
             "sequence_length": parsed_arguments.sequence_length,
-            "materialization_boundary": parsed_arguments.materialization_boundary,
             "failed_phase": run_progress.get("phase", "argument_parsing"),
             "parameter_count": run_progress.get("parameter_count"),
             "model_init_seconds": run_progress.get("model_init_seconds"),

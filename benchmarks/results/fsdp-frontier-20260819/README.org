@@ -1,13 +1,22 @@
 #+title: Physical ModernVBERT DDP/FSDP frontier — 2026-08-19
 
+* Superseded implementation note
+
+This artifact established the original capacity frontier with an explicit
+layer-control path. The final annotation-only global program subsequently
+trained the same 1.9795B model in 11.373 seconds/step at 21.492 GB peak live
+memory, 9.2% faster without a model hook. Current acceptance is
+=../fsdp-annotations-20260820/README.org=; the sweeps below remain historical
+controls.
+
 * Decision
 
 The named DDP and FSDP plans use the same =build_train_step= API and scientific
 program.  On two PCIe-connected RTX 4090s, replicated DDP wins small,
 communication-dominated workloads.  Full-model FSDP becomes faster once
 long-sequence compute amortizes materialization, while using less live memory.
-Layer-boundary FSDP additionally trains a 1.9795B-parameter model after DDP has
-already crossed the physical capacity boundary.
+The then-current explicit layer control additionally trained a
+1.9795B-parameter model after DDP had crossed the physical capacity boundary.
 
 This closes the first physical capacity/throughput frontier.  It does not claim
 that FSDP is universally faster: the plan expands the feasible-workload set and
@@ -65,8 +74,8 @@ under DDP with the same CUDA-async allocator.
 | plan | allocator | at-rest model/GPU | at-rest Adam/GPU | peak JAX/GPU | median step | result |
 |------+-----------+-------------------+------------------+--------------+-------------+--------|
 | DDP, 1.9105B | JAX CUDA async | 7.642 GB | 15.284 GB | — | — | OOM requesting 21.21 GiB result state |
-| layer FSDP, 1.9105B | JAX CUDA async | 3.821 GB | 7.642 GB | 20.300 GB | 12.024 s | completed |
-| layer FSDP, 1.9795B | JAX CUDA async | 3.959 GB | 7.918 GB | 20.995 GB | 12.524 s | completed |
+| explicit layer control, 1.9105B | JAX CUDA async | 3.821 GB | 7.642 GB | 20.300 GB | 12.024 s | completed |
+| explicit layer control, 1.9795B | JAX CUDA async | 3.959 GB | 7.918 GB | 20.995 GB | 12.524 s | completed |
 
 The successful layer-FSDP runs use global batch 2, sequence 128, buffer donation,
 one warmup, and three measured updates.  At 1.9795B, both devices store exactly

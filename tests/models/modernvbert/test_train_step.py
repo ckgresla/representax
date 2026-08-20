@@ -1,7 +1,5 @@
 """Compiled ModernVBERT training integration tests."""
 
-from typing import Literal
-
 import equinox as eqx
 import jax
 import jax.numpy as jnp
@@ -73,10 +71,8 @@ def test_modernvbert_runs_one_compiled_grad_cache_retrieval_update():
 
 @pytest.mark.distributed
 @pytest.mark.parametrize("world_size", [2, 4])
-@pytest.mark.parametrize("materialization_boundary", ["model", "layer"])
 def test_modernvbert_fsdp_matches_ten_one_device_grad_cache_updates(
     world_size: int,
-    materialization_boundary: Literal["model", "layer"],
 ):
     devices = jax.devices()
     if len(devices) < world_size:
@@ -112,7 +108,6 @@ def test_modernvbert_fsdp_matches_ten_one_device_grad_cache_updates(
         parameter_axis_name="data",
         data_axis_name="data",
         minimum_parameter_elements=1,
-        materialization_boundary=materialization_boundary,
     )
     distributed_step = build_train_step(
         task,

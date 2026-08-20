@@ -73,24 +73,17 @@ Each rank encodes only its local query and document records; GradCache gathers
 compact representations, validity vectors, and relation rows to recover the
 exact global negative population. FSDP keeps model and Optax state sharded at
 rest, AllGathers parameters for the forward, and ReduceScatters their
-cotangents. Same-axis data/FSDP uses a gradient sum because each device sees
-distinct examples; a parameter-only axis uses a mean because its batch is
-replicated. Global loss and task metrics are explicitly reduced, and
-FSDP/custom `shard_map(check_vma=True)` checks the declared varying/manual axes
-rather than trusting unchecked output placement. Named DDP instead performs
-one explicit bounded-bucket synchronization after backward and disables VMA
-transposition so implicit per-parameter reductions cannot be sunk into encoder
-replay.
-
-FSDP parameter materialization is separately configurable as `model` or
-`layer`. The latter bounds full-parameter live ranges but repeats layer
-communication for every GradCache encoder replay; it is therefore a capacity
-choice whose throughput depends strongly on the device interconnect.
+cotangents. Shared model primitives request replicated matrix parameters at
+their exact use sites, while the compiled step accepts and returns model plus
+Optax state in their sharded layouts. Global JAX semantics and autodiff derive
+the required gradient communication; GradCache does not own a separate DDP or
+FSDP synchronization path. Exact 2/4-device trajectory tests and physical HLO
+profiles verify the resulting program.
 
 Two- and four-GPU DDP acceptance is recorded in
 [`distributed-grad-cache-modernvbert-20260814`](../benchmarks/results/distributed-grad-cache-modernvbert-20260814/README.org).
-The named/custom sharding and physical FSDP profile is recorded in
-[`fsdp-modernvbert-20260819`](../benchmarks/results/fsdp-modernvbert-20260819/README.org).
+The current annotation-only FSDP acceptance is recorded in
+[`fsdp-annotations-20260820`](../benchmarks/results/fsdp-annotations-20260820/README.org).
 
 ### Process-local input across JAX processes
 

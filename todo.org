@@ -837,8 +837,9 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
 ** DONE Implement arbitrary named single-host sharding :distributed:
   Resolve DDP, FSDP, and explicit partition rules into one internal
   =ShardingPlan=: mesh, batch layouts, complete model layouts, differentiable
-  gradient layouts, Optax-state layouts, materialization collectives, gradient
-  synchronization, and global numeric reductions.  All presets use the same
+  gradient layouts, Optax-state layouts, and result layouts. Shared numerical
+  primitives annotate exact parameter-use and activation layouts; JAX derives
+  communication and its autodiff transpose. All presets use the same
   task-generic compiled trainer; FSDP remains orthogonal to GradCache.
 *** DONE Resolve named DDP and FSDP presets through one =ShardingPlan=
     Replicated DDP and fully sharded parameter/Adam state now differ only in
@@ -851,7 +852,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
     DDP, FSDP, and custom plans match the one-device GradCache loss, metrics,
     model update, and complete Optax state.  Native ModernVBERT passes the same
     two- and four-device virtual-topology gate for ten consecutive optimizer
-    updates under both full-model and layer-boundary FSDP.  Four-physical-GPU
+    updates through the architecture-agnostic global program. Four-physical-GPU
     full-checkpoint profiles additionally record the complete loss trajectory
     and per-leaf model/optimizer signatures rather than assuming one-step
     agreement remains representative.
@@ -872,15 +873,15 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
     one-device ten-update trajectory.  The earlier manual DDP/FSDP profile is
     invalid as acceptance evidence because it converged to a materially
     different loss trajectory.
-*** DONE Materialize FSDP parameters at measured module boundaries
-    Full-model FSDP is the architecture-agnostic default: the plan keeps model
-    and Optax state sharded at rest, coalesces compatible leaves into global
-    sharded buckets, annotates each bucket as replicated at the model-call
-    boundary, and lets JAX transpose the global program into matching sharded
-    gradient buckets.  =layer= remains an explicit capacity optimization;
-    supported models name their layer stack and unsupported requests fail during
-    plan construction rather than silently falling back.  Both boundaries match
-    ten complete one-device updates on 2/4-device meshes.
+*** DONE Derive FSDP communication from shared primitive annotations
+    Keep model and Optax state sharded at rest, request replicated matrix values
+    at their exact shared =Linear= use sites, preserve batch-leading activation
+    layouts, and let JAX transpose the global program into sharded gradients.
+    Remove the packed model boundary, per-model =fsdp_materialize()= hook,
+    deferred wrapper, custom VJP, explicit layer collectives, and manual gradient
+    synchronization. The resulting architecture-agnostic program matches ten
+    complete one-device updates on 2/4-device meshes and trains the 1.9795B
+    capacity model without model-specific FSDP code.
 ** DONE Establish the physical FSDP capacity and throughput frontier
     Compare DDP and FSDP on full ModernVBERT and at least one model that cannot
     fit replicated optimizer state.  Sweep useful batch/sequence/model sizes,
@@ -922,18 +923,20 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
     =benchmarks/results/fsdp-frontier-20260819/README.org=.  It covers the 149M
     checkpoint at batch/sequence points 8/128, 8/512, and 2/4096 plus a
     1,979,520,768-parameter capacity model.  DDP wins the small communication-
-    dominated points; full-model FSDP is 34.8% faster and uses 14.3% less live
-    JAX memory at sequence 4096.  Layer FSDP completes the 1.9795B model at
-    20.995 GB peak live memory, while DDP already OOMs at the smaller 1.9105B
-    point.  The successful boundary uses JAX's explicitly recorded CUDA-async
-    allocator; the default BFC result and a 2.324B upper-bracket OOM remain
-    structured evidence.
+    dominated points; the historical packed FSDP program is 34.8% faster and
+    uses 14.3% less live JAX memory at sequence 4096. The final shared-primitive
+    program completes the 1.9795B model at 21.492 GB peak live memory and
+    11.373 seconds/step, 9.2% faster than the superseded explicit layer control's
+    12.524 seconds/step at 20.995 GB. DDP already OOMs at the smaller 1.9105B
+    point. Evidence is tracked in
+    =benchmarks/results/fsdp-annotations-20260820/README.org=; the default BFC
+    result and a 2.324B upper-bracket OOM remain structured evidence.
 
-** TODO Optimize the packed full-model FSDP schedule across device counts :runtime:sharding:performance:
-   Preserve the clean global program while recovering the compact four-device
-   2 AllGather / 6 AllReduce / 2 ReduceScatter schedule on two-device meshes.
-   Accept only against matched numerical trajectories and physical throughput;
-   do not reintroduce a separate trainer or manual full-model collective path.
+** TODO Optimize compiler-managed FSDP schedules across device counts :runtime:sharding:performance:
+   Preserve exact shared-primitive annotations while improving the small-model
+   PCIe schedule and eliminating avoidable AllToAlls. Accept only against matched
+   numerical trajectories, capacity, and physical throughput; do not reintroduce
+   a model-specific hook, separate trainer, custom VJP, or manual collective path.
 ** NEXT Make precision policy explicit at parameter, compute, activation, and loss boundaries :runtime:precision:
 ** DONE Support activation rematerialization as a measured execution choice :runtime:memory:
   Expose =none=, =selective=, and =full= as topology-dependent policies without

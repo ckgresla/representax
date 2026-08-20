@@ -110,27 +110,3 @@ def test_fsdp_rejects_specs_that_do_not_match_parameter_divisibility():
             parameter_axis_names=("model",),
             data_axis_name=None,
         )
-
-
-@pytest.mark.distributed
-def test_layer_fsdp_requires_an_explicit_model_capability():
-    devices = jax.devices()
-    if len(devices) < 2:
-        pytest.skip("requires two JAX devices")
-    model = DenseEncoder(4, 4, key=jax.random.key(3))
-    optimizer = optax.adamw(1e-3)
-    state = init_train_state(model, optimizer)
-    mesh = jax.make_mesh((2,), ("model",), devices=devices[:2])
-
-    with pytest.raises(
-        NotImplementedError,
-        match="does not implement layer-boundary FSDP",
-    ):
-        ShardingPlan.fsdp(
-            state,
-            optimizer,
-            mesh,
-            parameter_axis_name="model",
-            minimum_parameter_elements=1,
-            materialization_boundary="layer",
-        )

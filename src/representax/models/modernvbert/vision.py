@@ -9,6 +9,11 @@ import jax
 import jax.numpy as jnp
 from jaxtyping import Array, Float, PRNGKeyArray
 
+from representax.core.sharding import (
+    activation_out_sharding,
+    constrain_activation,
+    replicate,
+)
 from representax.models.components import LayerNorm, Linear
 
 from .config import ModernVBERTVisionConfig
@@ -49,15 +54,16 @@ class PatchEmbedding(eqx.Module):
         pixel_values: Float[Array, "image channel height width"],
     ) -> Float[Array, "image grid_height grid_width hidden"]:
         pixels = jnp.transpose(pixel_values, (0, 2, 3, 1))
-        kernel = jnp.transpose(self.weight, (2, 3, 1, 0))
+        kernel = jnp.transpose(replicate(self.weight), (2, 3, 1, 0))
         patches = jax.lax.conv_general_dilated(
             pixels,
             kernel,
             window_strides=(self.patch_size, self.patch_size),
             padding="VALID",
             dimension_numbers=("NHWC", "HWIO", "NHWC"),
+            out_sharding=activation_out_sharding(4),
         )
-        return patches + self.bias
+        return constrain_activation(patches + replicate(self.bias))
 
 
 class SigLIPVisionAttention(eqx.Module):
