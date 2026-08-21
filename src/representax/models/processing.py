@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import hashlib
+import inspect
 import json
 import operator
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
@@ -87,6 +90,8 @@ def select_static_shape_bucket(
 
 
 Process = Callable[..., Any]
+MediaProbe = Callable[..., Sequence[int]]
+MediaPrepare = Callable[..., Mapping[str, Any]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -138,6 +143,218 @@ def _callable_name(value: Callable[..., Any]) -> str:
     module = getattr(value, "__module__", type(value).__module__)
     name = getattr(value, "__qualname__", type(value).__qualname__)
     return f"{module}.{name}"
+
+
+def _callable_contract(value: Callable[..., Any]) -> Mapping[str, str]:
+    identity = _callable_name(value)
+    callable_value = (
+        value if inspect.isfunction(value) or inspect.isclass(value) else type(value)
+    )
+    source_path = inspect.getsourcefile(callable_value)
+    if source_path is not None:
+        source = Path(source_path).read_bytes()
+        digest_name = "module_file_sha256"
+    else:
+        try:
+            source = inspect.getsource(callable_value).encode()
+        except (OSError, TypeError):
+            return {"callable": identity}
+        digest_name = "callable_source_sha256"
+    return {
+        "callable": identity,
+        digest_name: hashlib.sha256(source).hexdigest(),
+    }
+
+
+def _media_artifact(value: Any, *, modality: Modality) -> Artifact:
+    if isinstance(value, Artifact):
+        if value.modality != modality:
+            raise TypeError(
+                f"{modality} processors cannot consume {value.modality} artifacts"
+            )
+        return value
+    return Artifact.inline(modality, value)
+
+
+def make_media_processor(
+    *,
+    modality: Modality | str,
+    admitted_shapes: Sequence[Sequence[int]],
+    probe: MediaProbe,
+    prepare: MediaPrepare,
+    batch_builder: Callable[..., Any],
+    configuration: Mapping[str, Any],
+) -> Processor:
+    """Build one model-associated finite-shape media processor.
+
+    ``probe`` inspects artifact metadata and returns the model-required shape
+    without decoding media. One dimension-wise bucket is selected for the
+    complete batch. ``prepare`` then resolves, decodes, selects, transforms,
+    and pads one artifact into arrays for that exact bucket. ``batch_builder``
+    receives the stacked JAX arrays and constructs the model-native batch.
+
+    This is deliberately callable-based rather than an adapter hierarchy:
+    image tiling, audio windows, video frame sampling, normalization, and
+    special model fields remain owned by the model integration.
+    """
+
+    resolved_modality = Modality(modality)
+    if not callable(probe) or not callable(prepare) or not callable(batch_builder):
+        raise TypeError("media probe, prepare, and batch_builder must be callable")
+    media_configuration = dict(configuration)
+    try:
+        json.dumps(media_configuration, sort_keys=True)
+    except (TypeError, ValueError) as error:
+        raise TypeError(
+            "media processor configuration must be JSON serializable"
+        ) from error
+    raw_shapes = tuple(admitted_shapes)
+    if not raw_shapes:
+        raise ValueError("at least one admitted media shape is required")
+    shapes = tuple(
+        dict.fromkeys(
+            _shape(shape, name="admitted media shapes") for shape in raw_shapes
+        )
+    )
+    rank = len(shapes[0])
+    if any(len(shape) != rank for shape in shapes):
+        raise ValueError("admitted media shapes must have one consistent rank")
+
+    def process(
+        artifacts: Sequence[Any],
+        *,
+        route: Route,
+        seed: int | None,
+    ) -> Any:
+        if not artifacts:
+            raise ValueError("media processor batches must be non-empty")
+        values = tuple(
+            _media_artifact(artifact, modality=resolved_modality)
+            for artifact in artifacts
+        )
+        requirements = tuple(
+            _shape(
+                probe(artifact, route=route),
+                name=f"{resolved_modality} shape requirement",
+            )
+            for artifact in values
+        )
+        if any(len(requirement) != rank for requirement in requirements):
+            raise ValueError(
+                f"{resolved_modality} shape requirements must have rank {rank}"
+            )
+        required = tuple(max(values) for values in zip(*requirements, strict=True))
+        bucket = select_static_shape_bucket(required, shapes)
+        seed_sequence = None if seed is None else np.random.SeedSequence(seed)
+        child_seeds = (
+            (None,) * len(values)
+            if seed_sequence is None
+            else seed_sequence.spawn(len(values))
+        )
+        rows = []
+        for artifact, child_seed in zip(values, child_seeds, strict=True):
+            rng = None if child_seed is None else np.random.default_rng(child_seed)
+            prepared = prepare(
+                artifact,
+                bucket=bucket,
+                route=route,
+                rng=rng,
+            )
+            if not isinstance(prepared, Mapping) or not prepared:
+                raise TypeError("media prepare must return a non-empty mapping")
+            rows.append({name: np.asarray(value) for name, value in prepared.items()})
+        fields = tuple(rows[0])
+        if any(tuple(row) != fields for row in rows[1:]):
+            raise ValueError("media prepare fields must be identical for every row")
+        arrays = {}
+        for name in fields:
+            field_shapes = tuple(row[name].shape for row in rows)
+            if len(set(field_shapes)) != 1:
+                raise ValueError(
+                    f"prepared media field {name!r} has unstable shapes "
+                    f"{field_shapes!r} for bucket {bucket!r}"
+                )
+            arrays[name] = jnp.asarray(np.stack([row[name] for row in rows]))
+        return batch_builder(**arrays)
+
+    return Processor(
+        process=process,
+        contract={
+            "schema_version": "representax-media-processor-v1",
+            "modality": resolved_modality.value,
+            "admitted_shapes": [list(shape) for shape in shapes],
+            "probe": _callable_contract(probe),
+            "prepare": _callable_contract(prepare),
+            "batch_builder": _callable_contract(batch_builder),
+            "configuration": media_configuration,
+        },
+    )
+
+
+def make_image_processor(
+    *,
+    admitted_shapes: Sequence[Sequence[int]],
+    probe: MediaProbe,
+    prepare: MediaPrepare,
+    batch_builder: Callable[..., Any],
+    configuration: Mapping[str, Any],
+) -> Processor:
+    """Build an image processor whose shapes conventionally mean ``(H, W)``."""
+
+    if any(len(tuple(shape)) != 2 for shape in admitted_shapes):
+        raise ValueError("image admitted shapes must be (height, width)")
+    return make_media_processor(
+        modality=Modality.IMAGE,
+        admitted_shapes=admitted_shapes,
+        probe=probe,
+        prepare=prepare,
+        batch_builder=batch_builder,
+        configuration=configuration,
+    )
+
+
+def make_audio_processor(
+    *,
+    admitted_shapes: Sequence[Sequence[int]],
+    probe: MediaProbe,
+    prepare: MediaPrepare,
+    batch_builder: Callable[..., Any],
+    configuration: Mapping[str, Any],
+) -> Processor:
+    """Build an audio processor whose shapes conventionally mean ``(samples,)``."""
+
+    if any(len(tuple(shape)) != 1 for shape in admitted_shapes):
+        raise ValueError("audio admitted shapes must be (samples,)")
+    return make_media_processor(
+        modality=Modality.AUDIO,
+        admitted_shapes=admitted_shapes,
+        probe=probe,
+        prepare=prepare,
+        batch_builder=batch_builder,
+        configuration=configuration,
+    )
+
+
+def make_video_processor(
+    *,
+    admitted_shapes: Sequence[Sequence[int]],
+    probe: MediaProbe,
+    prepare: MediaPrepare,
+    batch_builder: Callable[..., Any],
+    configuration: Mapping[str, Any],
+) -> Processor:
+    """Build a video processor with ``(frames, H, W)`` shape convention."""
+
+    if any(len(tuple(shape)) != 3 for shape in admitted_shapes):
+        raise ValueError("video admitted shapes must be (frames, height, width)")
+    return make_media_processor(
+        modality=Modality.VIDEO,
+        admitted_shapes=admitted_shapes,
+        probe=probe,
+        prepare=prepare,
+        batch_builder=batch_builder,
+        configuration=configuration,
+    )
 
 
 def make_text_processor(
@@ -324,7 +541,7 @@ def make_text_processor(
             "tokenizer_type": (
                 f"{tokenizer_type.__module__}.{tokenizer_type.__qualname__}"
             ),
-            "batch_builder": _callable_name(batch_builder),
+            "batch_builder": _callable_contract(batch_builder),
             "max_sequence_length": maximum,
             "sequence_length_buckets": list(lengths),
             "prompts": prompt_values,
@@ -336,6 +553,10 @@ def make_text_processor(
 
 __all__ = [
     "Processor",
+    "make_audio_processor",
+    "make_image_processor",
+    "make_media_processor",
     "make_text_processor",
+    "make_video_processor",
     "select_static_shape_bucket",
 ]

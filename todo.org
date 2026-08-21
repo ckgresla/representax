@@ -775,12 +775,20 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
     prompts before selection, truncates at the largest configured length, pads
     directly into =sequence_length_buckets=, and fingerprints the bucket policy
     through the real Grain-to-retrieval-batch path.
-**** TODO Implement model-associated image, audio, and video processors with finite shape buckets
+**** DONE Implement model-associated image, audio, and video processors with finite shape buckets
     Keep decoding, deterministic selection, model-specific resize/resampling,
     normalization, special tokens, padding masks, and admitted static shapes in
     each model's processor. Do not introduce a generic adapter hierarchy;
     task collators only compose processor outputs with task-owned labels and
     relations.
+    Accepted with one callable-based media engine and thin image/audio/video
+    constructors. Probe runs on immutable Artifact metadata before decode; the
+    complete batch selects one finite shape; prepare then resolves, decodes,
+    selects, transforms, and pads each row; the model's batch builder receives
+    only shape-stable stacked arrays. Image, seeded audio-window, and seeded
+    video-frame tests cover lazy references, deterministic replay, wrong
+    modalities, unstable leaves, Grain-native batching, implementation digests,
+    and fingerprint changes.
 **** TODO Preserve artifact references and decode only admitted media selections
     Carry URI, revision/ETag, archive member, byte range, checksum, and probed
     metadata through lazy sampling. Choose deterministic audio windows and video

@@ -49,7 +49,7 @@ class Artifact:
             ),
         )
 
-    The model bundle's processor interprets the resulting artifact tree and
+    The model-associated processor interprets the resulting artifact tree and
     emits its native fixed-shape array batch before the compiled step.
     """
 

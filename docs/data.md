@@ -125,6 +125,40 @@ or `(frames, height, width)`. The shared helper rejects incomparable choices—f
 example, more frames versus higher resolution—because that tradeoff belongs to
 the model-specific processor rather than a generic memory heuristic.
 
+Media processors use one callable-based boundary rather than a framework of
+adapter classes:
+
+```python
+from representax.models import make_image_processor
+
+processor = make_image_processor(
+    admitted_shapes=((224, 224), (336, 336)),
+    probe=probe_image_requirement,
+    prepare=decode_resize_normalize_and_pad,
+    batch_builder=ImageBatch,
+    configuration={
+        "resize": "shortest-edge-center-crop",
+        "mean": [0.5, 0.5, 0.5],
+        "std": [0.5, 0.5, 0.5],
+    },
+)
+```
+
+`probe(artifact, route=...)` inspects immutable metadata without decoding and
+returns the shape required by that model policy. Representax selects one bucket
+for the complete batch. Only then does
+`prepare(artifact, bucket=..., route=..., rng=...)` resolve bytes, decode,
+select content, transform it, and emit fixed-shape NumPy leaves. Finally,
+`batch_builder(**stacked_arrays)` constructs the model-native JAX batch.
+
+The audio and video constructors use the same execution path, with conventional
+shape meanings `(samples,)` and `(frames, height, width)`. A supplied seed is
+split deterministically per artifact for reproducible audio windows or video
+frame selection. Processor contracts fingerprint the finite shapes, callable
+implementations, and the complete JSON preprocessing configuration. The actual
+resize, normalization, resampling, tiling, and sampling policy remains with the
+model integration where it can match that model's saved artifacts exactly.
+
 Task collators may accept an injected `processor` constructor argument. This lets
 them apply the model processor to the artifact fields and then assemble labels,
 relations, masks, or other task-owned batch state without duplicating processor
@@ -197,6 +231,6 @@ batch instead of replaying preprocessing.
 
 Additional URI schemes plug in as source resolvers returning a random-access
 object accepted by `grain.MapDataset.source`. Model-specific media processing
-belongs to the bundled processor rather than the source resolver. The source
+belongs to the model-associated processor rather than the source resolver. The source
 supplies rows and lazy references; the processor determines how those artifacts
 become model inputs.
