@@ -26,7 +26,12 @@ from .config import JinaV5TextConfig
 
 
 class JinaV5TextBatch(eqx.Module):
-    """Static-shape token tensors consumed by the native Jina text tower."""
+    """Static-shape token payload for the native Jina text route.
+
+    The explicit suffix distinguishes this implemented route from the composed
+    image, audio, video, and multimodal batch that the complete omni model will
+    consume.
+    """
 
     input_ids: Int[Array, "batch sequence"]
     attention_mask: Bool[Array, "batch sequence"] | Int[Array, "batch sequence"]

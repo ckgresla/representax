@@ -1,4 +1,9 @@
-"""Torch-free loading of standard Sentence Transformers dense artifacts."""
+"""Import standard Sentence Transformers dense artifacts into native modules.
+
+This module understands the upstream serialization format. It does not provide
+an alternate training runtime: models, processors, task collation, and compiled
+execution remain ordinary Representax components after import.
+"""
 
 from __future__ import annotations
 
@@ -21,12 +26,12 @@ from representax.models.sentence import (
     POOLING_MODES,
     DenseActivation,
     PoolingMode,
+    SentenceBatch,
     SentenceDense,
     SentenceEncoder,
     SentenceNormalize,
     SentencePooling,
     SentencePostprocessor,
-    make_sentence_batch,
 )
 from representax.planning import RematerializationPolicy
 
@@ -514,7 +519,7 @@ def load_sentence_transformer(
         prompts=loaded.prompts,
         default_prompt_name=loaded.default_prompt_name,
         include_prompt=loaded.encoder.pooling.include_prompt,
-        pooling_batch_builder=make_sentence_batch,
+        pooling_batch_builder=SentenceBatch,
     )
     return TextEmbeddingModel(
         model=loaded.encoder,

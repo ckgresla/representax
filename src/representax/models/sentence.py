@@ -180,12 +180,6 @@ class SentenceBatch(eqx.Module):
     pooling_mask: Bool[Array, "batch sequence"] | Int[Array, "batch sequence"]
 
 
-def make_sentence_batch(backbone_inputs: Any, pooling_mask: Any) -> SentenceBatch:
-    """Attach a prompt-aware pooling mask to native backbone inputs."""
-
-    return SentenceBatch(backbone_inputs=backbone_inputs, pooling_mask=pooling_mask)
-
-
 class SentenceEncoder(eqx.Module):
     """A token backbone plus serialized dense sentence modules."""
 
@@ -297,5 +291,4 @@ __all__ = [
     "SentenceNormalize",
     "SentencePooling",
     "SentencePostprocessor",
-    "make_sentence_batch",
 ]
