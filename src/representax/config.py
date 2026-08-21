@@ -33,6 +33,7 @@ from .tasks.config import LossConfig, LossModifierConfig, TaskConfig
 
 RematerializationPolicy = Literal["none", "selective", "full"]
 PrecisionDType = Literal["float32", "bfloat16"]
+MatrixDType = Literal["float32", "bfloat16", "float8_e4m3fn"]
 MetricMode = Literal["min", "max"]
 ExportSelection = Literal["final", "best"]
 JsonScalar = str | int | float | bool | None
@@ -387,6 +388,10 @@ class PrecisionConfig(FrozenConfig):
         default="float32",
         description="Floating model-input and hidden-activation dtype.",
     )
+    matrix_dtype: MatrixDType | None = Field(
+        default=None,
+        description=("Scaled linear-algebra operand dtype; defaults to compute_dtype."),
+    )
     accumulation_dtype: Literal["float32"] = Field(
         default="float32",
         description="Representation, gradient, and metric reduction dtype.",
@@ -402,11 +407,48 @@ class PrecisionConfig(FrozenConfig):
 
         return cls(compute_dtype="bfloat16", activation_dtype="bfloat16")
 
+    @classmethod
+    def float8_mixed(cls) -> Self:
+        """Experimental FP8 matrices with BF16 communication and other compute."""
+
+        return cls(
+            compute_dtype="bfloat16",
+            activation_dtype="bfloat16",
+            matrix_dtype="float8_e4m3fn",
+        )
+
+    @property
+    def resolved_matrix_dtype(self) -> MatrixDType:
+        """Resolve the matrix operand dtype against ordinary compute."""
+
+        return self.matrix_dtype or self.compute_dtype
+
     @property
     def communication_dtype(self) -> PrecisionDType:
         """FSDP communicates the transient compute view, not FP32 masters."""
 
         return self.compute_dtype
+
+
+class QuantizedLoRAConfig(FrozenConfig):
+    """Four-bit frozen base weights plus trainable low-rank adapters."""
+
+    bits: Literal[4] = 4
+    rank: PositiveInt
+    alpha: PositiveFloat
+    target_pattern: NonEmptyString = ".*"
+    initialization_scale: PositiveFloat | None = None
+
+    @field_validator("target_pattern")
+    @classmethod
+    def validate_target_pattern(cls, pattern: str) -> str:
+        """Reject invalid target-path regular expressions during configuration."""
+
+        try:
+            re.compile(pattern)
+        except re.error as error:
+            raise ValueError(f"invalid adapter target_pattern: {error}") from error
+        return pattern
 
 
 class TrainingConfig(FrozenConfig):
@@ -420,6 +462,7 @@ class TrainingConfig(FrozenConfig):
     batch: Execution[BatchConfig]
     grad_cache: Execution[GradCacheConfig | None] = None
     mega_batch_mining: Execution[MegaBatchMiningConfig | None] = None
+    adapter: Scientific[QuantizedLoRAConfig | None] = None
     precision: Execution[PrecisionConfig] = PrecisionConfig()
     activation_rematerialization: Execution[RematerializationPolicy] = Field(
         default="full",

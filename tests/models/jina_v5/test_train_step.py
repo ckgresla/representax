@@ -16,7 +16,7 @@ from tests.models.jina_v5.test_model import _synthetic_state, tiny_config
 
 
 @pytest.mark.runtime
-def test_compiled_jina_v5_update_is_finite_and_preserves_bfloat16_parameters():
+def test_compiled_jina_v5_update_promotes_checkpoint_to_fp32_master_state():
     config = tiny_config()
     state_dict = {
         name: value.astype(jnp.bfloat16)
@@ -59,4 +59,4 @@ def test_compiled_jina_v5_update_is_finite_and_preserves_bfloat16_parameters():
         value.dtype
         for value in jax.tree.leaves(result.state.model)
         if eqx.is_inexact_array(value)
-    } == {jnp.dtype(jnp.bfloat16)}
+    } == {jnp.dtype(jnp.float32)}

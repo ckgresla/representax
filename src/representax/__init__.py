@@ -1,7 +1,7 @@
 """Representax: task-general representation learning in JAX."""
 
 from . import data, evaluation, integrations, models, planning, tasks, train
-from .config import JobConfig, PrecisionConfig
+from .config import JobConfig, PrecisionConfig, QuantizedLoRAConfig
 from .core import (
     BoundEncoder,
     Encoder,
@@ -26,6 +26,7 @@ __all__ = [
     "Modality",
     "PrecisionConfig",
     "PrecisionPolicy",
+    "QuantizedLoRAConfig",
     "Route",
     "JobConfig",
     "InferenceBundle",

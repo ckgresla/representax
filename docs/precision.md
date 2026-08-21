@@ -9,6 +9,7 @@ the conventional training split:
 | persistent parameters and checkpoints | FP32 |
 | Optax state | FP32 |
 | forward parameter view and activations | BF16 |
+| matrix operands | BF16 |
 | representation and GradCache accumulation | FP32 |
 | task losses and metrics | FP32 |
 
@@ -44,10 +45,34 @@ may rewrite the physical collective for a particular device; accelerator
 acceptance therefore inspects the compiled HLO in addition to the portable
 StableHLO and measures live memory and throughput.
 
-BF16 is intentionally the first mixed mode. It has FP32-like exponent range and
-does not require dynamic loss scaling. FP16, FP8, quantized optimizer state, and
-selective per-parameter exceptions should be added only with their own numerical
-and accelerator acceptance gates.
+BF16 is the recommended mixed mode. It has FP32-like exponent range and does not
+require dynamic loss scaling.
+
+## FP8 matrix compute
+
+`PrecisionConfig.float8_mixed()` is an experimental matrix policy. Parameters,
+FSDP communication, residuals, normalization, softmax, and nonlinearities remain
+BF16; only owned linear products use dynamically scaled FP8 operands with FP32
+accumulation. The custom VJP uses the conventional hybrid format: E4M3 operands
+in the forward program and E5M2 output cotangents in the backward program. FP32
+masters, Optax state, final gradients, representations, and losses are unchanged.
+
+On RTX 4090, optimized HLO proves native `__cublas$lt$matmul$f8` lowering. An
+isolated 4096-cubed GEMM is 1.37x faster than BF16, but the complete 149M
+ModernVBERT DDP job is 34.89 examples/s versus BF16's 35.91 examples/s because
+per-use scaling offsets the raw GEMM gain at this size. Under FSDP, the SPMD
+partitioner moves weight `amax` computations before gathers and introduces 28
+additional scale AllReduces; throughput is therefore only 6.40 examples/s.
+
+FP8 is supported as an evidence-backed experimental policy, not the default or
+a performance claim. The next optimization is persistent delayed-scale state
+with coalesced scale updates, followed by the same numerical, HLO, memory, and
+physical-throughput gates. MXFP8 and NVFP4 block-scaled hardware paths are not
+claimed on Ada GPUs.
+
+Four-bit frozen-weight adapter training is documented separately in
+[Low-bit adapters](adapters.md). Quantized optimizer state and selective
+per-parameter compute exceptions remain future policies.
 
 ## Vectorization audit
 

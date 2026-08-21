@@ -23,6 +23,7 @@ class PrecisionPolicy:
     parameter_dtype: jnp.dtype
     compute_dtype: jnp.dtype
     activation_dtype: jnp.dtype
+    matrix_dtype: jnp.dtype
     accumulation_dtype: jnp.dtype
     loss_dtype: jnp.dtype
 
@@ -37,6 +38,7 @@ FP32_POLICY = PrecisionPolicy(
     parameter_dtype=jnp.dtype(jnp.float32),
     compute_dtype=jnp.dtype(jnp.float32),
     activation_dtype=jnp.dtype(jnp.float32),
+    matrix_dtype=jnp.dtype(jnp.float32),
     accumulation_dtype=jnp.dtype(jnp.float32),
     loss_dtype=jnp.dtype(jnp.float32),
 )
@@ -44,6 +46,7 @@ FP32_POLICY = PrecisionPolicy(
 _DTYPES = {
     "float32": jnp.dtype(jnp.float32),
     "bfloat16": jnp.dtype(jnp.bfloat16),
+    "float8_e4m3fn": jnp.dtype(jnp.float8_e4m3fn),
 }
 _ACTIVE_PRECISION: ContextVar[PrecisionPolicy | None] = ContextVar(
     "representax_precision",
@@ -58,6 +61,7 @@ def resolve_precision_policy(config: Any) -> PrecisionPolicy:
         parameter_dtype=_DTYPES[config.parameter_dtype],
         compute_dtype=_DTYPES[config.compute_dtype],
         activation_dtype=_DTYPES[config.activation_dtype],
+        matrix_dtype=_DTYPES[config.resolved_matrix_dtype],
         accumulation_dtype=_DTYPES[config.accumulation_dtype],
         loss_dtype=_DTYPES[config.loss_dtype],
     )
@@ -120,6 +124,121 @@ def active_compute_dtype(fallback: Any) -> jnp.dtype:
     return jnp.dtype(fallback) if policy is None else policy.compute_dtype
 
 
+def _scaled_quantize(
+    value: Float[Array, ...],
+    dtype: jnp.dtype,
+) -> tuple[Float[Array, ...], Float[Array, ""]]:
+    """Dynamically scale one operand into a finite low-precision range."""
+
+    numeric = value.astype(jnp.float32)
+    maximum = jnp.asarray(jnp.finfo(dtype).max, dtype=jnp.float32)
+    scale = jnp.maximum(
+        jnp.max(jnp.abs(numeric)) / maximum,
+        jnp.asarray(jnp.finfo(jnp.float32).tiny, dtype=jnp.float32),
+    )
+    scale = jax.lax.stop_gradient(scale)
+    return (numeric / scale).astype(dtype), scale
+
+
+def _scaled_fp8_dot(
+    left: Float[Array, "left contract"],
+    right: Float[Array, "contract right"],
+    *,
+    left_dtype: jnp.dtype,
+    right_dtype: jnp.dtype,
+) -> Float[Array, "left right"]:
+    """Run one scaled FP8 matrix product with an exact CPU emulation lane."""
+
+    quantized_left, left_scale = _scaled_quantize(left, left_dtype)
+    quantized_right, right_scale = _scaled_quantize(right, right_dtype)
+    if jax.default_backend() == "gpu":
+        output = jax.lax.dot_general(
+            quantized_left,
+            quantized_right,
+            (((1,), (0,)), ((), ())),
+            precision=jax.lax.DotAlgorithmPreset.ANY_F8_ANY_F8_F32,
+            preferred_element_type=jnp.float32,
+        )
+    else:
+        output = jax.lax.dot_general(
+            quantized_left.astype(jnp.bfloat16),
+            quantized_right.astype(jnp.bfloat16),
+            (((1,), (0,)), ((), ())),
+            precision=jax.lax.DotAlgorithmPreset.BF16_BF16_F32,
+            preferred_element_type=jnp.float32,
+        )
+    return output * left_scale * right_scale
+
+
+@jax.custom_vjp
+def _fp8_linear_dot(
+    left: Float[Array, "left contract"],
+    right: Float[Array, "contract right"],
+) -> Float[Array, "left right"]:
+    """Scaled E4M3 linear product with an E5M2 backward program."""
+
+    return _scaled_fp8_dot(
+        left,
+        right,
+        left_dtype=jnp.dtype(jnp.float8_e4m3fn),
+        right_dtype=jnp.dtype(jnp.float8_e4m3fn),
+    )
+
+
+def _fp8_linear_dot_forward(
+    left: Float[Array, "left contract"],
+    right: Float[Array, "contract right"],
+) -> tuple[Float[Array, "left right"], tuple[jax.Array, jax.Array]]:
+    output = _scaled_fp8_dot(
+        left,
+        right,
+        left_dtype=jnp.dtype(jnp.float8_e4m3fn),
+        right_dtype=jnp.dtype(jnp.float8_e4m3fn),
+    )
+    return output, (left, right)
+
+
+def _fp8_linear_dot_backward(
+    residuals: tuple[jax.Array, jax.Array],
+    cotangent: Float[Array, "left right"],
+) -> tuple[jax.Array, jax.Array]:
+    left, right = residuals
+    gradient_left = _scaled_fp8_dot(
+        cotangent,
+        right.T,
+        left_dtype=jnp.dtype(jnp.float8_e5m2),
+        right_dtype=jnp.dtype(jnp.float8_e4m3fn),
+    )
+    gradient_right = _scaled_fp8_dot(
+        left.T,
+        cotangent,
+        left_dtype=jnp.dtype(jnp.float8_e4m3fn),
+        right_dtype=jnp.dtype(jnp.float8_e5m2),
+    )
+    return gradient_left.astype(left.dtype), gradient_right.astype(right.dtype)
+
+
+_fp8_linear_dot.defvjp(_fp8_linear_dot_forward, _fp8_linear_dot_backward)
+
+
+def linear_matmul(
+    left: Float[Array, "*batch contract"],
+    right: Float[Array, "contract output"],
+    *,
+    out_sharding: Any = None,
+) -> Float[Array, "*batch output"]:
+    """Apply the active matrix policy to a batched linear projection."""
+
+    policy = _ACTIVE_PRECISION.get()
+    if policy is None or policy.matrix_dtype != jnp.dtype(jnp.float8_e4m3fn):
+        return jnp.matmul(left, right, out_sharding=out_sharding)
+    leading_shape = left.shape[:-1]
+    flattened = left.reshape((-1, left.shape[-1]))
+    output = _fp8_linear_dot(flattened, right)
+    output = output.reshape((*leading_shape, right.shape[-1]))
+    return output.astype(policy.activation_dtype)
+
+
 def activation_inputs(inputs: Any) -> Any:
     """Cast model inputs without touching labels or other task-owned values."""
 
@@ -168,6 +287,7 @@ __all__ = [
     "cast_floating_tree",
     "compute_parameter",
     "loss_value",
+    "linear_matmul",
     "model_for_compute",
     "objective_output",
     "precision_context",

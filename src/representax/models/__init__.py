@@ -1,5 +1,11 @@
 """Native model implementations and integrations."""
 
+from .adapters import (
+    QuantizedLoRALinear,
+    apply_quantized_lora,
+    lora_parameter_filter,
+    merge_quantized_lora,
+)
 from .bert import BertBatch, BertCheckpointAdapter, BertConfig, BertEncoder
 from .components import (
     Activation,
@@ -96,6 +102,7 @@ __all__ = [
     "DenseActivation",
     "PoolingMode",
     "PairClassifier",
+    "QuantizedLoRALinear",
     "ReconstructionDecoder",
     "SentenceBatch",
     "SentenceDense",
@@ -104,12 +111,15 @@ __all__ = [
     "SentencePooling",
     "TokenReconstructionDecoder",
     "activate",
+    "apply_quantized_lora",
     "create_mpnet_position_ids",
     "dot_product_attention",
     "dropout",
     "embedding_lookup",
     "l2_normalize",
+    "lora_parameter_filter",
     "mean_pool",
+    "merge_quantized_lora",
     "mpnet_relative_position_bucket",
     "mpnet_weight_names",
     "rematerialize",

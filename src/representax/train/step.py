@@ -65,11 +65,12 @@ def init_train_state(
     optimizer: optax.GradientTransformationExtraArgs,
     *,
     precision: PrecisionPolicy = FP32_POLICY,
+    trainable_filter: Any = eqx.is_inexact_array,
 ) -> TrainState:
-    """Initialize FP32 master parameters and matching Optax state."""
+    """Initialize FP32 master parameters and matching selected Optax state."""
 
     model = prepare_master_model(model, precision)
-    parameters = eqx.filter(model, eqx.is_inexact_array)
+    parameters = eqx.filter(model, trainable_filter)
     return TrainState(
         model=model,
         optimizer_state=optimizer.init(parameters),
@@ -124,6 +125,7 @@ def _build_train_step_body(
     context: ExecutionContext = _LOCAL_EXECUTION_CONTEXT,
     gradient_accumulation_steps: int = 1,
     precision: PrecisionPolicy = FP32_POLICY,
+    trainable_filter: Any = eqx.is_inexact_array,
 ) -> TrainStep:
     if max_grad_norm is not None and max_grad_norm <= 0:
         raise ValueError("max_grad_norm must be positive or None")
@@ -165,8 +167,7 @@ def _build_train_step_body(
     resolved_execution = Direct() if execution is None else execution
     resolved_execution.validate(task)
 
-    @eqx.filter_value_and_grad(has_aux=True)
-    def loss_fn(
+    def evaluate_loss(
         model: eqx.Module,
         batch: Any,
         key: PRNGKeyArray | None,
@@ -181,13 +182,62 @@ def _build_train_step_body(
             )
             return loss_value(output.loss), accumulated_values(output.metrics)
 
+    full_parameter_training = trainable_filter is eqx.is_inexact_array
+
+    @eqx.filter_value_and_grad(has_aux=True)
+    def full_loss_fn(
+        model: eqx.Module,
+        batch: Any,
+        key: PRNGKeyArray | None,
+    ) -> tuple[Float[Array, ""], Any]:
+        return evaluate_loss(model, batch, key)
+
+    @eqx.filter_value_and_grad(has_aux=True)
+    def selected_loss_fn(
+        trainable_model: Any,
+        frozen_model: Any,
+        batch: Any,
+        key: PRNGKeyArray | None,
+    ) -> tuple[Float[Array, ""], Any]:
+        return evaluate_loss(
+            cast(eqx.Module, eqx.combine(trainable_model, frozen_model)),
+            batch,
+            key,
+        )
+
     def train_step_body(
         state: TrainState,
         batch: Any,
         key: PRNGKeyArray | None,
     ) -> StepResult:
+        if full_parameter_training:
+            trainable_model = state.model
+            frozen_model = None
+        else:
+            trainable_model, frozen_model = eqx.partition(
+                state.model,
+                trainable_filter,
+            )
+
+        def differentiated_loss(
+            batch: Any,
+            key: PRNGKeyArray | None,
+        ) -> tuple[Any, Any]:
+            if full_parameter_training:
+                return full_loss_fn(
+                    cast(eqx.Module, trainable_model),
+                    batch,
+                    key,
+                )
+            return selected_loss_fn(
+                trainable_model,
+                frozen_model,
+                batch,
+                key,
+            )
+
         if gradient_accumulation_steps == 1:
-            (loss, task_metrics), gradients = loss_fn(state.model, batch, key)
+            (loss, task_metrics), gradients = differentiated_loss(batch, key)
         else:
             split_arrays, batch_static = _split_batch_arrays(
                 batch,
@@ -201,8 +251,7 @@ def _build_train_step_body(
                 )
                 microbatch = eqx.combine(microbatch_arrays, batch_static)
                 microbatch_key = None if key is None else jax.random.fold_in(key, index)
-                loss_and_metrics, gradients = loss_fn(
-                    state.model,
+                loss_and_metrics, gradients = differentiated_loss(
                     microbatch,
                     microbatch_key,
                 )
@@ -313,14 +362,29 @@ def _build_train_step_body(
             gradients,
             gradient_norm,
         )
-        parameters, static_model = eqx.partition(state.model, eqx.is_inexact_array)
-        updates, optimizer_state = optimizer.update(
-            clipped_gradients,
-            state.optimizer_state,
-            parameters,
-        )
-        parameters = optax.apply_updates(parameters, updates)
-        model = cast(eqx.Module, eqx.combine(parameters, static_model))
+        if full_parameter_training:
+            parameters, static_model = eqx.partition(
+                state.model,
+                eqx.is_inexact_array,
+            )
+            updates, optimizer_state = optimizer.update(
+                clipped_gradients,
+                state.optimizer_state,
+                parameters,
+            )
+            parameters = optax.apply_updates(parameters, updates)
+            model = cast(eqx.Module, eqx.combine(parameters, static_model))
+        else:
+            updates, optimizer_state = optimizer.update(
+                clipped_gradients,
+                state.optimizer_state,
+                cast(Any, trainable_model),
+            )
+            trainable_model = optax.apply_updates(
+                cast(Any, trainable_model),
+                updates,
+            )
+            model = cast(eqx.Module, eqx.combine(trainable_model, frozen_model))
         proposed_state = TrainState(
             model=model,
             optimizer_state=optimizer_state,
@@ -358,6 +422,7 @@ def build_train_step(
     donate_state: bool = False,
     gradient_accumulation_steps: int = 1,
     precision: PrecisionPolicy = FP32_POLICY,
+    trainable_filter: Any = eqx.is_inexact_array,
 ) -> TrainStep:
     """Build one compiled task-generic optimizer update.
 
@@ -389,6 +454,7 @@ def build_train_step(
             execution=Direct() if execution is None else execution,
             donate_state=donate_state,
             precision=precision,
+            trainable_filter=trainable_filter,
         )
 
     train_step_body = _build_train_step_body(
@@ -398,6 +464,7 @@ def build_train_step(
         execution=execution,
         gradient_accumulation_steps=gradient_accumulation_steps,
         precision=precision,
+        trainable_filter=trainable_filter,
     )
     donation = "all-except-first" if donate_state else "none"
 

@@ -29,7 +29,8 @@ The project is alpha. The current slice provides:
   similarity metrics matching Sentence Transformers 5.6.1;
 - lazy Grain recipes with built-in Hugging Face and local artifact resolvers;
 - validated domain configs with annotated scientific and execution parameters; and
-- explicit FP32 and BF16-mixed policies with FP32 master/Optax state; and
+- explicit FP32 and BF16-mixed policies with FP32 master/Optax state;
+- experimental native FP8 linear compute and packed INT4 LoRA training; and
 - explicit unit, runtime, parity, distributed, and performance test lanes.
 
 ## Principles
@@ -443,6 +444,24 @@ objectives in FP32 while using transient BF16 parameter views and activations.
 The same policy applies to in-training validation and composes with direct,
 GradCache, DDP, FSDP, and custom-sharded execution. See the
 [precision contract](docs/precision.md).
+
+Packed four-bit base weights can instead train low-rank adapters while keeping
+only the adapters in FP32 optimizer state:
+
+```python
+from representax.config import PrecisionConfig, QuantizedLoRAConfig, TrainingConfig
+
+training = TrainingConfig(
+    # ordinary batch, mesh, and lifecycle fields omitted
+    adapter=QuantizedLoRAConfig(rank=8, alpha=16.0),
+    precision=PrecisionConfig.bfloat16_mixed(),
+)
+```
+
+This is weight-quantized adapter training with BF16 matrix compute, not a claim
+of native INT4 training arithmetic. See the measured
+[low-bit adapter contract](docs/adapters.md). Native FP8 matrix compute is also
+available as an experimental policy; BF16 remains the recommended default.
 
 Named DDP and FSDP are configuration presets, not separate trainers. Explicit
 partition rules resolve through the same internal plan:

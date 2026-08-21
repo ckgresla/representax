@@ -12,6 +12,7 @@ from representax.core.sharding import (
     constrain_activation,
     replicate,
 )
+from representax.precision import compute_parameter, linear_matmul
 
 
 class DenseEncoder(eqx.Module):
@@ -56,13 +57,13 @@ class DenseEncoder(eqx.Module):
         values = jnp.asarray(inputs)
         if values.ndim != 2:
             raise ValueError("DenseEncoder inputs must have shape [batch, features]")
-        output = jnp.matmul(
+        output = linear_matmul(
             values,
-            replicate(self.projection.weight).T,
+            replicate(compute_parameter(self.projection.weight)).T,
             out_sharding=activation_out_sharding(2),
         )
         if self.projection.bias is not None:
-            output = output + replicate(self.projection.bias)
+            output = output + replicate(compute_parameter(self.projection.bias))
         output = constrain_activation(output.astype(jnp.float32))
         if not self.normalize:
             return output

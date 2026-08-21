@@ -15,7 +15,11 @@ from representax.core.sharding import (
     replicate,
 )
 from representax.planning import RematerializationPolicy
-from representax.precision import activation_inputs, compute_parameter
+from representax.precision import (
+    activation_inputs,
+    compute_parameter,
+    linear_matmul,
+)
 
 AttentionImplementation = Literal["xla", "cudnn"]
 Activation = Literal["gelu", "gelu_new", "relu", "silu"]
@@ -80,7 +84,7 @@ class Linear(eqx.Module):
     ) -> Float[Array, "*batch output"]:
         value = activation_inputs(value)
         weight = replicate(compute_parameter(self.weight))
-        output = jnp.matmul(
+        output = linear_matmul(
             value,
             weight.T,
             out_sharding=activation_out_sharding(value.ndim),

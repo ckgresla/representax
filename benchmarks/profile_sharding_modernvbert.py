@@ -28,7 +28,7 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument("--strategy", choices=("ddp", "fsdp"), required=True)
     parser.add_argument(
         "--precision",
-        choices=("float32", "bfloat16"),
+        choices=("float32", "bfloat16", "float8"),
         default="float32",
     )
     parser.add_argument("--axis-type", choices=("auto", "explicit"), default="auto")
@@ -37,6 +37,8 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument("--global-batch-size", type=int, default=8)
     parser.add_argument("--sequence-length", type=int, default=128)
     parser.add_argument("--chunk-size", type=int, default=2)
+    parser.add_argument("--quantized-lora-rank", type=int)
+    parser.add_argument("--lora-alpha", type=float, default=16.0)
     parser.add_argument("--warmup-steps", type=int, default=1)
     parser.add_argument("--measured-steps", type=int, default=3)
     parser.add_argument("--donate-state", action="store_true")
@@ -256,12 +258,14 @@ def main(arguments: argparse.Namespace, progress: dict[str, Any]) -> None:
     if len(physical_device_ids) != arguments.world_size:
         raise ValueError("physical device count must equal world size")
 
+    import equinox as eqx
     import jax
     import jax.numpy as jnp
     import optax
     from jax.sharding import AxisType
 
     from representax.config import PrecisionConfig
+    from representax.models import apply_quantized_lora, lora_parameter_filter
     from representax.models.modernvbert import (
         ModernVBERTTextBatch,
         ModernVBERTTextCheckpointAdapter,
@@ -287,11 +291,11 @@ def main(arguments: argparse.Namespace, progress: dict[str, Any]) -> None:
     shape = (arguments.global_batch_size, arguments.sequence_length)
     cpu = jax.local_devices(backend="cpu")[0]
     progress["phase"] = "initialization"
-    precision_config = (
-        PrecisionConfig()
-        if arguments.precision == "float32"
-        else PrecisionConfig.bfloat16_mixed()
-    )
+    precision_config = {
+        "float32": PrecisionConfig(),
+        "bfloat16": PrecisionConfig.bfloat16_mixed(),
+        "float8": PrecisionConfig.float8_mixed(),
+    }[arguments.precision]
     precision = resolve_precision_policy(precision_config)
     model_init_started = time.perf_counter()
     with jax.default_device(cpu):
@@ -318,8 +322,22 @@ def main(arguments: argparse.Namespace, progress: dict[str, Any]) -> None:
                 rematerialization="full",
                 model_id=f"representax/{arguments.model_config.stem}",
             )
+        trainable_filter = eqx.is_inexact_array
+        if arguments.quantized_lora_rank is not None:
+            model = apply_quantized_lora(
+                model,
+                rank=arguments.quantized_lora_rank,
+                alpha=arguments.lora_alpha,
+                key=jax.random.fold_in(jax.random.key(arguments.seed), 91),
+            )
+            trainable_filter = lora_parameter_filter(model)
         optimizer = optax.adamw(learning_rate=1e-5, weight_decay=0.0)
-        state = init_train_state(model, optimizer, precision=precision)
+        state = init_train_state(
+            model,
+            optimizer,
+            precision=precision,
+            trainable_filter=trainable_filter,
+        )
         input_ids = generator.integers(
             1,
             text_config.vocab_size,
@@ -350,9 +368,15 @@ def main(arguments: argparse.Namespace, progress: dict[str, Any]) -> None:
         for value in jax.tree.leaves(model)
         if hasattr(value, "dtype") and jnp.issubdtype(value.dtype, jnp.inexact)
     )
+    trainable_parameter_count = sum(
+        int(value.size)
+        for value in jax.tree.leaves(eqx.filter(model, trainable_filter))
+        if eqx.is_inexact_array(value)
+    )
     progress.update(
         phase="planning",
         parameter_count=parameter_count,
+        trainable_parameter_count=trainable_parameter_count,
         model_init_seconds=model_init_seconds,
     )
     mesh = jax.make_mesh(
@@ -364,7 +388,13 @@ def main(arguments: argparse.Namespace, progress: dict[str, Any]) -> None:
         devices=devices,
     )
     if arguments.strategy == "ddp":
-        plan = ShardingPlan.ddp(state, optimizer, mesh, axis_name="data")
+        plan = ShardingPlan.ddp(
+            state,
+            optimizer,
+            mesh,
+            axis_name="data",
+            trainable_filter=trainable_filter,
+        )
     else:
         plan = ShardingPlan.fsdp(
             state,
@@ -372,6 +402,7 @@ def main(arguments: argparse.Namespace, progress: dict[str, Any]) -> None:
             mesh,
             parameter_axis_name="data",
             data_axis_name="data",
+            trainable_filter=trainable_filter,
         )
     step = build_train_step(
         MNRTask(scale=20.0),
@@ -385,6 +416,7 @@ def main(arguments: argparse.Namespace, progress: dict[str, Any]) -> None:
         ),
         donate_state=arguments.donate_state,
         precision=precision,
+        trainable_filter=trainable_filter,
     )
     sampler = _NvmlSampler(physical_device_ids)
     sampler.start()
@@ -468,6 +500,8 @@ def main(arguments: argparse.Namespace, progress: dict[str, Any]) -> None:
             None if arguments.model_config is None else str(arguments.model_config)
         ),
         "parameter_count": parameter_count,
+        "trainable_parameter_count": trainable_parameter_count,
+        "quantized_lora_rank": arguments.quantized_lora_rank,
         "model_init_seconds": model_init_seconds,
         "world_size": arguments.world_size,
         "seed": arguments.seed,

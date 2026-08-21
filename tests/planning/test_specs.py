@@ -21,6 +21,7 @@ from representax.config import (
     ParameterRole,
     PartitionRuleConfig,
     PrecisionConfig,
+    QuantizedLoRAConfig,
     TrainingConfig,
 )
 from representax.data import mix, source
@@ -98,9 +99,45 @@ def test_mixed_precision_config_round_trips_as_execution_policy():
         "parameter_dtype": "float32",
         "compute_dtype": "bfloat16",
         "activation_dtype": "bfloat16",
+        "matrix_dtype": None,
         "accumulation_dtype": "float32",
         "loss_dtype": "float32",
     }
+
+
+def test_float8_policy_keeps_non_matrix_compute_and_communication_in_bfloat16():
+    precision = PrecisionConfig.float8_mixed()
+
+    assert precision.compute_dtype == "bfloat16"
+    assert precision.activation_dtype == "bfloat16"
+    assert precision.resolved_matrix_dtype == "float8_e4m3fn"
+    assert precision.communication_dtype == "bfloat16"
+
+
+def test_quantized_lora_config_round_trips_as_scientific_model_recipe():
+    adapter = QuantizedLoRAConfig(
+        rank=8,
+        alpha=16.0,
+        target_pattern=r"layers.*(attention|mlp)",
+    )
+    job = _job(training=_training(adapter=adapter))
+
+    restored = JobConfig.model_validate_json(job.model_dump_json())
+    scientific = cast(dict[str, Any], restored.parameters(ParameterRole.SCIENTIFIC))
+
+    assert restored.training.adapter == adapter
+    assert scientific["training"]["adapter"] == {
+        "bits": 4,
+        "rank": 8,
+        "alpha": 16.0,
+        "target_pattern": r"layers.*(attention|mlp)",
+        "initialization_scale": None,
+    }
+
+
+def test_quantized_lora_config_rejects_invalid_target_pattern():
+    with pytest.raises(ValidationError, match="invalid adapter target_pattern"):
+        QuantizedLoRAConfig(rank=8, alpha=16.0, target_pattern="[")
 
 
 def test_mesh_config_preserves_logical_axis_names_for_sharding():
@@ -236,6 +273,7 @@ def test_parameter_roles_project_domain_config_without_parallel_trees():
         "global_batch_size": 64,
         "max_steps": 100,
         "seed": 7,
+        "adapter": None,
     }
     assert set(execution) == {"data", "training"}
     training_execution = execution["training"]

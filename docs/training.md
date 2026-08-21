@@ -40,6 +40,15 @@ and validation consume the same policy. See the
 [mixed-precision contract](precision.md) for model-use boundaries, GradCache,
 FSDP communication, and numerical acceptance.
 
+`training.adapter` is an optional scientific model transformation. The first
+accepted recipe, `QuantizedLoRAConfig`, replaces selected native linear
+projections with packed INT4 frozen bases and FP32 low-rank adapters before the
+optimizer and compiled step are constructed. A model-shaped trainable filter
+then drives ordinary Optax initialization, differentiation, DDP/FSDP planning,
+checkpointing, and export; there is no adapter-specific trainer. See
+[low-bit adapters](adapters.md) for the representation, export contract, and
+physical acceptance evidence.
+
 Scientific and execution are field roles rather than parallel configuration
 trees. `Scientific[T]` and `Execution[T]` metadata can mark one value or a whole
 nested config. Generic projection code derives the scientific fingerprint and

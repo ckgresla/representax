@@ -87,7 +87,7 @@ def parameter_specs_from_rules(
     default = P() if default is None else default
 
     def resolve(path: tuple[Any, ...], value: Any) -> P:
-        if not eqx.is_inexact_array(value):
+        if not eqx.is_array(value):
             return P()
         name = jax.tree_util.keystr(path)
         return next(
@@ -98,15 +98,29 @@ def parameter_specs_from_rules(
     return cast(eqx.Module, jax.tree_util.tree_map_with_path(resolve, model))
 
 
-def _gradient_specs(model: eqx.Module, parameter_specs: eqx.Module) -> eqx.Module:
-    """Mirror Equinox's trainable-parameter filter in a layout tree."""
+def _resolved_trainable_filter(model: eqx.Module, filter_spec: Any) -> Any:
+    if callable(filter_spec):
+        return jax.tree.map(filter_spec, model)
+    if jax.tree.structure(model) != jax.tree.structure(filter_spec):
+        raise ValueError("trainable filter must match the model PyTree")
+    return filter_spec
+
+
+def _gradient_specs(
+    model: eqx.Module,
+    parameter_specs: eqx.Module,
+    trainable_filter: Any,
+) -> eqx.Module:
+    """Mirror the selected optimizer parameters in a layout tree."""
+
+    selected = _resolved_trainable_filter(model, trainable_filter)
 
     return cast(
         eqx.Module,
         jax.tree.map(
-            lambda value, spec: spec if eqx.is_inexact_array(value) else None,
-            model,
+            lambda spec, trainable: spec if trainable else None,
             parameter_specs,
+            selected,
             is_leaf=lambda value: isinstance(value, P),
         ),
     )
@@ -158,6 +172,7 @@ class ShardingPlan:
         data_axis_name: str | None = None,
         minimum_parameter_elements: int = 1024,
         parameter_specs: eqx.Module | None = None,
+        trainable_filter: Any = eqx.is_inexact_array,
     ) -> ShardingPlan:
         """Resolve the named fully-sharded data parallelism preset."""
 
@@ -180,7 +195,7 @@ class ShardingPlan:
                         axis_size=axis_size,
                         minimum_elements=minimum_parameter_elements,
                     )
-                    if eqx.is_inexact_array(value)
+                    if eqx.is_array(value)
                     else P()
                 ),
                 state.model,
@@ -192,7 +207,11 @@ class ShardingPlan:
             data_axis_name=data_axis_name,
             parameter_axis_names=(parameter_axis_name,),
         )
-        gradient_specs = _gradient_specs(state.model, parameter_specs)
+        gradient_specs = _gradient_specs(
+            state.model,
+            parameter_specs,
+            trainable_filter,
+        )
         optimizer_specs = optax.tree.map_params(
             optimizer,
             lambda _value, spec: spec,
@@ -220,6 +239,7 @@ class ShardingPlan:
         parameter_axis_names: tuple[str, ...],
         data_axis_name: str | None,
         strategy: str = "custom",
+        trainable_filter: Any = eqx.is_inexact_array,
     ) -> ShardingPlan:
         """Build a plan from an exact user-supplied model-shaped layout tree."""
 
@@ -230,7 +250,11 @@ class ShardingPlan:
             data_axis_name=data_axis_name,
             parameter_axis_names=parameter_axis_names,
         )
-        gradient_specs = _gradient_specs(state.model, parameter_specs)
+        gradient_specs = _gradient_specs(
+            state.model,
+            parameter_specs,
+            trainable_filter,
+        )
         optimizer_specs = optax.tree.map_params(
             optimizer,
             lambda _value, spec: spec,
@@ -255,6 +279,7 @@ class ShardingPlan:
         mesh: Mesh,
         *,
         axis_name: str = "data",
+        trainable_filter: Any = eqx.is_inexact_array,
     ) -> ShardingPlan:
         """Resolve the named replicated-state data parallelism preset."""
 
@@ -270,6 +295,7 @@ class ShardingPlan:
             parameter_axis_names=(axis_name,),
             data_axis_name=axis_name,
             strategy="ddp",
+            trainable_filter=trainable_filter,
         )
 
     @staticmethod
@@ -421,6 +447,7 @@ def _build_train_step_from_sharding_plan(
     execution: LossExecution,
     donate_state: bool = False,
     precision: PrecisionPolicy = FP32_POLICY,
+    trainable_filter: Any = eqx.is_inexact_array,
 ) -> TrainStep:
     """Compile one ordinary task update from a resolved sharding plan.
 
@@ -436,6 +463,7 @@ def _build_train_step_from_sharding_plan(
         execution=execution,
         context=ExecutionContext(),
         precision=precision,
+        trainable_filter=trainable_filter,
     )
 
     def train_step_body(

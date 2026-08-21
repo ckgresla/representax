@@ -9,6 +9,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import optax
+import pytest
 
 from representax.config import PrecisionConfig
 from representax.core import EncoderMetadata, Modality, Route, encode
@@ -208,3 +209,48 @@ def test_bfloat16_grad_cache_matches_direct_update():
     )(state, batch, None)
 
     _assert_bfloat16_equivalent(cached, direct)
+
+
+def test_float8_step_emulation_keeps_master_state_finite_and_fp32():
+    policy = resolve_precision_policy(PrecisionConfig.float8_mixed())
+    model = DenseEncoder(2, 2, key=jax.random.key(9), normalize=False)
+    optimizer = optax.adamw(1e-3, weight_decay=1e-2)
+    state = init_train_state(model, optimizer, precision=policy)
+    result = build_train_step(
+        CosineRegressionTask(),
+        optimizer,
+        precision=policy,
+    )(state, _pairwise_batch(), None)
+
+    assert bool(result.metrics.numeric_finite)
+    assert _inexact_dtypes(result.state.model) == {jnp.dtype(jnp.float32)}
+    assert _inexact_dtypes(result.state.optimizer_state) == {jnp.dtype(jnp.float32)}
+    assert result.metrics.loss.dtype == jnp.dtype(jnp.float32)
+
+
+@pytest.mark.performance
+def test_float8_step_uses_native_gpu_gemms():
+    if jax.default_backend() != "gpu":
+        pytest.skip("native FP8 lowering requires a GPU backend")
+    policy = resolve_precision_policy(PrecisionConfig.float8_mixed())
+    model = DenseEncoder(512, 512, key=jax.random.key(10), normalize=False)
+    inputs = jax.random.normal(jax.random.key(11), (512, 512))
+
+    def objective(candidate: DenseEncoder, values: jax.Array) -> jax.Array:
+        with precision_context(policy):
+            return jnp.sum(jnp.square(encode(candidate, values)))
+
+    compiled = eqx.filter_jit(eqx.filter_value_and_grad(cast(Any, objective)))
+    executable = cast(Any, compiled).lower(model, inputs).compile()
+    hlo = executable.compiled.as_text()
+    value, gradients = executable(model, inputs)
+    jax.block_until_ready((value, gradients))
+
+    assert hlo.count("__cublas$lt$matmul$f8") >= 2
+    assert "f8e4m3fn" in hlo
+    assert "f8e5m2" in hlo
+    assert bool(jnp.isfinite(value))
+    assert all(
+        not eqx.is_inexact_array(leaf) or bool(jnp.all(jnp.isfinite(leaf)))
+        for leaf in jax.tree.leaves(gradients)
+    )

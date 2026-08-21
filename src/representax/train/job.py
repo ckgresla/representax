@@ -25,6 +25,7 @@ from representax.config import (
 )
 from representax.data import ArtifactResolver, build_grain_iterator
 from representax.evaluation import EmbeddingSimilarityEvaluator, LossEvaluator
+from representax.models import apply_quantized_lora, lora_parameter_filter
 from representax.precision import resolve_precision_policy
 from representax.tasks import build_task
 
@@ -96,6 +97,28 @@ def build_model(
     return model
 
 
+def apply_configured_adapter(
+    model: eqx.Module,
+    job: JobConfig,
+    *,
+    key: Any,
+) -> tuple[eqx.Module, Any]:
+    """Apply one scientific adapter recipe and return its trainable filter."""
+
+    config = job.training.adapter
+    if config is None:
+        return model, eqx.is_inexact_array
+    adapted = apply_quantized_lora(
+        model,
+        rank=config.rank,
+        alpha=config.alpha,
+        key=key,
+        target_pattern=config.target_pattern,
+        initialization_scale=config.initialization_scale,
+    )
+    return adapted, lora_parameter_filter(adapted)
+
+
 def build_collate(config: DataConfig) -> Callable[[Any], Any] | None:
     """Bind configured collation parameters without consuming an example batch."""
 
@@ -159,6 +182,11 @@ def build_job_runtime(
         key=jax.random.fold_in(key, 0),
         activation_rematerialization=job.training.activation_rematerialization,
     )
+    model, trainable_filter = apply_configured_adapter(
+        model,
+        job,
+        key=jax.random.fold_in(key, 1),
+    )
     task = build_task(job.task, job.loss, modifiers=job.loss_modifiers)
     optimizer = build_optimizer(job.optimization)
     execution = build_loss_execution(
@@ -166,7 +194,12 @@ def build_job_runtime(
         mega_batch_mining=job.training.mega_batch_mining,
     )
     precision = resolve_precision_policy(job.training.precision)
-    state = init_train_state(model, optimizer, precision=precision)
+    state = init_train_state(
+        model,
+        optimizer,
+        precision=precision,
+        trainable_filter=trainable_filter,
+    )
     mesh_size = job.training.mesh.device_count
     if mesh_size > len(jax.devices()):
         raise ValueError(
@@ -201,6 +234,7 @@ def build_job_runtime(
                 optimizer,
                 mesh,
                 axis_name=sharding.axis,
+                trainable_filter=trainable_filter,
             )
             data_axis_name = sharding.axis
         elif isinstance(sharding, FSDPConfig):
@@ -211,6 +245,7 @@ def build_job_runtime(
                 parameter_axis_name=sharding.resolved_parameter_axis,
                 data_axis_name=sharding.data_axis,
                 minimum_parameter_elements=sharding.minimum_parameter_elements,
+                trainable_filter=trainable_filter,
             )
             data_axis_name = sharding.data_axis
         elif isinstance(sharding, CustomShardingConfig):
@@ -229,6 +264,7 @@ def build_job_runtime(
                 parameter_specs,
                 parameter_axis_names=sharding.parameter_axes,
                 data_axis_name=sharding.data_axis,
+                trainable_filter=trainable_filter,
             )
             data_axis_name = sharding.data_axis
         else:  # pragma: no cover - the Pydantic discriminator closes the union
@@ -253,6 +289,7 @@ def build_job_runtime(
         donate_state=job.training.donate_buffers,
         gradient_accumulation_steps=job.training.batch.gradient_accumulation_steps,
         precision=precision,
+        trainable_filter=trainable_filter,
     )
     batches = build_batches(
         job.data,

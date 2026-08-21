@@ -775,7 +775,25 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
 ** TODO Support =encode_query= and =encode_document= behavior through typed routes :api:retrieval:
 ** TODO Add Hugging Face Hub loading, local loading, and model export :api:hf:
 ** TODO Add multi-dataset functionality through source sampling policies :api:data:
-** TODO Add LoRA and parameter-selection recipes :api:training:
+** DONE Add quantized LoRA and general parameter-selection recipes :api:training:
+   Add one model-shaped trainable-parameter filter to ordinary train-state,
+   optimizer, compiled-step, DDP, FSDP, checkpoint, and export construction.
+   The first accepted recipe replaces selected native linear projections with
+   signed per-output-row INT4 packed bases and FP32 LoRA masters before JIT.
+   Native bundles preserve compact leaves exactly; optional Hugging Face export
+   merges the update and passes the existing exact reload gate.
+
+   Accepted on two and four virtual devices with ten-update DDP/FSDP trajectory
+   parity.  On two physical RTX 4090s, rank-8 adapters over the 149M ModernVBERT
+   control train at 39.15 examples/s and 0.507 GiB peak live JAX memory under
+   DDP, versus 35.91 examples/s and 3.872 GiB for full BF16 training.  FSDP is
+   30.30 examples/s and 0.410 GiB versus 9.93 examples/s and 2.052 GiB.  These
+   are systems/capacity results, not downstream adapter-quality evidence.  See
+   =benchmarks/results/modernvbert-low-bit-20260820/README.org=.
+** TODO Add unquantized and additional parameter-efficient adapter recipes :api:training:
+   Reuse the general model-shaped trainable filter and export contract for
+   ordinary LoRA and future useful adapter families; require model, optimizer,
+   DDP/FSDP, resume, and export acceptance for each recipe.
 
 ** DONE Implement triplet losses :tasks:metric_learning:
 ** DONE Implement cosine-similarity losses :tasks:metric_learning:
@@ -968,6 +986,29 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
    construction-only.  Contract, trajectory, memory, throughput, collective,
    and raw-artifact evidence is tracked in
    =benchmarks/results/modernvbert-mixed-precision-20260820/README.org=.
+** DONE Establish the native FP8 and four-bit training boundaries :runtime:precision:
+   Keep BF16 as the recommended mixed policy.  Experimental
+   =PrecisionConfig.float8_mixed()= applies dynamically scaled E4M3 operands
+   only to owned linear products, uses E5M2 cotangents in its custom VJP, and
+   preserves BF16 communication/non-matrix compute plus FP32 masters, gradients,
+   Optax state, representations, and losses.  Optimized RTX 4090 HLO must prove
+   native FP8 Tensor Core GEMMs rather than dtype emulation.
+
+   Accepted as an experimental capability: a 4096-cubed isolated FP8 GEMM is
+   1.37x faster than BF16 and optimized HLO contains native
+   =__cublas$lt$matmul$f8= calls, but full ModernVBERT DDP is 34.89 examples/s
+   versus BF16's 35.91.  FSDP is 6.40 examples/s because per-use dynamic weight
+   scales add 28 AllReduces.  There is therefore no FP8 performance claim yet.
+   Packed INT4 base plus FP32 LoRA is the accepted four-bit training path; its
+   kernels dequantize into BF16 compute and do not claim native INT4 gradients.
+   Evidence is tracked in
+   =benchmarks/results/modernvbert-low-bit-20260820/README.org=.
+** TODO Coalesce delayed FP8 scale state and re-run the physical frontier :runtime:precision:performance:
+   Replace per-use dynamic weight reductions with persistent delayed scales and
+   one coalesced update without changing optimizer or model semantics.  Accept
+   only with bounded trajectory error, native optimized HLO, fewer FSDP
+   collectives, and a matched end-to-end throughput win.  Evaluate block-scaled
+   MXFP8/NVFP4 only on hardware that lowers those formats natively.
 ** NEXT Prove the physical capacity and throughput frontier for FSDP :runtime:sharding:performance:
    Revisit the accepted frontier with explicit mixed precision: measure larger
    sequences and batches plus a model whose replicated FP32 optimizer state does

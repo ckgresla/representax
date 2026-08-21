@@ -79,6 +79,9 @@ def _export_huggingface(
     from representax.train.job import build_component
 
     adapter = build_component(config.adapter)
+    from representax.models import merge_quantized_lora
+
+    model = merge_quantized_lora(model)
     source = _resolve_huggingface_source(config.source_checkpoint)
     shutil.copytree(source, target)
     for pattern in ("*.safetensors", "*.safetensors.index.json", "pytorch_model*.bin"):
@@ -200,12 +203,17 @@ def load_inference_bundle(directory: str | Path) -> tuple[eqx.Module, JobConfig]
     if _sha256(model_path) != manifest["native"]["model_sha256"]:
         raise ValueError(f"native model digest differs: {model_path}")
     job = JobConfig.model_validate_json((native / "job.json").read_text())
-    from representax.train.job import build_model
+    from representax.train.job import apply_configured_adapter, build_model
 
     template = build_model(
         job.model,
         key=jax.random.fold_in(jax.random.key(job.training.seed), 0),
         activation_rematerialization=job.training.activation_rematerialization,
+    )
+    template, _ = apply_configured_adapter(
+        template,
+        job,
+        key=jax.random.fold_in(jax.random.key(job.training.seed), 1),
     )
     return eqx.tree_deserialise_leaves(model_path, template), job
 
