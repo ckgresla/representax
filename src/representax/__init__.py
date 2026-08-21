@@ -8,8 +8,6 @@ from .core import (
     EncoderMetadata,
     LossOutput,
     Modality,
-    ModelBundle,
-    Processor,
     Route,
     Task,
     bind,
@@ -18,6 +16,7 @@ from .core import (
 )
 from .export import InferenceBundle, export_inference_bundle, load_inference_bundle
 from .inference import TextEmbeddingModel, embed
+from .models import Processor
 from .precision import PrecisionPolicy
 
 __all__ = [
@@ -25,7 +24,6 @@ __all__ = [
     "Encoder",
     "EncoderMetadata",
     "LossOutput",
-    "ModelBundle",
     "Modality",
     "Processor",
     "PrecisionConfig",

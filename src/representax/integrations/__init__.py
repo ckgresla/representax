@@ -32,14 +32,9 @@ from .modernvbert import load_modernvbert_text_encoder
 from .sentence_transformers import (
     SENTENCE_TRANSFORMERS_ORACLE_VERSION,
     LoadedSentenceTransformer,
-    RetrievalPairCollator,
-    SentencePairCollator,
-    SentenceTextCollator,
     SentenceTransformerModuleSpec,
     load_sentence_transformer,
     load_sentence_transformer_artifact,
-    load_sentence_transformer_bundle,
-    load_sentence_transformer_encoder,
     load_sentence_transformer_modules,
 )
 
@@ -59,10 +54,7 @@ __all__ = [
     "ModelFamily",
     "ModelInputContract",
     "ResolvedHuggingFaceCheckpoint",
-    "RetrievalPairCollator",
     "SENTENCE_TRANSFORMERS_ORACLE_VERSION",
-    "SentencePairCollator",
-    "SentenceTextCollator",
     "SentenceTransformerModuleSpec",
     "TRANSFORMERS_VERSION",
     "get_hugging_face_architecture",
@@ -74,8 +66,6 @@ __all__ = [
     "load_safetensor_subset",
     "load_sentence_transformer",
     "load_sentence_transformer_artifact",
-    "load_sentence_transformer_bundle",
-    "load_sentence_transformer_encoder",
     "load_sentence_transformer_modules",
     "resolve_hf_checkpoint",
 ]

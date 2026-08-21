@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Sequence
-from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any, ClassVar, Generic, Protocol, TypeVar, runtime_checkable
+from typing import Any, ClassVar, Protocol, runtime_checkable
 
 import equinox as eqx
 import jax.numpy as jnp
@@ -115,75 +113,6 @@ class LayerwiseEncoder(Encoder, Protocol):
         route: Route,
         key: PRNGKeyArray | None = None,
     ) -> Float[Array, "layer batch representation"]: ...
-
-
-_ModelT = TypeVar("_ModelT", bound=eqx.Module)
-_ProcessorModelT = TypeVar(
-    "_ProcessorModelT",
-    bound=eqx.Module,
-    contravariant=True,
-)
-
-
-@runtime_checkable
-class Processor(Protocol[_ProcessorModelT]):
-    """Host-side artifact processor distributed with one model implementation."""
-
-    def batch(
-        self,
-        model: _ProcessorModelT,
-        artifacts: Sequence[Any],
-        *,
-        route: Route = Route.GENERIC,
-        seed: int | None = None,
-    ) -> Any:
-        """Convert raw artifact trees into one native fixed-shape model batch."""
-
-        ...
-
-
-@dataclass(frozen=True, slots=True)
-class ModelBundle(Generic[_ModelT]):
-    """A native Equinox model and its host-side artifact processor.
-
-    This mirrors the useful Hugging Face model/processor association without
-    putting Python preprocessing objects inside a JAX PyTree. ``model`` alone
-    enters the train state and compiled program; ``processor`` stays in the
-    Grain data path::
-
-        bundle = ModelBundle(model=model, processor=processor)
-        model_inputs = bundle.batch(samples, route=Route.QUERY, seed=17)
-        representations = encode(bundle.model, model_inputs, route=Route.QUERY)
-    """
-
-    model: _ModelT
-    processor: Processor[_ModelT] | None = None
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.model, eqx.Module):
-            raise TypeError("model bundles require an Equinox module tree")
-        if self.processor is not None and not callable(
-            getattr(self.processor, "batch", None)
-        ):
-            raise TypeError("model bundle processors must implement batch")
-
-    def batch(
-        self,
-        artifacts: Sequence[Any],
-        *,
-        route: Route = Route.GENERIC,
-        seed: int | None = None,
-    ) -> Any:
-        """Apply the bundled processor without exposing model-specific wiring."""
-
-        if self.processor is None:
-            raise ValueError("this model bundle has no raw-artifact processor")
-        return self.processor.batch(
-            self.model,
-            artifacts,
-            route=Route(route),
-            seed=seed,
-        )
 
 
 def _metadata(model: Any) -> EncoderMetadata:

@@ -46,9 +46,10 @@ datasets. Existing Grain datasets can also enter the lower-level loader API
 without conversion to a Representax dataset class.
 
 Samples compose atomic `Artifact` leaves. A model integration may distribute a
-host-side `Processor` beside its Equinox model in a `ModelBundle`; the processor
-owns model-specific tokenization, decoding, selection, normalization, padding,
-and static-shape batching. Only the resulting array PyTree enters JAX.
+host-side `Processor` beside its Equinox model; the loader returns both while
+the processor owns model-specific tokenization, decoding, selection,
+normalization, padding, and static-shape batching. Only the resulting array
+PyTree enters JAX.
 
 Hydra-Zen composes frozen Pydantic configuration values in Python and applies
 typed CLI overrides. Grain provides lazy random access, deterministic mapping

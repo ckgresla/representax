@@ -3,6 +3,7 @@
 from .batch import (
     ProcessLocalRetrievalBatch,
     RetrievalBatch,
+    RetrievalCollator,
     place_process_local_retrieval_batch,
     process_local_retrieval_batch,
     retrieval_batch,
@@ -17,6 +18,7 @@ __all__ = [
     "MNRTask",
     "ProcessLocalRetrievalBatch",
     "RetrievalBatch",
+    "RetrievalCollator",
     "place_process_local_retrieval_batch",
     "mnr_loss_terms",
     "process_local_retrieval_batch",

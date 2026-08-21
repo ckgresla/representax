@@ -230,6 +230,22 @@ class JinaV5TextEncoder(eqx.Module):
     attention_implementation: AttentionImplementation = eqx.field(static=True)
     rematerialization: RematerializationPolicy = eqx.field(static=True)
 
+    @staticmethod
+    def make_batch(
+        *,
+        input_ids: Int[Array, "batch sequence"],
+        attention_mask: Bool[Array, "batch sequence"] | Int[Array, "batch sequence"],
+        token_type_ids: Int[Array, "batch sequence"] | None = None,
+    ) -> JinaV5TextBatch:
+        """Build this backbone's token-input contract at the host boundary."""
+
+        if token_type_ids is not None:
+            raise TypeError("Jina v5 does not accept token_type_ids")
+        return JinaV5TextBatch(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+        )
+
     def hidden_states(
         self,
         inputs: JinaV5TextBatch,

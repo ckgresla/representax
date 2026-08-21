@@ -27,8 +27,9 @@ from representax.config import (
     PrecisionConfig,
     TrainingConfig,
 )
-from representax.core import Encoder, ModelBundle, Route, encode
+from representax.core import Encoder, Route, encode
 from representax.data import mix, source
+from representax.models import Processor
 from representax.precision import resolve_precision_policy
 from representax.tasks import build_task
 from representax.tasks.pairwise import (
@@ -39,9 +40,8 @@ from representax.tasks.pairwise import (
 from representax.train import (
     build_batches,
     build_collate,
-    build_model,
-    build_model_bundle,
     evaluate,
+    load_model,
     run_job,
 )
 
@@ -58,25 +58,22 @@ def rematerialized_model(*, key, rematerialization):
     )
 
 
-class _Processor:
-    def batch(self, model, artifacts, *, route=Route.GENERIC, seed=None):
-        del model, route, seed
-        return tuple(artifacts)
-
-
-def bundled_model(*, key):
-    return ModelBundle(
-        model=rematerialized_model(key=key, rematerialization="none"),
-        processor=_Processor(),
+def loaded_model(*, key):
+    return (
+        rematerialized_model(key=key, rematerialization="none"),
+        Processor(
+            process=lambda artifacts, *, route, seed: tuple(artifacts),
+            contract={"kind": "identity", "shapes": "input-defined"},
+        ),
     )
 
 
-class BundleAwareCollator:
-    def __init__(self, *, bundle):
-        self.bundle = bundle
+class ProcessorAwareCollator:
+    def __init__(self, *, processor):
+        self.processor = processor
 
     def __call__(self, examples):
-        return self.bundle.batch(examples)
+        return self.processor(examples)
 
 
 def identity(record):
@@ -113,19 +110,20 @@ def _data(path) -> DataConfig:
 
 
 def test_job_model_builder_injects_activation_rematerialization():
-    model = build_model(
+    model, processor = load_model(
         ModelConfig(target="tests.train.test_job.rematerialized_model"),
         key=jax.random.key(3),
         activation_rematerialization="selective",
     )
 
     assert isinstance(model, RematerializedModule)
+    assert processor is None
     assert model.rematerialization == "selective"
 
 
-def test_job_builder_preserves_bundled_processor_for_data_collation():
-    bundle = build_model_bundle(
-        ModelConfig(target="tests.train.test_job.bundled_model"),
+def test_job_builder_injects_loaded_processor_into_data_collation():
+    model, processor = load_model(
+        ModelConfig(target="tests.train.test_job.loaded_model"),
         key=jax.random.key(7),
     )
     collate = build_collate(
@@ -133,13 +131,15 @@ def test_job_builder_preserves_bundled_processor_for_data_collation():
             distribution=mix(
                 source("memory://unused", map="tests.train.test_job.identity")
             ),
-            collate=ComponentConfig(target="tests.train.test_job.BundleAwareCollator"),
+            collate=ComponentConfig(
+                target="tests.train.test_job.ProcessorAwareCollator"
+            ),
         ),
-        bundle=bundle,
+        processor=processor,
     )
 
-    assert isinstance(bundle.model, RematerializedModule)
-    assert bundle.model.weight.shape == (2, 2)
+    assert isinstance(model, RematerializedModule)
+    assert model.weight.shape == (2, 2)
     assert collate is not None
     assert collate(("first", "second")) == ("first", "second")
 

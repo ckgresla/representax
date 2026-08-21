@@ -614,6 +614,22 @@ class ModernVBERTTextEncoder(eqx.Module):
             rematerialization=rematerialization,
         )
 
+    @staticmethod
+    def make_batch(
+        *,
+        input_ids: Int[Array, "batch sequence"],
+        attention_mask: Bool[Array, "batch sequence"] | Int[Array, "batch sequence"],
+        token_type_ids: Int[Array, "batch sequence"] | None = None,
+    ) -> ModernVBERTTextBatch:
+        """Build this backbone's token-input contract at the host boundary."""
+
+        if token_type_ids is not None:
+            raise TypeError("ModernVBERT does not accept token_type_ids")
+        return ModernVBERTTextBatch(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+        )
+
     def hidden_states(
         self,
         inputs: ModernVBERTTextBatch,

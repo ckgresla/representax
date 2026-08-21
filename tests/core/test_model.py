@@ -8,7 +8,6 @@ import pytest
 from representax.core import (
     EncoderMetadata,
     Modality,
-    ModelBundle,
     Route,
     bind,
     encode,
@@ -58,20 +57,3 @@ def test_modality_is_extensible_but_fusion_is_composition():
     assert not hasattr(Modality, "FUSED")
     with pytest.raises(ValueError, match="lowercase identifiers"):
         Modality("Depth Map")
-
-
-def test_model_bundle_keeps_processor_outside_the_equinox_model_tree():
-    class ArrayProcessor:
-        def batch(self, model, artifacts, *, route=Route.GENERIC, seed=None):
-            del model, route
-            offset = 0 if seed is None else seed
-            return jnp.asarray(artifacts, dtype=jnp.float32) + offset
-
-    model = DenseEncoder(2, 2, key=jax.random.key(4))
-    bundle = ModelBundle(model=model, processor=ArrayProcessor())
-
-    batch = bundle.batch([[1.0, 2.0]], route=Route.QUERY, seed=3)
-
-    assert bundle.model is model
-    assert batch.tolist() == [[4.0, 5.0]]
-    assert not isinstance(bundle, eqx.Module)

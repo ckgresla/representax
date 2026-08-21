@@ -75,17 +75,17 @@ JEPA samples should use fields natural to their scientific contracts. A sample
 may contain one artifact or a tree of named artifacts. Text-image or other
 multimodal fusion is composition of atomic artifacts, not a `fused` modality.
 
-## Model bundles and processors
+## Models and processors
 
-A model integration may return a `ModelBundle` containing the native Equinox
-model and its host-side processor:
+A model loader returns the native Equinox model and its host-side processor:
 
 ```python
-from representax.core import ModelBundle, Route, encode
+from representax.core import Route, encode
+from representax.models import SentenceEncoder
 
-bundle = ModelBundle(model=model, processor=processor)
-model_inputs = bundle.batch(samples, route=Route.QUERY, seed=17)
-representations = encode(bundle.model, model_inputs, route=Route.QUERY)
+model, processor = SentenceEncoder.load_from_hf(checkpoint)
+model_inputs = processor(samples, route=Route.QUERY, seed=17)
+representations = encode(model, model_inputs, route=Route.QUERY)
 ```
 
 The processor travels with the model checkpoint in the same spirit as Hugging
@@ -94,18 +94,49 @@ media selection and decoding, model-specific normalization, padding, special
 tokens, and construction of the model's fixed-shape Equinox batch. It stays in
 the host data path and never enters `jax.jit`.
 
-Task collators may accept an injected `bundle` constructor argument. This lets
+Every processor implements `data_contract()` and admits a finite set of
+model-native shapes. Data-dependent work happens first; the result is then
+padded, cropped, sampled, or resampled into one admitted bucket. Consequently,
+JAX can compile only the finite set of signatures declared by the processor,
+rather than encountering an unbounded stream of media-dependent shapes. The
+contract is included in the loader fingerprint, so changing bucket policy makes
+an old data cursor incompatible with resume.
+
+For text models, bucket selection occurs after route prompts and special tokens
+are applied. Existing behavior remains one fixed maximum unless the model
+configuration opts into several lengths:
+
+```python
+model = ModelConfig(
+    target="representax.models.sentence:SentenceEncoder.load_from_hf",
+    parameters={
+        "model_name_or_path": "sentence-transformers/all-MiniLM-L6-v2",
+        "revision": "<immutable-revision>",
+        "sequence_length_buckets": [128, 256, 512],
+    },
+)
+```
+
+The sentence processor tokenizes each batch once, selects the smallest
+admissible length, and pads the NumPy output directly. Inputs beyond the largest
+bucket are deterministically truncated there. Image, audio, and video processors
+use the same admission primitive for shapes such as `(height, width)`, samples,
+or `(frames, height, width)`. The shared helper rejects incomparable choices—for
+example, more frames versus higher resolution—because that tradeoff belongs to
+the model-specific processor rather than a generic memory heuristic.
+
+Task collators may accept an injected `processor` constructor argument. This lets
 them apply the model processor to the artifact fields and then assemble labels,
 relations, masks, or other task-owned batch state without duplicating processor
 configuration in `DataConfig`. For example, the native Sentence Transformers
-loader returns one training bundle, and its retrieval collator reuses that
+loader returns one model/processor pair, and the retrieval collator reuses that
 processor rather than loading a second tokenizer:
 
 ```python
 from representax.config import ComponentConfig, DataConfig, ModelConfig
 
 model = ModelConfig(
-    target="representax.integrations.load_sentence_transformer_bundle",
+    target="representax.models.sentence:SentenceEncoder.load_from_hf",
     parameters={
         "model_name_or_path": "sentence-transformers/all-MiniLM-L6-v2",
         "revision": "<immutable-revision>",
@@ -114,14 +145,15 @@ model = ModelConfig(
 training_data = DataConfig(
     distribution=distribution,
     collate=ComponentConfig(
-        target="representax.integrations.RetrievalPairCollator",
+        target="representax.tasks.retrieval.RetrievalCollator",
         parameters={"query_field": "query", "document_field": "positive"},
     ),
 )
 ```
 
-The job builder constructs the bundle once and injects it only when the
-collator declares a `bundle` parameter.
+The job builder calls `load_model()` once, passes the model through
+`prepare_model()`, and injects the processor only when the collator declares a
+`processor` parameter.
 
 ## Data loaders
 

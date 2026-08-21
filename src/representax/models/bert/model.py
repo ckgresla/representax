@@ -540,8 +540,8 @@ class BertEncoder(eqx.Module):
             rematerialization=self.rematerialization,
         )
 
+    @staticmethod
     def make_batch(
-        self,
         *,
         input_ids: Int[Array, "batch sequence"],
         attention_mask: Bool[Array, "batch sequence"] | Int[Array, "batch sequence"],

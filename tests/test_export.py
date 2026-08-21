@@ -120,11 +120,11 @@ def test_quantized_adapter_bundle_reloads_native_and_merges_huggingface(tmp_path
     adapter = BertCheckpointAdapter(rematerialization="none")
     adapter.save(source, source_checkpoint)
     job = _job(source_checkpoint, quantized_adapter=True)
-    from representax.train.job import apply_configured_adapter
+    from representax.train.job import prepare_model
 
-    model, _ = apply_configured_adapter(
+    model, _ = prepare_model(
         source,
-        job,
+        adapter=job.training.adapter,
         key=jax.random.fold_in(jax.random.key(job.training.seed), 1),
     )
 

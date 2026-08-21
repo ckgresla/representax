@@ -22,11 +22,12 @@ from representax.config import (
     FSDPConfig,
     JobConfig,
     ModelConfig,
+    QuantizedLoRAConfig,
 )
-from representax.core import ModelBundle
 from representax.data import ArtifactResolver, build_data_loader
 from representax.evaluation import EmbeddingSimilarityEvaluator, LossEvaluator
 from representax.models import apply_quantized_lora, lora_parameter_filter
+from representax.models.processing import Processor
 from representax.precision import resolve_precision_policy
 from representax.tasks import build_task
 
@@ -73,68 +74,61 @@ def build_component(config: ComponentConfig) -> Any:
     return resolve_target(config.target)(**config.parameters)
 
 
-def build_model_bundle(
+def load_model(
     config: ModelConfig,
     *,
     key: Any,
     activation_rematerialization: str | None = None,
-) -> ModelBundle:
-    """Construct a native model and its optional host artifact processor."""
+) -> tuple[eqx.Module, Processor | None]:
+    """Load one native model and its optional host processor exactly once."""
 
     factory = resolve_target(config.target)
     parameters = dict(config.parameters)
     signature = inspect.signature(factory)
+    accepts_keywords = any(
+        parameter.kind is inspect.Parameter.VAR_KEYWORD
+        for parameter in signature.parameters.values()
+    )
     if "key" in signature.parameters and "key" not in parameters:
         parameters["key"] = key
     if (
         activation_rematerialization is not None
-        and "rematerialization" in signature.parameters
+        and ("rematerialization" in signature.parameters or accepts_keywords)
         and "rematerialization" not in parameters
     ):
         parameters["rematerialization"] = activation_rematerialization
     result = factory(**parameters)
-    if isinstance(result, ModelBundle):
-        return result
-    if not isinstance(result, eqx.Module):
+    if isinstance(result, tuple) and len(result) == 2:
+        model, processor = result
+    else:
+        model, processor = result, None
+    if not isinstance(model, eqx.Module):
         raise TypeError(
-            f"model target {config.target!r} must return an eqx.Module or ModelBundle"
+            f"model target {config.target!r} must return an eqx.Module or "
+            "(eqx.Module, Processor)"
         )
-    return ModelBundle(model=result)
+    if processor is not None and not isinstance(processor, Processor):
+        raise TypeError(f"model target {config.target!r} returned an invalid processor")
+    return model, processor
 
 
-def build_model(
-    config: ModelConfig,
-    *,
-    key: Any,
-    activation_rematerialization: str | None = None,
-) -> eqx.Module:
-    """Construct only the native model for lower-level array-native usage."""
-
-    return build_model_bundle(
-        config,
-        key=key,
-        activation_rematerialization=activation_rematerialization,
-    ).model
-
-
-def apply_configured_adapter(
+def prepare_model(
     model: eqx.Module,
-    job: JobConfig,
     *,
+    adapter: QuantizedLoRAConfig | None,
     key: Any,
 ) -> tuple[eqx.Module, Any]:
     """Apply one scientific adapter recipe and return its trainable filter."""
 
-    config = job.training.adapter
-    if config is None:
+    if adapter is None:
         return model, eqx.is_inexact_array
     adapted = apply_quantized_lora(
         model,
-        rank=config.rank,
-        alpha=config.alpha,
+        rank=adapter.rank,
+        alpha=adapter.alpha,
         key=key,
-        target_pattern=config.target_pattern,
-        initialization_scale=config.initialization_scale,
+        target_pattern=adapter.target_pattern,
+        initialization_scale=adapter.initialization_scale,
     )
     return adapted, lora_parameter_filter(adapted)
 
@@ -142,20 +136,20 @@ def apply_configured_adapter(
 def build_collate(
     config: DataConfig,
     *,
-    bundle: ModelBundle | None = None,
+    processor: Processor | None = None,
 ) -> Callable[[Any], Any] | None:
-    """Bind task collation and inject the complete model bundle if accepted."""
+    """Bind task collation and inject the loaded model processor if accepted."""
 
     if config.collate is None:
         return None
     collate = resolve_target(config.collate.target)
     parameters: dict[str, Any] = dict(config.collate.parameters)
     if (
-        bundle is not None
-        and "bundle" in inspect.signature(collate).parameters
-        and "bundle" not in parameters
+        processor is not None
+        and "processor" in inspect.signature(collate).parameters
+        and "processor" not in parameters
     ):
-        parameters["bundle"] = bundle
+        parameters["processor"] = processor
     if inspect.isclass(collate):
         instance = collate(**parameters)
         if not callable(instance):
@@ -172,14 +166,14 @@ def build_batches(
     batch_size: int,
     resolvers: Mapping[str, ArtifactResolver] | None = None,
     mappers: Mapping[str, Callable[[Any], Any]] | None = None,
-    bundle: ModelBundle | None = None,
+    processor: Processor | None = None,
 ) -> Any:
     """Materialize one reproducible Grain batch source from its data config."""
 
     return build_data_loader(
         config.distribution,
         batch_size=batch_size,
-        batch_fn=build_collate(config, bundle=bundle),
+        batch_fn=build_collate(config, processor=processor),
         drop_remainder=config.drop_remainder,
         num_threads=config.num_threads,
         prefetch_buffer_size=config.prefetch_buffer_size,
@@ -209,17 +203,16 @@ def build_job_runtime(
     """Build every live JAX, Optax, task, and Grain object from one JobConfig."""
 
     key = jax.random.key(job.training.seed)
-    bundle = build_model_bundle(
+    model, processor = load_model(
         job.model,
         key=jax.random.fold_in(key, 0),
         activation_rematerialization=job.training.activation_rematerialization,
     )
-    model, trainable_filter = apply_configured_adapter(
-        bundle.model,
-        job,
+    model, trainable_filter = prepare_model(
+        model,
+        adapter=job.training.adapter,
         key=jax.random.fold_in(key, 1),
     )
-    bundle = replace(bundle, model=model)
     task = build_task(job.task, job.loss, modifiers=job.loss_modifiers)
     optimizer = build_optimizer(job.optimization)
     execution = build_loss_execution(
@@ -329,7 +322,7 @@ def build_job_runtime(
         batch_size=job.training.global_batch_size,
         resolvers=resolvers,
         mappers=mappers,
-        bundle=bundle,
+        processor=processor,
     )
     if job.evaluation is None:
         evaluation_runners: tuple[EvaluationRunner, ...] = ()
@@ -362,7 +355,7 @@ def build_job_runtime(
                 batch_size=job.evaluation.batch_size,
                 resolvers=resolvers,
                 mappers=mappers,
-                bundle=bundle,
+                processor=processor,
             )
 
     return JobRuntime(
@@ -422,8 +415,8 @@ __all__ = [
     "build_collate",
     "build_component",
     "build_job_runtime",
-    "build_model",
-    "build_model_bundle",
+    "load_model",
+    "prepare_model",
     "resolve_target",
     "run_job",
 ]

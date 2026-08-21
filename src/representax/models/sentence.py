@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Literal
 
 import equinox as eqx
@@ -12,6 +13,7 @@ from jaxtyping import Array, Bool, Float, Int, PRNGKeyArray
 from representax.core import EncoderMetadata, Route
 
 from .components import Linear, l2_normalize
+from .processing import Processor
 
 PoolingMode = Literal[
     "cls",
@@ -178,6 +180,12 @@ class SentenceBatch(eqx.Module):
     pooling_mask: Bool[Array, "batch sequence"] | Int[Array, "batch sequence"]
 
 
+def make_sentence_batch(backbone_inputs: Any, pooling_mask: Any) -> SentenceBatch:
+    """Attach a prompt-aware pooling mask to native backbone inputs."""
+
+    return SentenceBatch(backbone_inputs=backbone_inputs, pooling_mask=pooling_mask)
+
+
 class SentenceEncoder(eqx.Module):
     """A token backbone plus serialized dense sentence modules."""
 
@@ -186,6 +194,24 @@ class SentenceEncoder(eqx.Module):
     postprocessors: tuple[SentencePostprocessor, ...]
     metadata: EncoderMetadata
     truncate_dimension: int | None = eqx.field(static=True, default=None)
+
+    @classmethod
+    def load_from_hf(
+        cls,
+        model_name_or_path: str | Path,
+        **options: Any,
+    ) -> tuple[SentenceEncoder, Processor]:
+        """Load native weights and preprocessing artifacts from Hugging Face."""
+
+        from representax.integrations.sentence_transformers import (
+            load_sentence_transformer,
+        )
+
+        for name in ("parameter_dtype", "compute_dtype"):
+            if isinstance(options.get(name), str):
+                options[name] = jnp.dtype(options[name])
+        loaded = load_sentence_transformer(model_name_or_path, **options)
+        return loaded.model, loaded.processor
 
     def make_batch(
         self,
@@ -271,4 +297,5 @@ __all__ = [
     "SentenceNormalize",
     "SentencePooling",
     "SentencePostprocessor",
+    "make_sentence_batch",
 ]

@@ -1,6 +1,6 @@
 """Labeled-pair task family."""
 
-from .batch import PairwiseBatch, pairwise_batch
+from .batch import PairwiseBatch, PairwiseCollator, pairwise_batch
 from .config import (
     AngleConfig,
     ContrastiveConfig,
@@ -35,6 +35,7 @@ __all__ = [
     "PairLossTerms",
     "PairRankingTerms",
     "PairwiseBatch",
+    "PairwiseCollator",
     "PairwiseConfig",
     "contrastive_loss_terms",
     "cosine_regression_loss_terms",

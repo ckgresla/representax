@@ -2,13 +2,57 @@
 
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Mapping, Sequence
+from typing import TYPE_CHECKING, Any
 
 import equinox as eqx
 import jax
 import jax.numpy as jnp
 from jax.sharding import NamedSharding
 from jaxtyping import Array, Bool, Float
+
+from representax.core import Route
+
+if TYPE_CHECKING:
+    from representax.models.processing import Processor
+
+
+class RetrievalCollator:
+    """Build aligned query/document batches with one model processor."""
+
+    def __init__(
+        self,
+        *,
+        processor: Processor,
+        query_field: str = "query",
+        document_field: str = "positive",
+    ) -> None:
+        self.processor = processor
+        self.query_field = query_field
+        self.document_field = document_field
+
+    def data_contract(self) -> Mapping[str, Any]:
+        return {
+            "schema_version": "representax-retrieval-collator-v1",
+            "processor": self.processor.data_contract(),
+            "query_field": self.query_field,
+            "document_field": self.document_field,
+        }
+
+    def __call__(self, examples: Sequence[Mapping[str, Any]]) -> RetrievalBatch:
+        try:
+            queries = tuple(str(example[self.query_field]) for example in examples)
+            documents = tuple(str(example[self.document_field]) for example in examples)
+        except KeyError as error:
+            raise KeyError(
+                f"retrieval record is missing field {error.args[0]!r}"
+            ) from error
+        size = len(examples)
+        return retrieval_batch(
+            query=self.processor(queries, route=Route.QUERY),
+            document=self.processor(documents, route=Route.DOCUMENT),
+            positive_mask=jnp.eye(size, dtype=jnp.bool_),
+        )
 
 
 class RetrievalBatch(eqx.Module):
@@ -191,6 +235,7 @@ def place_process_local_retrieval_batch(
 __all__ = [
     "ProcessLocalRetrievalBatch",
     "RetrievalBatch",
+    "RetrievalCollator",
     "place_process_local_retrieval_batch",
     "process_local_retrieval_batch",
     "retrieval_batch",

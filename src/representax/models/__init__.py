@@ -56,6 +56,7 @@ from .mpnet import (
     mpnet_relative_position_bucket,
     mpnet_weight_names,
 )
+from .processing import Processor, make_text_processor, select_static_shape_bucket
 from .sentence import (
     POOLING_MODES,
     DenseActivation,
@@ -101,6 +102,7 @@ __all__ = [
     "POOLING_MODES",
     "DenseActivation",
     "PoolingMode",
+    "Processor",
     "PairClassifier",
     "QuantizedLoRALinear",
     "ReconstructionDecoder",
@@ -119,8 +121,10 @@ __all__ = [
     "l2_normalize",
     "lora_parameter_filter",
     "mean_pool",
+    "make_text_processor",
     "merge_quantized_lora",
     "mpnet_relative_position_bucket",
     "mpnet_weight_names",
     "rematerialize",
+    "select_static_shape_bucket",
 ]
