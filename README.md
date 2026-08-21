@@ -27,7 +27,7 @@ The project is alpha. The current slice provides:
   inference export;
 - a typed evaluator protocol with deterministic, corpus-level embedding
   similarity metrics matching Sentence Transformers 5.6.1;
-- lazy Grain recipes with built-in Hugging Face and local artifact resolvers;
+- lazy Grain distributions with built-in Hugging Face and local source resolvers;
 - validated domain configs with annotated scientific and execution parameters; and
 - explicit FP32 and BF16-mixed policies with FP32 master/Optax state;
 - experimental native FP8 linear compute and packed INT4 LoRA training; and
@@ -38,9 +38,9 @@ The project is alpha. The current slice provides:
 1. Native Equinox models are the supported execution path.
 2. Upstream implementations are optional development-time parity oracles.
 3. Scientific intent is separate from topology-dependent execution choices.
-4. Data recipes point at immutable artifacts and map them lazily into task
+4. Data distributions point at immutable sources and map them lazily into task
    examples; they do not require proprietary materialized datasets.
-5. Text, image, audio, video, and fused inputs must be supported without
+5. Text, image, audio, video, and their compositions must be supported without
    changing the training abstractions.
 
 ## Install
@@ -212,8 +212,8 @@ batch = pairwise_batch(
 )
 ```
 
-The same task boundary supports text, image, audio, video, or fused model-native
-payloads. See the
+The same task boundary supports text, image, audio, video, or composed
+model-native payloads. See the
 [Sentence Transformers capability ledger](docs/sentence-transformers-capabilities.md)
 for exact native and remaining coverage.
 
@@ -334,15 +334,15 @@ pinned Transformers environment verifies vision features, fused
 representations, and pixel gradients. Host-side Idefics3-compatible processing
 remains the next API slice.
 
-## Versioned data recipes
+## Versioned data distributions
 
-Recipes are ordinary Python values that can be composed in Hydra-Zen config
-files and reviewed in Git:
+Distributions are ordinary Python values that can be composed in Hydra-Zen
+config files and reviewed in Git:
 
 ```python
 from representax import data
 
-recipe = data.mix(
+distribution = data.mix(
     data.source(
         "hf://organization/dataset",
         revision="immutable-revision",
@@ -356,16 +356,19 @@ recipe = data.mix(
     weights=(0.7, 0.3),
     seed=17,
 )
-dataset = data.build_grain_dataset(recipe)
+dataset = data.build_dataset(distribution)
 ```
 
-The recipe records artifact identity, mapping code identity, and sampling
-policy. A training iterator additionally fingerprints the resolved mapper and
+The distribution records source identity, mapping code identity, and sampling
+policy. A data loader additionally fingerprints the resolved mapper and
 resolver implementations, batch mapper, batching contract, and Grain version.
 Grain performs lazy mapping, deterministic mixing, shuffling, and checkpointable
 iteration. A single source is the one-element form of the same sampling policy.
 Built-in resolvers support revision-pinned Hugging Face splits and local JSONL,
-Parquet, Arrow, or dataset directories. See
+Parquet, Arrow, or dataset directories. Existing Grain datasets can enter the
+lower-level loader directly. Task-specific samples compose atomic `Artifact`
+leaves; model-specific preprocessing travels beside the Equinox model in a
+`ModelBundle`, so a configured job constructs the model and processor once. See
 [the data contract](https://github.com/ckgresla/representax/blob/main/docs/data.md)
 for cache and extension behavior.
 
@@ -393,11 +396,11 @@ from representax.tasks.retrieval import MNRConfig, RetrievalConfig
 from representax.train import run_job
 
 train_data = DataConfig(
-    recipe=mix(source("train.jsonl", map="my_project.to_retrieval_record")),
+    distribution=mix(source("train.jsonl", map="my_project.to_retrieval_record")),
     collate=ComponentConfig(target="my_project.collate_retrieval"),
 )
 valid_data = DataConfig(
-    recipe=mix(source("valid.jsonl", map="my_project.to_retrieval_record")),
+    distribution=mix(source("valid.jsonl", map="my_project.to_retrieval_record")),
     collate=ComponentConfig(target="my_project.collate_retrieval"),
 )
 
@@ -502,7 +505,7 @@ status in `run.json`. A bounded reporter worker performs the device-to-host
 metric transfer and fans the same ordered rows out to optional consumers without
 placing a synchronization barrier in every training iteration. Checkpoints are
 written by Orbax with at most one asynchronous save in flight. Recreate the same
-recipe, model/state template, task/optimizer program, and batch source and pass
+distribution, model/state template, task/optimizer program, and batch source and pass
 `resume=True` to continue from the latest complete checkpoint. See
 [the training contract](https://github.com/ckgresla/representax/blob/main/docs/training.md).
 

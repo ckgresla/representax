@@ -10,7 +10,7 @@ import jax.numpy as jnp
 import optax
 import pytest
 
-from representax.core import EncoderMetadata, Modality, Route, encode
+from representax.core import BUILTIN_MODALITIES, EncoderMetadata, Route, encode
 from representax.models import DenseEncoder
 from representax.tasks.modifiers import MatryoshkaTask
 from representax.tasks.retrieval import MNRTask, retrieval_batch
@@ -113,7 +113,7 @@ class _StochasticEncoder(eqx.Module):
             revision="1",
             output_dimension=3,
             routes=frozenset(Route),
-            modalities=frozenset(Modality),
+            modalities=BUILTIN_MODALITIES,
         )
         self.keep_probability = keep_probability
 

@@ -12,7 +12,7 @@ import optax
 import pytest
 
 from representax.config import PrecisionConfig
-from representax.core import EncoderMetadata, Modality, Route, encode
+from representax.core import BUILTIN_MODALITIES, EncoderMetadata, Route, encode
 from representax.models import DenseEncoder
 from representax.precision import (
     model_for_compute,
@@ -35,7 +35,7 @@ class _IdentityEncoder(eqx.Module):
             revision="1",
             output_dimension=2,
             routes=frozenset(Route),
-            modalities=frozenset(Modality),
+            modalities=BUILTIN_MODALITIES,
         )
 
     def encode(

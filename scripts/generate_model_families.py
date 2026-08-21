@@ -15,7 +15,7 @@ CATALOG = ROOT / "src/representax/integrations/_transformers_5_3_0.py"
 MANIFEST = ROOT / "scripts/model_family_manifest.py"
 TARGET = ROOT / "src/representax/integrations/_model_families.py"
 
-MODALITIES = frozenset({"text", "image", "audio", "video", "fused"})
+MODALITIES = frozenset({"text", "image", "audio", "video"})
 SUPPORT_LEVELS = frozenset({"catalogued", "native", "verified"})
 ACCEPTANCE_GATES = frozenset(
     {

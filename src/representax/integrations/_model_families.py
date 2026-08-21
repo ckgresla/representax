@@ -11,7 +11,7 @@ ARCHITECTURE_CATALOG_SHA256 = (
     "2af65737162af25c40803b987355fb09d4547d922842edeeb6c0f80838f4117c"
 )
 FAMILY_MANIFEST_SHA256 = (
-    "454befbe4a1dccd972b6e1f7ef5a1e8ff528e4237179b5bf16a74be34dc888a7"
+    "3efe9c086171f82f1b756716a3495fe0634f32104b2c8a53c19d70b859220c4c"
 )
 
 MODEL_FAMILY_ROWS = json.loads(
@@ -49,22 +49,22 @@ MODEL_FAMILY_ROWS = json.loads(
     'oling","l2_normalization"],"config_adapter":"representax.models.modernvb'
     'ert.ModernVBERTConfig.from_hf_config","configuration_constraints":[],"im'
     'plementation_module":"representax.models.modernvbert","input_contracts":'
-    '[["text",["input_ids","attention_mask"]],["fused",["input_ids","attentio'
-    'n_mask","pixel_values","image_valid"]]],"modalities":["text","image","fu'
-    'sed"],"model_types":["modernvbert"],"name":"modernvbert","output_contrac'
-    'ts":["last_hidden_state","mean_pooled_l2_normalized_representation"],"su'
-    'pport":"verified"},{"acceptance_gates":["config_mapping","checkpoint_rou'
-    'ndtrip","forward","input_gradient","parameter_gradient","optimizer_updat'
-    'e","export_reload","performance"],"checkpoint_adapter":"representax.mode'
-    'ls.mpnet.MPNetCheckpointAdapter","checkpoint_layout":"huggingface_safete'
-    'nsors","components":["token_embedding","padding_aware_absolute_position_'
-    'embedding","bucketed_relative_attention_bias","multi_head_attention","po'
-    'st_norm_residual","dense_mlp","pooler","mean_pooling","l2_normalization"'
-    '],"config_adapter":"representax.models.mpnet.MPNetConfig.from_hf_config"'
-    ',"configuration_constraints":["pad_token_id=1","relative_attention_num_b'
-    'uckets=32"],"implementation_module":"representax.models.mpnet","input_co'
-    'ntracts":[["text",["input_ids","attention_mask"]],["embedded_text",["inp'
-    'uts_embeds","attention_mask"]]],"modalities":["text"],"model_types":["mp'
-    'net"],"name":"mpnet","output_contracts":["last_hidden_state","pooler_out'
-    'put","mean_pooled_l2_normalized_representation"],"support":"verified"}]'
+    '[["text",["input_ids","attention_mask"]],["text_image",["input_ids","att'
+    'ention_mask","pixel_values","image_valid"]]],"modalities":["text","image'
+    '"],"model_types":["modernvbert"],"name":"modernvbert","output_contracts"'
+    ':["last_hidden_state","mean_pooled_l2_normalized_representation"],"suppo'
+    'rt":"verified"},{"acceptance_gates":["config_mapping","checkpoint_roundt'
+    'rip","forward","input_gradient","parameter_gradient","optimizer_update",'
+    '"export_reload","performance"],"checkpoint_adapter":"representax.models.'
+    'mpnet.MPNetCheckpointAdapter","checkpoint_layout":"huggingface_safetenso'
+    'rs","components":["token_embedding","padding_aware_absolute_position_emb'
+    'edding","bucketed_relative_attention_bias","multi_head_attention","post_'
+    'norm_residual","dense_mlp","pooler","mean_pooling","l2_normalization"],"'
+    'config_adapter":"representax.models.mpnet.MPNetConfig.from_hf_config","c'
+    'onfiguration_constraints":["pad_token_id=1","relative_attention_num_buck'
+    'ets=32"],"implementation_module":"representax.models.mpnet","input_contr'
+    'acts":[["text",["input_ids","attention_mask"]],["embedded_text",["inputs'
+    '_embeds","attention_mask"]]],"modalities":["text"],"model_types":["mpnet'
+    '"],"name":"mpnet","output_contracts":["last_hidden_state","pooler_output'
+    '","mean_pooled_l2_normalized_representation"],"support":"verified"}]'
 )

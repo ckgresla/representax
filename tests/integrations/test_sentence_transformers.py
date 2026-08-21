@@ -11,12 +11,15 @@ import pytest
 from safetensors.numpy import save_file
 
 from representax import Route
+from representax.config import ComponentConfig, DataConfig
+from representax.data import Artifact, mix, source
 from representax.integrations import (
     RetrievalPairCollator,
     SentencePairCollator,
     SentenceTextCollator,
     load_sentence_transformer,
     load_sentence_transformer_artifact,
+    load_sentence_transformer_bundle,
     load_sentence_transformer_encoder,
     load_sentence_transformer_modules,
 )
@@ -27,6 +30,7 @@ from representax.models.mpnet import (
     MPNetConfig,
     MPNetEncoder,
 )
+from representax.train import build_batches
 
 
 class _Tokenizer:
@@ -98,6 +102,10 @@ class _Tokenizer:
 def _write_json(path: Path, value) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n")
+
+
+def identity(record):
+    return record
 
 
 def _checkpoint(path: Path, *, include_prompt: bool = True) -> Path:
@@ -330,6 +338,93 @@ def test_retrieval_pair_collator_builds_aligned_static_mnr_batch(
     }
 
 
+def test_training_bundle_owns_the_processor_and_collators_reuse_it(
+    tmp_path,
+    monkeypatch,
+):
+    checkpoint = _checkpoint(tmp_path / "sentence-model")
+    tokenizer_loads = []
+
+    def load_tokenizer(*_args, **_kwargs):
+        tokenizer_loads.append(True)
+        return _Tokenizer()
+
+    monkeypatch.setattr(
+        "transformers.AutoTokenizer.from_pretrained",
+        load_tokenizer,
+    )
+    bundle = load_sentence_transformer_bundle(
+        checkpoint,
+        local_files_only=True,
+    )
+    collator = RetrievalPairCollator(bundle=bundle)
+
+    batch = collator(
+        [
+            {"query": "first question", "positive": "first answer"},
+            {"query": "second question", "positive": "second answer"},
+        ]
+    )
+
+    assert tokenizer_loads == [True]
+    assert batch.query.input_ids.shape == (2, 8)
+    assert batch.document.input_ids.shape == (2, 8)
+    assert collator.data_contract()["processor"]["max_sequence_length"] == 8
+
+
+def test_native_grain_loader_injects_one_bundle_into_task_collation(
+    tmp_path,
+    monkeypatch,
+):
+    checkpoint = _checkpoint(tmp_path / "sentence-model")
+    records = tmp_path / "records.jsonl"
+    records.write_text(
+        "\n".join(
+            json.dumps(row)
+            for row in (
+                {"query": "first question", "positive": "first answer"},
+                {"query": "second question", "positive": "second answer"},
+            )
+        )
+        + "\n"
+    )
+    tokenizer_loads = []
+
+    def load_tokenizer(*_args, **_kwargs):
+        tokenizer_loads.append(True)
+        return _Tokenizer()
+
+    monkeypatch.setattr(
+        "transformers.AutoTokenizer.from_pretrained",
+        load_tokenizer,
+    )
+    bundle = load_sentence_transformer_bundle(
+        checkpoint,
+        local_files_only=True,
+    )
+    loader = build_batches(
+        DataConfig(
+            distribution=mix(
+                source(records.as_uri(), map=identity),
+                shuffle=False,
+            ),
+            collate=ComponentConfig(
+                target="representax.integrations.RetrievalPairCollator"
+            ),
+            num_threads=0,
+            prefetch_buffer_size=0,
+        ),
+        batch_size=2,
+        bundle=bundle,
+    )
+
+    batch = next(iter(loader))
+
+    assert tokenizer_loads == [True]
+    assert batch.query.input_ids.shape == (2, 8)
+    assert batch.document.input_ids.shape == (2, 8)
+
+
 def test_sentence_text_collator_is_the_shared_static_preprocessing_boundary(
     tmp_path,
     monkeypatch,
@@ -383,6 +478,19 @@ def test_host_embed_uses_fixed_shapes_routes_and_partial_batch_padding(tmp_path)
     )
 
 
+def test_bundled_sentence_processor_accepts_raw_text_artifacts(tmp_path):
+    checkpoint = _checkpoint(tmp_path / "sentence-model")
+    bundle = load_sentence_transformer(checkpoint, processor=_Tokenizer())
+
+    batch = bundle.processor.batch(
+        bundle.model,
+        (Artifact.text("first"), Artifact.text("second")),
+        route=Route.DOCUMENT,
+    )
+
+    assert batch.input_ids.shape == (2, 8)
+
+
 def test_mpnet_backbone_uses_its_native_token_contract(tmp_path):
     checkpoint = _mpnet_checkpoint(tmp_path / "sentence-mpnet")
     model = load_sentence_transformer(
@@ -392,7 +500,7 @@ def test_mpnet_backbone_uses_its_native_token_contract(tmp_path):
 
     output = model.embed(["a", "bc", "def"], batch_size=2)
 
-    assert isinstance(model.encoder.backbone, MPNetEncoder)
+    assert isinstance(model.model.backbone, MPNetEncoder)
     assert output.shape == (3, 4)
     np.testing.assert_allclose(
         np.linalg.norm(output, axis=1),

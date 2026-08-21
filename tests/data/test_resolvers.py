@@ -40,6 +40,10 @@ def collate_records(records):
     return {"values": [record["value"] for record in records]}
 
 
+def collate_values(values):
+    return tuple(values)
+
+
 class StatefulCollator:
     def __init__(self, width):
         self.width = width
@@ -77,14 +81,14 @@ def test_local_artifacts_map_lazily_and_shuffle_deterministically(
 ):
     artifact_path = tmp_path / f"records{suffix}"
     _write_local_artifact(artifact_path, kind)
-    recipe = data.mix(
+    distribution = data.mix(
         data.source(artifact_path.as_uri(), map=project_record),
         seed=19,
     )
 
     MAPPED_RECORDS.clear()
-    first = data.build_grain_dataset(recipe)
-    second = data.build_grain_dataset(recipe)
+    first = data.build_dataset(distribution)
+    second = data.build_dataset(distribution)
     assert isinstance(first, grain.MapDataset)
     assert MAPPED_RECORDS == []
 
@@ -129,7 +133,7 @@ def test_huggingface_resolver_forwards_pinned_identity(monkeypatch):
         return source_dataset
 
     monkeypatch.setattr(datasets, "load_dataset", fake_load_dataset)
-    recipe = data.mix(
+    distribution = data.mix(
         data.source(
             "hf://organization/dataset",
             revision="0123456789abcdef",
@@ -140,7 +144,7 @@ def test_huggingface_resolver_forwards_pinned_identity(monkeypatch):
         shuffle=False,
     )
 
-    resolved = data.build_grain_dataset(recipe)
+    resolved = data.build_dataset(distribution)
 
     assert resolved[0] == {"value": 40}
     assert calls == [
@@ -167,13 +171,11 @@ def test_local_dataset_directory_resolves_named_split(tmp_path):
         map=project_record,
     )
 
-    resolved = data.build_grain_dataset(data.mix(artifact, shuffle=False))
+    resolved = data.build_dataset(data.mix(artifact, shuffle=False))
 
-    assert [resolved[index]["value"] for index in range(len(resolved))] == [
-        10,
-        20,
-        30,
-    ]
+    rows = [resolved[index] for index in range(len(resolved))]
+    assert all(row is not None for row in rows)
+    assert [row["value"] for row in rows if row is not None] == [10, 20, 30]
 
 
 @pytest.mark.parametrize("missing", ("revision", "split"))
@@ -196,11 +198,11 @@ def test_huggingface_resolver_requires_pinned_revision_and_split(missing):
 
 def test_custom_resolver_and_mapper_can_override_builtins():
     artifact = data.source("hf://ignored/source", map=project_record)
-    recipe = data.mix(artifact, shuffle=False)
+    distribution = data.mix(artifact, shuffle=False)
     mapper_path = artifact.mapper_id
 
-    resolved = data.build_grain_dataset(
-        recipe,
+    resolved = data.build_dataset(
+        distribution,
         resolvers={"hf": cast(data.ArtifactResolver, lambda _artifact: [{"value": 7}])},
         mappers={mapper_path: lambda record: {"value": record["value"] + 1}},
     )
@@ -217,79 +219,80 @@ def test_local_resolver_rejects_unknown_formats(tmp_path):
         data.resolve_local(artifact)
 
 
-def test_grain_batch_source_fingerprints_the_resume_data_contract(tmp_path):
+def test_data_loader_fingerprints_the_resume_data_contract(tmp_path):
     path = tmp_path / "records.jsonl"
     _write_local_artifact(path, "jsonl")
-    recipe = data.mix(
+    distribution = data.mix(
         data.source(path.as_uri(), revision="v1", map=project_record),
         shuffle=False,
         seed=11,
     )
 
-    first = data.build_grain_iterator(
-        recipe,
+    first = data.build_data_loader(
+        distribution,
         batch_size=2,
         batch_fn=collate_records,
         num_threads=0,
         prefetch_buffer_size=0,
     )
-    same = data.build_grain_iterator(
-        recipe,
+    same = data.build_data_loader(
+        distribution,
         batch_size=2,
         batch_fn=collate_records,
         num_threads=0,
         prefetch_buffer_size=0,
     )
-    different_batching = data.build_grain_iterator(
-        recipe,
+    different_batching = data.build_data_loader(
+        distribution,
         batch_size=3,
         batch_fn=collate_records,
         num_threads=0,
         prefetch_buffer_size=0,
     )
-    different_mapper = data.build_grain_iterator(
-        recipe,
+    different_mapper = data.build_data_loader(
+        distribution,
         batch_size=2,
         batch_fn=collate_records,
         num_threads=0,
         prefetch_buffer_size=0,
-        mappers={recipe.sources[0].mapper: alternative_project_record},
+        mappers={distribution.sources[0].mapper: alternative_project_record},
     )
 
-    assert first.data_contract["loader"] == "grain-map-dataset"
+    assert first.data_contract["loader"] == "grain"
     assert first.data_contract["grain_version"] == grain.__version__
-    assert first.data_contract["recipe_fingerprint"] == recipe.fingerprint()
-    assert first.data_contract["recipe"]["sources"][0]["mapper"].endswith(
+    source_contract = first.data_contract["source"]
+    assert source_contract["kind"] == "configured-distribution"
+    assert source_contract["distribution_fingerprint"] == distribution.fingerprint()
+    assert source_contract["distribution"]["sources"][0]["mapper"].endswith(
         ".project_record"
     )
-    implementations = first.data_contract["implementations"]
+    implementations = source_contract["implementations"]
     assert implementations["batch_mapper"]["declared"].endswith(".collate_records")
-    assert implementations["mappers"][recipe.sources[0].mapper]["callable"].endswith(
-        ".project_record"
-    )
+    mapper_contract = implementations["mappers"][distribution.sources[0].mapper]
+    assert mapper_contract["callable"].endswith(".project_record")
     assert implementations["resolvers"]["file"]["callable"].endswith(".resolve_local")
     assert first.data_fingerprint == same.data_fingerprint
     assert first.data_fingerprint != different_batching.data_fingerprint
     assert first.data_fingerprint != different_mapper.data_fingerprint
 
 
-def test_grain_batch_source_fingerprints_callable_configuration(tmp_path):
+def test_data_loader_fingerprints_callable_configuration(tmp_path):
     path = tmp_path / "records.jsonl"
     _write_local_artifact(path, "jsonl")
-    recipe = data.mix(
+    distribution = data.mix(
         data.source(path.as_uri(), revision="v1", map=project_record),
         shuffle=False,
     )
 
-    first = data.build_grain_iterator(
-        recipe,
+    first = data.build_data_loader(
+        distribution,
         batch_size=2,
         batch_fn=StatefulCollator(width=8),
         num_threads=0,
         prefetch_buffer_size=0,
     )
-    second = data.build_grain_iterator(
-        recipe,
+    second = data.build_data_loader(
+        distribution,
         batch_size=2,
         batch_fn=StatefulCollator(width=16),
         num_threads=0,
@@ -297,3 +300,39 @@ def test_grain_batch_source_fingerprints_callable_configuration(tmp_path):
     )
 
     assert first.data_fingerprint != second.data_fingerprint
+
+
+@pytest.mark.parametrize("dataset_kind", ("map", "iter"))
+def test_data_loader_accepts_native_grain_datasets_directly(dataset_kind):
+    dataset = grain.MapDataset.source((1, 2, 3, 4))
+    if dataset_kind == "iter":
+        dataset = dataset.to_iter_dataset(
+            grain.ReadOptions(num_threads=0, prefetch_buffer_size=0)
+        )
+    loader = data.build_data_loader(
+        dataset,
+        batch_size=2,
+        batch_fn=collate_values,
+        num_threads=0,
+        prefetch_buffer_size=0,
+        data_contract={"name": "numbers", "revision": "1"},
+    )
+
+    iterator = iter(loader)
+    assert next(iterator) == (1, 2)
+    assert loader.data_contract["source"]["kind"] == (f"grain-{dataset_kind}-dataset")
+    assert callable(getattr(iterator, "get_state", None))
+    assert callable(getattr(iterator, "set_state", None))
+
+
+def test_direct_grain_dataset_requires_a_reproducibility_contract():
+    dataset = grain.MapDataset.source((1, 2))
+
+    with pytest.raises(ValueError, match="require data_contract"):
+        data.build_data_loader(
+            dataset,
+            batch_size=2,
+            batch_fn=collate_values,
+            num_threads=0,
+            prefetch_buffer_size=0,
+        )

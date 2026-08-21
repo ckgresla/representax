@@ -28,7 +28,7 @@ from ._config import (
     project_parameters,
 )
 from .core import Route
-from .data.recipe import MixtureRecipe
+from .data.distribution import DataDistributionConfig
 from .tasks.config import LossConfig, LossModifierConfig, TaskConfig
 
 RematerializationPolicy = Literal["none", "selective", "full"]
@@ -64,9 +64,9 @@ class OptimizationConfig(FrozenConfig):
 
 
 class DataConfig(FrozenConfig):
-    """Reproducible artifact recipe plus Grain materialization policy."""
+    """Reproducible source distribution plus native Grain execution policy."""
 
-    recipe: Scientific[MixtureRecipe]
+    distribution: Scientific[DataDistributionConfig]
     collate: Scientific[ComponentConfig | None] = None
     drop_remainder: Scientific[bool] = True
     num_threads: Execution[NonNegativeInt] = 16
@@ -74,18 +74,17 @@ class DataConfig(FrozenConfig):
 
     @model_validator(mode="before")
     @classmethod
-    def wrap_recipe(cls, value: object) -> object:
-        """Keep the original one-recipe JobConfig spelling source-compatible."""
+    def wrap_distribution(cls, value: object) -> object:
+        """Accept the concise distribution body as a complete data config."""
 
-        if isinstance(value, MixtureRecipe):
-            return {"recipe": value}
+        if isinstance(value, DataDistributionConfig):
+            return {"distribution": value}
         if (
             isinstance(value, Mapping)
-            and "recipe" not in value
+            and "distribution" not in value
             and "sources" in value
-            and "weights" in value
         ):
-            return {"recipe": value}
+            return {"distribution": value}
         return value
 
 

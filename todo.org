@@ -16,12 +16,13 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   shared comparisons rather than absence claims. The differentiating claims are
   JEPA-style learning, integrated evaluation/checkpoint-safe arbitrary sharding,
   and semantics-preserving execution planning. Keep exactly one =NEXT= item.
-  Freeze the implementation surface by end of Saturday, 2026-08-22: arbitrary
-  sharding/FSDP first, unified AnyModality data execution second, JEPA third,
-  then late-interaction, cross/reranking, sparse, and reward recipes. Run the
-  long paired evidence campaign after that implementation freeze through the
-  following Monday or Tuesday. Do not pull general-development work into this
-  finite paper path.
+  Freeze the implementation surface by end of Saturday, 2026-08-22. Arbitrary
+  sharding/FSDP and mixed precision are complete. Finish unified AnyModality
+  data execution, add the paper's canonical multimodal model panel, then land
+  late-interaction, cross/reranking, sparse, reward, and JEPA recipes before the
+  distributed evaluation layer. Run the long paired evidence campaign only
+  after that implementation freeze. Do not pull general-development work into
+  this finite paper path.
 
 ** TODO Define measurable monotonic-improvement gates over existing trainers :research:
    Pin the initial model, tokenizer/processor, raw examples and order, objective,
@@ -66,7 +67,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
 ** DONE Select environment-sensitive test lanes with orthogonal pytest markers :testing:
 ** DONE Require every checkpoint-backed model to register numerical and systems gates :testing:models:
 ** DONE Isolate upstream Torch references in the optional =parity= extra :testing:
-** DONE Define lazy artifact recipes and sampling policies for Grain :data:
+** DONE Define lazy data distributions and sampling policies for Grain :data:
 ** DONE Make Python and Hydra-Zen recipes Git-trackable :data:
 ** DONE Treat one dataset as the one-source form of a sampling policy :data:
 ** DONE Borrow Levanter's mixture semantics without depending on its LM stack :data:
@@ -83,7 +84,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
 ** DONE Add upstream vision, fused, multicrop, and pixel-gradient parity for ModernVBERT :models:testing:
 ** DONE Add Grain resolvers for Hugging Face and local artifacts :data:
   Resolve revision-pinned upstream records lazily into Grain and apply the
-  recipe's importable mapper directly. Do not materialize an intermediate copy
+  distribution's importable mapper directly. Do not materialize an intermediate copy
   or expand this slice to S3, media decoding, bucketing, or packing.
 ** DONE Complete the end-to-end single-device training loop inspired by Lasso :runtime:data:logging:
   Audit Lasso's trainer, logging, checkpoint, config, and data boundaries, then
@@ -92,7 +93,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   console cadence, first-execution versus steady-state timing, structured local
   JSONL artifacts, failure events, and unconditional iterator/logger cleanup.
   Keep model registries, Lasso/Wafer schemas, sharding, GradCache, validation,
-  and checkpoint/resume outside this slice. Done when a real Grain recipe drives
+  and checkpoint/resume outside this slice. Done when a real Grain distribution drives
   multiple compiled updates end to end, the public API and import convention are
   documented, fast and runtime tests cover success and failure lifecycles, and
   the resulting run artifacts are inspectable without an external service.
@@ -418,7 +419,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   reviewed capability ledger rather than equating upstream class names with our
   public API. Dense bi-encoders, late-interaction/multi-vector encoders,
   cross-encoders, and sparse encoders are separate task and systems contracts;
-  text, image, audio, video, and fused inputs cut across those contracts.
+  text, image, audio, video, and composed multimodal inputs cut across them.
   The system-level dense audit and the exact boundary we intend to implement
   live in =docs/dense-system-audit.md=.
 *** TODO Complete the dense bi-encoder route :api:models:retrieval:
@@ -744,23 +745,33 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
    oracle and SPLADE-v3 as the scientific reference. Treat the noncommercial
    SPLADE repository as an external oracle only. Measure effectiveness jointly
    with active dimensions, sparsity, index size, encoding rate, and retrieval QPS.
-*** TODO Validate multimodal capability across every supported encoder route :multimodal:
+*** NEXT Validate multimodal capability across every supported encoder route :multimodal:
    Exercise text, image, audio, video, and composed multimodal examples through
    preprocessing, model forwards, losses, evaluators, batching, export, and
    matched systems gates rather than treating multimodality as inference-only
    metadata.
-**** TODO Make modality identifiers and input contracts extensible
+**** DONE Make modality identifiers and input contracts extensible
     Register typed built-in text, image, audio, and video contracts while
     allowing downstream projects to add named modalities at the Python build
     boundary. Resolve adapters before JIT so compiled programs receive only
     static array PyTrees, never arbitrary raw Python payloads.
-**** TODO Express fusion as composition rather than a fifth modality
+**** DONE Express fusion as composition rather than a fifth modality
     Represent one example as named modality components with explicit fusion
     semantics. Do not encode =fused= as a mutually exclusive modality value.
-**** TODO Define decode, preprocess, collate, bucket, and placement adapters
-    Keep raw artifact handling outside the model. Require each adapter to expose
-    reproducible fingerprints, model-ready tensor contracts, padding masks,
-    finite shape choices, and iterator-resume state.
+**** DONE Define the Grain-native source, distribution, artifact, sample, and processor boundaries
+    Resolve configured sources directly into native Grain datasets and accept
+    existing Grain MapDataset/IterDataset objects without inventing a framework
+    dataset class. A distribution is only a sampling policy; one source is its
+    ordinary one-dataset form. Task-specific samples compose atomic Artifacts,
+    while a model-bundled host Processor emits the fixed-shape array PyTree used
+    by the task and compiled step. The thin DataLoader carries only batch and
+    reproducibility metadata needed for validation and exact cursor resume.
+**** TODO Implement model-bundled image, audio, and video processors with finite shape buckets
+    Keep decoding, deterministic selection, model-specific resize/resampling,
+    normalization, special tokens, padding masks, and admitted static shapes in
+    each model bundle's processor. Do not introduce a generic adapter hierarchy;
+    task collators only compose processor outputs with task-owned labels and
+    relations.
 **** TODO Preserve artifact references and decode only admitted media selections
     Carry URI, revision/ETag, archive member, byte range, checksum, and probed
     metadata through lazy sampling. Choose deterministic audio windows and video
@@ -1009,7 +1020,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
    only with bounded trajectory error, native optimized HLO, fewer FSDP
    collectives, and a matched end-to-end throughput win.  Evaluate block-scaled
    MXFP8/NVFP4 only on hardware that lowers those formats natively.
-** NEXT Prove the physical capacity and throughput frontier for FSDP :runtime:sharding:performance:
+** TODO Extend the physical capacity and throughput frontier for the paper :runtime:sharding:performance:
    Revisit the accepted frontier with explicit mixed precision: measure larger
    sequences and batches plus a model whose replicated FP32 optimizer state does
    not fit.  Compare DDP and FSDP only where both execute the same numerical

@@ -11,7 +11,8 @@ from typing import Any, Literal, cast
 
 import jax.numpy as jnp
 
-from representax.core import EncoderMetadata, Modality, Route
+from representax.core import EncoderMetadata, Modality, ModelBundle, Route
+from representax.data import Artifact
 from representax.inference import TextEmbeddingModel
 from representax.models.bert import BertCheckpointAdapter
 from representax.models.components import AttentionImplementation, Linear
@@ -504,7 +505,7 @@ def load_sentence_transformer(
             **processor_kwargs,
         )
     return TextEmbeddingModel(
-        encoder=loaded.encoder,
+        model=loaded.encoder,
         processor=processor,
         max_sequence_length=loaded.max_sequence_length,
         prompts=loaded.prompts,
@@ -536,17 +537,62 @@ def load_sentence_transformer_encoder(
     ).encoder
 
 
+def load_sentence_transformer_bundle(
+    model_name_or_path: str | Path,
+    *,
+    revision: str | None = None,
+    cache_directory: str | Path | None = None,
+    local_files_only: bool = False,
+    token: bool | str | None = None,
+    parameter_dtype: str = "float32",
+    compute_dtype: str = "float32",
+    attention_implementation: AttentionImplementation = "xla",
+    rematerialization: RematerializationPolicy = "none",
+) -> ModelBundle:
+    """Load a training-ready native model and its tokenizer exactly once."""
+
+    loaded = load_sentence_transformer(
+        model_name_or_path,
+        revision=revision,
+        cache_directory=cache_directory,
+        local_files_only=local_files_only,
+        token=token,
+        parameter_dtype=jnp.dtype(parameter_dtype),
+        compute_dtype=jnp.dtype(compute_dtype),
+        attention_implementation=attention_implementation,
+        rematerialization=rematerialization,
+    )
+    return ModelBundle(model=loaded.model, processor=loaded.processor)
+
+
 class SentenceTextCollator:
     """Tokenize text into one native, fixed-shape sentence-model batch."""
 
     def __init__(
         self,
-        checkpoint: str | Path,
+        checkpoint: str | Path | None = None,
         *,
-        maximum_length: int,
+        maximum_length: int | None = None,
+        bundle: ModelBundle | None = None,
+        route: Route = Route.GENERIC,
     ) -> None:
+        if bundle is not None:
+            if bundle.processor is None:
+                raise ValueError("the injected model bundle has no processor")
+            self.bundle = bundle
+            self.checkpoint = None
+            self.model_type = None
+            self.tokenizer = None
+            self.maximum_length = None
+            self.route = Route(route)
+            return
+        if checkpoint is None or maximum_length is None:
+            raise ValueError(
+                "checkpoint and maximum_length are required without bundle"
+            )
         if maximum_length <= 0:
             raise ValueError("maximum_length must be positive")
+        self.bundle = None
         self.checkpoint = Path(checkpoint).expanduser().resolve()
         config = load_hf_config(self.checkpoint)
         self.model_type = str(config.get("model_type", ""))
@@ -571,8 +617,26 @@ class SentenceTextCollator:
             trust_remote_code=self.model_type == "qwen3_vl_audio",
         )
         self.maximum_length = maximum_length
+        self.route = Route(route)
 
     def data_contract(self) -> Mapping[str, Any]:
+        if self.bundle is not None:
+            processor = self.bundle.processor
+            contract = getattr(processor, "data_contract", None)
+            return {
+                "schema_version": "representax-sentence-text-collator-v2",
+                "route": self.route.value,
+                "processor": (
+                    contract()
+                    if callable(contract)
+                    else {
+                        "type": (
+                            f"{type(processor).__module__}."
+                            f"{type(processor).__qualname__}"
+                        )
+                    }
+                ),
+            }
         return {
             "schema_version": "representax-sentence-text-collator-v1",
             "checkpoint": str(self.checkpoint),
@@ -581,6 +645,11 @@ class SentenceTextCollator:
         }
 
     def __call__(self, texts: Sequence[str]) -> Any:
+        if self.bundle is not None:
+            return self.bundle.batch(
+                tuple(Artifact.text(text) for text in texts),
+                route=self.route,
+            )
         tokenizer = cast(Callable[..., Any], self.tokenizer)
         encoded: Mapping[str, Any]
         if self.model_type == "modernvbert":
@@ -647,9 +716,10 @@ class SentencePairCollator:
 
     def __init__(
         self,
-        checkpoint: str | Path,
+        checkpoint: str | Path | None = None,
         *,
-        maximum_length: int,
+        maximum_length: int | None = None,
+        bundle: ModelBundle | None = None,
         left_field: str = "sentence1",
         right_field: str = "sentence2",
         label_field: str = "score",
@@ -658,6 +728,7 @@ class SentencePairCollator:
         self._text = SentenceTextCollator(
             checkpoint,
             maximum_length=maximum_length,
+            bundle=bundle,
         )
         self.left_field = left_field
         self.right_field = right_field
@@ -711,15 +782,29 @@ class RetrievalPairCollator:
 
     def __init__(
         self,
-        checkpoint: str | Path,
+        checkpoint: str | Path | None = None,
         *,
-        maximum_length: int,
+        maximum_length: int | None = None,
+        bundle: ModelBundle | None = None,
         query_field: str = "query",
         document_field: str = "positive",
     ) -> None:
         self._text = SentenceTextCollator(
             checkpoint,
             maximum_length=maximum_length,
+            bundle=bundle,
+        )
+        self._query = SentenceTextCollator(
+            checkpoint,
+            maximum_length=maximum_length,
+            bundle=bundle,
+            route=Route.QUERY,
+        )
+        self._document = SentenceTextCollator(
+            checkpoint,
+            maximum_length=maximum_length,
+            bundle=bundle,
+            route=Route.DOCUMENT,
         )
         self.query_field = query_field
         self.document_field = document_field
@@ -746,8 +831,8 @@ class RetrievalPairCollator:
             ) from error
         size = len(examples)
         return retrieval_batch(
-            query=self._text(queries),
-            document=self._text(documents),
+            query=self._query(queries),
+            document=self._document(documents),
             positive_mask=jnp.eye(size, dtype=jnp.bool_),
         )
 
@@ -762,6 +847,7 @@ __all__ = [
     "SimilarityFunction",
     "load_sentence_transformer",
     "load_sentence_transformer_artifact",
+    "load_sentence_transformer_bundle",
     "load_sentence_transformer_encoder",
     "load_sentence_transformer_modules",
 ]

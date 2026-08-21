@@ -11,7 +11,8 @@ import jax.numpy as jnp
 import numpy as np
 from jaxtyping import Array, Float
 
-from representax.core import Route, encode
+from representax.core import Modality, Route, encode
+from representax.data import Artifact
 from representax.models.sentence import SentenceBatch, SentenceEncoder
 
 
@@ -24,34 +25,40 @@ def _compiled_encode(
     return encode(model, batch, route=route)
 
 
-class TextEmbeddingModel:
-    """A plain host object around preprocessing and a native JAX encoder."""
+class SentenceTransformerProcessor:
+    """Host tokenizer and batch builder bundled with a sentence model."""
 
     def __init__(
         self,
         *,
-        encoder: SentenceEncoder,
-        processor: Any,
+        tokenizer: Any,
         max_sequence_length: int,
         prompts: Mapping[str, str] | None = None,
         default_prompt_name: str | None = None,
-        similarity_function: str = "cosine",
     ) -> None:
         if max_sequence_length <= 0:
             raise ValueError("max_sequence_length must be positive")
         prompts = {} if prompts is None else dict(prompts)
         if default_prompt_name is not None and default_prompt_name not in prompts:
             raise ValueError("default_prompt_name does not name a configured prompt")
-        if similarity_function not in ("cosine", "dot", "euclidean", "manhattan"):
-            raise ValueError(
-                f"unsupported similarity function: {similarity_function!r}"
-            )
-        self.encoder = encoder
-        self.processor = processor
+        self.tokenizer = tokenizer
         self.max_sequence_length = max_sequence_length
         self.prompts = MappingProxyType(prompts)
         self.default_prompt_name = default_prompt_name
-        self.similarity_function = similarity_function
+
+    def data_contract(self) -> Mapping[str, Any]:
+        """Return the serializable preprocessing semantics used for resume."""
+
+        tokenizer_type = type(self.tokenizer)
+        return {
+            "schema_version": "representax-sentence-processor-v1",
+            "tokenizer_type": (
+                f"{tokenizer_type.__module__}.{tokenizer_type.__qualname__}"
+            ),
+            "max_sequence_length": self.max_sequence_length,
+            "prompts": dict(self.prompts),
+            "default_prompt_name": self.default_prompt_name,
+        }
 
     def _route_prompt(
         self,
@@ -82,7 +89,7 @@ class TextEmbeddingModel:
         )
 
     def _tokenize(self, texts: Sequence[str]) -> Mapping[str, np.ndarray]:
-        encoded = self.processor(
+        encoded = self.tokenizer(
             list(texts),
             padding="max_length",
             truncation=True,
@@ -96,7 +103,7 @@ class TextEmbeddingModel:
     def _prompt_length(self, prompt: str) -> int:
         if not prompt:
             return 0
-        encoded = self.processor(
+        encoded = self.tokenizer(
             [prompt],
             padding=True,
             truncation=True,
@@ -105,21 +112,36 @@ class TextEmbeddingModel:
         )
         input_ids = np.asarray(encoded["input_ids"])
         length = int(input_ids.shape[-1])
-        special_ids = frozenset(getattr(self.processor, "all_special_ids", ()))
+        special_ids = frozenset(getattr(self.tokenizer, "all_special_ids", ()))
         if length and int(input_ids[0, -1]) in special_ids:
             length -= 1
         return length
 
-    def preprocess(
+    def batch(
         self,
-        texts: Sequence[str],
+        model: SentenceEncoder,
+        artifacts: Sequence[str | Artifact],
         *,
         route: Route = Route.GENERIC,
+        seed: int | None = None,
         prompt_name: str | None = None,
         prompt: str | None = None,
     ) -> Any:
-        """Turn host strings into a fixed-shape native token batch."""
+        """Batch strings or inline text artifacts into native model inputs."""
 
+        del seed
+        texts = []
+        for artifact in artifacts:
+            if isinstance(artifact, Artifact):
+                if artifact.modality != Modality.TEXT or not isinstance(
+                    artifact.data, str
+                ):
+                    raise TypeError("sentence processors require inline text artifacts")
+                texts.append(artifact.data)
+            elif isinstance(artifact, str):
+                texts.append(artifact)
+            else:
+                raise TypeError("sentence processors require strings or artifacts")
         route = Route(route)
         prefix = self._route_prompt(route, prompt_name, prompt)
         encoded = self._tokenize(tuple(prefix + text for text in texts))
@@ -131,14 +153,14 @@ class TextEmbeddingModel:
                 f"text processor output is missing required field {error.args[0]!r}"
             ) from error
         token_type_ids = encoded.get("token_type_ids")
-        backbone_batch = self.encoder.make_batch(
+        backbone_batch = model.make_batch(
             input_ids=jnp.asarray(input_ids),
             attention_mask=jnp.asarray(attention_mask),
             token_type_ids=(
                 None if token_type_ids is None else jnp.asarray(token_type_ids)
             ),
         )
-        if self.encoder.pooling.include_prompt or not prefix:
+        if model.pooling.include_prompt or not prefix:
             return backbone_batch
 
         prompt_length = self._prompt_length(prefix)
@@ -149,6 +171,51 @@ class TextEmbeddingModel:
         return SentenceBatch(
             backbone_inputs=backbone_batch,
             pooling_mask=jnp.asarray(pooling_mask),
+        )
+
+
+class TextEmbeddingModel:
+    """A native model bundle with a host-side sentence processor."""
+
+    def __init__(
+        self,
+        *,
+        model: SentenceEncoder,
+        processor: Any,
+        max_sequence_length: int,
+        prompts: Mapping[str, str] | None = None,
+        default_prompt_name: str | None = None,
+        similarity_function: str = "cosine",
+    ) -> None:
+        if similarity_function not in ("cosine", "dot", "euclidean", "manhattan"):
+            raise ValueError(
+                f"unsupported similarity function: {similarity_function!r}"
+            )
+        self.model = model
+        self.processor = SentenceTransformerProcessor(
+            tokenizer=processor,
+            max_sequence_length=max_sequence_length,
+            prompts=prompts,
+            default_prompt_name=default_prompt_name,
+        )
+        self.similarity_function = similarity_function
+
+    def preprocess(
+        self,
+        texts: Sequence[str],
+        *,
+        route: Route = Route.GENERIC,
+        prompt_name: str | None = None,
+        prompt: str | None = None,
+    ) -> Any:
+        """Turn host strings into a fixed-shape native token batch."""
+
+        return self.processor.batch(
+            self.model,
+            texts,
+            route=route,
+            prompt_name=prompt_name,
+            prompt=prompt,
         )
 
     def embed(
@@ -168,7 +235,7 @@ class TextEmbeddingModel:
         if any(not isinstance(text, str) for text in texts):
             raise TypeError("text embedding inputs must be strings")
         if not texts:
-            return np.empty((0, self.encoder.metadata.output_dimension), np.float32)
+            return np.empty((0, self.model.metadata.output_dimension), np.float32)
 
         route = Route(route)
         outputs: list[np.ndarray] = []
@@ -183,7 +250,7 @@ class TextEmbeddingModel:
                 prompt_name=prompt_name,
                 prompt=prompt,
             )
-            output = _compiled_encode(self.encoder, batch, route)
+            output = _compiled_encode(self.model, batch, route)
             outputs.append(np.asarray(output[:real_size], dtype=np.float32))
         return np.concatenate(outputs, axis=0)
 
@@ -224,4 +291,4 @@ def embed(
     return model.embed(inputs, route=route, batch_size=batch_size)
 
 
-__all__ = ["TextEmbeddingModel", "embed"]
+__all__ = ["SentenceTransformerProcessor", "TextEmbeddingModel", "embed"]

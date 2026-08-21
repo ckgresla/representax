@@ -417,7 +417,7 @@ def _representax_report(
         TRAIN_DATASET_FILE,
     )
     training_data = DataConfig(
-        recipe=mix(source(str(training_path), map=identity), shuffle=False),
+        distribution=mix(source(str(training_path), map=identity), shuffle=False),
         collate=ComponentConfig(
             target="representax.integrations.RetrievalPairCollator",
             parameters={

@@ -18,7 +18,7 @@ from representax.config import (
     OptimizationConfig,
     TrainingConfig,
 )
-from representax.data import build_grain_iterator, mix, source
+from representax.data import build_data_loader, mix, source
 from representax.tasks.retrieval import (
     MNRConfig,
     RetrievalConfig,
@@ -80,7 +80,7 @@ def collate_retrieval(examples: Sequence[dict]):
 
 def build_toy_retrieval_batches(*, seed: int = 23):
     artifact = source("memory://nontrivial-retrieval", map=identity)
-    return build_grain_iterator(
+    return build_data_loader(
         mix(artifact, shuffle=False, seed=seed),
         batch_size=TOY_BATCH_SIZE,
         batch_fn=collate_retrieval,
@@ -119,7 +119,7 @@ def toy_job_config(
                 parameters={"learning_rate": 0.03, "weight_decay": 0.0},
             )
         ),
-        data=DataConfig(recipe=mix(artifact, shuffle=False, seed=seed)),
+        data=DataConfig(distribution=mix(artifact, shuffle=False, seed=seed)),
         training=TrainingConfig(
             global_batch_size=global_batch_size,
             max_steps=max_steps,

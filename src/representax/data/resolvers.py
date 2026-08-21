@@ -160,18 +160,18 @@ def _require_random_access(dataset: Any, *, source: str) -> RandomAccessSource:
 
 
 def huggingface_dataset_id(uri: str) -> str:
-    """Parse Representax's ``hf://namespace/dataset`` recipe URI."""
+    """Parse a configured ``hf://namespace/dataset`` source URI."""
 
     parsed = urlparse(uri)
     if parsed.scheme != "hf":
         raise ValueError(f"expected an hf:// URI, received {uri!r}")
     if parsed.query or parsed.fragment or parsed.params:
-        raise ValueError("HF recipe URIs do not support query strings or fragments")
+        raise ValueError("HF source URIs do not support query strings or fragments")
     dataset_id = "/".join(
         part for part in (parsed.netloc, parsed.path.strip("/")) if part
     )
     if not dataset_id:
-        raise ValueError("HF recipe URI must identify a dataset")
+        raise ValueError("HF source URI must identify a dataset")
     return unquote(dataset_id)
 
 

@@ -24,7 +24,7 @@ from .vision import SigLIPVisionTower, pixel_shuffle
 
 
 class ModernVBERTBatch(eqx.Module):
-    """Fixed-shape text, image, or fused inputs for ModernVBERT."""
+    """Fixed-shape text inputs with an optional composed image component."""
 
     attention_mask: Bool[Array, "batch sequence"] | Int[Array, "batch sequence"]
     input_ids: Int[Array, "batch sequence"] | None = None
@@ -187,7 +187,7 @@ class ModernVBERTEncoder(eqx.Module):
                 revision=revision,
                 output_dimension=config.text.hidden_size,
                 routes=frozenset(Route),
-                modalities=frozenset({Modality.TEXT, Modality.IMAGE, Modality.FUSED}),
+                modalities=frozenset({Modality.TEXT, Modality.IMAGE}),
             ),
             config=config,
             compute_dtype=compute_dtype,

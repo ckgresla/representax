@@ -1,12 +1,13 @@
-"""Artifact recipes and lazy Grain composition."""
+"""Native Grain sources, distributions, artifacts, and loader metadata."""
 
-from .recipe import (
-    ArtifactSource,
-    GrainBatchSource,
+from .distribution import (
+    Artifact,
+    DataDistributionConfig,
+    DataLoader,
+    DataSourceConfig,
     Mapper,
-    MixtureRecipe,
-    build_grain_dataset,
-    build_grain_iterator,
+    build_data_loader,
+    build_dataset,
     identity,
     load_mapper,
     mix,
@@ -27,15 +28,16 @@ from .resolvers import (
 __all__ = [
     "ArtifactResolver",
     "ArtifactSpec",
-    "ArtifactSource",
-    "GrainBatchSource",
+    "Artifact",
+    "DataDistributionConfig",
+    "DataLoader",
+    "DataSourceConfig",
     "JsonLinesSource",
     "ParquetSource",
     "Mapper",
-    "MixtureRecipe",
     "RandomAccessSource",
-    "build_grain_dataset",
-    "build_grain_iterator",
+    "build_data_loader",
+    "build_dataset",
     "huggingface_dataset_id",
     "identity",
     "load_mapper",

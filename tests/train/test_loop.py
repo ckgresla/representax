@@ -10,7 +10,7 @@ import optax
 import pytest
 
 from representax.config import DataConfig, EvaluationConfig, EvaluatorConfig
-from representax.data import build_grain_iterator, mix, source
+from representax.data import build_data_loader, mix, source
 from representax.models import DenseEncoder
 from representax.tasks.retrieval import MNRTask
 from representax.train import (
@@ -194,7 +194,7 @@ def test_training_loop_records_exhaustion_as_a_real_failure(tmp_path):
 
 def test_training_loop_rejects_grain_batch_size_drift(tmp_path):
     artifact = source("memory://toy", map=_identity)
-    batches = build_grain_iterator(
+    batches = build_data_loader(
         mix(artifact, shuffle=False),
         batch_size=2,
         resolvers={"memory": _resolver},
@@ -265,7 +265,7 @@ def test_skipped_updates_advance_deterministic_iteration_keys(tmp_path):
 def test_training_evaluation_uses_deterministic_inference(tmp_path):
     validation_source = source("memory://validation", map=_identity)
     evaluation = EvaluationConfig(
-        data=DataConfig(recipe=mix(validation_source, shuffle=False)),
+        data=DataConfig(distribution=mix(validation_source, shuffle=False)),
         batch_size=2,
         evaluators=(EvaluatorConfig(name="deterministic"),),
         on_start=True,

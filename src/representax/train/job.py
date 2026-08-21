@@ -23,7 +23,8 @@ from representax.config import (
     JobConfig,
     ModelConfig,
 )
-from representax.data import ArtifactResolver, build_grain_iterator
+from representax.core import ModelBundle
+from representax.data import ArtifactResolver, build_data_loader
 from representax.evaluation import EmbeddingSimilarityEvaluator, LossEvaluator
 from representax.models import apply_quantized_lora, lora_parameter_filter
 from representax.precision import resolve_precision_policy
@@ -72,13 +73,13 @@ def build_component(config: ComponentConfig) -> Any:
     return resolve_target(config.target)(**config.parameters)
 
 
-def build_model(
+def build_model_bundle(
     config: ModelConfig,
     *,
     key: Any,
     activation_rematerialization: str | None = None,
-) -> eqx.Module:
-    """Construct a native model, injecting JAX runtime inputs when accepted."""
+) -> ModelBundle:
+    """Construct a native model and its optional host artifact processor."""
 
     factory = resolve_target(config.target)
     parameters = dict(config.parameters)
@@ -91,10 +92,29 @@ def build_model(
         and "rematerialization" not in parameters
     ):
         parameters["rematerialization"] = activation_rematerialization
-    model = factory(**parameters)
-    if not isinstance(model, eqx.Module):
-        raise TypeError(f"model target {config.target!r} must return an eqx.Module")
-    return model
+    result = factory(**parameters)
+    if isinstance(result, ModelBundle):
+        return result
+    if not isinstance(result, eqx.Module):
+        raise TypeError(
+            f"model target {config.target!r} must return an eqx.Module or ModelBundle"
+        )
+    return ModelBundle(model=result)
+
+
+def build_model(
+    config: ModelConfig,
+    *,
+    key: Any,
+    activation_rematerialization: str | None = None,
+) -> eqx.Module:
+    """Construct only the native model for lower-level array-native usage."""
+
+    return build_model_bundle(
+        config,
+        key=key,
+        activation_rematerialization=activation_rematerialization,
+    ).model
 
 
 def apply_configured_adapter(
@@ -119,20 +139,31 @@ def apply_configured_adapter(
     return adapted, lora_parameter_filter(adapted)
 
 
-def build_collate(config: DataConfig) -> Callable[[Any], Any] | None:
-    """Bind configured collation parameters without consuming an example batch."""
+def build_collate(
+    config: DataConfig,
+    *,
+    bundle: ModelBundle | None = None,
+) -> Callable[[Any], Any] | None:
+    """Bind task collation and inject the complete model bundle if accepted."""
 
     if config.collate is None:
         return None
     collate = resolve_target(config.collate.target)
+    parameters: dict[str, Any] = dict(config.collate.parameters)
+    if (
+        bundle is not None
+        and "bundle" in inspect.signature(collate).parameters
+        and "bundle" not in parameters
+    ):
+        parameters["bundle"] = bundle
     if inspect.isclass(collate):
-        instance = collate(**config.collate.parameters)
+        instance = collate(**parameters)
         if not callable(instance):
             raise TypeError("collate class must construct a callable instance")
         return instance
-    if not config.collate.parameters:
+    if not parameters:
         return collate
-    return partial(collate, **config.collate.parameters)
+    return partial(collate, **parameters)
 
 
 def build_batches(
@@ -141,13 +172,14 @@ def build_batches(
     batch_size: int,
     resolvers: Mapping[str, ArtifactResolver] | None = None,
     mappers: Mapping[str, Callable[[Any], Any]] | None = None,
+    bundle: ModelBundle | None = None,
 ) -> Any:
     """Materialize one reproducible Grain batch source from its data config."""
 
-    return build_grain_iterator(
-        config.recipe,
+    return build_data_loader(
+        config.distribution,
         batch_size=batch_size,
-        batch_fn=build_collate(config),
+        batch_fn=build_collate(config, bundle=bundle),
         drop_remainder=config.drop_remainder,
         num_threads=config.num_threads,
         prefetch_buffer_size=config.prefetch_buffer_size,
@@ -177,16 +209,17 @@ def build_job_runtime(
     """Build every live JAX, Optax, task, and Grain object from one JobConfig."""
 
     key = jax.random.key(job.training.seed)
-    model = build_model(
+    bundle = build_model_bundle(
         job.model,
         key=jax.random.fold_in(key, 0),
         activation_rematerialization=job.training.activation_rematerialization,
     )
     model, trainable_filter = apply_configured_adapter(
-        model,
+        bundle.model,
         job,
         key=jax.random.fold_in(key, 1),
     )
+    bundle = replace(bundle, model=model)
     task = build_task(job.task, job.loss, modifiers=job.loss_modifiers)
     optimizer = build_optimizer(job.optimization)
     execution = build_loss_execution(
@@ -296,6 +329,7 @@ def build_job_runtime(
         batch_size=job.training.global_batch_size,
         resolvers=resolvers,
         mappers=mappers,
+        bundle=bundle,
     )
     if job.evaluation is None:
         evaluation_runners: tuple[EvaluationRunner, ...] = ()
@@ -328,6 +362,7 @@ def build_job_runtime(
                 batch_size=job.evaluation.batch_size,
                 resolvers=resolvers,
                 mappers=mappers,
+                bundle=bundle,
             )
 
     return JobRuntime(
@@ -388,6 +423,7 @@ __all__ = [
     "build_component",
     "build_job_runtime",
     "build_model",
+    "build_model_bundle",
     "resolve_target",
     "run_job",
 ]

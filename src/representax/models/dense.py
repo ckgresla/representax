@@ -6,7 +6,7 @@ import equinox as eqx
 import jax.numpy as jnp
 from jaxtyping import Array, Float, PRNGKeyArray
 
-from representax.core import EncoderMetadata, Modality, Route
+from representax.core import BUILTIN_MODALITIES, EncoderMetadata, Route
 from representax.core.sharding import (
     activation_out_sharding,
     constrain_activation,
@@ -42,7 +42,7 @@ class DenseEncoder(eqx.Module):
             revision="1",
             output_dimension=output_dimension,
             routes=frozenset(Route),
-            modalities=frozenset(Modality),
+            modalities=BUILTIN_MODALITIES,
         )
         self.normalize = normalize
 

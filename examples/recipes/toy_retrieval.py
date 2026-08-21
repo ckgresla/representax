@@ -20,7 +20,7 @@ from representax.tasks.retrieval import MNRConfig, RetrievalConfig
 from representax.train import run_job
 
 # Hydra-Zen's overload does not expose positional arguments forwarded to a target.
-Recipe = builds(  # ty: ignore[no-matching-overload]
+Distribution = builds(  # ty: ignore[no-matching-overload]
     mix,
     source(
         "examples/data/toy.jsonl",
@@ -33,7 +33,7 @@ Recipe = builds(  # ty: ignore[no-matching-overload]
 )
 Data = builds(
     DataConfig,
-    recipe=Recipe,
+    distribution=Distribution,
     collate=builds(
         ComponentConfig,
         target="examples.recipes.toy_components.collate",

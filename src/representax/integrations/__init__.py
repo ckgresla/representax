@@ -38,6 +38,7 @@ from .sentence_transformers import (
     SentenceTransformerModuleSpec,
     load_sentence_transformer,
     load_sentence_transformer_artifact,
+    load_sentence_transformer_bundle,
     load_sentence_transformer_encoder,
     load_sentence_transformer_modules,
 )
@@ -73,6 +74,7 @@ __all__ = [
     "load_safetensor_subset",
     "load_sentence_transformer",
     "load_sentence_transformer_artifact",
+    "load_sentence_transformer_bundle",
     "load_sentence_transformer_encoder",
     "load_sentence_transformer_modules",
     "resolve_hf_checkpoint",

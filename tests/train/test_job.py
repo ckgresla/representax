@@ -27,7 +27,7 @@ from representax.config import (
     PrecisionConfig,
     TrainingConfig,
 )
-from representax.core import Encoder, Route, encode
+from representax.core import Encoder, ModelBundle, Route, encode
 from representax.data import mix, source
 from representax.precision import resolve_precision_policy
 from representax.tasks import build_task
@@ -36,7 +36,14 @@ from representax.tasks.pairwise import (
     PairwiseConfig,
     pairwise_batch,
 )
-from representax.train import build_batches, build_model, evaluate, run_job
+from representax.train import (
+    build_batches,
+    build_collate,
+    build_model,
+    build_model_bundle,
+    evaluate,
+    run_job,
+)
 
 
 class RematerializedModule(eqx.Module):
@@ -49,6 +56,27 @@ def rematerialized_model(*, key, rematerialization):
         weight=jax.random.normal(key, (2, 2)),
         rematerialization=rematerialization,
     )
+
+
+class _Processor:
+    def batch(self, model, artifacts, *, route=Route.GENERIC, seed=None):
+        del model, route, seed
+        return tuple(artifacts)
+
+
+def bundled_model(*, key):
+    return ModelBundle(
+        model=rematerialized_model(key=key, rematerialization="none"),
+        processor=_Processor(),
+    )
+
+
+class BundleAwareCollator:
+    def __init__(self, *, bundle):
+        self.bundle = bundle
+
+    def __call__(self, examples):
+        return self.bundle.batch(examples)
 
 
 def identity(record):
@@ -77,7 +105,7 @@ def _write_pairs(path, *, count: int) -> None:
 
 def _data(path) -> DataConfig:
     return DataConfig(
-        recipe=mix(source(str(path), map=identity), shuffle=False),
+        distribution=mix(source(str(path), map=identity), shuffle=False),
         collate=ComponentConfig(target="tests.train.test_job.collate_pairwise_records"),
         num_threads=0,
         prefetch_buffer_size=0,
@@ -93,6 +121,27 @@ def test_job_model_builder_injects_activation_rematerialization():
 
     assert isinstance(model, RematerializedModule)
     assert model.rematerialization == "selective"
+
+
+def test_job_builder_preserves_bundled_processor_for_data_collation():
+    bundle = build_model_bundle(
+        ModelConfig(target="tests.train.test_job.bundled_model"),
+        key=jax.random.key(7),
+    )
+    collate = build_collate(
+        DataConfig(
+            distribution=mix(
+                source("memory://unused", map="tests.train.test_job.identity")
+            ),
+            collate=ComponentConfig(target="tests.train.test_job.BundleAwareCollator"),
+        ),
+        bundle=bundle,
+    )
+
+    assert isinstance(bundle.model, RematerializedModule)
+    assert bundle.model.weight.shape == (2, 2)
+    assert collate is not None
+    assert collate(("first", "second")) == ("first", "second")
 
 
 @pytest.mark.runtime

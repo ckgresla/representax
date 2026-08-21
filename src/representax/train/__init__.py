@@ -26,6 +26,7 @@ from .job import (
     build_component,
     build_job_runtime,
     build_model,
+    build_model_bundle,
     resolve_target,
     run_job,
 )
@@ -84,6 +85,7 @@ __all__ = [
     "build_component",
     "build_job_runtime",
     "build_model",
+    "build_model_bundle",
     "build_optimizer",
     "build_schedule",
     "evaluate",

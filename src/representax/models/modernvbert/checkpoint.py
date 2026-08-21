@@ -570,7 +570,7 @@ class ModernVBERTCheckpointAdapter:
                 revision=self.revision,
                 output_dimension=config.text.hidden_size,
                 routes=frozenset(Route),
-                modalities=frozenset({Modality.TEXT, Modality.IMAGE, Modality.FUSED}),
+                modalities=frozenset({Modality.TEXT, Modality.IMAGE}),
             ),
             config=config,
             compute_dtype=compute_dtype,

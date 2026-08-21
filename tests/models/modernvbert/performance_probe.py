@@ -42,7 +42,7 @@ def _arguments() -> argparse.Namespace:
 
 def _fingerprint(inputs: dict[str, np.ndarray]) -> str:
     digest = hashlib.sha256()
-    workload = b"fused" if "pixel_values" in inputs else b"text"
+    workload = b"text_image" if "pixel_values" in inputs else b"text"
     digest.update(b"modernvbert-forward-fp32-v2-")
     digest.update(workload)
     for name in sorted(inputs):

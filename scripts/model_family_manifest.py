@@ -99,7 +99,7 @@ MODEL_FAMILIES = (
     {
         "name": "modernvbert",
         "model_types": ("modernvbert",),
-        "modalities": ("text", "image", "fused"),
+        "modalities": ("text", "image"),
         "components": (
             "token_embedding",
             "rotary_attention",
@@ -117,7 +117,7 @@ MODEL_FAMILIES = (
         "input_contracts": (
             ("text", ("input_ids", "attention_mask")),
             (
-                "fused",
+                "text_image",
                 (
                     "input_ids",
                     "attention_mask",

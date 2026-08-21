@@ -56,7 +56,9 @@ def _job(source_checkpoint, *, quantized_adapter: bool = False) -> JobConfig:
             )
         ),
         data=DataConfig(
-            recipe=mix(source("memory://unused", map="tests.test_export.identity"))
+            distribution=mix(
+                source("memory://unused", map="tests.test_export.identity")
+            )
         ),
         training=TrainingConfig(
             global_batch_size=1,

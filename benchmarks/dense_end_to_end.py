@@ -214,7 +214,7 @@ def _representax_report(
         if evaluation:
             parameters["pad_to_size"] = spec.batch_size
         return DataConfig(
-            recipe=mix(source(str(path), map=identity), shuffle=False),
+            distribution=mix(source(str(path), map=identity), shuffle=False),
             collate=ComponentConfig(
                 target=collator_target,
                 parameters=parameters,

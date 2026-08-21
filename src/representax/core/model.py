@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import re
+from collections.abc import Sequence
+from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, ClassVar, Generic, Protocol, TypeVar, runtime_checkable
 
 import equinox as eqx
 import jax.numpy as jnp
@@ -24,14 +27,44 @@ class Route(StrEnum):
     DOCUMENT = "document"
 
 
-class Modality(StrEnum):
-    """Input modalities understood by Representax."""
+class Modality(str):
+    """Validated, extensible name for one atomic input modality.
 
-    TEXT = "text"
-    IMAGE = "image"
-    AUDIO = "audio"
-    VIDEO = "video"
-    FUSED = "fused"
+    Representax defines the common text, image, audio, and video names while
+    allowing a model integration to introduce another atomic modality at the
+    Python construction boundary. Multimodal inputs are ordinary compositions
+    of artifacts; ``fused`` is deliberately not a modality.
+    """
+
+    TEXT: ClassVar[Modality]
+    IMAGE: ClassVar[Modality]
+    AUDIO: ClassVar[Modality]
+    VIDEO: ClassVar[Modality]
+
+    _NAME = re.compile(r"^[a-z][a-z0-9]*(?:[._/-][a-z0-9]+)*$")
+
+    def __new__(cls, value: str) -> Modality:
+        if not isinstance(value, str) or not cls._NAME.fullmatch(value):
+            raise ValueError(
+                "modality names must be lowercase identifiers optionally "
+                "separated by '.', '/', '_', or '-'"
+            )
+        return str.__new__(cls, value)
+
+    @property
+    def value(self) -> str:
+        """Return the plain serialized identifier, matching ``StrEnum`` APIs."""
+
+        return str(self)
+
+
+Modality.TEXT = Modality("text")
+Modality.IMAGE = Modality("image")
+Modality.AUDIO = Modality("audio")
+Modality.VIDEO = Modality("video")
+BUILTIN_MODALITIES = frozenset(
+    {Modality.TEXT, Modality.IMAGE, Modality.AUDIO, Modality.VIDEO}
+)
 
 
 class EncoderMetadata(eqx.Module):
@@ -82,6 +115,75 @@ class LayerwiseEncoder(Encoder, Protocol):
         route: Route,
         key: PRNGKeyArray | None = None,
     ) -> Float[Array, "layer batch representation"]: ...
+
+
+_ModelT = TypeVar("_ModelT", bound=eqx.Module)
+_ProcessorModelT = TypeVar(
+    "_ProcessorModelT",
+    bound=eqx.Module,
+    contravariant=True,
+)
+
+
+@runtime_checkable
+class Processor(Protocol[_ProcessorModelT]):
+    """Host-side artifact processor distributed with one model implementation."""
+
+    def batch(
+        self,
+        model: _ProcessorModelT,
+        artifacts: Sequence[Any],
+        *,
+        route: Route = Route.GENERIC,
+        seed: int | None = None,
+    ) -> Any:
+        """Convert raw artifact trees into one native fixed-shape model batch."""
+
+        ...
+
+
+@dataclass(frozen=True, slots=True)
+class ModelBundle(Generic[_ModelT]):
+    """A native Equinox model and its host-side artifact processor.
+
+    This mirrors the useful Hugging Face model/processor association without
+    putting Python preprocessing objects inside a JAX PyTree. ``model`` alone
+    enters the train state and compiled program; ``processor`` stays in the
+    Grain data path::
+
+        bundle = ModelBundle(model=model, processor=processor)
+        model_inputs = bundle.batch(samples, route=Route.QUERY, seed=17)
+        representations = encode(bundle.model, model_inputs, route=Route.QUERY)
+    """
+
+    model: _ModelT
+    processor: Processor[_ModelT] | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.model, eqx.Module):
+            raise TypeError("model bundles require an Equinox module tree")
+        if self.processor is not None and not callable(
+            getattr(self.processor, "batch", None)
+        ):
+            raise TypeError("model bundle processors must implement batch")
+
+    def batch(
+        self,
+        artifacts: Sequence[Any],
+        *,
+        route: Route = Route.GENERIC,
+        seed: int | None = None,
+    ) -> Any:
+        """Apply the bundled processor without exposing model-specific wiring."""
+
+        if self.processor is None:
+            raise ValueError("this model bundle has no raw-artifact processor")
+        return self.processor.batch(
+            self.model,
+            artifacts,
+            route=Route(route),
+            seed=seed,
+        )
 
 
 def _metadata(model: Any) -> EncoderMetadata:

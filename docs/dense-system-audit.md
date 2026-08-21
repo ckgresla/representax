@@ -26,7 +26,7 @@ Hub publication. Those are the concrete upstream capabilities assessed below.
 | Dense loss functions | Complete | Preserve the task-native registry and paired numerical gates. |
 | BERT/MPNet sentence module chains | Partial | Extend native model coverage; keep static, reviewed module graphs. |
 | String-to-embedding inference | Partial | Add typed query/document helpers, truncation, quantized outputs, token outputs, and multi-device execution. |
-| Local and Hugging Face data artifacts | Partial | Keep Grain recipes; add streaming/cloud resolvers and a first-class preprocessing cache contract. |
+| Local and Hugging Face data artifacts | Partial | Keep Grain distributions; add streaming/cloud resolvers and a first-class preprocessing cache contract. |
 | Prompt-aware collation | Partial | Move prompt and route selection into reproducible mapper/collator configuration shared by training and inference. |
 | Batch sampling | Missing | Add default, no-duplicate, hashed no-duplicate, and group-by-label policies. |
 | Multi-source sampling | Partial | Grain provides weighted mixing; add explicit proportional and round-robin policies plus per-source task/loss routing. |

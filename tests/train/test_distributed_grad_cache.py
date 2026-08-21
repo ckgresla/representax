@@ -634,7 +634,7 @@ def test_job_config_builds_and_runs_sharding_plan(
     runtime = build_job_runtime(
         job,
         resolvers={"memory": resolve_toy_retrieval},
-        mappers={job.data.recipe.sources[0].mapper: identity},
+        mappers={job.data.distribution.sources[0].mapper: identity},
     )
 
     batch = runtime.place_batch(next(iter(runtime.batches)))

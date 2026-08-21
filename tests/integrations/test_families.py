@@ -33,7 +33,7 @@ def test_modernvbert_family_is_semantic_and_verified():
     assert family is get_model_type_family("modernvbert")
     assert MODEL_TYPE_TO_FAMILY["modernvbert"] is family
     assert family.support is FamilySupport.VERIFIED
-    assert family.modalities == (Modality.TEXT, Modality.IMAGE, Modality.FUSED)
+    assert family.modalities == (Modality.TEXT, Modality.IMAGE)
     assert "rotary_attention" in family.components
     assert "siglip_vision" in family.components
     assert family.checkpoint_layout is CheckpointLayout.HUGGING_FACE_SAFETENSORS
