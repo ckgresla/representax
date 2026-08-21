@@ -1,6 +1,6 @@
 """Domain configuration and parameter-role tests."""
 
-from typing import Any
+from typing import Any, cast
 
 import jax
 import pytest
@@ -20,6 +20,7 @@ from representax.config import (
     OptimizationConfig,
     ParameterRole,
     PartitionRuleConfig,
+    PrecisionConfig,
     TrainingConfig,
 )
 from representax.data import mix, source
@@ -81,6 +82,25 @@ def test_training_config_rejects_unknown_activation_rematerialization_policy():
         match="Input should be 'none', 'selective' or 'full'",
     ):
         _training(activation_rematerialization="automatic")
+
+
+def test_mixed_precision_config_round_trips_as_execution_policy():
+    job = _job(training=_training(precision=PrecisionConfig.bfloat16_mixed()))
+
+    restored = JobConfig.model_validate_json(job.model_dump_json())
+    execution = cast(dict[str, Any], restored.parameters(ParameterRole.EXECUTION))
+
+    assert restored.training.precision == PrecisionConfig(
+        compute_dtype="bfloat16",
+        activation_dtype="bfloat16",
+    )
+    assert execution["training"]["precision"] == {
+        "parameter_dtype": "float32",
+        "compute_dtype": "bfloat16",
+        "activation_dtype": "bfloat16",
+        "accumulation_dtype": "float32",
+        "loss_dtype": "float32",
+    }
 
 
 def test_mesh_config_preserves_logical_axis_names_for_sharding():

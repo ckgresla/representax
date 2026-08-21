@@ -1,0 +1,87 @@
+#+title: ModernVBERT mixed-precision acceptance — 2026-08-20
+
+* Result
+
+Representax's BF16 mixed policy preserves FP32 master parameters, gradients,
+Optax state, representation accumulation, and task losses while using BF16
+model computation, activations, and FSDP parameter communication.  On two RTX
+4090s, it nearly doubles matched steady-state ModernVBERT training throughput
+for both compiler-managed DDP and FSDP.
+
+| strategy | compute | compile (s) | median step (s) | examples/s | peak live JAX / device | executable temporary | final loss |
+|----------+---------+-------------+-----------------+------------+------------------------+----------------------+------------|
+| DDP      | FP32    |      19.697 |           0.448 |      17.84 |              3.871 GiB |            1.798 GiB |   1.818959 |
+| DDP      | BF16    |      30.085 |           0.223 |      35.91 |              3.872 GiB |            1.799 GiB |   1.862296 |
+| FSDP     | FP32    |      24.118 |           1.587 |       5.04 |              2.122 GiB |            1.086 GiB |   1.818622 |
+| FSDP     | BF16    |      26.121 |           0.806 |       9.93 |              2.052 GiB |            1.015 GiB |   1.862808 |
+
+BF16 improves DDP throughput by =2.013x= and FSDP throughput by =1.970x=.
+FSDP BF16 reduces peak live JAX memory by =3.31%= and executable temporary
+memory by =6.46%=.  DDP live memory is unchanged because persistent FP32 master
+parameters and Adam moments dominate this point.  NVML process peaks remain
+approximately 4.9 GiB because CUDA runtime context and allocator pools obscure
+the live-buffer difference; the compiled analysis and JAX live allocator peak
+are the relevant measurements.
+
+* Matched contract
+
+- checkpoint: =ModernVBERT/modernvbert-embed= snapshot
+  =da507113c3fdbc2e49d39c4b0148025c6bd008f9=
+- hardware: two NVIDIA GeForce RTX 4090 GPUs, compute capability 8.9
+- global batch: 8 query/document pairs
+- sequence length: 512
+- exact GradCache representation microbatch: 2
+- optimizer: AdamW, learning rate =1e-5=
+- activation rematerialization: full
+- buffer donation: enabled
+- seed: 1729
+- timing: one retained warmup update followed by three synchronized measured
+  updates; the table reports the median measured step
+- allocator: =XLA_PYTHON_CLIENT_PREALLOCATE=false=
+
+The measured loss trajectories are:
+
+- DDP FP32: =2.038357, 1.943164, 1.818959=
+- FSDP FP32: =2.038355, 1.943153, 1.818622=
+- DDP BF16: =2.046249, 1.966795, 1.862296=
+- FSDP BF16: =2.045780, 1.965065, 1.862808=
+
+DDP and FSDP follow the same trajectory within each precision.  BF16 is not
+expected to be bitwise equivalent to FP32; focused direct, accumulated, and
+exact-GradCache tests instead enforce bounded forward and gradient error while
+requiring all persistent training state and sensitive reductions to remain
+FP32.
+
+* Compiled-program evidence
+
+The optimized GPU HLO contains BF16 FSDP parameter gathers, for example one
+packed =all-gather-start= carrying matrices including =bf16[2304,768]= and
+=bf16[768,768]=.  Corresponding activation and parameter-gradient
+=reduce-scatter= payloads use BF16 on the wire, while the result feeding the
+optimizer's FP32 master state is converted or accumulated in FP32.  Small
+integer masks and task-global FP32 representation collectives intentionally
+retain their semantic dtypes.
+
+The compiler-generated collective counts are:
+
+| strategy | compute | all-gather | all-reduce | all-to-all | reduce-scatter |
+|----------+---------+------------+------------+------------+----------------|
+| DDP      | FP32    |          6 |          7 |          2 |              0 |
+| DDP      | BF16    |          6 |          7 |          2 |              0 |
+| FSDP     | FP32    |         15 |          4 |          0 |              9 |
+| FSDP     | BF16    |         15 |          8 |          0 |              7 |
+
+Counts alone are not a performance contract: dtype, payload shape, fusion, and
+scheduling determine communication cost.  The HLO inspection establishes the
+requested BF16 payload boundary; physical synchronized timing establishes its
+effect.
+
+* Raw evidence
+
+Raw JSON, portable StableHLO, and optimized GPU HLO are retained at
+=/raid/representax/benchmarks/mixed-precision-20260820/=.  JSON SHA-256 hashes:
+
+- =ddp-fp32.json=: =01f4bf3fe6140b5c10ff537f738b4f1bd41414f11b030e887ba88d55475b6f8b=
+- =ddp-bf16.json=: =b075ba9e0b9ba0d3e2d76a4258e916ae024a36a1cb589f744b82b2f7282660a7=
+- =fsdp-fp32.json=: =5347ef10c79123095c4c5271912d1bbfd546344632de34117f0d345dbc62c23e=
+- =fsdp-bf16.json=: =ef987a1809256fbff72adc99754963ca1fc5b22680067241b64210551e43b535=

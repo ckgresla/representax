@@ -11,6 +11,7 @@ import jax.numpy as jnp
 from jaxtyping import Array, Float, Int, PRNGKeyArray
 
 from representax.core import Encoder
+from representax.precision import compute_parameter
 
 from .components import Linear
 
@@ -155,7 +156,7 @@ class TokenReconstructionDecoder(eqx.Module):
         key: PRNGKeyArray | None = None,
     ) -> Float[Array, "batch target vocabulary"]:
         del key
-        tokens = self.token_embeddings[input_ids]
+        tokens = compute_parameter(self.token_embeddings)[input_ids]
         memory = jnp.mean(encoder_memory, axis=1)
         hidden = jnp.tanh(tokens + self.memory_projection(memory)[:, None, :])
         return self.output_projection(hidden)

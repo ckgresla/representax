@@ -1,11 +1,15 @@
 """Compiled ModernVBERT training integration tests."""
 
+from typing import Any, cast
+
 import equinox as eqx
 import jax
 import jax.numpy as jnp
 import optax
 import pytest
 
+from representax.config import PrecisionConfig
+from representax.core import encode
 from representax.models.modernvbert import (
     ModernVBERTBatch,
     ModernVBERTConfig,
@@ -15,6 +19,7 @@ from representax.models.modernvbert import (
     ModernVBERTTextEncoder,
     ModernVBERTVisionConfig,
 )
+from representax.precision import precision_context, resolve_precision_policy
 from representax.tasks.retrieval import MNRTask, retrieval_batch
 from representax.train import (
     GradCache,
@@ -67,6 +72,48 @@ def test_modernvbert_runs_one_compiled_grad_cache_retrieval_update():
     assert int(result.state.step) == 1
     assert bool(result.metrics.numeric_finite)
     assert float(result.metrics.update_global_norm) > 0.0
+
+
+@pytest.mark.runtime
+def test_modernvbert_mixed_policy_overrides_fp32_inference_default():
+    config = ModernVBERTTextConfig(
+        vocab_size=19,
+        hidden_size=8,
+        intermediate_size=12,
+        num_hidden_layers=2,
+        num_attention_heads=2,
+        layer_types=("full_attention", "sliding_attention"),
+        local_attention=4,
+        full_attention_rope_theta=10_000.0,
+        sliding_attention_rope_theta=1_000.0,
+        norm_epsilon=1e-5,
+        max_position_embeddings=16,
+    )
+    model = ModernVBERTTextEncoder.init(
+        config,
+        key=jax.random.key(11),
+        compute_dtype=jnp.float32,
+    )
+    batch = ModernVBERTTextBatch(
+        input_ids=jnp.asarray([[1, 2, 3, 0], [4, 5, 6, 0]]),
+        attention_mask=jnp.asarray([[1, 1, 1, 0], [1, 1, 1, 0]]),
+    )
+    precision = resolve_precision_policy(PrecisionConfig.bfloat16_mixed())
+
+    @eqx.filter_jit
+    def compiled(candidate, inputs):
+        with precision_context(precision):
+            return encode(candidate, inputs)
+
+    stablehlo = cast(Any, compiled).lower(model, batch).as_text()
+    output = compiled(model, batch)
+
+    dot_lines = [
+        line for line in stablehlo.splitlines() if "stablehlo.dot_general" in line
+    ]
+    assert dot_lines
+    assert any("bf16" in line for line in dot_lines)
+    assert output.dtype == jnp.dtype(jnp.float32)
 
 
 @pytest.mark.distributed

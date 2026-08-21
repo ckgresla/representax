@@ -25,6 +25,7 @@ from representax.config import (
 )
 from representax.data import ArtifactResolver, build_grain_iterator
 from representax.evaluation import EmbeddingSimilarityEvaluator, LossEvaluator
+from representax.precision import resolve_precision_policy
 from representax.tasks import build_task
 
 from .config import build_loss_execution
@@ -164,7 +165,8 @@ def build_job_runtime(
         job.training.grad_cache,
         mega_batch_mining=job.training.mega_batch_mining,
     )
-    state = init_train_state(model, optimizer)
+    precision = resolve_precision_policy(job.training.precision)
+    state = init_train_state(model, optimizer, precision=precision)
     mesh_size = job.training.mesh.device_count
     if mesh_size > len(jax.devices()):
         raise ValueError(
@@ -250,6 +252,7 @@ def build_job_runtime(
         execution=execution,
         donate_state=job.training.donate_buffers,
         gradient_accumulation_steps=job.training.batch.gradient_accumulation_steps,
+        precision=precision,
     )
     batches = build_batches(
         job.data,
@@ -276,7 +279,7 @@ def build_job_runtime(
             raise ValueError(f"unsupported evaluator kind {config.kind!r}")
 
         evaluation_runners = tuple(
-            EvaluationRunner(build_evaluator(config))
+            EvaluationRunner(build_evaluator(config), precision=precision)
             for config in job.evaluation.evaluators
         )
 

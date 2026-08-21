@@ -26,6 +26,11 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument("--stablehlo-output", type=Path)
     parser.add_argument("--compiled-hlo-output", type=Path)
     parser.add_argument("--strategy", choices=("ddp", "fsdp"), required=True)
+    parser.add_argument(
+        "--precision",
+        choices=("float32", "bfloat16"),
+        default="float32",
+    )
     parser.add_argument("--axis-type", choices=("auto", "explicit"), default="auto")
     parser.add_argument("--world-size", type=int, default=2)
     parser.add_argument("--physical-device-ids", default="4,5")
@@ -256,12 +261,14 @@ def main(arguments: argparse.Namespace, progress: dict[str, Any]) -> None:
     import optax
     from jax.sharding import AxisType
 
+    from representax.config import PrecisionConfig
     from representax.models.modernvbert import (
         ModernVBERTTextBatch,
         ModernVBERTTextCheckpointAdapter,
         ModernVBERTTextConfig,
         ModernVBERTTextEncoder,
     )
+    from representax.precision import resolve_precision_policy
     from representax.tasks.retrieval import MNRTask, retrieval_batch
     from representax.train import (
         GradCache,
@@ -280,6 +287,12 @@ def main(arguments: argparse.Namespace, progress: dict[str, Any]) -> None:
     shape = (arguments.global_batch_size, arguments.sequence_length)
     cpu = jax.local_devices(backend="cpu")[0]
     progress["phase"] = "initialization"
+    precision_config = (
+        PrecisionConfig()
+        if arguments.precision == "float32"
+        else PrecisionConfig.bfloat16_mixed()
+    )
+    precision = resolve_precision_policy(precision_config)
     model_init_started = time.perf_counter()
     with jax.default_device(cpu):
         if arguments.checkpoint is not None:
@@ -287,8 +300,8 @@ def main(arguments: argparse.Namespace, progress: dict[str, Any]) -> None:
             text_config = ModernVBERTTextConfig.from_hf_config(raw_config)
             model = ModernVBERTTextCheckpointAdapter().load(
                 arguments.checkpoint,
-                parameter_dtype=jnp.float32,
-                compute_dtype=jnp.float32,
+                parameter_dtype=precision.parameter_dtype,
+                compute_dtype=precision.compute_dtype,
                 rematerialization="full",
             )
         else:
@@ -300,13 +313,13 @@ def main(arguments: argparse.Namespace, progress: dict[str, Any]) -> None:
             model = ModernVBERTTextEncoder.init(
                 text_config,
                 key=jax.random.key(arguments.seed),
-                parameter_dtype=jnp.float32,
-                compute_dtype=jnp.float32,
+                parameter_dtype=precision.parameter_dtype,
+                compute_dtype=precision.compute_dtype,
                 rematerialization="full",
                 model_id=f"representax/{arguments.model_config.stem}",
             )
         optimizer = optax.adamw(learning_rate=1e-5, weight_decay=0.0)
-        state = init_train_state(model, optimizer)
+        state = init_train_state(model, optimizer, precision=precision)
         input_ids = generator.integers(
             1,
             text_config.vocab_size,
@@ -371,6 +384,7 @@ def main(arguments: argparse.Namespace, progress: dict[str, Any]) -> None:
             loss_row_chunk_size=arguments.chunk_size,
         ),
         donate_state=arguments.donate_state,
+        precision=precision,
     )
     sampler = _NvmlSampler(physical_device_ids)
     sampler.start()
@@ -445,6 +459,7 @@ def main(arguments: argparse.Namespace, progress: dict[str, Any]) -> None:
         "schema_version": "representax-sharding-profile-v4",
         "status": "completed",
         "strategy": arguments.strategy,
+        "precision": precision_config.model_dump(mode="json"),
         "axis_type": arguments.axis_type,
         "checkpoint": (
             None if arguments.checkpoint is None else str(arguments.checkpoint)
@@ -548,6 +563,7 @@ def main(arguments: argparse.Namespace, progress: dict[str, Any]) -> None:
                 key: artifact[key]
                 for key in (
                     "strategy",
+                    "precision",
                     "world_size",
                     "parameter_count",
                     "global_batch_size",
@@ -589,6 +605,7 @@ if __name__ == "__main__":
             "schema_version": "representax-sharding-profile-v4",
             "status": category,
             "strategy": parsed_arguments.strategy,
+            "precision": parsed_arguments.precision,
             "world_size": parsed_arguments.world_size,
             "seed": parsed_arguments.seed,
             "physical_device_ids": parsed_arguments.physical_device_ids,

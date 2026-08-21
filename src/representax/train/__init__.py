@@ -1,6 +1,7 @@
 """Generic training state and compiled update construction."""
 
 from representax.config import CheckpointConfig, LoggingConfig, MegaBatchMiningConfig
+from representax.precision import PrecisionPolicy, resolve_precision_policy
 
 from .checkpoint import (
     CheckpointError,
@@ -65,6 +66,7 @@ __all__ = [
     "LossExecution",
     "MegaBatchMining",
     "MegaBatchMiningConfig",
+    "PrecisionPolicy",
     "MetricRecord",
     "Reporter",
     "RestoredTrainingState",
@@ -92,6 +94,7 @@ __all__ = [
     "run_training",
     "run_job",
     "resolve_target",
+    "resolve_precision_policy",
     "scientific_fingerprint",
     "training_checkpointables",
     "tree_all_finite",

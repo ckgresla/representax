@@ -15,6 +15,7 @@ from representax.core.sharding import (
     replicate,
 )
 from representax.planning import RematerializationPolicy
+from representax.precision import activation_inputs, compute_parameter
 
 AttentionImplementation = Literal["xla", "cudnn"]
 Activation = Literal["gelu", "gelu_new", "relu", "silu"]
@@ -51,7 +52,7 @@ def embedding_lookup(
 
 
 class Linear(eqx.Module):
-    """Batched linear projection with Hugging Face weight orientation."""
+    """Batched linear projection."""
 
     weight: Float[Array, "output input"]
     bias: Float[Array, " output"] | None = None
@@ -77,14 +78,15 @@ class Linear(eqx.Module):
         self,
         value: Float[Array, "*batch input"],
     ) -> Float[Array, "*batch output"]:
-        weight = replicate(self.weight)
+        value = activation_inputs(value)
+        weight = replicate(compute_parameter(self.weight))
         output = jnp.matmul(
             value,
             weight.T,
             out_sharding=activation_out_sharding(value.ndim),
         )
         if self.bias is not None:
-            output = output + replicate(self.bias)
+            output = output + replicate(compute_parameter(self.bias))
         return constrain_activation(output)
 
 

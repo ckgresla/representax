@@ -1,7 +1,7 @@
 """Representax: task-general representation learning in JAX."""
 
 from . import data, evaluation, integrations, models, planning, tasks, train
-from .config import JobConfig
+from .config import JobConfig, PrecisionConfig
 from .core import (
     BoundEncoder,
     Encoder,
@@ -16,6 +16,7 @@ from .core import (
 )
 from .export import InferenceBundle, export_inference_bundle, load_inference_bundle
 from .inference import TextEmbeddingModel, embed
+from .precision import PrecisionPolicy
 
 __all__ = [
     "BoundEncoder",
@@ -23,6 +24,8 @@ __all__ = [
     "EncoderMetadata",
     "LossOutput",
     "Modality",
+    "PrecisionConfig",
+    "PrecisionPolicy",
     "Route",
     "JobConfig",
     "InferenceBundle",

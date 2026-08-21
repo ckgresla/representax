@@ -9,6 +9,12 @@ import equinox as eqx
 import jax.numpy as jnp
 from jaxtyping import Array, Float, PRNGKeyArray
 
+from representax.precision import (
+    activation_inputs,
+    active_model_for_compute,
+    objective_output,
+)
+
 
 class Route(StrEnum):
     """Semantic route through a representation model."""
@@ -102,7 +108,10 @@ def encode(
     route = Route(route)
     if route not in metadata.routes:
         raise ValueError(f"{metadata.model_id} does not support route {route.value!r}")
-    result = jnp.asarray(model.encode(inputs, route=route, key=key))
+    compute_model = active_model_for_compute(model)
+    result = jnp.asarray(
+        compute_model.encode(activation_inputs(inputs), route=route, key=key)
+    )
     if result.ndim != 2:
         raise ValueError("encoder output must have shape [batch, dimension]")
     if not jnp.issubdtype(result.dtype, jnp.floating):
@@ -112,7 +121,7 @@ def encode(
             f"{metadata.model_id} declares output_dimension="
             f"{metadata.output_dimension} but returned {result.shape[1]}"
         )
-    return result
+    return objective_output(result)
 
 
 def encode_layers(
@@ -128,12 +137,13 @@ def encode_layers(
     route = Route(route)
     if route not in metadata.routes:
         raise ValueError(f"{metadata.model_id} does not support route {route.value!r}")
-    layerwise = getattr(model, "encode_layers", None)
+    compute_model = active_model_for_compute(model)
+    layerwise = getattr(compute_model, "encode_layers", None)
     if not callable(layerwise):
         raise TypeError(
             f"{metadata.model_id} does not expose layerwise representations"
         )
-    result = jnp.asarray(layerwise(inputs, route=route, key=key))
+    result = jnp.asarray(layerwise(activation_inputs(inputs), route=route, key=key))
     if result.ndim != 3:
         raise ValueError(
             "layerwise encoder output must have shape [layer, batch, dimension]"
@@ -147,7 +157,7 @@ def encode_layers(
             f"{metadata.model_id} declares output_dimension="
             f"{metadata.output_dimension} but returned {result.shape[2]}"
         )
-    return result
+    return objective_output(result)
 
 
 class BoundEncoder(eqx.Module):

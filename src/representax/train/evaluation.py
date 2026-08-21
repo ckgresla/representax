@@ -14,6 +14,11 @@ import jax
 
 from representax.core import Task
 from representax.evaluation import Evaluator, LossEvaluator
+from representax.precision import (
+    FP32_POLICY,
+    PrecisionPolicy,
+    precision_context,
+)
 
 
 @dataclass(frozen=True)
@@ -57,14 +62,20 @@ def _compilation_signature(tree: Any) -> str:
 class EvaluationRunner:
     """Run one typed evaluator and reuse its JAX executable across invocations."""
 
-    def __init__(self, evaluator: Evaluator[Any, Any]) -> None:
+    def __init__(
+        self,
+        evaluator: Evaluator[Any, Any],
+        *,
+        precision: PrecisionPolicy = FP32_POLICY,
+    ) -> None:
         self.name = evaluator.name
         self._seen_signatures: set[str] = set()
         self._evaluator = evaluator
 
         @eqx.filter_jit
         def compiled(model: eqx.Module, batch: Any, key: Any) -> Any:
-            return evaluator.evaluate_batch(model, batch, key=key)
+            with precision_context(precision):
+                return evaluator.evaluate_batch(model, batch, key=key)
 
         self._compiled = compiled
 
@@ -129,11 +140,17 @@ def evaluate(
     model: eqx.Module,
     task: Task[Any],
     batches: Iterable[Any],
+    *,
+    precision: PrecisionPolicy = FP32_POLICY,
     **kwargs: Any,
 ) -> EvaluationResult:
     """Run the same loss evaluator used by the training lifecycle offline."""
 
-    return EvaluationRunner(LossEvaluator(task)).run(model, batches, **kwargs)
+    return EvaluationRunner(LossEvaluator(task), precision=precision).run(
+        model,
+        batches,
+        **kwargs,
+    )
 
 
 __all__ = ["EvaluationResult", "EvaluationRunner", "evaluate"]

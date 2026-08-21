@@ -12,6 +12,14 @@ import optax
 from jaxtyping import Array, Bool, Float, PRNGKeyArray
 
 from representax.core import Task
+from representax.precision import (
+    FP32_POLICY,
+    PrecisionPolicy,
+    accumulated_values,
+    loss_value,
+    precision_context,
+    prepare_master_model,
+)
 
 from .execution import (
     _LOCAL_EXECUTION_CONTEXT,
@@ -55,9 +63,12 @@ def tree_all_finite(*trees: Any) -> Bool[Array, ""]:
 def init_train_state(
     model: eqx.Module,
     optimizer: optax.GradientTransformationExtraArgs,
+    *,
+    precision: PrecisionPolicy = FP32_POLICY,
 ) -> TrainState:
-    """Initialize Optax against only trainable inexact model leaves."""
+    """Initialize FP32 master parameters and matching Optax state."""
 
+    model = prepare_master_model(model, precision)
     parameters = eqx.filter(model, eqx.is_inexact_array)
     return TrainState(
         model=model,
@@ -112,6 +123,7 @@ def _build_train_step_body(
     execution: LossExecution | None = None,
     context: ExecutionContext = _LOCAL_EXECUTION_CONTEXT,
     gradient_accumulation_steps: int = 1,
+    precision: PrecisionPolicy = FP32_POLICY,
 ) -> TrainStep:
     if max_grad_norm is not None and max_grad_norm <= 0:
         raise ValueError("max_grad_norm must be positive or None")
@@ -159,14 +171,15 @@ def _build_train_step_body(
         batch: Any,
         key: PRNGKeyArray | None,
     ) -> tuple[Float[Array, ""], Any]:
-        output = resolved_execution.evaluate(
-            task,
-            model,
-            batch,
-            key=key,
-            context=context,
-        )
-        return output.loss, output.metrics
+        with precision_context(precision):
+            output = resolved_execution.evaluate(
+                task,
+                model,
+                batch,
+                key=key,
+                context=context,
+            )
+            return loss_value(output.loss), accumulated_values(output.metrics)
 
     def train_step_body(
         state: TrainState,
@@ -344,6 +357,7 @@ def build_train_step(
     execution: LossExecution | None = None,
     donate_state: bool = False,
     gradient_accumulation_steps: int = 1,
+    precision: PrecisionPolicy = FP32_POLICY,
 ) -> TrainStep:
     """Build one compiled task-generic optimizer update.
 
@@ -374,6 +388,7 @@ def build_train_step(
             max_grad_norm=max_grad_norm,
             execution=Direct() if execution is None else execution,
             donate_state=donate_state,
+            precision=precision,
         )
 
     train_step_body = _build_train_step_body(
@@ -382,6 +397,7 @@ def build_train_step(
         max_grad_norm=max_grad_norm,
         execution=execution,
         gradient_accumulation_steps=gradient_accumulation_steps,
+        precision=precision,
     )
     donation = "all-except-first" if donate_state else "none"
 

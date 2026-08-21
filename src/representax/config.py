@@ -32,6 +32,7 @@ from .data.recipe import MixtureRecipe
 from .tasks.config import LossConfig, LossModifierConfig, TaskConfig
 
 RematerializationPolicy = Literal["none", "selective", "full"]
+PrecisionDType = Literal["float32", "bfloat16"]
 MetricMode = Literal["min", "max"]
 ExportSelection = Literal["final", "best"]
 JsonScalar = str | int | float | bool | None
@@ -371,6 +372,43 @@ class MegaBatchMiningConfig(FrozenConfig):
         return self.loss_row_chunk_size or self.micro_batch_size
 
 
+class PrecisionConfig(FrozenConfig):
+    """Serializable execution dtypes at each numerical boundary."""
+
+    parameter_dtype: Literal["float32"] = Field(
+        default="float32",
+        description="Persistent model and checkpoint dtype.",
+    )
+    compute_dtype: PrecisionDType = Field(
+        default="float32",
+        description="Transient parameter view used by the forward program.",
+    )
+    activation_dtype: PrecisionDType = Field(
+        default="float32",
+        description="Floating model-input and hidden-activation dtype.",
+    )
+    accumulation_dtype: Literal["float32"] = Field(
+        default="float32",
+        description="Representation, gradient, and metric reduction dtype.",
+    )
+    loss_dtype: Literal["float32"] = Field(
+        default="float32",
+        description="Sensitive objective and scalar-loss dtype.",
+    )
+
+    @classmethod
+    def bfloat16_mixed(cls) -> Self:
+        """Conventional BF16 compute with FP32 master and objective state."""
+
+        return cls(compute_dtype="bfloat16", activation_dtype="bfloat16")
+
+    @property
+    def communication_dtype(self) -> PrecisionDType:
+        """FSDP communicates the transient compute view, not FP32 masters."""
+
+        return self.compute_dtype
+
+
 class TrainingConfig(FrozenConfig):
     """Scientific and efficiency parameters governing the training process."""
 
@@ -382,6 +420,7 @@ class TrainingConfig(FrozenConfig):
     batch: Execution[BatchConfig]
     grad_cache: Execution[GradCacheConfig | None] = None
     mega_batch_mining: Execution[MegaBatchMiningConfig | None] = None
+    precision: Execution[PrecisionConfig] = PrecisionConfig()
     activation_rematerialization: Execution[RematerializationPolicy] = Field(
         default="full",
         description=(

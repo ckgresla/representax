@@ -33,6 +33,13 @@ optional GradCache, activation rematerialization, and donation. Input threading
 and prefetch live in each `DataConfig`, because training and validation sources
 may need different host-side execution plans.
 
+`training.precision` explicitly separates FP32 master/checkpoint/Optax state
+from transient compute and activation dtypes. The BF16 mixed preset restores
+representations, reductions, gradients, losses, and metrics to FP32. Training
+and validation consume the same policy. See the
+[mixed-precision contract](precision.md) for model-use boundaries, GradCache,
+FSDP communication, and numerical acceptance.
+
 Scientific and execution are field roles rather than parallel configuration
 trees. `Scientific[T]` and `Execution[T]` metadata can mark one value or a whole
 nested config. Generic projection code derives the scientific fingerprint and

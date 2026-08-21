@@ -24,10 +24,12 @@ from representax.config import (
     JobConfig,
     ModelConfig,
     OptimizationConfig,
+    PrecisionConfig,
     TrainingConfig,
 )
 from representax.core import Encoder, Route, encode
 from representax.data import mix, source
+from representax.precision import resolve_precision_policy
 from representax.tasks import build_task
 from representax.tasks.pairwise import (
     CosineRegressionConfig,
@@ -124,6 +126,7 @@ def test_run_job_trains_evaluates_selects_and_exports_from_disk(tmp_path):
                 micro_batch_size=2,
                 gradient_accumulation_steps=2,
             ),
+            precision=PrecisionConfig.bfloat16_mixed(),
         ),
         checkpointing=CheckpointConfig(every=1, keep=2, asynchronous=True),
         evaluation=EvaluationConfig(
@@ -168,6 +171,7 @@ def test_run_job_trains_evaluates_selects_and_exports_from_disk(tmp_path):
         model,
         build_task(job.task, job.loss),
         build_batches(job.evaluation.data, batch_size=4),
+        precision=resolve_precision_policy(job.training.precision),
     )
     np.testing.assert_allclose(
         offline.metrics["valid/loss"],

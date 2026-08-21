@@ -9,6 +9,8 @@ import equinox as eqx
 import jax.numpy as jnp
 from jaxtyping import Array, Float, PRNGKeyArray
 
+from representax.precision import accumulated_values, loss_value
+
 ModelT = TypeVar("ModelT")
 
 EncodeFunction = Callable[..., Float[Array, "*leading representation"]]
@@ -74,4 +76,7 @@ def evaluate_loss(
         raise ValueError("task loss must be scalar")
     if not jnp.issubdtype(loss.dtype, jnp.floating):
         raise TypeError("task loss must have a floating dtype")
-    return output
+    return LossOutput(
+        loss=loss_value(loss),
+        metrics=accumulated_values(output.metrics),
+    )

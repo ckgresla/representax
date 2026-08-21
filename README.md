@@ -29,6 +29,7 @@ The project is alpha. The current slice provides:
   similarity metrics matching Sentence Transformers 5.6.1;
 - lazy Grain recipes with built-in Hugging Face and local artifact resolvers;
 - validated domain configs with annotated scientific and execution parameters; and
+- explicit FP32 and BF16-mixed policies with FP32 master/Optax state; and
 - explicit unit, runtime, parity, distributed, and performance test lanes.
 
 ## Principles
@@ -383,6 +384,7 @@ from representax.config import (
     LoggingConfig,
     ModelConfig,
     OptimizationConfig,
+    PrecisionConfig,
     TrainingConfig,
 )
 from representax.data import mix, source
@@ -415,6 +417,7 @@ job = JobConfig(
         max_steps=10_000,
         seed=17,
         batch=BatchConfig(micro_batch_size=32),
+        precision=PrecisionConfig.bfloat16_mixed(),
     ),
     logging=LoggingConfig(console_every=100),
     checkpointing=CheckpointConfig(every=1_000, keep=3),
@@ -434,6 +437,12 @@ task and loss modifiers, Optax schedule/state, Grain sources, compiled execution
 strategy, evaluator cache, Orbax lifecycle, and selected inference artifact.
 The lower-level builders and `run_training` remain public for research programs
 that need to assemble those pieces directly.
+
+Mixed precision keeps parameters, checkpoints, Optax state, gradients, and
+objectives in FP32 while using transient BF16 parameter views and activations.
+The same policy applies to in-training validation and composes with direct,
+GradCache, DDP, FSDP, and custom-sharded execution. See the
+[precision contract](docs/precision.md).
 
 Named DDP and FSDP are configuration presets, not separate trainers. Explicit
 partition rules resolve through the same internal plan:

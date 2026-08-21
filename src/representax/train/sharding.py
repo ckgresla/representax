@@ -16,6 +16,7 @@ from jax.sharding import PartitionSpec as P
 
 from representax.core import Task
 from representax.core.sharding import activation_sharding
+from representax.precision import FP32_POLICY, PrecisionPolicy
 
 from .execution import ExecutionContext, LossExecution
 from .state import StepResult, TrainState
@@ -62,10 +63,10 @@ def fsdp_partition_spec(
         or np.prod(shape, dtype=np.int64) < minimum_elements
     ):
         return P()
-    candidates = sorted(range(len(shape)), key=shape.__getitem__, reverse=True)
-    selected = next(
-        (dimension for dimension in candidates if shape[dimension] % axis_size == 0),
-        None,
+    selected = max(
+        (dimension for dimension, size in enumerate(shape) if size % axis_size == 0),
+        key=shape.__getitem__,
+        default=None,
     )
     if selected is None:
         return P()
@@ -419,6 +420,7 @@ def _build_train_step_from_sharding_plan(
     max_grad_norm: float | None = 1.0,
     execution: LossExecution,
     donate_state: bool = False,
+    precision: PrecisionPolicy = FP32_POLICY,
 ) -> TrainStep:
     """Compile one ordinary task update from a resolved sharding plan.
 
@@ -433,6 +435,7 @@ def _build_train_step_from_sharding_plan(
         max_grad_norm=max_grad_norm,
         execution=execution,
         context=ExecutionContext(),
+        precision=precision,
     )
 
     def train_step_body(

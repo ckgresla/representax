@@ -139,11 +139,14 @@ def _candidate_scores(
     candidates = jnp.asarray(candidates, dtype=jnp.float32)
     if candidates.ndim != 3:
         raise ValueError("candidates must have shape [candidate, batch, dimension]")
-    scores = [
-        aligned_score_similarity(queries, candidate, similarity=similarity)
-        for candidate in candidates
-    ]
-    return jnp.stack(scores, axis=1)
+    candidate_major = jax.vmap(
+        lambda candidate: aligned_score_similarity(
+            queries,
+            candidate,
+            similarity=similarity,
+        )
+    )(candidates)
+    return candidate_major.T
 
 
 def margin_mse_loss_terms(

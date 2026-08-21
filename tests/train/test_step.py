@@ -7,7 +7,9 @@ import numpy as np
 import optax
 import pytest
 
+from representax.config import PrecisionConfig
 from representax.models import DenseEncoder
+from representax.precision import resolve_precision_policy
 from representax.tasks.pairwise import CosineRegressionTask, pairwise_batch
 from representax.tasks.retrieval import MNRTask, retrieval_batch
 from representax.train import build_train_step, init_train_state
@@ -160,7 +162,7 @@ def test_gradient_accumulation_requires_divisible_array_batches():
 
 
 @pytest.mark.runtime
-def test_optimizer_update_preserves_mixed_precision_parameter_dtypes():
+def test_mixed_precision_update_preserves_fp32_master_state():
     model = DenseEncoder(2, 2, key=jax.random.key(41), normalize=False)
     model = jax.tree.map(
         lambda value: (
@@ -169,7 +171,8 @@ def test_optimizer_update_preserves_mixed_precision_parameter_dtypes():
         model,
     )
     optimizer = optax.adamw(learning_rate=1e-3, weight_decay=0.0)
-    state = init_train_state(model, optimizer)
+    precision = resolve_precision_policy(PrecisionConfig.bfloat16_mixed())
+    state = init_train_state(model, optimizer, precision=precision)
     batch = pairwise_batch(
         left=jnp.asarray([[1.0, 0.0], [0.0, 1.0]], dtype=jnp.bfloat16),
         right=jnp.asarray([[0.9, 0.1], [0.1, 0.9]], dtype=jnp.bfloat16),
@@ -180,6 +183,7 @@ def test_optimizer_update_preserves_mixed_precision_parameter_dtypes():
         CosineRegressionTask(),
         optimizer,
         max_grad_norm=1.0,
+        precision=precision,
     )(state, batch, None)
 
     parameter_dtypes = {
@@ -187,4 +191,11 @@ def test_optimizer_update_preserves_mixed_precision_parameter_dtypes():
         for value in jax.tree.leaves(result.state.model)
         if eqx.is_inexact_array(value)
     }
-    assert parameter_dtypes == {jnp.dtype(jnp.bfloat16)}
+    assert parameter_dtypes == {jnp.dtype(jnp.float32)}
+    optimizer_dtypes = {
+        value.dtype
+        for value in jax.tree.leaves(result.state.optimizer_state)
+        if eqx.is_inexact_array(value)
+    }
+    assert optimizer_dtypes == {jnp.dtype(jnp.float32)}
+    assert result.metrics.loss.dtype == jnp.dtype(jnp.float32)

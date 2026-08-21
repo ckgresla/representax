@@ -27,6 +27,7 @@ from representax.models.components import (
     rematerialize,
 )
 from representax.planning import RematerializationPolicy
+from representax.precision import active_compute_dtype
 
 from .config import ModernVBERTTextConfig
 
@@ -621,7 +622,7 @@ class ModernVBERTTextEncoder(eqx.Module):
             raise TypeError("ModernVBERT text inputs must be ModernVBERTTextBatch")
         return self.tower(
             inputs,
-            compute_dtype=self.compute_dtype,
+            compute_dtype=active_compute_dtype(self.compute_dtype),
             attention_implementation=self.attention_implementation,
             rematerialization=self.rematerialization,
         )
@@ -639,7 +640,7 @@ class ModernVBERTTextEncoder(eqx.Module):
             raise TypeError("ModernVBERT text inputs must be ModernVBERTTextBatch")
         return self.tower.all_hidden_states(
             inputs,
-            compute_dtype=self.compute_dtype,
+            compute_dtype=active_compute_dtype(self.compute_dtype),
             attention_implementation=self.attention_implementation,
             rematerialization=self.rematerialization,
         )

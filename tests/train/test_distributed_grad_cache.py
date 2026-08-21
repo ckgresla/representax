@@ -21,10 +21,12 @@ from representax.config import (
     JobConfig,
     MeshConfig,
     PartitionRuleConfig,
+    PrecisionConfig,
     TrainingConfig,
 )
 from representax.core import Route, encode
 from representax.models import DenseEncoder
+from representax.precision import resolve_precision_policy
 from representax.tasks.modifiers import MatryoshkaTask
 from representax.tasks.retrieval import MNRTask, mnr_loss_terms, retrieval_batch
 from representax.train import (
@@ -62,6 +64,80 @@ def _assert_array_trees_close(
             rtol=rtol,
             atol=atol,
         )
+
+
+@pytest.mark.distributed
+@pytest.mark.parametrize("world_size", [2, 4])
+@pytest.mark.parametrize("strategy", ["ddp", "fsdp"])
+def test_mixed_precision_sharding_matches_global_update(
+    world_size: int,
+    strategy: str,
+):
+    devices = jax.devices()
+    if len(devices) < world_size:
+        pytest.skip(f"requires at least {world_size} JAX devices")
+
+    precision = resolve_precision_policy(PrecisionConfig.bfloat16_mixed())
+    model = DenseEncoder(4, 4, key=jax.random.key(51), normalize=False)
+    task = MNRTask(scale=7.0, symmetric=True)
+    optimizer = optax.adamw(learning_rate=1e-3, weight_decay=0.0)
+    state = init_train_state(model, optimizer, precision=precision)
+    batch = _global_batch()
+    execution = GradCache(
+        query_chunk_size=2,
+        document_chunk_size=2,
+        loss_row_chunk_size=2,
+    )
+    reference_step = build_train_step(
+        task,
+        optimizer,
+        execution=execution,
+        precision=precision,
+    )
+    mesh = jax.make_mesh(
+        (world_size,),
+        ("data",),
+        devices=devices[:world_size],
+    )
+    plan = (
+        ShardingPlan.ddp(state, optimizer, mesh, axis_name="data")
+        if strategy == "ddp"
+        else ShardingPlan.fsdp(
+            state,
+            optimizer,
+            mesh,
+            parameter_axis_name="data",
+            data_axis_name="data",
+            minimum_parameter_elements=1,
+        )
+    )
+    distributed_step = build_train_step(
+        task,
+        optimizer,
+        plan=plan,
+        execution=execution,
+        precision=precision,
+    )
+
+    reference = reference_step(state, batch, jax.random.key(53))
+    distributed = distributed_step(
+        plan.place_state(state),
+        plan.place_batch(batch),
+        jax.device_put(jax.random.key(53), plan.replicated_sharding),
+    )
+    jax.block_until_ready((reference, distributed))
+
+    _assert_array_trees_close(
+        distributed,
+        reference,
+        rtol=2e-2,
+        atol=2e-3,
+    )
+    assert {
+        leaf.dtype
+        for leaf in jax.tree.leaves(distributed.state)
+        if eqx.is_inexact_array(leaf)
+    } == {jnp.dtype(jnp.float32)}
 
 
 def _global_batch():

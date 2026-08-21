@@ -24,6 +24,7 @@ from representax.models.components import (
     rematerialize,
 )
 from representax.planning import RematerializationPolicy
+from representax.precision import active_compute_dtype
 
 from .config import MPNetConfig
 
@@ -555,7 +556,7 @@ class MPNetEncoder(eqx.Module):
         return self.tower(
             inputs,
             key=key,
-            compute_dtype=self.compute_dtype,
+            compute_dtype=active_compute_dtype(self.compute_dtype),
             attention_implementation=self.attention_implementation,
             rematerialization=self.rematerialization,
         )
@@ -573,7 +574,7 @@ class MPNetEncoder(eqx.Module):
         return self.tower.all_hidden_states(
             inputs,
             key=key,
-            compute_dtype=self.compute_dtype,
+            compute_dtype=active_compute_dtype(self.compute_dtype),
             attention_implementation=self.attention_implementation,
             rematerialization=self.rematerialization,
         )

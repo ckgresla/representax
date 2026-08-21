@@ -937,7 +937,43 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
    PCIe schedule and eliminating avoidable AllToAlls. Accept only against matched
    numerical trajectories, capacity, and physical throughput; do not reintroduce
    a model-specific hook, separate trainer, custom VJP, or manual collective path.
-** NEXT Make precision policy explicit at parameter, compute, activation, and loss boundaries :runtime:precision:
+** DONE Make precision policy explicit at parameter, compute, activation, and loss boundaries :runtime:precision:
+   Preserve FP32 master parameters, optimizer state, checkpoints, gradients,
+   representation reductions, and losses while allowing a transient BF16 model
+   view and BF16 activations.  FSDP communication follows the transient compute
+   dtype because conversion precedes the shared parameter-materialization
+   primitive; no model family or trainer gets a separate mixed-precision path.
+
+   Complete this slice only when direct, exact GradCache, decomposable gradient
+   accumulation, DDP, FSDP, checkpoint/resume, and export preserve their dtype
+   and numerical contracts.  Inspect lowered sharded programs for BF16
+   communication, record physical throughput and live memory on GPUs 4--5, and
+   keep FP32 parity tests at the highest matmul precision.  Audit compiled Python
+   loops at the same time: replace homogeneous numerical unrolling with =vmap=
+   where it improves the program, but retain construction loops, heterogeneous
+   task structure, and already-batched primitives.
+
+   Accepted with one policy shared by direct, exact GradCache, accumulated,
+   DDP, FSDP, evaluation, checkpoint, and export paths.  FP32 master parameters,
+   gradients, Optax state, representations, metrics, and losses surround a
+   transient BF16 compute/activation view.  On two physical RTX 4090s at global
+   batch 8 and sequence 512, BF16 improves ModernVBERT throughput from 17.84 to
+   35.91 examples/s under DDP and from 5.04 to 9.93 examples/s under FSDP.
+   Optimized GPU HLO proves the large FSDP parameter gathers and corresponding
+   reduce-scatters carry BF16 while optimizer-facing master gradients remain
+   FP32.  FSDP peak live JAX memory falls from 2.122 to 2.052 GiB; persistent
+   FP32 master and Adam state intentionally limit the memory reduction.
+   Distribution-distillation candidate scoring is now one =vmap=; remaining
+   numerical loops are heterogeneous, varying-shape, already scanned, or
+   construction-only.  Contract, trajectory, memory, throughput, collective,
+   and raw-artifact evidence is tracked in
+   =benchmarks/results/modernvbert-mixed-precision-20260820/README.org=.
+** NEXT Prove the physical capacity and throughput frontier for FSDP :runtime:sharding:performance:
+   Revisit the accepted frontier with explicit mixed precision: measure larger
+   sequences and batches plus a model whose replicated FP32 optimizer state does
+   not fit.  Compare DDP and FSDP only where both execute the same numerical
+   program, and record OOM boundaries, feasible work, tokens/s, live memory,
+   compilation, and compiled collective payloads on physical devices.
 ** DONE Support activation rematerialization as a measured execution choice :runtime:memory:
   Expose =none=, =selective=, and =full= as topology-dependent policies without
   changing model parameters or scientific semantics.  =selective= uses JAX's

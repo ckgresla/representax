@@ -20,6 +20,7 @@ from representax.models.components import (
     rematerialize,
 )
 from representax.planning import RematerializationPolicy
+from representax.precision import active_compute_dtype
 
 from .config import JinaV5TextConfig
 
@@ -240,7 +241,7 @@ class JinaV5TextEncoder(eqx.Module):
             raise TypeError("Jina v5 text inputs must be JinaV5TextBatch")
         return self.tower(
             inputs,
-            compute_dtype=self.compute_dtype,
+            compute_dtype=active_compute_dtype(self.compute_dtype),
             attention_implementation=self.attention_implementation,
             rematerialization=self.rematerialization,
         )

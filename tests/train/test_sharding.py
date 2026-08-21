@@ -19,6 +19,7 @@ from representax.tasks.retrieval import (
 )
 from representax.train import (
     ShardingPlan,
+    fsdp_partition_spec,
     init_train_state,
     parameter_specs_from_rules,
 )
@@ -83,6 +84,30 @@ def test_custom_parameter_rules_build_model_shaped_specs():
 
     assert specs.projection.weight == P("model", None)
     assert specs.projection.bias == P()
+
+
+def test_fsdp_selects_the_largest_divisible_parameter_dimension():
+    assert fsdp_partition_spec(
+        (15, 12, 8),
+        axis_name="model",
+        axis_size=4,
+        minimum_elements=1,
+    ) == P(None, "model", None)
+    assert fsdp_partition_spec(
+        (12, 12),
+        axis_name="model",
+        axis_size=4,
+        minimum_elements=1,
+    ) == P("model", None)
+    assert (
+        fsdp_partition_spec(
+            (12,),
+            axis_name="model",
+            axis_size=4,
+            minimum_elements=1,
+        )
+        == P()
+    )
 
 
 def test_fsdp_rejects_specs_that_do_not_match_parameter_divisibility():

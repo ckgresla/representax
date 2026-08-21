@@ -12,6 +12,7 @@ from jaxtyping import Array, Bool, Float, Int, PRNGKeyArray
 from representax.core import EncoderMetadata, Modality, Route
 from representax.models.components import Linear, l2_normalize, mean_pool
 from representax.planning import RematerializationPolicy
+from representax.precision import active_compute_dtype
 
 from .config import ModernVBERTConfig
 from .model import (
@@ -207,7 +208,7 @@ class ModernVBERTEncoder(eqx.Module):
         flat_pixels = pixel_values.reshape((-1, *pixel_values.shape[-3:]))
         hidden = self.vision(
             flat_pixels,
-            compute_dtype=self.compute_dtype,
+            compute_dtype=active_compute_dtype(self.compute_dtype),
             attention_implementation=self.attention_implementation,
         )
         features = self.connector(
