@@ -18,6 +18,7 @@ from representax.models.qwen3_vl import (
     Qwen3VLVisionConfig,
     batch_from_processor_output,
     last_valid_token_indices,
+    multimodal_position_ids,
     qwen3_vl_weight_names,
     vision_layout,
 )
@@ -260,5 +261,24 @@ def test_vision_layout_uses_qwen_merge_major_patch_order():
             [2, 3],
             [3, 2],
             [3, 3],
+        ],
+    )
+
+
+def test_video_mrope_splits_temporal_grid_into_frame_regions():
+    positions = multimodal_position_ids(
+        np.asarray([[1, 30, 30, 2, 30, 30, 3]], dtype=np.int32),
+        np.ones((1, 7), dtype=np.int32),
+        np.asarray([[0, 2, 2, 0, 2, 2, 0]], dtype=np.int32),
+        (),
+        ((2, 4, 2),),
+        spatial_merge_size=2,
+    )
+    np.testing.assert_array_equal(
+        positions[:, 0],
+        [
+            [0, 1, 1, 3, 4, 4, 6],
+            [0, 1, 2, 3, 4, 5, 6],
+            [0, 1, 1, 3, 4, 4, 6],
         ],
     )

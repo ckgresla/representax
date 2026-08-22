@@ -308,8 +308,11 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      parameter-gradient, and AdamW-update gates pass against Transformers 5.3;
      both real 2.13B-parameter artifacts load and execute on GPUs.  A real
      image/text FP32 forward reaches 0.9999998 hidden-state cosine and 0.9999999
-     embedding cosine against the upstream implementation.  BF16 and timing
-     measurements remain systems evidence, not a paper-level training claim.
+     embedding cosine against the upstream implementation.  A real four-frame
+     video processor probe matches all 41 upstream MRoPE token positions
+     exactly and executes through the full 2.13B BF16 model with finite output.
+     BF16 and timing measurements remain systems evidence, not a paper-level
+     training claim.
      The 8B capacity acceptance remains part of the FSDP benchmark frontier.
 **** NEXT Accept Qwen2.5-Omni embedding variants
      Use LCO Omni 3B as the first linked text/image/audio/video checkpoint, then

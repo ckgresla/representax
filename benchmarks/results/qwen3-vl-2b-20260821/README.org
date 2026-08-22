@@ -28,6 +28,16 @@ and four merged visual tokens.  Against the full upstream 2B FP32 forward, the
 native hidden states reach 0.9999998 cosine and 4.62e-4 relative L2; the final
 normalized embedding reaches 0.9999999 cosine and 5.06e-4 relative L2.
 
+A real four-frame 32-by-32 video processor probe produces a =video_grid_thw=
+of =(2, 2, 2)=, eight flattened patches, and two merged visual tokens.  Qwen3-VL
+places each temporal frame in a separate MRoPE token region; the native host
+layout matches that frame-wise expansion while preserving the original temporal
+grid for vision attention.  All 41 valid-token MRoPE positions match the
+Transformers host oracle exactly.  The native 2.13B BF16 model compiles and
+executes the resulting sequence-64/patch-256 batch on an RTX 4090 with finite
+outputs; its synchronized steady forward takes 12.382 ms after a 7.709-second
+compile and first execution.
+
 The native BF16 result differs more from the upstream BF16 result: 0.9979005
 hidden-state cosine and 0.9988514 embedding cosine.  The upstream model's own
 BF16-versus-FP32 drift is 5.34% relative hidden-state L2 and 3.86% relative

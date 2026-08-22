@@ -315,7 +315,17 @@ def multimodal_position_ids(
     if input_ids.shape != attention_mask.shape or input_ids.shape != modality_ids.shape:
         raise ValueError("token, attention, and modality arrays must align")
     result = np.zeros((3, *input_ids.shape), dtype=np.int32)
-    grids = {1: iter(image_grids), 2: iter(video_grids)}
+    # Qwen3-VL surrounds every sampled video frame with its own vision markers.
+    # Transformers therefore expands a (time, height, width) video grid into
+    # `time` separate (1, height, width) MRoPE regions. The vision tower still
+    # consumes the original temporal grid; only language-token positions use
+    # this frame-wise expansion.
+    video_frame_grids = tuple(
+        (1, int(height), int(width))
+        for time, height, width in video_grids
+        for _ in range(int(time))
+    )
+    grids = {1: iter(image_grids), 2: iter(video_frame_grids)}
     for batch_index in range(input_ids.shape[0]):
         valid = attention_mask[batch_index].astype(bool)
         types = modality_ids[batch_index, valid].tolist()
