@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 import equinox as eqx
 import jax
@@ -127,6 +127,13 @@ class Qwen2_5OmniEncoder(eqx.Module):
     compute_dtype: Any = eqx.field(static=True)
     attention_implementation: AttentionImplementation = eqx.field(static=True)
     rematerialization: RematerializationPolicy = eqx.field(static=True)
+    text_attention: Literal["causal", "bidirectional"] = eqx.field(
+        static=True, default="causal"
+    )
+    pooling: Literal["last", "mean"] = eqx.field(static=True, default="last")
+    source_model_type: Literal["qwen2_5_omni_thinker", "nvomniembed"] = eqx.field(
+        static=True, default="qwen2_5_omni_thinker"
+    )
 
     @classmethod
     def load_from_hf(cls, model_name_or_path, **options):
@@ -148,6 +155,11 @@ class Qwen2_5OmniEncoder(eqx.Module):
         rematerialization: RematerializationPolicy = "full",
         model_id: str = "representax/qwen2.5-omni",
         revision: str = "random-init",
+        text_attention: Literal["causal", "bidirectional"] = "causal",
+        pooling: Literal["last", "mean"] = "last",
+        source_model_type: Literal[
+            "qwen2_5_omni_thinker", "nvomniembed"
+        ] = "qwen2_5_omni_thinker",
     ) -> Qwen2_5OmniEncoder:
         text_key, vision_key, audio_key = jax.random.split(key, 3)
         return cls(
@@ -179,6 +191,9 @@ class Qwen2_5OmniEncoder(eqx.Module):
             compute_dtype=compute_dtype,
             attention_implementation=attention_implementation,
             rematerialization=rematerialization,
+            text_attention=text_attention,
+            pooling=pooling,
+            source_model_type=source_model_type,
         )
 
     def hidden_states(
@@ -259,6 +274,7 @@ class Qwen2_5OmniEncoder(eqx.Module):
             compute_dtype=compute_dtype,
             attention_implementation=self.attention_implementation,
             rematerialization=self.rematerialization,
+            causal_attention=self.text_attention == "causal",
         )
 
     def encode(
@@ -270,8 +286,15 @@ class Qwen2_5OmniEncoder(eqx.Module):
     ) -> Float[Array, "batch representation"]:
         del route
         hidden = self.hidden_states(inputs, key=key)
-        last = last_valid_token_indices(inputs.attention_mask)
-        pooled = hidden[jnp.arange(hidden.shape[0]), last]
+        if self.pooling == "last":
+            last = last_valid_token_indices(inputs.attention_mask)
+            pooled = hidden[jnp.arange(hidden.shape[0]), last]
+        elif self.pooling == "mean":
+            mask = inputs.attention_mask.astype(jnp.float32)
+            pooled = jnp.sum(hidden.astype(jnp.float32) * mask[..., None], axis=1)
+            pooled = pooled / jnp.maximum(jnp.sum(mask, axis=1, keepdims=True), 1)
+        else:
+            raise ValueError(f"unsupported pooling mode: {self.pooling!r}")
         return l2_normalize(pooled)
 
 

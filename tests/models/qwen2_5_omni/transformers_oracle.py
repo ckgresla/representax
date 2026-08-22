@@ -12,6 +12,11 @@ import numpy as np
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output-directory", type=Path, required=True)
+    parser.add_argument(
+        "--variant",
+        choices=("thinker", "nvidia_embed"),
+        default="thinker",
+    )
     arguments = parser.parse_args()
 
     import torch
@@ -71,7 +76,24 @@ def main() -> None:
         n_window=4,
         output_dim=16,
     )
-    config = cast(Any, Qwen2_5OmniThinkerConfig)(
+    config_type: Any = Qwen2_5OmniThinkerConfig
+    model_type: Any = Qwen2_5OmniThinkerForConditionalGeneration
+    if arguments.variant == "nvidia_embed":
+        from transformers.dynamic_module_utils import get_class_from_dynamic_module
+
+        repository = "nvidia/omni-embed-nemotron-3b"
+        revision = "865db1bb57e369a85357cf114cbd6b3c5322d19d"
+        config_type = get_class_from_dynamic_module(
+            "modeling_nv_omni_embed.NVOmniEmbedConfig",
+            repository,
+            revision=revision,
+        )
+        model_type = get_class_from_dynamic_module(
+            "modeling_nv_omni_embed.NVOmniEmbedModel",
+            repository,
+            revision=revision,
+        )
+    config = cast(Any, config_type)(
         text_config=text_config,
         vision_config=vision_config,
         audio_config=audio_config,
@@ -90,7 +112,7 @@ def main() -> None:
     config.text_config._attn_implementation = "eager"
     config.vision_config._attn_implementation = "eager"
     config.audio_config._attn_implementation = "eager"
-    model = Qwen2_5OmniThinkerForConditionalGeneration(config).eval().float()
+    model = model_type(config).eval().float()
     arguments.output_directory.mkdir(parents=True, exist_ok=True)
     model.save_pretrained(arguments.output_directory, safe_serialization=True)
 
@@ -136,6 +158,45 @@ def main() -> None:
 
     with torch.no_grad():
         hidden = forward(pixels, audio_features)
+        attention = attention_mask[..., None].to(hidden.dtype)
+        if arguments.variant == "nvidia_embed":
+            embedding = torch.nn.functional.normalize(
+                (hidden * attention).sum(dim=1) / attention.sum(dim=1),
+                dim=-1,
+            )
+        else:
+            embedding = torch.nn.functional.normalize(hidden[:, -1], dim=-1)
+    bidirectional = {}
+    if arguments.variant == "nvidia_embed":
+        from transformers.modeling_attn_mask_utils import _prepare_4d_attention_mask
+
+        bidirectional_input_ids = torch.tensor([[8, 9, 10, 0]], dtype=torch.long)
+        bidirectional_attention_mask = torch.tensor([[1, 1, 1, 0]], dtype=torch.long)
+        bidirectional_position_ids = torch.arange(4, dtype=torch.long).reshape(1, 4)
+        full_attention_mask = _prepare_4d_attention_mask(
+            bidirectional_attention_mask,
+            dtype=torch.float32,
+        )
+        with torch.no_grad():
+            bidirectional_hidden = model.model(
+                input_ids=bidirectional_input_ids,
+                attention_mask={"full_attention": full_attention_mask},
+                position_ids=bidirectional_position_ids,
+                use_cache=False,
+                return_dict=True,
+            ).last_hidden_state
+        bidirectional_mask = bidirectional_attention_mask[..., None].float()
+        bidirectional_embedding = torch.nn.functional.normalize(
+            (bidirectional_hidden * bidirectional_mask).sum(dim=1)
+            / bidirectional_mask.sum(dim=1),
+            dim=-1,
+        )
+        bidirectional = {
+            "bidirectional_input_ids": bidirectional_input_ids.numpy(),
+            "bidirectional_attention_mask": bidirectional_attention_mask.numpy(),
+            "bidirectional_hidden": bidirectional_hidden.numpy(),
+            "bidirectional_embedding": bidirectional_embedding.numpy(),
+        }
     differentiable_pixels = pixels.clone().requires_grad_(True)
     differentiable_audio = audio_features.clone().requires_grad_(True)
     differentiated_hidden = forward(differentiable_pixels, differentiable_audio)
@@ -189,10 +250,12 @@ def main() -> None:
         image_features=image_features.numpy(),
         audio_embeddings=audio_embeddings.numpy(),
         hidden=hidden.numpy(),
+        embedding=embedding.numpy(),
         pixel_gradient=pixel_gradient.detach().numpy(),
         audio_gradient=audio_gradient.detach().numpy(),
         parameter_loss=training_losses[0],
         training_losses=np.asarray(training_losses),
+        **bidirectional,
         **parameter_gradients,
         **updated_parameters,
     )

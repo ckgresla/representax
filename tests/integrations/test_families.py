@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from typing import Any
 
 import pytest
 from scripts.generate_model_families import TARGET, generate, validate_manifest
@@ -115,6 +116,7 @@ def test_qwen3_vl_family_has_multimodal_embedding_and_reranking_gates():
         AcceptanceGate.INPUT_GRADIENT,
         AcceptanceGate.PARAMETER_GRADIENT,
         AcceptanceGate.OPTIMIZER_UPDATE,
+        AcceptanceGate.EXPORT_RELOAD,
     }
 
 
@@ -189,7 +191,7 @@ def test_manifest_rejects_stale_unknown_and_overlapping_ownership():
 
 
 def test_manifest_rejects_unearned_verified_support():
-    unverified = deepcopy(
+    unverified: dict[str, Any] = deepcopy(
         next(
             family
             for family in REVIEWED_MODEL_FAMILIES

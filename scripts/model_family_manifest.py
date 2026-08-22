@@ -249,6 +249,9 @@ MODEL_FAMILIES = (
             "LCO-Embedding-Omni-7B@108f6f1a5de3b2eedd1d1c7b7005aaca6ed3802c",
             "e5-omni-3B@c302bf66d9fb80112e867a1caf253c4e2a23b9e2",
             "e5-omni-7B@e7679b8ddcc20bf351811bedbca38e9cfee334d6",
+            "nvidia/omni-embed-nemotron-3b@865db1bb57e369a85357cf114cbd6b3c5322d19d",
+            "custom_model_type=nvomniembed",
+            "nvidia_text_attention=causal|bidirectional",
         ),
         "config_adapter": (
             "representax.models.qwen2_5_omni.Qwen2_5OmniConfig.from_hf_config"
@@ -301,7 +304,8 @@ MODEL_FAMILIES = (
             "tied_token_binary_reranking",
         ),
         "configuration_constraints": (
-            "checkpoint=Qwen3-VL-Embedding-2B|Qwen3-VL-Reranker-2B",
+            "checkpoint=Qwen3-VL-Embedding-2B|Qwen3-VL-Reranker-2B|eager-embed-v1",
+            "eager-embed-v1@51dfdee0d1d1067afe00d816dca2cd72a02f6bec",
             "revisions_are_pinned=true",
         ),
         "config_adapter": "representax.models.qwen3_vl.Qwen3VLConfig.from_hf_config",
@@ -333,6 +337,7 @@ MODEL_FAMILIES = (
             "input_gradient",
             "parameter_gradient",
             "optimizer_update",
+            "export_reload",
         ),
         "support": "native",
     },

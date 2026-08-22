@@ -15,8 +15,12 @@ import optax
 import pytest
 
 from representax.models.qwen3_vl import (
+    EAGER_EMBED_V1_MODEL_ID,
+    EAGER_EMBED_V1_REVISION,
     Qwen3VLCheckpointAdapter,
+    Qwen3VLConfig,
     batch_from_processor_output,
+    make_qwen3_vl_processor,
 )
 from tests.models.acceptance import (
     NumericalTolerance,
@@ -33,6 +37,28 @@ def _upstream_python() -> str:
         pytest.skip("set REPRESENTAX_QWEN3_VL_TRANSFORMERS_PYTHON for parity")
     assert executable is not None
     return executable
+
+
+def _eager_checkpoint() -> Path:
+    from huggingface_hub import snapshot_download
+
+    return Path(
+        snapshot_download(
+            EAGER_EMBED_V1_MODEL_ID,
+            revision=EAGER_EMBED_V1_REVISION,
+            allow_patterns=[
+                "config.json",
+                "chat_template.jinja",
+                "preprocessor_config.json",
+                "tokenizer.json",
+                "tokenizer_config.json",
+                "video_preprocessor_config.json",
+                "special_tokens_map.json",
+                "merges.txt",
+                "vocab.json",
+            ],
+        )
+    )
 
 
 @pytest.fixture(scope="module")
@@ -181,3 +207,100 @@ def test_parameter_gradients_and_adamw_update_parity(oracle_checkpoint):
             sort_keys=True,
         )
     )
+
+
+def test_native_export_reloads_in_pinned_transformers(oracle_checkpoint, tmp_path):
+    reference = np.load(oracle_checkpoint / "oracle.npz")
+    adapter = Qwen3VLCheckpointAdapter(rematerialization="full")
+    model = adapter.load(
+        oracle_checkpoint,
+        parameter_dtype=jnp.float32,
+        compute_dtype=jnp.float32,
+    )
+    export = adapter.save(model, tmp_path / "export")
+    reloaded_native = adapter.load(
+        export,
+        parameter_dtype=jnp.float32,
+        compute_dtype=jnp.float32,
+    )
+    for name, value in adapter.state_dict(model).items():
+        np.testing.assert_array_equal(adapter.state_dict(reloaded_native)[name], value)
+    output = tmp_path / "reload.npz"
+    subprocess.run(
+        [
+            _upstream_python(),
+            "-m",
+            "tests.models.qwen3_vl.transformers_reload",
+            "--checkpoint",
+            str(export),
+            "--inputs",
+            str(oracle_checkpoint / "oracle.npz"),
+            "--output",
+            str(output),
+        ],
+        check=True,
+        cwd=Path.cwd(),
+        env={**os.environ, "PYTHONPATH": str(Path.cwd())},
+    )
+    assert_numerically_equivalent(
+        np.load(output)["hidden"],
+        reference["hidden"],
+        NumericalTolerance(absolute=1e-6, relative=1e-6, cosine=0.9999999),
+    )
+
+
+def test_eager_embed_preprocessing_matches_pinned_transformers(tmp_path):
+    checkpoint = _eager_checkpoint()
+    output = tmp_path / "eager-preprocessing.npz"
+    subprocess.run(
+        [
+            _upstream_python(),
+            "-m",
+            "tests.models.qwen3_vl.eager_processor_oracle",
+            "--checkpoint",
+            str(checkpoint),
+            "--output",
+            str(output),
+        ],
+        check=True,
+        cwd=Path.cwd(),
+        env={**os.environ, "PYTHONPATH": str(Path.cwd())},
+    )
+    reference = np.load(output)
+    config = Qwen3VLConfig.from_hf_config(
+        json.loads((checkpoint / "config.json").read_text())
+    )
+    processor = make_qwen3_vl_processor(
+        checkpoint,
+        config,
+        mode="eager_embedding",
+        sequence_length_buckets=(512,),
+        patch_count_buckets=(4096,),
+    )
+    from PIL import Image
+
+    batch = processor(
+        [
+            {
+                "image": Image.fromarray(reference["source_pixels"]),
+                "text": "A deterministic document page.",
+            }
+        ]
+    )
+    token_count = reference["input_ids"].shape[1]
+    np.testing.assert_array_equal(
+        np.asarray(batch.input_ids)[:, -token_count:],
+        reference["input_ids"],
+    )
+    np.testing.assert_array_equal(
+        np.asarray(batch.attention_mask)[:, -token_count:],
+        reference["attention_mask"],
+    )
+    assert batch.pixel_values is not None
+    assert batch.patch_valid is not None
+    patch_count = reference["pixel_values"].shape[0]
+    np.testing.assert_array_equal(
+        np.asarray(batch.pixel_values)[:patch_count],
+        reference["pixel_values"],
+    )
+    assert int(np.asarray(batch.patch_valid).sum()) == patch_count

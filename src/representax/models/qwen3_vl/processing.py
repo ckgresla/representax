@@ -18,7 +18,7 @@ from representax.models.processing import Processor, select_static_shape_bucket
 from .config import Qwen3VLConfig, Qwen3VLVisionConfig
 from .model import Qwen3VLBatch
 
-Qwen3VLProcessorMode = Literal["embedding", "reranking"]
+Qwen3VLProcessorMode = Literal["embedding", "reranking", "eager_embedding"]
 
 
 def _components(value: Any) -> tuple[str | None, Any | None, Any | None]:
@@ -93,6 +93,22 @@ def _reranking_conversation(value: Any, *, default_instruction: str) -> list[dic
     ]
 
 
+def _eager_embedding_conversation(value: Any) -> list[dict]:
+    """Build Eager Embed's instruction-free Qwen3-VL user message."""
+
+    text, image, video = _components(value)
+    content = []
+    if video is not None:
+        content.append({"type": "video"})
+    if image is not None:
+        content.append({"type": "image"})
+    if text is not None:
+        content.append({"type": "text", "text": text})
+    if not content:
+        raise ValueError("Eager Embed samples require text, image, or video")
+    return [{"role": "user", "content": content}]
+
+
 def make_qwen3_vl_processor(
     checkpoint: str | Path,
     config: Qwen3VLConfig,
@@ -104,8 +120,10 @@ def make_qwen3_vl_processor(
 ) -> Processor:
     """Load HF tokenizer/media artifacts into the generic Representax processor."""
 
-    if mode not in {"embedding", "reranking"}:
-        raise ValueError("Qwen3-VL processor mode must be embedding or reranking")
+    if mode not in {"embedding", "reranking", "eager_embedding"}:
+        raise ValueError(
+            "Qwen3-VL processor mode must be embedding, eager_embedding, or reranking"
+        )
     try:
         upstream_type = import_module("transformers").Qwen3VLProcessor
     except ImportError as error:
@@ -137,11 +155,16 @@ def make_qwen3_vl_processor(
         images = []
         videos = []
         for artifact in artifacts:
-            conversation = (
-                _embedding_conversation(artifact, default_instruction=instruction)
-                if mode == "embedding"
-                else _reranking_conversation(artifact, default_instruction=instruction)
-            )
+            if mode == "embedding":
+                conversation = _embedding_conversation(
+                    artifact, default_instruction=instruction
+                )
+            elif mode == "eager_embedding":
+                conversation = _eager_embedding_conversation(artifact)
+            else:
+                conversation = _reranking_conversation(
+                    artifact, default_instruction=instruction
+                )
             conversations.append(conversation)
             candidates = (
                 (artifact["query"], artifact["document"])
@@ -159,6 +182,8 @@ def make_qwen3_vl_processor(
             add_generation_prompt=True,
             tokenize=False,
         )
+        if mode == "eager_embedding":
+            rendered = [f"{text}<|endoftext|>" for text in rendered]
         features = upstream(
             text=rendered,
             images=images or None,
@@ -489,6 +514,7 @@ def batch_from_processor_output(
 
 
 __all__ = [
+    "Qwen3VLProcessorMode",
     "batch_from_processor_output",
     "make_qwen3_vl_processor",
     "multimodal_position_ids",

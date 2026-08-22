@@ -14,8 +14,10 @@ import numpy as np
 import optax
 import pytest
 
+from representax.core import Route
 from representax.integrations.huggingface import load_hf_config
 from representax.models.qwen2_5_omni import (
+    Qwen2_5OmniBatch,
     Qwen2_5OmniCheckpointAdapter,
     Qwen2_5OmniConfig,
     batch_from_processor_output,
@@ -58,6 +60,26 @@ def oracle_checkpoint(tmp_path_factory):
             _upstream_python(),
             "-m",
             "tests.models.qwen2_5_omni.transformers_oracle",
+            "--output-directory",
+            str(directory),
+        ],
+        check=True,
+        cwd=Path.cwd(),
+        env={**os.environ, "PYTHONPATH": str(Path.cwd())},
+    )
+    return directory
+
+
+@pytest.fixture(scope="module")
+def nvidia_oracle_checkpoint(tmp_path_factory):
+    directory = tmp_path_factory.mktemp("nvidia-omni-embed-oracle")
+    subprocess.run(
+        [
+            _upstream_python(),
+            "-m",
+            "tests.models.qwen2_5_omni.transformers_oracle",
+            "--variant",
+            "nvidia_embed",
             "--output-directory",
             str(directory),
         ],
@@ -297,6 +319,139 @@ def test_three_adamw_updates_match_transformers(oracle_checkpoint):
     )
 
 
+def test_nvidia_sentence_transformers_embedding_and_updates_match_upstream(
+    nvidia_oracle_checkpoint,
+    tmp_path,
+):
+    reference = np.load(nvidia_oracle_checkpoint / "oracle.npz")
+    adapter = Qwen2_5OmniCheckpointAdapter(rematerialization="full")
+    model = adapter.load(
+        nvidia_oracle_checkpoint,
+        parameter_dtype=jnp.float32,
+        compute_dtype=jnp.float32,
+    )
+    assert model.text_attention == "causal"
+    assert model.pooling == "mean"
+    batch = _batch(reference, model)
+    vector = jnp.linspace(-0.5, 0.5, model.config.text.hidden_size)
+    optimizer = optax.adamw(
+        learning_rate=1e-3,
+        b1=0.9,
+        b2=0.999,
+        eps=1e-8,
+        weight_decay=0.01,
+    )
+    optimizer_state = optimizer.init(eqx.filter(model, eqx.is_inexact_array))
+
+    @eqx.filter_jit
+    def outputs(candidate, values):
+        def media_loss(pixel_values, input_features):
+            replaced = eqx.tree_at(
+                lambda item: (item.pixel_values, item.input_features),
+                values,
+                (pixel_values, input_features),
+            )
+            return jnp.sum(candidate.hidden_states(replaced) * vector)
+
+        hidden = candidate.hidden_states(values)
+        embedding = candidate.encode(values, route=Route.GENERIC)
+        gradients = jax.grad(media_loss, argnums=(0, 1))(
+            values.pixel_values,
+            values.input_features,
+        )
+        return hidden, embedding, gradients
+
+    @eqx.filter_jit
+    def update(candidate, state):
+        def objective(value):
+            return jnp.sum(value.hidden_states(batch) * vector)
+
+        loss, gradients = eqx.filter_value_and_grad(objective)(candidate)
+        updates, state = optimizer.update(gradients, state, candidate)
+        return loss, eqx.apply_updates(candidate, updates), state
+
+    with jax.default_matmul_precision("highest"):
+        hidden, embedding, (pixel_gradient, audio_gradient) = outputs(model, batch)
+        losses = []
+        for _ in range(3):
+            loss, model, optimizer_state = update(model, optimizer_state)
+            losses.append(float(loss))
+    tolerance = NumericalTolerance(absolute=5e-5, relative=5e-5, cosine=0.99999)
+    for actual, expected in (
+        (hidden, reference["hidden"]),
+        (embedding, reference["embedding"]),
+        (pixel_gradient, reference["pixel_gradient"]),
+        (audio_gradient, reference["audio_gradient"]),
+    ):
+        assert_numerically_equivalent(np.asarray(actual), expected, tolerance)
+    np.testing.assert_allclose(
+        losses,
+        reference["training_losses"],
+        rtol=1e-4,
+        atol=1e-4,
+    )
+    native_state = adapter.state_dict(model)
+    for name in reference.files:
+        if not name.startswith("updated_parameter__"):
+            continue
+        parameter = name.removeprefix("updated_parameter__")
+        assert_numerically_equivalent(
+            np.asarray(native_state[parameter]),
+            reference[name],
+            NumericalTolerance(absolute=2e-5, relative=3e-3, cosine=0.99999),
+        )
+    exported = adapter.save(model, tmp_path / "nvidia-export")
+    assert load_hf_config(exported)["model_type"] == "nvomniembed"
+    restored = adapter.load(
+        exported,
+        parameter_dtype=jnp.float32,
+        compute_dtype=jnp.float32,
+    )
+    assert restored.text_attention == "causal"
+    assert restored.pooling == "mean"
+    for name, value in adapter.state_dict(model).items():
+        np.testing.assert_array_equal(adapter.state_dict(restored)[name], value)
+
+
+def test_nvidia_published_bidirectional_contract_matches_upstream_layers(
+    nvidia_oracle_checkpoint,
+):
+    reference = np.load(nvidia_oracle_checkpoint / "oracle.npz")
+    model = Qwen2_5OmniCheckpointAdapter(
+        rematerialization="full",
+        nvidia_text_attention="bidirectional",
+    ).load(
+        nvidia_oracle_checkpoint,
+        parameter_dtype=jnp.float32,
+        compute_dtype=jnp.float32,
+    )
+    assert model.text_attention == "bidirectional"
+    assert model.pooling == "mean"
+    attention_mask = reference["bidirectional_attention_mask"]
+    input_ids = reference["bidirectional_input_ids"]
+    position_ids = np.broadcast_to(
+        np.arange(input_ids.shape[1], dtype=np.int32)[None, None],
+        (3, *input_ids.shape),
+    )
+    batch = Qwen2_5OmniBatch(
+        input_ids=jnp.asarray(input_ids),
+        attention_mask=jnp.asarray(attention_mask),
+        position_ids=jnp.asarray(position_ids),
+    )
+    with jax.default_matmul_precision("highest"):
+        hidden = model.hidden_states(batch)
+        embedding = model.encode(batch, route=Route.GENERIC)
+    for actual, expected in (
+        (hidden, reference["bidirectional_hidden"]),
+        (embedding, reference["bidirectional_embedding"]),
+    ):
+        assert_numerically_equivalent(
+            np.asarray(actual),
+            expected,
+            NumericalTolerance(absolute=5e-5, relative=5e-5, cosine=0.99999),
+        )
+
+
 def test_native_export_reloads_in_pinned_transformers(oracle_checkpoint, tmp_path):
     reference = np.load(oracle_checkpoint / "oracle.npz")
     adapter = Qwen2_5OmniCheckpointAdapter(rematerialization="full")
@@ -424,4 +579,28 @@ def test_real_multimodal_preprocessing_matches_transformers(tmp_path):
             indent=2,
             sort_keys=True,
         )
+    )
+
+
+def test_real_sentence_transformers_route_prompts_are_exact() -> None:
+    checkpoint = _real_checkpoint()
+    config = Qwen2_5OmniConfig.from_hf_config(load_hf_config(checkpoint))
+    processor = make_qwen2_5_omni_processor(
+        checkpoint,
+        config,
+        sequence_length_buckets=(64,),
+        patch_count_buckets=(64,),
+        audio_chunk_count_buckets=(1,),
+        audio_token_count_buckets=(64,),
+    )
+    query = processor(("a harbor",), route=Route.QUERY)
+    prefixed_query = processor(("query: a harbor",), route=Route.GENERIC)
+    document = processor(("calm water",), route=Route.DOCUMENT)
+    prefixed_document = processor(("passage: calm water",), route=Route.GENERIC)
+    np.testing.assert_array_equal(query.input_ids, prefixed_query.input_ids)
+    np.testing.assert_array_equal(query.attention_mask, prefixed_query.attention_mask)
+    np.testing.assert_array_equal(document.input_ids, prefixed_document.input_ids)
+    np.testing.assert_array_equal(
+        document.attention_mask,
+        prefixed_document.attention_mask,
     )

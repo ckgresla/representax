@@ -344,10 +344,62 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      error; its 15.54-second first compile amortizes after about 8,250 steps in
      this small inference workload. The multilingual CLIP-aligned DistilBERT checkpoint is
      recorded honestly as a separate text family rather than a CLIP forward.
-**** NEXT Grow through the remaining linked backbone families
-     Cover Nemotron VL, NVIDIA Omni Embed, BidirLM Omni, LLaVA-NeXT retrieval,
-     Qwen2.5-VL screenshot retrieval, Nomic multimodal, Qwen2-VL ranking, and
-     Qwen2/Qwen3 text ranking according to capability and paper relevance.
+**** TODO Grow through the remaining linked backbone families
+     Implement shared native architecture families rather than one-off model
+     wrappers.  Every named checkpoint is accepted only after pinned upstream
+     preprocessing and tensor parity, inference, several optimizer updates, and
+     native plus Hugging Face export/fresh reload pass.
+***** DONE Accept the remaining checkpoints owned by existing Qwen families
+      Cover =eagerworks/eager-embed-v1= through Qwen3-VL and
+      =nvidia/omni-embed-nemotron-3b= through Qwen2.5-Omni wherever their pinned
+      configs and checkpoint layouts prove that family ownership.  Gate both
+      NVIDIA's published bidirectional text-attention contract and the causal
+      behavior currently produced by Sentence Transformers 5.6 after its
+      Transformers mask API changed; never hide that upstream drift.  Preserve
+      masked-mean pooling as a static representation semantic.  Implement
+      checkpoint-specific pooling/prompts as recipes, not duplicate forwards,
+      and reject incompatible layouts explicitly.
+      Accepted =eagerworks/eager-embed-v1@51dfdee= as the existing native
+      Qwen3-VL family with its exact left-padded, instruction-free chat recipe,
+      image processor tensors, FP32 tiny forward/input/parameter-gradient and
+      AdamW parity, native/Hugging Face export and fresh reload, real 3B BF16
+      text/image inference, and three INT4-LoRA updates. Real upstream/native
+      embedding cosine is 0.99984 for text and 0.99861 for image-plus-text;
+      native steady inference is 34.5 ms for the two-record probe.
+      Accepted =nvidia/omni-embed-nemotron-3b@865db1b= as the existing native
+      Qwen2.5-Omni family with checkpoint-owned query/document prompts, masked
+      mean pooling, exact tokenizer/image/audio preprocessing, HF export/reload,
+      and three real INT4-LoRA updates. Query/document cosine against Sentence
+      Transformers 5.6 is >=0.99935. The default preserves that pinned runtime's
+      causal mask while an explicit bidirectional mode matches NVIDIA's
+      published layer intent; tests expose the upstream API drift instead of
+      silently changing semantics.
+***** NEXT Implement and accept native Qwen2.5-VL and Qwen2-VL families
+      Reuse the shared Qwen text, vision, rotary, finite-shape processor, and
+      checkpoint primitives while preserving each generation's exact image and
+      video merge semantics.  Accept BGE-VL-Screenshot, Nomic multimodal 3B/7B
+      LoRA adapters, and Jina reranker-m0.
+***** TODO Implement and accept native LLaVA-NeXT retrieval
+      Share the CLIP vision tower across the Mistral-backed BGE S1/S2/v1.5
+      checkpoints and Llama-backed E5-V while preserving any-resolution image
+      packing, projector, prompt, pooling, and normalization semantics.
+***** TODO Implement and accept native Llama Nemotron VL
+      Cover the 1B embed and rerank checkpoints with one SigLIP-plus-Llama
+      architecture and explicit embedding versus scoring heads.
+***** TODO Implement and accept native BidirLM Omni
+      Cover text, image, and audio with its bidirectional Qwen-like text tower,
+      vision deep-stack injection, audio encoder, model-associated processor,
+      and native representation pooling.
+***** TODO Implement and accept native Qwen2/Qwen3 text ranking
+      Cover Qwen3 and ContextualAI rerankers plus mixedbread Qwen2 rerankers
+      using a shared generative-score interface and checkpoint-owned prompts.
+***** TODO Implement and accept multilingual CLIP-aligned DistilBERT
+      Import the Transformer, Pooling, and Dense Sentence Transformers graph as
+      a text tower aligned to the existing CLIP representation space.
+***** TODO Run the complete multimodal family acceptance matrix
+      Re-run static, fast, package, installed smoke, isolated GPU inference and
+      update, preprocessing, upstream parity, and HF export/reload lanes for
+      every checkpoint before closing the parent family item.
 *** TODO Select and accept the paper's 25-model compatibility panel :models:paper:
    Snapshot a transparent Hugging Face popularity and relevance ranking, then
    select 25 checkpoints spanning the native families and four modalities used

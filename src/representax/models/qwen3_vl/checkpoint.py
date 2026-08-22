@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -9,6 +10,7 @@ from typing import Any
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 
 from representax.core import EncoderMetadata, Modality, Route
 from representax.integrations.huggingface import load_hf_config, load_safetensor_subset
@@ -557,6 +559,25 @@ class Qwen3VLCheckpointAdapter:
                     merger,
                 )
         return state
+
+    def save(self, model: Qwen3VLEncoder, directory: str | Path) -> Path:
+        """Export native weights as a reloadable Transformers checkpoint."""
+
+        from safetensors.numpy import save_file
+
+        target = Path(directory)
+        target.mkdir(parents=True, exist_ok=True)
+        (target / "config.json").write_text(
+            json.dumps(model.config.to_hf_config(), indent=2, sort_keys=True) + "\n"
+        )
+        save_file(
+            {
+                name: np.array(value, copy=True)
+                for name, value in self.state_dict(model).items()
+            },
+            target / "model.safetensors",
+        )
+        return target
 
 
 def _export_merger(

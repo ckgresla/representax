@@ -83,6 +83,8 @@ from .processing import (
 from .qwen2_5_omni import (
     LCO_OMNI_3B_2605_MODEL_ID,
     LCO_OMNI_3B_2605_REVISION,
+    NVIDIA_OMNI_EMBED_3B_MODEL_ID,
+    NVIDIA_OMNI_EMBED_3B_REVISION,
     Qwen2_5OmniAudioConfig,
     Qwen2_5OmniBatch,
     Qwen2_5OmniCheckpointAdapter,
@@ -95,6 +97,8 @@ from .qwen2_5_omni import (
     qwen2_5_omni_weight_names,
 )
 from .qwen3_vl import (
+    EAGER_EMBED_V1_MODEL_ID,
+    EAGER_EMBED_V1_REVISION,
     QWEN3_VL_EMBEDDING_2B_MODEL_ID,
     QWEN3_VL_EMBEDDING_2B_REVISION,
     QWEN3_VL_RERANKER_2B_MODEL_ID,
@@ -140,6 +144,8 @@ __all__ = [
     "CLIP_VIT_B32_REVISION",
     "DenseEncoder",
     "DenoisingAutoEncoder",
+    "EAGER_EMBED_V1_MODEL_ID",
+    "EAGER_EMBED_V1_REVISION",
     "EncoderPair",
     "LayerNorm",
     "Linear",
@@ -164,6 +170,8 @@ __all__ = [
     "MPNetCheckpointAdapter",
     "MPNetConfig",
     "MPNetEncoder",
+    "NVIDIA_OMNI_EMBED_3B_MODEL_ID",
+    "NVIDIA_OMNI_EMBED_3B_REVISION",
     "POOLING_MODES",
     "DenseActivation",
     "PoolingMode",

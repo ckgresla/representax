@@ -12,6 +12,8 @@ from representax._config import FrozenConfig
 
 LCO_OMNI_3B_2605_MODEL_ID = "LCO-Embedding/LCO-Embedding-Omni-3B-2605"
 LCO_OMNI_3B_2605_REVISION = "5f6b5329da5141367da30e06a9826d1322d6c9b2"
+NVIDIA_OMNI_EMBED_3B_MODEL_ID = "nvidia/omni-embed-nemotron-3b"
+NVIDIA_OMNI_EMBED_3B_REVISION = "865db1bb57e369a85357cf114cbd6b3c5322d19d"
 
 
 class Qwen2_5OmniTextConfig(FrozenConfig):
@@ -302,8 +304,11 @@ class Qwen2_5OmniConfig(FrozenConfig):
 
     @classmethod
     def from_hf_config(cls, value: Mapping[str, Any]) -> Qwen2_5OmniConfig:
-        if str(value.get("model_type", "")) != "qwen2_5_omni_thinker":
-            raise ValueError("expected model_type='qwen2_5_omni_thinker'")
+        model_type = str(value.get("model_type", ""))
+        if model_type not in {"qwen2_5_omni_thinker", "nvomniembed"}:
+            raise ValueError(
+                "expected model_type='qwen2_5_omni_thinker' or 'nvomniembed'"
+            )
         return cls(
             text=Qwen2_5OmniTextConfig.from_hf_config(value),
             vision=Qwen2_5OmniVisionConfig.from_hf_config(value),

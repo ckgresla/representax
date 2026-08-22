@@ -6,7 +6,7 @@ import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import jax
 import jax.numpy as jnp
@@ -197,6 +197,7 @@ class Qwen2_5OmniCheckpointAdapter:
 
     attention_implementation: AttentionImplementation = "xla"
     rematerialization: RematerializationPolicy = "full"
+    nvidia_text_attention: Literal["causal", "bidirectional"] = "causal"
 
     def from_state_dict(
         self,
@@ -207,6 +208,7 @@ class Qwen2_5OmniCheckpointAdapter:
         compute_dtype: jnp.dtype = jnp.bfloat16,
         model_id: str = LCO_OMNI_3B_2605_MODEL_ID,
         revision: str = LCO_OMNI_3B_2605_REVISION,
+        config_model_type: str = "qwen2_5_omni_thinker",
     ) -> Qwen2_5OmniEncoder:
         text = config.text
         attention = text.num_attention_heads * text.head_dimension
@@ -590,6 +592,17 @@ class Qwen2_5OmniCheckpointAdapter:
             compute_dtype=compute_dtype,
             attention_implementation=self.attention_implementation,
             rematerialization=self.rematerialization,
+            text_attention=(
+                self.nvidia_text_attention
+                if config_model_type == "nvomniembed"
+                else "causal"
+            ),
+            pooling="mean" if config_model_type == "nvomniembed" else "last",
+            source_model_type=(
+                "nvomniembed"
+                if config_model_type == "nvomniembed"
+                else "qwen2_5_omni_thinker"
+            ),
         )
 
     def load(
@@ -601,7 +614,8 @@ class Qwen2_5OmniCheckpointAdapter:
         model_id: str = LCO_OMNI_3B_2605_MODEL_ID,
         revision: str = LCO_OMNI_3B_2605_REVISION,
     ) -> Qwen2_5OmniEncoder:
-        config = Qwen2_5OmniConfig.from_hf_config(load_hf_config(checkpoint))
+        hf_config = load_hf_config(checkpoint)
+        config = Qwen2_5OmniConfig.from_hf_config(hf_config)
         state = load_safetensor_subset(
             checkpoint,
             qwen2_5_omni_weight_names(config),
@@ -614,6 +628,7 @@ class Qwen2_5OmniCheckpointAdapter:
             compute_dtype=compute_dtype,
             model_id=model_id,
             revision=revision,
+            config_model_type=str(hf_config.get("model_type", "")),
         )
 
     def state_dict(self, model: Qwen2_5OmniEncoder) -> dict[str, jax.Array]:
@@ -736,8 +751,20 @@ class Qwen2_5OmniCheckpointAdapter:
 
         target = Path(directory)
         target.mkdir(parents=True, exist_ok=True)
+        hf_config = model.config.to_hf_config()
+        if model.source_model_type == "nvomniembed":
+            hf_config.update(
+                {
+                    "architectures": ["NVOmniEmbedModel"],
+                    "model_type": "nvomniembed",
+                    "auto_map": {
+                        "AutoConfig": "modeling_nv_omni_embed.NVOmniEmbedConfig",
+                        "AutoModel": "modeling_nv_omni_embed.NVOmniEmbedModel",
+                    },
+                }
+            )
         (target / "config.json").write_text(
-            json.dumps(model.config.to_hf_config(), indent=2, sort_keys=True) + "\n"
+            json.dumps(hf_config, indent=2, sort_keys=True) + "\n"
         )
         state = {
             name: np.array(value, copy=True)

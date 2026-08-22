@@ -15,6 +15,8 @@ from .checkpoint import (
 from .config import (
     LCO_OMNI_3B_2605_MODEL_ID,
     LCO_OMNI_3B_2605_REVISION,
+    NVIDIA_OMNI_EMBED_3B_MODEL_ID,
+    NVIDIA_OMNI_EMBED_3B_REVISION,
     Qwen2_5OmniAudioConfig,
     Qwen2_5OmniConfig,
     Qwen2_5OmniTextConfig,
@@ -53,6 +55,8 @@ from .vision import (
 __all__ = [
     "LCO_OMNI_3B_2605_MODEL_ID",
     "LCO_OMNI_3B_2605_REVISION",
+    "NVIDIA_OMNI_EMBED_3B_MODEL_ID",
+    "NVIDIA_OMNI_EMBED_3B_REVISION",
     "Conv1D",
     "Qwen2_5OmniAudioAttention",
     "Qwen2_5OmniAudioConfig",

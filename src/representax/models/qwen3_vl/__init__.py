@@ -2,6 +2,8 @@
 
 from .checkpoint import Qwen3VLCheckpointAdapter, qwen3_vl_weight_names
 from .config import (
+    EAGER_EMBED_V1_MODEL_ID,
+    EAGER_EMBED_V1_REVISION,
     QWEN3_VL_EMBEDDING_2B_MODEL_ID,
     QWEN3_VL_EMBEDDING_2B_REVISION,
     QWEN3_VL_RERANKER_2B_MODEL_ID,
@@ -39,6 +41,8 @@ from .vision import (
 )
 
 __all__ = [
+    "EAGER_EMBED_V1_MODEL_ID",
+    "EAGER_EMBED_V1_REVISION",
     "QWEN3_VL_EMBEDDING_2B_MODEL_ID",
     "QWEN3_VL_EMBEDDING_2B_REVISION",
     "QWEN3_VL_RERANKER_2B_MODEL_ID",

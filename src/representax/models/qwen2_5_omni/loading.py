@@ -11,7 +11,12 @@ from representax.integrations.huggingface import resolve_hf_checkpoint
 from representax.models.processing import Processor
 
 from .checkpoint import Qwen2_5OmniCheckpointAdapter
-from .config import LCO_OMNI_3B_2605_MODEL_ID, LCO_OMNI_3B_2605_REVISION
+from .config import (
+    LCO_OMNI_3B_2605_MODEL_ID,
+    LCO_OMNI_3B_2605_REVISION,
+    NVIDIA_OMNI_EMBED_3B_MODEL_ID,
+    NVIDIA_OMNI_EMBED_3B_REVISION,
+)
 from .model import Qwen2_5OmniEncoder
 from .processing import make_qwen2_5_omni_processor
 
@@ -19,7 +24,7 @@ from .processing import make_qwen2_5_omni_processor
 def load_qwen2_5_omni(
     model_name_or_path: str | Path = LCO_OMNI_3B_2605_MODEL_ID,
     *,
-    revision: str = LCO_OMNI_3B_2605_REVISION,
+    revision: str | None = None,
     cache_directory: str | Path | None = None,
     local_files_only: bool = False,
     parameter_dtype: jnp.dtype = jnp.bfloat16,
@@ -32,6 +37,12 @@ def load_qwen2_5_omni(
 ) -> tuple[Qwen2_5OmniEncoder, Processor]:
     """Resolve one immutable checkpoint and construct model plus processor once."""
 
+    if revision is None:
+        revision = (
+            NVIDIA_OMNI_EMBED_3B_REVISION
+            if str(model_name_or_path) == NVIDIA_OMNI_EMBED_3B_MODEL_ID
+            else LCO_OMNI_3B_2605_REVISION
+        )
     resolved = resolve_hf_checkpoint(
         model_name_or_path,
         revision=revision,

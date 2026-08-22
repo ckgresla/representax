@@ -14,6 +14,8 @@ QWEN3_VL_EMBEDDING_2B_MODEL_ID = "Qwen/Qwen3-VL-Embedding-2B"
 QWEN3_VL_EMBEDDING_2B_REVISION = "9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda"
 QWEN3_VL_RERANKER_2B_MODEL_ID = "Qwen/Qwen3-VL-Reranker-2B"
 QWEN3_VL_RERANKER_2B_REVISION = "4bd860ac4f15ad1897a214615cccc700f8f71818"
+EAGER_EMBED_V1_MODEL_ID = "eagerworks/eager-embed-v1"
+EAGER_EMBED_V1_REVISION = "51dfdee0d1d1067afe00d816dca2cd72a02f6bec"
 
 
 class Qwen3VLTextConfig(FrozenConfig):
@@ -241,8 +243,65 @@ class Qwen3VLConfig(FrozenConfig):
             vision_end_token_id=int(value.get("vision_end_token_id", 151653)),
         )
 
+    def to_hf_config(self) -> dict[str, Any]:
+        """Serialize the native architecture for a Transformers reload."""
+
+        return {
+            "architectures": ["Qwen3VLForConditionalGeneration"],
+            "model_type": "qwen3_vl",
+            "dtype": "float32",
+            "tie_word_embeddings": True,
+            "image_token_id": self.image_token_id,
+            "video_token_id": self.video_token_id,
+            "vision_start_token_id": self.vision_start_token_id,
+            "vision_end_token_id": self.vision_end_token_id,
+            "pad_token_id": self.text.pad_token_id,
+            "text_config": {
+                "model_type": "qwen3_vl_text",
+                "vocab_size": self.text.vocab_size,
+                "hidden_size": self.text.hidden_size,
+                "intermediate_size": self.text.intermediate_size,
+                "num_hidden_layers": self.text.num_hidden_layers,
+                "num_attention_heads": self.text.num_attention_heads,
+                "num_key_value_heads": self.text.num_key_value_heads,
+                "head_dim": self.text.head_dimension,
+                "max_position_embeddings": self.text.max_position_embeddings,
+                "rope_parameters": {
+                    "rope_type": "default",
+                    "rope_theta": self.text.rope_theta,
+                    "mrope_section": list(self.text.mrope_section),
+                },
+                "rms_norm_eps": self.text.norm_epsilon,
+                "pad_token_id": self.text.pad_token_id,
+                "initializer_range": self.text.initializer_range,
+                "hidden_act": "silu",
+                "attention_bias": False,
+                "attention_dropout": 0.0,
+                "tie_word_embeddings": True,
+                "use_cache": True,
+            },
+            "vision_config": {
+                "model_type": "qwen3_vl",
+                "depth": self.vision.depth,
+                "hidden_size": self.vision.hidden_size,
+                "intermediate_size": self.vision.intermediate_size,
+                "num_heads": self.vision.num_attention_heads,
+                "in_channels": self.vision.in_channels,
+                "patch_size": self.vision.patch_size,
+                "spatial_merge_size": self.vision.spatial_merge_size,
+                "temporal_patch_size": self.vision.temporal_patch_size,
+                "out_hidden_size": self.vision.output_size,
+                "num_position_embeddings": self.vision.num_position_embeddings,
+                "deepstack_visual_indexes": list(self.vision.deepstack_visual_indexes),
+                "initializer_range": self.vision.initializer_range,
+                "hidden_act": "gelu_pytorch_tanh",
+            },
+        }
+
 
 __all__ = [
+    "EAGER_EMBED_V1_MODEL_ID",
+    "EAGER_EMBED_V1_REVISION",
     "QWEN3_VL_EMBEDDING_2B_MODEL_ID",
     "QWEN3_VL_EMBEDDING_2B_REVISION",
     "QWEN3_VL_RERANKER_2B_MODEL_ID",

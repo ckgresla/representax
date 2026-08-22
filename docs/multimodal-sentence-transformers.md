@@ -3,9 +3,9 @@
 This is Representax's minimum external checkpoint panel for multimodal model
 coverage. It snapshots the models linked by Hugging Face's April 2026
 [Multimodal Embedding & Reranker Models with Sentence Transformers](https://huggingface.co/blog/multimodal-sentence-transformers)
-release. Presence here means **acceptance target**, not native support;
-Qwen3-VL 2B embedding/reranking and Qwen2.5-Omni LCO 3B are the first entries
-to complete their native acceptance slices.
+release. Presence here means **acceptance target**, not native support. The
+Qwen3-VL, Qwen2.5-Omni, CLIP, and BGE-VL CLIP rows identify checkpoints that
+have completed native acceptance; the remaining rows are still targets.
 
 Representax must not implement one bespoke wrapper per checkpoint. A checkpoint
 resolves through:
@@ -113,6 +113,14 @@ embedding cosine. BF16 throughput probes are useful implementation evidence,
 but do not substitute for the matched dataset-to-trained-model jobs required
 for a paper claim.
 
+The same forward accepts
+`eagerworks/eager-embed-v1@51dfdee0d1d1067afe00d816dca2cd72a02f6bec`.
+Its processor preserves the checkpoint's instruction-free user message, left
+padding, generation prompt, and terminal token. The real BF16 acceptance gate
+reaches 0.99984 cosine for text and 0.99861 for image-plus-text against the
+pinned upstream runtime, then completes three finite INT4-LoRA updates. Native
+and Hugging Face exports both reload without loading the source checkpoint.
+
 ## Native Qwen2.5-Omni usage
 
 The Qwen2.5-Omni family composes text, image, audio, and video without defining
@@ -144,6 +152,15 @@ exactly. PIL versus Torchvision bicubic video resizing accounts for a bounded
 `5.5e-5` relative pixel L2 difference. The full LCO 3B checkpoint executes
 native BF16 inference and three generic packed-INT4 LoRA updates on one 24 GB
 GPU.
+
+The family also accepts
+`nvidia/omni-embed-nemotron-3b@865db1bb57e369a85357cf114cbd6b3c5322d19d`
+with its query/document prefixes and masked-mean pooling. Real query and
+document embeddings reach at least 0.99935 cosine against Sentence
+Transformers 5.6. The pinned runtime currently executes causal text attention
+because its custom mask override no longer intercepts the Transformers 5.6
+forward; Representax preserves that behavior by default and separately tests
+an explicit bidirectional mode against NVIDIA's intended layer contract.
 
 ## Native CLIP and BGE-VL usage
 

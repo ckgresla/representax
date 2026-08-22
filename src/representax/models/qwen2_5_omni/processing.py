@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping, Sequence
 from importlib import import_module
 from pathlib import Path
@@ -30,7 +31,7 @@ def _components(
     return text, value.get("image"), value.get("audio"), value.get("video")
 
 
-def _conversation(value: Any) -> list[dict[str, Any]]:
+def _conversation(value: Any, *, text_prefix: str = "") -> list[dict[str, Any]]:
     text, image, audio, video = _components(value)
     content: list[dict[str, Any]] = []
     if image is not None:
@@ -40,7 +41,7 @@ def _conversation(value: Any) -> list[dict[str, Any]]:
     if video is not None:
         content.append({"type": "video"})
     if text is not None:
-        content.append({"type": "text", "text": text})
+        content.append({"type": "text", "text": text_prefix + text})
     if not content:
         raise ValueError("Qwen2.5-Omni samples must contain at least one modality")
     return [{"role": "user", "content": content}]
@@ -676,16 +677,30 @@ def make_qwen2_5_omni_processor(
         raise ImportError(
             "Qwen2.5-Omni processing requires Transformers 5.6 or newer"
         ) from error
-    tokenizer = cast(
-        Any,
-        transformers.AutoTokenizer.from_pretrained(
-            checkpoint,
-            padding_side="right",
-        ),
+    tokenizer = transformers.AutoTokenizer.from_pretrained(
+        checkpoint,
+        padding_side="right",
     )
+    if tokenizer is None:
+        raise TypeError("Qwen2.5-Omni checkpoint did not produce a tokenizer")
     image_processor = image_module.Qwen2VLImageProcessorPil.from_pretrained(checkpoint)
     audio_processor = transformers.WhisperFeatureExtractor.from_pretrained(checkpoint)
     maximum = max(sequence_length_buckets)
+    sentence_config_path = Path(checkpoint) / "config_sentence_transformers.json"
+    sentence_config = (
+        json.loads(sentence_config_path.read_text())
+        if sentence_config_path.is_file()
+        else {}
+    )
+    raw_prompts = sentence_config.get("prompts", {})
+    prompts = (
+        {
+            Route.QUERY: str(raw_prompts.get("query", "")),
+            Route.DOCUMENT: str(raw_prompts.get("document", "")),
+        }
+        if isinstance(raw_prompts, Mapping)
+        else {Route.QUERY: "", Route.DOCUMENT: ""}
+    )
 
     def process(
         artifacts: Sequence[Any],
@@ -693,7 +708,7 @@ def make_qwen2_5_omni_processor(
         route: Route,
         seed: int | None,
     ) -> Qwen2_5OmniBatch:
-        del route, seed
+        del seed
         if not artifacts:
             raise ValueError("Qwen2.5-Omni processor batches must be non-empty")
         conversations = []
@@ -701,7 +716,9 @@ def make_qwen2_5_omni_processor(
         audios = []
         videos = []
         for artifact in artifacts:
-            conversations.append(_conversation(artifact))
+            conversations.append(
+                _conversation(artifact, text_prefix=prompts.get(route, ""))
+            )
             _, image, audio, video = _components(artifact)
             if image is not None:
                 images.append(image)
@@ -803,6 +820,9 @@ def make_qwen2_5_omni_processor(
             "chat_template": chat_template,
             "padding_side": "right",
             "audio_in_video": False,
+            "route_prompts": {
+                route.value: prompt for route, prompt in prompts.items() if prompt
+            },
         },
     )
 

@@ -1,4 +1,4 @@
-"""Native Qwen2.5-Omni causal language tower with multimodal rotary positions."""
+"""Native Qwen2.5-Omni language tower with multimodal rotary positions."""
 
 from __future__ import annotations
 
@@ -281,6 +281,7 @@ class Qwen2_5OmniTextTower(eqx.Module):
         compute_dtype: jnp.dtype,
         attention_implementation: AttentionImplementation,
         rematerialization: RematerializationPolicy,
+        causal_attention: bool = True,
     ) -> Float[Array, "batch sequence hidden"]:
         hidden = (
             embedding_lookup(self.token_embedding, input_ids)
@@ -295,7 +296,10 @@ class Qwen2_5OmniTextTower(eqx.Module):
         cosine, sine = text_rotary_embedding(self.config, position_ids)
         target = jnp.arange(sequence)[:, None]
         source = jnp.arange(sequence)[None, :]
-        allowed = (source <= target)[None, None]
+        if causal_attention:
+            allowed = (source <= target)[None, None]
+        else:
+            allowed = jnp.ones((1, 1, sequence, sequence), dtype=bool)
         allowed = allowed & attention_mask[:, None, None, :].astype(bool)
         if self.config.sliding_window is None:
             sliding_allowed = allowed
