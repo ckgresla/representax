@@ -326,11 +326,25 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      inference, and three full-checkpoint INT4-LoRA optimizer updates on a 24 GB
      GPU. The physical gate also removed a 3.02 GiB FP32 quantizer temporary and
      proved packed multimodal payloads work through the generic task trainer.
-**** NEXT Accept the linked CLIP and BGE-VL small-model variants
+**** DONE Accept the linked CLIP and BGE-VL small-model variants
      Establish inexpensive image-text training, processor parity, export, and
      performance gates that can run more frequently than multi-billion-parameter
      VLM jobs.
-**** TODO Grow through the remaining linked backbone families
+     Accepted as one native scanned CLIP family over root Hugging Face and
+     legacy =0_CLIPModel/= layouts, with BGE additive text-image fusion and
+     source-graph output normalization. Tiny Transformers 5.6 gates cover
+     forward, pixel and parameter gradients, three AdamW updates, and fresh HF
+     reload. Real BGE-VL base and CLIP-B/32 processors match tokenizer/pixel
+     tensors exactly and reach >=0.99999958 and >=0.99999976 embedding cosine,
+     respectively, against Sentence Transformers 5.6.1. The 149.6M BGE model
+     completes three generic BF16-compute/FP32-master updates and exact native
+     export/reload; HF export preserves root versus nested model layout and
+     processor assets. A matched FP32 text-forward probe sustains 3,495 versus
+     2,404 examples/s for Transformers 5.6 (=1.454x=), with =9.24e-7= maximum
+     error; its 15.54-second first compile amortizes after about 8,250 steps in
+     this small inference workload. The multilingual CLIP-aligned DistilBERT checkpoint is
+     recorded honestly as a separate text family rather than a CLIP forward.
+**** NEXT Grow through the remaining linked backbone families
      Cover Nemotron VL, NVIDIA Omni Embed, BidirLM Omni, LLaVA-NeXT retrieval,
      Qwen2.5-VL screenshot retrieval, Nomic multimodal, Qwen2-VL ranking, and
      Qwen2/Qwen3 text ranking according to capability and paper relevance.

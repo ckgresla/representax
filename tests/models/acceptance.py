@@ -109,6 +109,23 @@ MODEL_IMPLEMENTATIONS = (
         ),
     ),
     ModelPerformanceCase(
+        name="bge-vl-base-text-forward-fp32",
+        package="clip",
+        probe_module="tests.models.clip.performance_probe",
+        checkpoint_environment="REPRESENTAX_BGE_VL_CHECKPOINT",
+        upstream_python_environment="REPRESENTAX_SENTENCE_TRANSFORMERS_PYTHON",
+        batch_size=16,
+        sequence_length=77,
+        maximum_memory_ratio=None,
+        maximum_compilation_seconds=60.0,
+        probe_timeout_seconds=180.0,
+        output_tolerance=NumericalTolerance(
+            absolute=8e-4,
+            relative=2e-3,
+            cosine=0.99999,
+        ),
+    ),
+    ModelPerformanceCase(
         name="modernvbert-text-forward-fp32",
         package="modernvbert",
         probe_module="tests.models.modernvbert.performance_probe",

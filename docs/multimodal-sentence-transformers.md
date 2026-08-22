@@ -57,7 +57,8 @@ The graph contract is checked against pinned upstream JSON metadata:
 | Llama Nemotron VL | `nvidia/llama-nemotron-embed-vl-1b-v2` | `nvidia/llama-nemotron-rerank-vl-1b-v2` | text, image |
 | NVIDIA Omni Embed | `nvidia/omni-embed-nemotron-3b` | — | text, image |
 | BidirLM Omni | `BidirLM/BidirLM-Omni-2.5B-Embedding` | — | text, image, audio |
-| CLIP and BGE-VL CLIP | `BAAI/BGE-VL-base`, `BAAI/BGE-VL-large`, `sentence-transformers/clip-ViT-L-14`, `sentence-transformers/clip-ViT-B-16`, `sentence-transformers/clip-ViT-B-32`, `sentence-transformers/clip-ViT-B-32-multilingual-v1` | — | text, image |
+| CLIP and BGE-VL CLIP | `BAAI/BGE-VL-base`, `BAAI/BGE-VL-large`, `sentence-transformers/clip-ViT-L-14`, `sentence-transformers/clip-ViT-B-16`, `sentence-transformers/clip-ViT-B-32` | — | text, image |
+| Multilingual CLIP-aligned text tower | `sentence-transformers/clip-ViT-B-32-multilingual-v1` | — | text |
 | LLaVA-NeXT retrieval | `BAAI/BGE-VL-MLLM-S1`, `BAAI/BGE-VL-MLLM-S2`, `BAAI/BGE-VL-v1.5-zs`, `BAAI/BGE-VL-v1.5-mmeb`, `royokong/e5-v` | — | text, image |
 | Qwen2.5-VL retrieval | `BAAI/BGE-VL-Screenshot` | — | text, image |
 | Nomic multimodal | `nomic-ai/nomic-embed-multimodal-3b`, `nomic-ai/nomic-embed-multimodal-7b` | — | text, image |
@@ -144,6 +145,58 @@ exactly. PIL versus Torchvision bicubic video resizing accounts for a bounded
 native BF16 inference and three generic packed-INT4 LoRA updates on one 24 GB
 GPU.
 
+## Native CLIP and BGE-VL usage
+
+One native CLIP family handles ordinary Hugging Face `CLIPModel` checkpoints,
+the legacy Sentence Transformers `0_CLIPModel/` layout, and BGE-VL's additive
+late-fusion graph. The loader reads the outer Sentence Transformers modules to
+preserve whether the checkpoint normalizes its projected representation:
+
+```python
+from representax.core import Route
+from representax.models import CLIPEncoder
+
+model, processor = CLIPEncoder.load_from_hf(
+    "BAAI/BGE-VL-base",
+    revision="cc4c733ed997dbee4ac70ccffb911e70c9c24b93",
+)
+batch = processor(
+    [{"image": image, "text": "make the background dark"}],
+    route=Route.QUERY,
+)
+representations = model.encode(batch, route=Route.QUERY)
+```
+
+Raw strings and image objects remain convenient inputs, while the same
+processor also consumes Representax `Artifact.text(...)` and image artifacts
+from a Grain data distribution without constructing an intermediate dataset.
+It emits only fixed `input_ids`, masks, and pixel arrays before the compiled
+step. Standard CLIP patch projection is expressed as an equivalent nonoverlap
+patch extraction plus GEMM rather than a cuDNN convolution.
+
+The tiny FP32 oracle matches Transformers 5.6 within `6.5e-7` for text/image
+and composed outputs, `8.9e-9` for image-input gradients, `3.1e-6` for all
+parameter gradients, and `1.8e-7` after three matched AdamW updates. Both an
+ordinary checkpoint and the legacy nested layout round-trip through the same
+398-tensor adapter. On the real 149.6M-parameter BGE-VL base artifact,
+tokenizer/image preprocessing is exact and Sentence Transformers cosine is at
+least `0.99999958` for text, image, and composed inputs. The real 151.3M
+CLIP-B/32 artifact reaches at least `0.99999976` cosine for text and image.
+BGE-VL base also completes three compiled BF16-compute/FP32-master AdamW
+updates with losses `0.25018 -> 0.14765 -> 0.05490`, followed by exact native
+export/reload. Hugging Face export preserves either the root or
+`0_CLIPModel/` source layout and its tokenizer/image assets. In the matched
+batch-16, sequence-77 FP32 text-forward gate, Representax sustains 3,495
+examples/s versus 2,404 for Transformers 5.6 (`1.454x` throughput), with
+`9.24e-7` maximum output error and `1.84e-6` relative L2. Its 15.54-second
+first compile amortizes after roughly 8,250 repeated steps in this deliberately
+small inference workload.
+
+The similarly named `clip-ViT-B-32-multilingual-v1` is not another CLIP
+dual-encoder checkpoint: it is a text-only DistilBERT projection trained into
+CLIP space. It remains a separate text-family target rather than being falsely
+claimed by this implementation.
+
 The Hugging Face article currently lists 20 multimodal embedders, four
 multimodal rerankers, six text rerankers, and four legacy CLIP variants. Some
 entries use integration PR revisions or repository remote code. Before an
@@ -161,9 +214,9 @@ unless its terms are compatible with the intended use.
 2. **Qwen2.5-Omni 3B — accepted.** LCO supplies the first linked
    text/image/audio/video case; the pinned LCO 7B and E5 3B/7B configs reuse
    the same family.
-3. **BGE-VL base/large and legacy CLIP — next.** These provide inexpensive image-text
-   training and processor parity gates suitable for ordinary CI artifacts.
-4. **The remaining architecture families.** Add them by shared forward family,
+3. **BGE-VL base/large and legacy CLIP — accepted.** These provide inexpensive
+   image-text training and processor parity gates suitable for frequent runs.
+4. **The remaining architecture families — next.** Add them by shared forward family,
    prioritizing checkpoints that create a new modality, reranking method,
    scaling result, or legally clean comparison.
 

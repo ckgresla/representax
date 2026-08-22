@@ -140,6 +140,24 @@ def test_qwen2_5_omni_family_has_four_modality_training_and_export_gates():
     }
 
 
+def test_clip_family_has_text_image_training_and_export_gates():
+    family = get_model_family("clip")
+    assert family is get_model_type_family("clip")
+    assert family.support is FamilySupport.VERIFIED
+    assert family.modalities == (Modality.TEXT, Modality.IMAGE)
+    assert "additive_late_fusion" in family.components
+    assert family.acceptance_gates == {
+        AcceptanceGate.CONFIG_MAPPING,
+        AcceptanceGate.CHECKPOINT_ROUNDTRIP,
+        AcceptanceGate.FORWARD,
+        AcceptanceGate.INPUT_GRADIENT,
+        AcceptanceGate.PARAMETER_GRADIENT,
+        AcceptanceGate.OPTIMIZER_UPDATE,
+        AcceptanceGate.EXPORT_RELOAD,
+        AcceptanceGate.PERFORMANCE,
+    }
+
+
 def test_generated_family_registry_is_current_and_torch_free():
     assert REFERENCE_CATALOG_SHA256 == CATALOG_SHA256
     assert FAMILY_MANIFEST_SHA256
