@@ -9,8 +9,9 @@ The project is alpha. The current slice provides:
 
 - an Equinox-native encoder protocol with typed routes;
 - native BERT, MPNet, ModernVBERT text-image, pinned Jina v5 Omni Small text,
-  and Qwen3-VL text-image-video embedding/reranking models with direct Hugging
-  Face safetensor loading and numerical acceptance;
+  Qwen3-VL text-image-video embedding/reranking, and Qwen2.5-Omni
+  text-image-audio-video embedding models with direct Hugging Face safetensor
+  loading and numerical acceptance;
 - a Torch-free dense Sentence Transformers module loader and fixed-shape host
   embedding API;
 - direct and cached multiple-negatives ranking, including symmetric and
@@ -70,8 +71,9 @@ python -m pip install -e ".[test,performance]" --group parity-modernvbert
 The v0 Hugging Face reference is pinned to Transformers 5.3.0. Its complete
 architecture catalog is distinct from native support: BERT, MPNet, and
 ModernVBERT have the broadest current acceptance, Jina v5 Omni Small has a
-pinned native text path, and Qwen3-VL 2B has native text/image/video embedding
-and reranking paths. Repository-only
+pinned native text path, Qwen3-VL 2B has native text/image/video embedding and
+reranking paths, and Qwen2.5-Omni has a native text/image/audio/video embedding
+path. Repository-only
 dense-route acceptance uses Sentence Transformers 5.6.1, the latest stable
 multimodal release line.
 

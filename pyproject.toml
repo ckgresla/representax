@@ -48,7 +48,7 @@ hf = [
     "pillow>=10",
     "pyarrow>=18",
     "tokenizers>=0.21",
-    "transformers==5.3.0",
+    "transformers==5.6.0",
 ]
 cuda12 = [
     "jax[cuda12]>=0.5",
@@ -72,7 +72,7 @@ parity = [
     "accelerate>=1.1,<2",
     "sentence-transformers==5.6.1",
     "torch>=2.5",
-    "transformers==5.3.0",
+    "transformers==5.6.0",
 ]
 parity-modernvbert = [
     "torch>=2.5",

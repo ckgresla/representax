@@ -189,6 +189,60 @@ MODEL_FAMILIES = (
         "support": "verified",
     },
     {
+        "name": "qwen2_5_omni",
+        "model_types": ("qwen2_5_omni",),
+        "modalities": ("text", "image", "audio", "video"),
+        "components": (
+            "causal_grouped_query_attention",
+            "sectioned_multimodal_rotary_position_embedding",
+            "windowed_vision_transformer",
+            "chunked_audio_transformer",
+            "last_token_pooling",
+            "l2_normalized_embedding",
+        ),
+        "configuration_constraints": (
+            "LCO-Embedding-Omni-3B-2605@5f6b5329da5141367da30e06a9826d1322d6c9b2",
+            "LCO-Embedding-Omni-7B@108f6f1a5de3b2eedd1d1c7b7005aaca6ed3802c",
+            "e5-omni-3B@c302bf66d9fb80112e867a1caf253c4e2a23b9e2",
+            "e5-omni-7B@e7679b8ddcc20bf351811bedbca38e9cfee334d6",
+        ),
+        "config_adapter": (
+            "representax.models.qwen2_5_omni.Qwen2_5OmniConfig.from_hf_config"
+        ),
+        "input_contracts": (
+            ("text", ("input_ids", "attention_mask", "position_ids")),
+            (
+                "multimodal",
+                (
+                    "input_ids",
+                    "attention_mask",
+                    "position_ids",
+                    "vision_layout",
+                    "audio_layout",
+                ),
+            ),
+        ),
+        "output_contracts": (
+            "last_hidden_state",
+            "last_token_l2_normalized_representation",
+        ),
+        "checkpoint_layout": "huggingface_safetensors",
+        "checkpoint_adapter": (
+            "representax.models.qwen2_5_omni.Qwen2_5OmniCheckpointAdapter"
+        ),
+        "implementation_module": "representax.models.qwen2_5_omni",
+        "acceptance_gates": (
+            "config_mapping",
+            "checkpoint_roundtrip",
+            "forward",
+            "input_gradient",
+            "parameter_gradient",
+            "optimizer_update",
+            "export_reload",
+        ),
+        "support": "native",
+    },
+    {
         "name": "qwen3_vl",
         "model_types": ("qwen3_vl",),
         "modalities": ("text", "image", "video"),

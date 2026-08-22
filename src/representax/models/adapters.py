@@ -41,11 +41,14 @@ def _pack_int4_rows(
     UInt8[Array, "*stack output packed"],
     UInt16[Array, "*stack output"],
 ]:
-    numeric = weight.astype(jnp.float32)
-    maximum = jnp.max(jnp.abs(numeric), axis=-1)
+    # Avoid materializing a full FP32 copy of stacked transformer weights. The
+    # quantization grid is ultimately stored in BF16, so only the much smaller
+    # per-row maxima need an FP32 arithmetic boundary.
+    numeric = weight.astype(jnp.bfloat16)
+    maximum = jnp.max(jnp.abs(numeric), axis=-1).astype(jnp.float32)
     scale = jnp.where(maximum > 0, maximum / 7.0, 1.0).astype(jnp.bfloat16)
     quantized = jnp.clip(
-        jnp.rint(numeric / scale.astype(jnp.float32)[..., None]),
+        jnp.rint(numeric / scale[..., None]),
         -7,
         7,
     ).astype(jnp.int8)

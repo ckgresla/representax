@@ -118,6 +118,28 @@ def test_qwen3_vl_family_has_multimodal_embedding_and_reranking_gates():
     }
 
 
+def test_qwen2_5_omni_family_has_four_modality_training_and_export_gates():
+    family = get_model_family("qwen2_5_omni")
+    assert family is get_model_type_family("qwen2_5_omni")
+    assert family.support is FamilySupport.NATIVE
+    assert family.modalities == (
+        Modality.TEXT,
+        Modality.IMAGE,
+        Modality.AUDIO,
+        Modality.VIDEO,
+    )
+    assert "chunked_audio_transformer" in family.components
+    assert family.acceptance_gates == {
+        AcceptanceGate.CONFIG_MAPPING,
+        AcceptanceGate.CHECKPOINT_ROUNDTRIP,
+        AcceptanceGate.FORWARD,
+        AcceptanceGate.INPUT_GRADIENT,
+        AcceptanceGate.PARAMETER_GRADIENT,
+        AcceptanceGate.OPTIMIZER_UPDATE,
+        AcceptanceGate.EXPORT_RELOAD,
+    }
+
+
 def test_generated_family_registry_is_current_and_torch_free():
     assert REFERENCE_CATALOG_SHA256 == CATALOG_SHA256
     assert FAMILY_MANIFEST_SHA256

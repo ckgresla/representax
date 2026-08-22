@@ -3,9 +3,9 @@
 This is Representax's minimum external checkpoint panel for multimodal model
 coverage. It snapshots the models linked by Hugging Face's April 2026
 [Multimodal Embedding & Reranker Models with Sentence Transformers](https://huggingface.co/blog/multimodal-sentence-transformers)
-release. Presence here means **acceptance target**, not native support; the
-Qwen3-VL 2B embedding and reranking revisions are the first entries to complete
-the native acceptance slice.
+release. Presence here means **acceptance target**, not native support;
+Qwen3-VL 2B embedding/reranking and Qwen2.5-Omni LCO 3B are the first entries
+to complete their native acceptance slices.
 
 Representax must not implement one bespoke wrapper per checkpoint. A checkpoint
 resolves through:
@@ -112,6 +112,38 @@ embedding cosine. BF16 throughput probes are useful implementation evidence,
 but do not substitute for the matched dataset-to-trained-model jobs required
 for a paper claim.
 
+## Native Qwen2.5-Omni usage
+
+The Qwen2.5-Omni family composes text, image, audio, and video without defining
+an artificial fused modality. Its model-associated processor owns the exact
+chat template, tokenizer, image normalization, video frame packing, Whisper
+features, placeholder expansion, multimodal positions, and finite buckets:
+
+```python
+from representax.core import Route
+from representax.models import Qwen2_5OmniEncoder
+
+model, processor = Qwen2_5OmniEncoder.load_from_hf(
+    "LCO-Embedding/LCO-Embedding-Omni-3B-2605",
+    revision="5f6b5329da5141367da30e06a9826d1322d6c9b2",
+)
+batch = processor(
+    [{"text": "What is happening?", "video": video, "audio": waveform}],
+    route=Route.QUERY,
+)
+representations = model.encode(batch, route=Route.QUERY)
+```
+
+The tiny FP32 oracle matches Transformers 5.6 within `7.2e-7` for hidden
+states, `1.1e-6` for image-input gradients, and `5.9e-10` for audio-input
+gradients; its three-step AdamW trajectory finishes within `1.2e-5` maximum
+parameter error and its native export reloads in Transformers. A deterministic
+real processor case matches all 358 token IDs and 100 valid audio frames
+exactly. PIL versus Torchvision bicubic video resizing accounts for a bounded
+`5.5e-5` relative pixel L2 difference. The full LCO 3B checkpoint executes
+native BF16 inference and three generic packed-INT4 LoRA updates on one 24 GB
+GPU.
+
 The Hugging Face article currently lists 20 multimodal embedders, four
 multimodal rerankers, six text rerankers, and four legacy CLIP variants. Some
 entries use integration PR revisions or repository remote code. Before an
@@ -126,9 +158,10 @@ unless its terms are compatible with the intended use.
    image/video preprocessing, dense pooling, and tied-token scoring; the 8B
    variants test configuration scaling and FSDP capacity rather than a new
    forward.
-2. **Qwen2.5-Omni 3B.** LCO supplies the first linked text/image/audio/video
-   acceptance case; the 7B and E5 variants should reuse the same family.
-3. **BGE-VL base/large and legacy CLIP.** These provide inexpensive image-text
+2. **Qwen2.5-Omni 3B — accepted.** LCO supplies the first linked
+   text/image/audio/video case; the pinned LCO 7B and E5 3B/7B configs reuse
+   the same family.
+3. **BGE-VL base/large and legacy CLIP — next.** These provide inexpensive image-text
    training and processor parity gates suitable for ordinary CI artifacts.
 4. **The remaining architecture families.** Add them by shared forward family,
    prioritizing checkpoints that create a new modality, reranking method,

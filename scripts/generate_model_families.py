@@ -97,13 +97,19 @@ def validate_manifest(
             raise ValueError(f"duplicate model family {family!r}")
         names.add(family)
 
+        support = raw.get("support")
+        if support not in SUPPORT_LEVELS:
+            raise ValueError(
+                f"{family}.support must be one of {sorted(SUPPORT_LEVELS)}"
+            )
+
         model_types = _nonempty_strings(
             raw.get("model_types"), field="model_types", family=family
         )
         for model_type in model_types:
             if model_type not in catalog:
                 raise ValueError(f"{family} owns unknown model type {model_type!r}")
-            if not catalog[model_type][3]:
+            if support == "catalogued" and not catalog[model_type][3]:
                 raise ValueError(
                     f"{family} owns {model_type!r}, which has no task-neutral AutoModel"
                 )
@@ -142,11 +148,6 @@ def validate_manifest(
         if unknown_gates:
             raise ValueError(f"{family} has unknown gates {sorted(unknown_gates)}")
 
-        support = raw.get("support")
-        if support not in SUPPORT_LEVELS:
-            raise ValueError(
-                f"{family}.support must be one of {sorted(SUPPORT_LEVELS)}"
-            )
         config_adapter = raw.get("config_adapter")
         checkpoint_adapter = raw.get("checkpoint_adapter")
         implementation_module = raw.get("implementation_module")

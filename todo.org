@@ -314,10 +314,19 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      BF16 and timing measurements remain systems evidence, not a paper-level
      training claim.
      The 8B capacity acceptance remains part of the FSDP benchmark frontier.
-**** NEXT Accept Qwen2.5-Omni embedding variants
+**** DONE Accept Qwen2.5-Omni embedding variants
      Use LCO Omni 3B as the first linked text/image/audio/video checkpoint, then
      reuse the family for LCO 7B and both E5-Omni variants.
-**** TODO Accept the linked CLIP and BGE-VL small-model variants
+     Accepted as one native Equinox Qwen2.5-Omni thinker family spanning the
+     pinned Apache-2.0 LCO 3B/7B and MIT E5-Omni 3B/7B architecture configs.
+     The LCO 3B gate covers exact checkpoint conversion, model-associated
+     tokenizer/image/audio/video processing into finite buckets, same-tensor
+     FP32 hidden states and media/input/parameter gradients against Transformers
+     5.6, three matched AdamW updates, HF export/fresh reload, real BF16
+     inference, and three full-checkpoint INT4-LoRA optimizer updates on a 24 GB
+     GPU. The physical gate also removed a 3.02 GiB FP32 quantizer temporary and
+     proved packed multimodal payloads work through the generic task trainer.
+**** NEXT Accept the linked CLIP and BGE-VL small-model variants
      Establish inexpensive image-text training, processor parity, export, and
      performance gates that can run more frequently than multi-billion-parameter
      VLM jobs.

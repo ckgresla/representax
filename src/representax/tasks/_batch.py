@@ -12,7 +12,19 @@ from jax import core as jax_core
 
 
 def payload_row_count(payload: Any, *, name: str) -> int:
-    """Return a payload's common leading dimension or fail at the host boundary."""
+    """Return the logical example count for a model-native payload.
+
+    Packed multimodal payloads may contain patch-, frame-, or chunk-major arrays
+    whose leading dimensions intentionally differ from the example dimension.
+    Such payloads expose an explicit ``batch_size`` property; ordinary payloads
+    retain the stricter common-leading-dimension inference.
+    """
+
+    explicit = getattr(payload, "batch_size", None)
+    if explicit is not None:
+        if not isinstance(explicit, int) or explicit <= 0:
+            raise ValueError(f"{name} payload batch_size must be a positive integer")
+        return explicit
 
     leaves = [value for value in jax.tree.leaves(payload) if eqx.is_array(value)]
     if not leaves:
