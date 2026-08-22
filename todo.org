@@ -374,12 +374,23 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
       causal mask while an explicit bidirectional mode matches NVIDIA's
       published layer intent; tests expose the upstream API drift instead of
       silently changing semantics.
-***** NEXT Implement and accept native Qwen2.5-VL and Qwen2-VL families
+***** DONE Implement and accept native Qwen2.5-VL and Qwen2-VL families
       Reuse the shared Qwen text, vision, rotary, finite-shape processor, and
       checkpoint primitives while preserving each generation's exact image and
       video merge semantics.  Accept BGE-VL-Screenshot, Nomic multimodal 3B/7B
       LoRA adapters, and Jina reranker-m0.
-***** TODO Implement and accept native LLaVA-NeXT retrieval
+      Accepted both generations against Transformers 5.6 with same-tensor FP32
+      hidden-state, image-gradient, parameter-gradient, three-step AdamW, and
+      Hugging Face export/fresh-reload gates. Real BGE-VL-Screenshot, Nomic 3B,
+      Nomic 7B, and Jina reranker-m0 artifacts match their pinned upstream
+      preprocessing and inference contracts. Nomic 7B executes full FP32
+      inference with generic two-GPU FSDP placement. Every real checkpoint
+      completes three finite adapter-training updates; imported Nomic adapters
+      remain FP32 while their frozen base is packed to INT4. The generic
+      checkpoint boundary now performs CPU-first conversion and host-sliced
+      FSDP placement, preventing one accelerator from staging all parameter
+      shards. See =benchmarks/results/qwen2-vl-acceptance-20260822/README.org=.
+***** NEXT Implement and accept native LLaVA-NeXT retrieval
       Share the CLIP vision tower across the Mistral-backed BGE S1/S2/v1.5
       checkpoints and Llama-backed E5-V while preserving any-resolution image
       packing, projector, prompt, pooling, and normalization semantics.

@@ -137,12 +137,14 @@ def load_safetensor_subset(
     names: set[str] | frozenset[str],
     *,
     dtype: jnp.dtype = jnp.float32,
+    device: jax.Device | None = None,
 ) -> dict[str, jax.Array]:
     """Read only selected tensors from a local single- or multi-shard model.
 
-    ``safetensors`` remains an optional dependency.  Returned values are JAX
-    arrays, so loading under an established device context places parameters
-    directly on the intended backend.
+    ``safetensors`` remains an optional dependency. Checkpoints are materialized
+    on CPU by default so parsing, dtype conversion, and model-specific layout
+    changes never consume accelerator memory. Runtime placement is an explicit
+    later boundary. ``device`` exists for controlled low-level use only.
     """
 
     try:
@@ -157,6 +159,7 @@ def load_safetensor_subset(
         return {}
     checkpoint_path = Path(checkpoint)
     result: dict[str, jax.Array] = {}
+    target = jax.devices("cpu")[0] if device is None else device
     for shard, shard_names in _safetensor_shards(checkpoint_path, requested).items():
         if not shard.is_file():
             raise FileNotFoundError(f"safetensor shard not found: {shard}")
@@ -166,6 +169,7 @@ def load_safetensor_subset(
             if missing:
                 rendered = ", ".join(sorted(missing))
                 raise KeyError(f"{shard.name} is missing tensors: {rendered}")
-            for name in shard_names:
-                result[name] = jnp.asarray(handle.get_tensor(name), dtype=dtype)
+            with jax.default_device(target):
+                for name in shard_names:
+                    result[name] = jnp.asarray(handle.get_tensor(name), dtype=dtype)
     return result

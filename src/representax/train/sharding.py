@@ -75,6 +75,80 @@ def fsdp_partition_spec(
     return P(*axes)
 
 
+def fsdp_parameter_specs(
+    model: eqx.Module,
+    mesh: Mesh,
+    *,
+    axis_name: str = "fsdp",
+    minimum_elements: int = 1024,
+) -> eqx.Module:
+    """Resolve the named FSDP preset into a model-shaped layout tree."""
+
+    if minimum_elements <= 0:
+        raise ValueError("minimum_elements must be positive")
+    if axis_name not in mesh.axis_names:
+        raise ValueError(f"FSDP axis {axis_name!r} is absent from the mesh")
+    axis_size = int(mesh.shape[axis_name])
+    if axis_size <= 1:
+        raise ValueError("FSDP parameter axis must contain more than one device")
+    return cast(
+        eqx.Module,
+        jax.tree.map(
+            lambda value: (
+                fsdp_partition_spec(
+                    tuple(value.shape),
+                    axis_name=axis_name,
+                    axis_size=axis_size,
+                    minimum_elements=minimum_elements,
+                )
+                if eqx.is_array(value)
+                else P()
+            ),
+            model,
+        ),
+    )
+
+
+def place_model(model: eqx.Module, mesh: Mesh, specs: eqx.Module) -> eqx.Module:
+    """Place a model directly into an explicit model-shaped sharding layout."""
+
+    if jax.tree.structure(model) != jax.tree.structure(specs):
+        raise ValueError("parameter specs must match the model PyTree")
+    shardings = _named_shardings(mesh, specs)
+
+    def place(value: Any, sharding: NamedSharding) -> Any:
+        if not eqx.is_array(value):
+            return value
+        if sharding.is_fully_addressable:
+            # Slice host-resident checkpoints before device transfer. Passing
+            # one complete multi-GiB array to device_put lets its internal
+            # _multi_slice executable stage every shard on one GPU before
+            # distribution, defeating FSDP precisely when it is needed most.
+            host_value = np.asarray(value)
+            indices = sharding.addressable_devices_indices_map(host_value.shape)
+            local_arrays = [
+                jax.device_put(host_value[indices[device]], device)
+                for device in sharding.addressable_devices
+            ]
+            return jax.make_array_from_single_device_arrays(
+                host_value.shape,
+                sharding,
+                local_arrays,
+            )
+        if tuple(sharding.spec):
+            raise NotImplementedError(
+                "multi-host model placement requires process-local "
+                "checkpoint restoration"
+            )
+        return jax.make_array_from_process_local_data(
+            sharding,
+            value,
+            global_shape=value.shape,
+        )
+
+    return cast(eqx.Module, jax.tree.map(place, model, shardings))
+
+
 def parameter_specs_from_rules(
     model: eqx.Module,
     rules: Sequence[tuple[str, P]],
@@ -176,29 +250,12 @@ class ShardingPlan:
     ) -> ShardingPlan:
         """Resolve the named fully-sharded data parallelism preset."""
 
-        if minimum_parameter_elements <= 0:
-            raise ValueError("minimum_parameter_elements must be positive")
-        if parameter_axis_name not in mesh.axis_names:
-            raise ValueError(
-                f"parameter axis {parameter_axis_name!r} is absent from mesh axes "
-                f"{mesh.axis_names!r}"
-            )
-        axis_size = int(mesh.shape[parameter_axis_name])
-        if axis_size <= 1:
-            raise ValueError("FSDP parameter axis must contain more than one device")
         if parameter_specs is None:
-            parameter_specs = jax.tree.map(
-                lambda value: (
-                    fsdp_partition_spec(
-                        tuple(value.shape),
-                        axis_name=parameter_axis_name,
-                        axis_size=axis_size,
-                        minimum_elements=minimum_parameter_elements,
-                    )
-                    if eqx.is_array(value)
-                    else P()
-                ),
+            parameter_specs = fsdp_parameter_specs(
                 state.model,
+                mesh,
+                axis_name=parameter_axis_name,
+                minimum_elements=minimum_parameter_elements,
             )
         cls._validate_parameter_specs(
             state.model,

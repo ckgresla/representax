@@ -142,6 +142,24 @@ def test_qwen2_5_omni_family_has_four_modality_training_and_export_gates():
     }
 
 
+def test_qwen2_vl_family_owns_both_generations_and_dense_reranking_contracts():
+    family = get_model_family("qwen2_vl")
+    assert family is get_model_type_family("qwen2_vl")
+    assert family is get_model_type_family("qwen2_5_vl")
+    assert family.modalities == (Modality.TEXT, Modality.IMAGE, Modality.VIDEO)
+    assert "peft_lora_import" in family.components
+    assert "mlp_relevance_scoring" in family.components
+    assert family.acceptance_gates == {
+        AcceptanceGate.CONFIG_MAPPING,
+        AcceptanceGate.CHECKPOINT_ROUNDTRIP,
+        AcceptanceGate.FORWARD,
+        AcceptanceGate.INPUT_GRADIENT,
+        AcceptanceGate.PARAMETER_GRADIENT,
+        AcceptanceGate.OPTIMIZER_UPDATE,
+        AcceptanceGate.EXPORT_RELOAD,
+    }
+
+
 def test_clip_family_has_text_image_training_and_export_gates():
     family = get_model_family("clip")
     assert family is get_model_type_family("clip")

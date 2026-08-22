@@ -36,8 +36,10 @@ from .mega_batch import MegaBatchMining
 from .optimizer import build_optimizer, build_schedule
 from .sharding import (
     ShardingPlan,
+    fsdp_parameter_specs,
     fsdp_partition_spec,
     parameter_specs_from_rules,
+    place_model,
 )
 from .state import StepMetrics, StepResult, TrainState
 from .step import (
@@ -91,7 +93,9 @@ __all__ = [
     "build_schedule",
     "evaluate",
     "fsdp_partition_spec",
+    "fsdp_parameter_specs",
     "parameter_specs_from_rules",
+    "place_model",
     "init_train_state",
     "make_train_state",
     "run_training",

@@ -4,8 +4,9 @@ This is Representax's minimum external checkpoint panel for multimodal model
 coverage. It snapshots the models linked by Hugging Face's April 2026
 [Multimodal Embedding & Reranker Models with Sentence Transformers](https://huggingface.co/blog/multimodal-sentence-transformers)
 release. Presence here means **acceptance target**, not native support. The
-Qwen3-VL, Qwen2.5-Omni, CLIP, and BGE-VL CLIP rows identify checkpoints that
-have completed native acceptance; the remaining rows are still targets.
+Qwen3-VL, Qwen2.5-Omni, Qwen2/Qwen2.5-VL, CLIP, and BGE-VL CLIP rows identify
+checkpoints that have completed native acceptance; the remaining rows are still
+targets.
 
 Representax must not implement one bespoke wrapper per checkpoint. A checkpoint
 resolves through:
@@ -214,6 +215,49 @@ dual-encoder checkpoint: it is a text-only DistilBERT projection trained into
 CLIP space. It remains a separate text-family target rather than being falsely
 claimed by this implementation.
 
+## Native Qwen2/Qwen2.5-VL usage
+
+One generation-aware family supports Qwen2-VL ranking and Qwen2.5-VL dense
+embedding artifacts. PEFT-backed Nomic checkpoints load their source backbone
+and serialized adapters exactly once; adapter training may then pack the frozen
+base while retaining the imported FP32 low-rank state:
+
+```python
+from representax.core import Route
+from representax.models import quantize_lora_base
+from representax.models.qwen2_vl import Qwen2VLEncoder, Qwen2VLReranker
+
+model, processor = Qwen2VLEncoder.load_from_hf(
+    "nomic-ai/nomic-embed-multimodal-3b",
+    revision="29259db79bc6ee5fcc9e6abc8a8e16d8491e5116",
+)
+batch = processor([{"text": "quarterly revenue", "image": image}])
+embeddings = model.encode(batch, route=Route.QUERY)
+trainable_model = quantize_lora_base(model)
+
+reranker, pair_processor = Qwen2VLReranker.load_from_hf(
+    "jinaai/jina-reranker-m0",
+    revision="94bfe0aeb2d4dd7978362699cddd5893d4e0adc8",
+)
+scores = reranker.score(pair_processor([("Which report grew?", {"image": image})]))
+```
+
+The model-associated processor owns Qwen chat formatting, any query/document
+instructions, image/video transforms, multimodal rotary positions, and the
+finite sequence/patch buckets admitted to compilation. The same native family
+passes tiny Transformers forward/gradient/update/export gates and real
+Sentence Transformers preprocessing/inference gates for BGE-VL-Screenshot,
+Nomic multimodal 3B/7B, and Jina reranker-m0. Full FP32 Nomic 7B inference uses
+the generic two-GPU FSDP placement path; all four real artifacts complete three
+finite adapter updates. Detailed evidence lives in
+`benchmarks/results/qwen2-vl-acceptance-20260822/README.org`.
+
+BGE-VL-Screenshot's Sentence Transformers 5.6 remote forward currently raises
+an `embed_tokens` attribute error after an upstream Transformers layout change.
+Its acceptance test records that failure and compares Representax against the
+underlying pinned Transformers Qwen2.5-VL forward rather than concealing the
+incompatibility.
+
 The Hugging Face article currently lists 20 multimodal embedders, four
 multimodal rerankers, six text rerankers, and four legacy CLIP variants. Some
 entries use integration PR revisions or repository remote code. Before an
@@ -233,7 +277,13 @@ unless its terms are compatible with the intended use.
    the same family.
 3. **BGE-VL base/large and legacy CLIP — accepted.** These provide inexpensive
    image-text training and processor parity gates suitable for frequent runs.
-4. **The remaining architecture families — next.** Add them by shared forward family,
+4. **Qwen2/Qwen2.5-VL — accepted.** BGE-VL-Screenshot, Nomic multimodal
+   3B/7B, and Jina reranker-m0 establish dense embedding, imported PEFT, MLP
+   scoring, two-GPU FP32 FSDP inference, and packed-base adapter training.
+5. **LLaVA-NeXT retrieval — next.** Share one CLIP vision tower across BGE
+   S1/S2/v1.5 and E5-V while preserving any-resolution packing and the exact
+   Mistral/Llama projection and pooling contracts.
+6. **The remaining architecture families.** Add them by shared forward family,
    prioritizing checkpoints that create a new modality, reranking method,
    scaling result, or legally clean comparison.
 

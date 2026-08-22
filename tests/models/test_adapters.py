@@ -16,10 +16,12 @@ from jax.sharding import AxisType
 from representax.core import EncoderMetadata, Modality, Route
 from representax.models import (
     Linear,
+    LoRALinear,
     QuantizedLoRALinear,
     apply_quantized_lora,
     lora_parameter_filter,
     merge_quantized_lora,
+    quantize_lora_base,
 )
 from representax.tasks.pairwise import CosineRegressionTask, pairwise_batch
 from representax.train import ShardingPlan, build_train_step, init_train_state
@@ -94,6 +96,42 @@ def test_quantized_lora_packs_base_and_zero_initializes_adapter_output():
     )
 
 
+def test_imported_lora_matches_peft_dtype_boundary_and_merged_weight():
+    values = jnp.asarray([[0.125, -0.75, 1.5]], dtype=jnp.bfloat16)
+    weight = jnp.asarray(
+        [[0.5, 0.25, -0.125], [-0.75, 0.5, 0.375]],
+        dtype=jnp.bfloat16,
+    )
+    bias = jnp.asarray([0.25, -0.5], dtype=jnp.bfloat16)
+    lora_a = jnp.asarray([[0.1234567, -0.2345678, 0.3456789]], dtype=jnp.float32)
+    lora_b = jnp.asarray([[0.4567891], [-0.5678912]], dtype=jnp.float32)
+    layer = LoRALinear(
+        weight=weight,
+        bias=bias,
+        lora_a=lora_a,
+        lora_b=lora_b,
+        rank=1,
+        alpha=2.0,
+    )
+
+    base = values @ weight.T + bias
+    expected = (
+        base.astype(jnp.float32)
+        + (values.astype(jnp.float32) @ lora_a.T @ lora_b.T) * 2.0
+    ).astype(jnp.bfloat16)
+    np.testing.assert_array_equal(layer(values), expected)
+    np.testing.assert_allclose(
+        layer.merge().weight,
+        weight.astype(jnp.float32) + (lora_b @ lora_a) * 2.0,
+    )
+
+    quantized = quantize_lora_base(layer)
+    assert isinstance(quantized, QuantizedLoRALinear)
+    np.testing.assert_array_equal(quantized.lora_a, lora_a)
+    np.testing.assert_array_equal(quantized.lora_b, lora_b)
+    assert quantized(values).dtype == jnp.bfloat16
+
+
 def test_lora_filter_allocates_optimizer_state_only_for_adapter_arrays():
     original = _AdapterEncoder(key=jax.random.key(4))
     adapted = _adapter(original)
@@ -115,6 +153,26 @@ def test_lora_filter_allocates_optimizer_state_only_for_adapter_arrays():
     assert _array_bytes(adapter_state.optimizer_state) < _array_bytes(
         full_state.optimizer_state
     )
+
+
+def test_adapter_master_cast_does_not_expand_frozen_bfloat16_base():
+    original = _AdapterEncoder(key=jax.random.key(40))
+    original = eqx.tree_at(
+        lambda model: model.projection.weight,
+        original,
+        original.projection.weight.astype(jnp.bfloat16),
+    )
+    adapted = _adapter(original)
+    selected = lora_parameter_filter(adapted)
+    state = init_train_state(
+        adapted,
+        optax.adamw(1e-3),
+        trainable_filter=selected,
+    )
+    state_model = cast(_AdapterEncoder, state.model)
+    assert state_model.projection.packed_weight.dtype == jnp.uint8
+    assert state_model.projection.lora_a.dtype == jnp.float32
+    assert state_model.projection.lora_b.dtype == jnp.float32
 
 
 def test_adapter_step_changes_only_lora_parameters():

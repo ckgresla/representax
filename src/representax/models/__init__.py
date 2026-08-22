@@ -1,10 +1,12 @@
 """Native model implementations and integrations."""
 
 from .adapters import (
+    LoRALinear,
     QuantizedLoRALinear,
     apply_quantized_lora,
     lora_parameter_filter,
     merge_quantized_lora,
+    quantize_lora_base,
 )
 from .bert import BertBatch, BertCheckpointAdapter, BertConfig, BertEncoder
 from .clip import (
@@ -27,6 +29,7 @@ from .components import (
     AttentionImplementation,
     LayerNorm,
     Linear,
+    RMSNorm,
     activate,
     dot_product_attention,
     dropout,
@@ -149,6 +152,8 @@ __all__ = [
     "EncoderPair",
     "LayerNorm",
     "Linear",
+    "RMSNorm",
+    "LoRALinear",
     "LCO_OMNI_3B_2605_MODEL_ID",
     "LCO_OMNI_3B_2605_REVISION",
     "JINA_V5_SMALL_MODEL_ID",
@@ -226,6 +231,7 @@ __all__ = [
     "make_text_processor",
     "make_video_processor",
     "merge_quantized_lora",
+    "quantize_lora_base",
     "mpnet_relative_position_bucket",
     "mpnet_weight_names",
     "qwen2_5_omni_weight_names",

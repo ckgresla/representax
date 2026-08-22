@@ -87,10 +87,30 @@ def cast_floating_tree(tree: TreeT, dtype: jnp.dtype) -> TreeT:
     )
 
 
-def prepare_master_model(model: TreeT, policy: PrecisionPolicy) -> TreeT:
-    """Store trainable model arrays in the policy's master-parameter dtype."""
+def prepare_master_model(
+    model: TreeT,
+    policy: PrecisionPolicy,
+    *,
+    trainable_filter: Any = eqx.is_inexact_array,
+) -> TreeT:
+    """Cast trainable leaves to master dtype without expanding frozen state."""
 
-    return cast_floating_tree(model, policy.parameter_dtype)
+    selected = (
+        jax.tree.map(trainable_filter, model)
+        if callable(trainable_filter)
+        else trainable_filter
+    )
+    if jax.tree.structure(model) != jax.tree.structure(selected):
+        raise ValueError("trainable filter must match the model PyTree")
+    return jax.tree.map(
+        lambda value, trainable: (
+            value.astype(policy.parameter_dtype)
+            if trainable and eqx.is_inexact_array(value)
+            else value
+        ),
+        model,
+        selected,
+    )
 
 
 def model_for_compute(model: TreeT, policy: PrecisionPolicy) -> TreeT:
@@ -239,6 +259,29 @@ def linear_matmul(
     return output.astype(policy.activation_dtype)
 
 
+def linear_projection(
+    value: Float[Array, "*batch input"],
+    weight: Float[Array, "output input"],
+    *,
+    out_sharding: Any = None,
+) -> Float[Array, "*batch output"]:
+    """Project through an ``[output, input]`` weight without transposing it."""
+
+    policy = _ACTIVE_PRECISION.get()
+    if policy is None or policy.matrix_dtype != jnp.dtype(jnp.float8_e4m3fn):
+        return jnp.einsum(
+            "...i,oi->...o",
+            value,
+            weight,
+            out_sharding=out_sharding,
+        )
+    leading_shape = value.shape[:-1]
+    flattened = value.reshape((-1, value.shape[-1]))
+    output = _fp8_linear_dot(flattened, weight.T)
+    output = output.reshape((*leading_shape, weight.shape[-2]))
+    return output.astype(policy.activation_dtype)
+
+
 def activation_inputs(inputs: Any) -> Any:
     """Cast model inputs without touching labels or other task-owned values."""
 
@@ -288,6 +331,7 @@ __all__ = [
     "compute_parameter",
     "loss_value",
     "linear_matmul",
+    "linear_projection",
     "model_for_compute",
     "objective_output",
     "precision_context",

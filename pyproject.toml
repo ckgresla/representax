@@ -70,6 +70,8 @@ static = [
 ]
 parity = [
     "accelerate>=1.1,<2",
+    "colpali-engine==0.3.18",
+    "peft==0.19.1",
     "sentence-transformers==5.6.1",
     "torch>=2.5",
     "torchvision==0.28.0",

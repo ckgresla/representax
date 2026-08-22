@@ -69,7 +69,11 @@ def init_train_state(
 ) -> TrainState:
     """Initialize FP32 master parameters and matching selected Optax state."""
 
-    model = prepare_master_model(model, precision)
+    model = prepare_master_model(
+        model,
+        precision,
+        trainable_filter=trainable_filter,
+    )
     parameters = eqx.filter(model, trainable_filter)
     return TrainState(
         model=model,

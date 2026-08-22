@@ -9,6 +9,7 @@ import numpy as np
 from representax.models import (
     LayerNorm,
     Linear,
+    RMSNorm,
     embedding_lookup,
     l2_normalize,
     mean_pool,
@@ -35,6 +36,19 @@ def test_layer_norm_matches_jax_reference_with_fp32_statistics():
     assert layer_norm.bias is not None
     expected = expected * layer_norm.weight + layer_norm.bias
     np.testing.assert_allclose(layer_norm(value), expected, rtol=1e-6, atol=1e-6)
+
+
+def test_rms_norm_matches_transformers_bfloat16_rounding_boundary():
+    value = jnp.asarray([[0.125, -0.875, 1.75]], dtype=jnp.bfloat16)
+    weight = jnp.asarray([0.8125, 1.125, -0.6875], dtype=jnp.bfloat16)
+    norm = RMSNorm(weight=weight, epsilon=1e-6)
+    numeric = value.astype(jnp.float32)
+    normalized = (
+        numeric
+        * jax.lax.rsqrt(jnp.mean(jnp.square(numeric), axis=-1, keepdims=True) + 1e-6)
+    ).astype(jnp.bfloat16)
+    expected = normalized * weight
+    np.testing.assert_array_equal(norm(value), expected)
 
 
 def test_embedding_lookup_accumulates_repeated_table_gradients():

@@ -20,6 +20,7 @@ from representax.precision import (
     active_compute_dtype,
     compute_parameter,
     linear_matmul,
+    linear_projection,
 )
 
 from .components import Linear
@@ -104,39 +105,41 @@ class QuantizedLoRALinear(eqx.Module):
     ) -> QuantizedLoRALinear:
         """Quantize one native projection and add a zero-output adapter."""
 
+        linear = linear.output_major()
         if rank <= 0 or rank > min(linear.weight.shape[-2:]):
             raise ValueError("adapter rank must fit both linear dimensions")
         if alpha <= 0:
             raise ValueError("adapter alpha must be positive")
-        packed, scales = _pack_int4_rows(linear.weight)
-        scale = (
-            linear.weight.shape[-1] ** -0.5
-            if initialization_scale is None
-            else initialization_scale
-        )
-        return cls(
-            packed_weight=packed,
-            scale_bits=scales,
-            bias_bits=(
-                None if linear.bias is None else _bits_from_bfloat16(linear.bias)
-            ),
-            lora_a=(
-                scale
-                * jax.random.normal(
-                    key,
-                    (*linear.weight.shape[:-2], rank, linear.weight.shape[-1]),
+        with jax.default_device(jax.devices("cpu")[0]):
+            packed, scales = _pack_int4_rows(linear.weight)
+            scale = (
+                linear.weight.shape[-1] ** -0.5
+                if initialization_scale is None
+                else initialization_scale
+            )
+            return cls(
+                packed_weight=packed,
+                scale_bits=scales,
+                bias_bits=(
+                    None if linear.bias is None else _bits_from_bfloat16(linear.bias)
+                ),
+                lora_a=(
+                    scale
+                    * jax.random.normal(
+                        key,
+                        (*linear.weight.shape[:-2], rank, linear.weight.shape[-1]),
+                        dtype=jnp.float32,
+                    )
+                ),
+                lora_b=jnp.zeros(
+                    (*linear.weight.shape[:-2], linear.weight.shape[-2], rank),
                     dtype=jnp.float32,
-                )
-            ),
-            lora_b=jnp.zeros(
-                (*linear.weight.shape[:-2], linear.weight.shape[-2], rank),
-                dtype=jnp.float32,
-            ),
-            input_size=linear.weight.shape[-1],
-            output_size=linear.weight.shape[-2],
-            rank=rank,
-            alpha=alpha,
-        )
+                ),
+                input_size=linear.weight.shape[-1],
+                output_size=linear.weight.shape[-2],
+                rank=rank,
+                alpha=alpha,
+            )
 
     def base_weight(self) -> Float[Array, "*stack output input"]:
         """Materialize the BF16 base only at its projection use boundary."""
@@ -161,20 +164,23 @@ class QuantizedLoRALinear(eqx.Module):
     ) -> Float[Array, "*batch output"]:
         value = activation_inputs(value)
         compute_dtype = active_compute_dtype(value.dtype)
-        output = linear_matmul(
+        output = linear_projection(
             value,
-            self.base_weight().astype(compute_dtype).T,
+            self.base_weight().astype(compute_dtype),
             out_sharding=activation_out_sharding(value.ndim),
         )
-        adapter_hidden = linear_matmul(
-            value,
-            compute_parameter(self.lora_a).T,
+        adapter_hidden = linear_projection(
+            value.astype(self.lora_a.dtype),
+            compute_parameter(self.lora_a),
         )
-        adapter_output = linear_matmul(
+        adapter_output = linear_projection(
             adapter_hidden,
-            compute_parameter(self.lora_b).T,
+            compute_parameter(self.lora_b),
         )
-        output = output + adapter_output * (self.alpha / self.rank)
+        output = (
+            output.astype(adapter_output.dtype)
+            + adapter_output * (self.alpha / self.rank)
+        ).astype(output.dtype)
         if self.bias_bits is not None:
             output = output + _bfloat16_from_bits(replicate(self.bias_bits)).astype(
                 compute_dtype
@@ -192,6 +198,112 @@ class QuantizedLoRALinear(eqx.Module):
                 else _bfloat16_from_bits(self.bias_bits).astype(jnp.float32)
             ),
         )
+
+
+class LoRALinear(eqx.Module):
+    """Exact base-plus-low-rank projection used by imported PEFT checkpoints."""
+
+    weight: Float[Array, "*stack output input"]
+    bias: Float[Array, "*stack output"] | None
+    lora_a: Float[Array, "*stack rank input"]
+    lora_b: Float[Array, "*stack output rank"]
+    rank: int = eqx.field(static=True)
+    alpha: float = eqx.field(static=True)
+    weight_layout: str = eqx.field(static=True, default="output_input")
+
+    def __call__(
+        self,
+        value: Float[Array, "*batch input"],
+    ) -> Float[Array, "*batch output"]:
+        value = activation_inputs(value)
+        if self.weight_layout == "input_output":
+            weight = compute_parameter(self.weight)
+            base = linear_matmul(
+                value,
+                weight,
+                out_sharding=activation_out_sharding(value.ndim),
+            )
+        else:
+            weight = replicate(compute_parameter(self.weight))
+            base = linear_projection(
+                value,
+                weight,
+                out_sharding=activation_out_sharding(value.ndim),
+            )
+        if self.bias is not None:
+            base = base + replicate(compute_parameter(self.bias))
+
+        # PEFT keeps imported adapter weights in FP32 by default. Its forward
+        # casts the input to that dtype, evaluates the two low-rank projections,
+        # adds them to the base result, and casts back to the base result dtype.
+        # Preserving that boundary matters: folding or BF16-casting the adapter
+        # can erase trained updates in large BF16 backbones.
+        adapter_dtype = self.lora_a.dtype
+        adapter_hidden = linear_projection(
+            value.astype(adapter_dtype),
+            replicate(self.lora_a),
+        )
+        adapter = linear_projection(
+            adapter_hidden,
+            replicate(self.lora_b),
+        )
+        output = (
+            base.astype(adapter_dtype) + adapter * (self.alpha / self.rank)
+        ).astype(base.dtype)
+        return constrain_activation(output)
+
+    def merged_weight(self) -> Float[Array, "*stack output input"]:
+        """Materialize the conventional full-precision export tensor."""
+
+        weight = self.weight.astype(jnp.float32)
+        if self.weight_layout == "input_output":
+            weight = jnp.swapaxes(weight, -2, -1)
+        return weight + (
+            self.lora_b.astype(jnp.float32) @ self.lora_a.astype(jnp.float32)
+        ) * (self.alpha / self.rank)
+
+    def merge(self) -> Linear:
+        """Replace the two-branch projection with an ordinary Linear."""
+
+        return Linear(
+            weight=self.merged_weight(),
+            bias=None if self.bias is None else self.bias.astype(jnp.float32),
+        )
+
+
+def quantize_lora_base(model: ModelT) -> ModelT:
+    """Pack imported LoRA base weights while preserving trained adapters."""
+
+    def quantize(linear: LoRALinear) -> QuantizedLoRALinear:
+        with jax.default_device(jax.devices("cpu")[0]):
+            weight = (
+                linear.weight
+                if linear.weight_layout == "output_input"
+                else jnp.swapaxes(linear.weight, -2, -1)
+            )
+            packed, scales = _pack_int4_rows(weight)
+            return QuantizedLoRALinear(
+                packed_weight=packed,
+                scale_bits=scales,
+                bias_bits=(
+                    None if linear.bias is None else _bits_from_bfloat16(linear.bias)
+                ),
+                lora_a=linear.lora_a.astype(jnp.float32),
+                lora_b=linear.lora_b.astype(jnp.float32),
+                input_size=weight.shape[-1],
+                output_size=weight.shape[-2],
+                rank=linear.rank,
+                alpha=linear.alpha,
+            )
+
+    return cast(
+        ModelT,
+        jax.tree.map(
+            lambda value: quantize(value) if isinstance(value, LoRALinear) else value,
+            model,
+            is_leaf=lambda value: isinstance(value, LoRALinear),
+        ),
+    )
 
 
 def _path_name(path: tuple[Any, ...]) -> str:
@@ -237,16 +349,18 @@ def apply_quantized_lora(
 
 
 def merge_quantized_lora(model: ModelT) -> ModelT:
-    """Replace every packed adapter projection with an ordinary merged Linear."""
+    """Replace every native LoRA projection with an ordinary merged Linear."""
 
     return cast(
         ModelT,
         jax.tree.map(
             lambda value: (
-                value.merge() if isinstance(value, QuantizedLoRALinear) else value
+                value.merge()
+                if isinstance(value, (LoRALinear, QuantizedLoRALinear))
+                else value
             ),
             model,
-            is_leaf=lambda value: isinstance(value, QuantizedLoRALinear),
+            is_leaf=lambda value: isinstance(value, (LoRALinear, QuantizedLoRALinear)),
         ),
     )
 
@@ -268,8 +382,10 @@ def lora_parameter_filter(model: eqx.Module) -> Any:
 
 
 __all__ = [
+    "LoRALinear",
     "QuantizedLoRALinear",
     "apply_quantized_lora",
     "lora_parameter_filter",
     "merge_quantized_lora",
+    "quantize_lora_base",
 ]

@@ -19,10 +19,12 @@ from representax.precision import (
     activation_inputs,
     compute_parameter,
     linear_matmul,
+    linear_projection,
 )
 
 AttentionImplementation = Literal["xla", "cudnn"]
 Activation = Literal["gelu", "gelu_new", "relu", "silu"]
+LinearWeightLayout = Literal["output_input", "input_output"]
 
 
 def rematerialize(function: Any, policy: RematerializationPolicy) -> Any:
@@ -58,8 +60,12 @@ def embedding_lookup(
 class Linear(eqx.Module):
     """Batched linear projection."""
 
-    weight: Float[Array, "output input"]
+    weight: Float[Array, "axis0 axis1"]
     bias: Float[Array, " output"] | None = None
+    weight_layout: LinearWeightLayout = eqx.field(
+        static=True,
+        default="output_input",
+    )
 
     @classmethod
     def init(
@@ -78,17 +84,51 @@ class Linear(eqx.Module):
             bias=jnp.zeros((output_size,), dtype=dtype) if bias else None,
         )
 
+    def input_major(self) -> Linear:
+        """Return the compute-native layout used by scanned layer stacks."""
+
+        if self.weight_layout == "input_output":
+            return self
+        return Linear(
+            weight=jnp.swapaxes(self.weight, -2, -1),
+            bias=self.bias,
+            weight_layout="input_output",
+        )
+
+    def output_major(self) -> Linear:
+        """Return the Hugging Face-compatible checkpoint layout."""
+
+        if self.weight_layout == "output_input":
+            return self
+        return Linear(
+            weight=jnp.swapaxes(self.weight, -2, -1),
+            bias=self.bias,
+            weight_layout="output_input",
+        )
+
     def __call__(
         self,
         value: Float[Array, "*batch input"],
     ) -> Float[Array, "*batch output"]:
         value = activation_inputs(value)
-        weight = replicate(compute_parameter(self.weight))
-        output = linear_matmul(
-            value,
-            weight.T,
-            out_sharding=activation_out_sharding(value.ndim),
-        )
+        if self.weight_layout == "input_output":
+            # Keep scanned compute-native matrices in their declared layout.
+            # When the contracted input dimension is sharded, JAX can lower
+            # the projection as a partitioned dot plus output reduction without
+            # first gathering/transposing the complete depth-major stack.
+            weight = compute_parameter(self.weight)
+            output = linear_matmul(
+                value,
+                weight,
+                out_sharding=activation_out_sharding(value.ndim),
+            )
+        else:
+            weight = replicate(compute_parameter(self.weight))
+            output = linear_projection(
+                value,
+                weight,
+                out_sharding=activation_out_sharding(value.ndim),
+            )
         if self.bias is not None:
             output = output + replicate(compute_parameter(self.bias))
         return constrain_activation(output)
@@ -146,8 +186,8 @@ class RMSNorm(eqx.Module):
         inverse_rms = jax.lax.rsqrt(
             jnp.mean(jnp.square(value), axis=-1, keepdims=True) + self.epsilon
         )
-        output = value * inverse_rms * replicate(self.weight).astype(jnp.float32)
-        return output.astype(source_dtype)
+        normalized = (value * inverse_rms).astype(source_dtype)
+        return normalized * replicate(self.weight).astype(source_dtype)
 
 
 def activate(

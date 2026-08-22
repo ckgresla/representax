@@ -212,8 +212,25 @@ class Qwen2_5OmniTextLayerStack(eqx.Module):
             raise ValueError("Qwen2.5-Omni requires at least one text layer")
         if len(layers) != len(layer_types):
             raise ValueError("layer types must align with text layers")
+        compute_layers = tuple(
+            jax.tree.map(
+                lambda value: (
+                    value.input_major() if isinstance(value, Linear) else value
+                ),
+                layer,
+                is_leaf=lambda value: isinstance(value, Linear),
+            )
+            for layer in layers
+        )
         return cls(
-            blocks=jax.tree.map(lambda *values: jnp.stack(values), *layers),
+            # Projection matrices are stacked in [depth, input, output]
+            # compute layout. This prevents XLA from hoisting a transpose of
+            # the complete layer stack before scan, which is both unnecessary
+            # and prohibitive for multi-billion-parameter towers.
+            blocks=jax.tree.map(
+                lambda *values: jnp.stack(values),
+                *compute_layers,
+            ),
             sliding=jnp.asarray(
                 tuple(item == "sliding_attention" for item in layer_types)
             ),
@@ -223,7 +240,12 @@ class Qwen2_5OmniTextLayerStack(eqx.Module):
     def layer(self, index: int) -> Qwen2_5OmniTextLayer:
         if not 0 <= index < self.depth:
             raise IndexError(index)
-        return jax.tree.map(lambda value: value[index], self.blocks)
+        layer = jax.tree.map(lambda value: value[index], self.blocks)
+        return jax.tree.map(
+            lambda value: value.output_major() if isinstance(value, Linear) else value,
+            layer,
+            is_leaf=lambda value: isinstance(value, Linear),
+        )
 
 
 class Qwen2_5OmniTextTower(eqx.Module):
@@ -309,9 +331,27 @@ class Qwen2_5OmniTextTower(eqx.Module):
 
         def apply_layer(
             carry: Float[Array, "batch sequence hidden"],
-            values: tuple[Qwen2_5OmniTextLayer, Bool[Array, ""]],
+            index: Int[Array, ""],
         ) -> tuple[Float[Array, "batch sequence hidden"], None]:
-            layer, sliding = values
+            # Index the stacked layer tree inside the scan body. Passing the
+            # stack itself as scan input lets XLA hoist weight transposes across
+            # the loop, materializing whole depth-major projections. A dynamic
+            # layer slice establishes the intended parameter-use boundary.
+            layer = jax.tree.map(
+                lambda value: jax.lax.dynamic_index_in_dim(
+                    value,
+                    index,
+                    axis=0,
+                    keepdims=False,
+                ),
+                self.layers.blocks,
+            )
+            sliding = jax.lax.dynamic_index_in_dim(
+                self.layers.sliding,
+                index,
+                axis=0,
+                keepdims=False,
+            )
             layer_mask = jnp.where(sliding, sliding_allowed, allowed)
             output = layer(
                 carry,
@@ -326,7 +366,7 @@ class Qwen2_5OmniTextTower(eqx.Module):
         hidden, _ = jax.lax.scan(
             rematerialize(apply_layer, rematerialization),
             hidden,
-            (self.layers.blocks, self.layers.sliding),
+            jnp.arange(self.layers.depth, dtype=jnp.int32),
         )
         if hidden.shape != (batch, sequence, self.config.hidden_size):
             raise AssertionError("text tower changed the hidden-state shape")
