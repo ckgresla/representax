@@ -20,17 +20,31 @@ training runtime and never turn a catalogue entry into a support claim.
 
 ## Shared graph forms
 
-The linked artifacts primarily use four composition forms:
+The linked artifacts reduce to six composition forms:
 
 - dense embedding: `Transformer -> Pooling -> Normalize`;
+- direct embedding: a native backbone that already returns
+  `sentence_embedding`, followed by optional projection or normalization;
 - generative reranking: `Transformer -> LogitScore`;
 - feature reranking: `Transformer -> Pooling -> Dense`; and
-- dual-tower or routed encoding: modality-specific encoders plus a projection
-  into one shared representation space.
+- legacy `CLIPModel`; and
+- routed encoding: modality-specific branches plus shared projection,
+  normalization, or pooling.
 
-Legacy Sentence Transformers CLIP checkpoints use their `CLIPModel` module.
-These forms should extend the existing static module-graph loader; model-family
-forward code remains independently reviewed and native.
+`load_sentence_transformer_graph()` parses these forms, their modality methods,
+structured-message inputs, and serialized Router branches without importing
+PyTorch or repository Python. A custom module can therefore be inventoried but
+cannot execute. Graph recognition is not a support claim: model-family forward
+code remains independently reviewed, registered, and native.
+
+The graph contract is checked against pinned upstream JSON metadata:
+
+| Checkpoint revision | Parsed graph |
+|---|---|
+| `Qwen/Qwen3-VL-Embedding-2B@9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda` | dense embedding; text, image, video, and structured messages |
+| `Qwen/Qwen3-VL-Reranker-2B@4bd860ac4f15ad1897a214615cccc700f8f71818` | generative reranker over the same input forms |
+| `sentence-transformers/clip-ViT-B-32@327ab6726d33c0e22f920c83f2ff9e4bd38ca37f` | legacy CLIP; text and image |
+| `BAAI/BGE-VL-base@cc4c733ed997dbee4ac70ccffb911e70c9c24b93` | custom direct embedding; text, image, and composed image-plus-text |
 
 ## Official linked variants
 

@@ -32,9 +32,16 @@ from .modernvbert import load_modernvbert_text_encoder
 from .sentence_transformers import (
     SENTENCE_TRANSFORMERS_ORACLE_VERSION,
     LoadedSentenceTransformer,
+    SentenceTransformerGraphKind,
+    SentenceTransformerGraphSpec,
+    SentenceTransformerInputSpec,
+    SentenceTransformerModuleRole,
     SentenceTransformerModuleSpec,
+    SentenceTransformerRouteMapping,
+    SentenceTransformerRouteSpec,
     load_sentence_transformer,
     load_sentence_transformer_artifact,
+    load_sentence_transformer_graph,
     load_sentence_transformer_modules,
 )
 
@@ -55,7 +62,13 @@ __all__ = [
     "ModelInputContract",
     "ResolvedHuggingFaceCheckpoint",
     "SENTENCE_TRANSFORMERS_ORACLE_VERSION",
+    "SentenceTransformerGraphKind",
+    "SentenceTransformerGraphSpec",
+    "SentenceTransformerInputSpec",
     "SentenceTransformerModuleSpec",
+    "SentenceTransformerModuleRole",
+    "SentenceTransformerRouteMapping",
+    "SentenceTransformerRouteSpec",
     "TRANSFORMERS_VERSION",
     "get_hugging_face_architecture",
     "get_model_family",
@@ -66,6 +79,7 @@ __all__ = [
     "load_safetensor_subset",
     "load_sentence_transformer",
     "load_sentence_transformer_artifact",
+    "load_sentence_transformer_graph",
     "load_sentence_transformer_modules",
     "resolve_hf_checkpoint",
 ]

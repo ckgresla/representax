@@ -275,7 +275,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   Jina v5 Omni's CC-BY-NC-4.0 weights remain an external compatibility oracle;
   native code support must not imply that Representax redistributes those
   weights or grants commercial rights to them.
-*** TODO Wrap the official Sentence Transformers multimodal checkpoint panel :models:multimodal:paper:
+*** NEXT Wrap the official Sentence Transformers multimodal checkpoint panel :models:multimodal:paper:
    Treat every embedding and reranker linked by the April 2026 Hugging Face
    multimodal release as a minimum integration target.  Resolve them through a
    small set of native backbone families and shared static module-graph forms,
@@ -284,10 +284,19 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
    remote code plus weight licenses before implementation.  The exact model
    list, family grouping, ordering, and acceptance contract live in
    =docs/multimodal-sentence-transformers.md=.
-**** TODO Generalize the static Sentence Transformers graph loader beyond text
+**** DONE Generalize the static Sentence Transformers graph loader beyond text
      Support modality-neutral =Transformer -> Pooling -> Normalize=,
      =Transformer -> LogitScore=, =Transformer -> Pooling -> Dense=, legacy
      =CLIPModel=, and routed encoder graphs over registered native backbones.
+     Accepted with one Torch-free, fail-closed graph contract for pooled and
+     direct embeddings, generative and feature rerankers, legacy CLIP, and
+     serialized Router branches.  It preserves atomic/composed modalities and
+     structured messages without inventing a fused modality, never imports
+     custom repository code, and is now the source of truth used by the
+     existing native BERT/MPNet dense loader.  Pinned JSON-only probes of the
+     Qwen3-VL 2B embedder/reranker, legacy CLIP, and BGE-VL base artifacts all
+     classify into their expected forms; these graph probes deliberately do
+     not claim that their native forwards are implemented.
 **** TODO Accept Qwen3-VL embedding and reranking variants
      Start with the 2B embedder and reranker, then require the 8B variants to
      reuse the same forward while exercising FSDP and larger-model capacity.
@@ -745,7 +754,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
    oracle and SPLADE-v3 as the scientific reference. Treat the noncommercial
    SPLADE repository as an external oracle only. Measure effectiveness jointly
    with active dimensions, sparsity, index size, encoding rate, and retrieval QPS.
-*** NEXT Validate multimodal capability across every supported encoder route :multimodal:
+*** DONE Validate multimodal capability across every supported encoder route :multimodal:
    Exercise text, image, audio, video, and composed multimodal examples through
    preprocessing, model forwards, losses, evaluators, batching, export, and
    matched systems gates rather than treating multimodality as inference-only

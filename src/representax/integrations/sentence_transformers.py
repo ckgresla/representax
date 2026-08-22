@@ -8,8 +8,10 @@ execution remain ordinary Representax components after import.
 from __future__ import annotations
 
 import json
+from ast import literal_eval
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Literal, cast
@@ -103,6 +105,112 @@ class SentenceTransformerModuleSpec:
     def kind(self) -> str:
         return self.type.rsplit(".", 1)[-1]
 
+    @property
+    def role(self) -> SentenceTransformerModuleRole:
+        """Return the static role without importing the serialized class."""
+
+        if not self.type.startswith("sentence_transformers."):
+            return SentenceTransformerModuleRole.CUSTOM
+        return _STANDARD_MODULE_ROLES.get(
+            self.kind,
+            SentenceTransformerModuleRole.CUSTOM,
+        )
+
+
+class SentenceTransformerModuleRole(StrEnum):
+    """Non-executable roles understood in an upstream module graph."""
+
+    TRANSFORMER = "transformer"
+    POOLING = "pooling"
+    DENSE = "dense"
+    NORMALIZE = "normalize"
+    LOGIT_SCORE = "logit_score"
+    LEGACY_CLIP = "legacy_clip"
+    ROUTER = "router"
+    CUSTOM = "custom"
+
+
+class SentenceTransformerGraphKind(StrEnum):
+    """Reviewed Sentence Transformers composition forms."""
+
+    DENSE_EMBEDDING = "dense_embedding"
+    DIRECT_EMBEDDING = "direct_embedding"
+    GENERATIVE_RERANKER = "generative_reranker"
+    FEATURE_RERANKER = "feature_reranker"
+    LEGACY_CLIP = "legacy_clip"
+    ROUTED_ENCODER = "routed_encoder"
+
+
+_STANDARD_MODULE_ROLES: Mapping[str, SentenceTransformerModuleRole] = MappingProxyType(
+    {
+        "Transformer": SentenceTransformerModuleRole.TRANSFORMER,
+        "Pooling": SentenceTransformerModuleRole.POOLING,
+        "Dense": SentenceTransformerModuleRole.DENSE,
+        "Normalize": SentenceTransformerModuleRole.NORMALIZE,
+        "LogitScore": SentenceTransformerModuleRole.LOGIT_SCORE,
+        "CLIPModel": SentenceTransformerModuleRole.LEGACY_CLIP,
+        "Router": SentenceTransformerModuleRole.ROUTER,
+    }
+)
+
+
+@dataclass(frozen=True, slots=True)
+class SentenceTransformerInputSpec:
+    """One serialized input form and the atomic modalities it composes."""
+
+    name: str
+    modalities: tuple[Modality, ...]
+    method: str
+    output_name: str
+    format: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class SentenceTransformerRouteMapping:
+    """One task/modality selector targeting a serialized router branch."""
+
+    task: str | None
+    modalities: tuple[Modality, ...]
+    route: str
+
+
+@dataclass(frozen=True, slots=True)
+class SentenceTransformerRouteSpec:
+    """One ordered, statically inspected branch of an upstream Router."""
+
+    name: str
+    modules: tuple[SentenceTransformerModuleSpec, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class SentenceTransformerGraphSpec:
+    """Torch-free description of an upstream Sentence Transformers graph.
+
+    This records serialization structure only. It never imports checkpoint
+    Python and therefore does not imply that a native backbone is implemented.
+    """
+
+    kind: SentenceTransformerGraphKind
+    model_type: str
+    transformer_task: str | None
+    module_output_name: str | None
+    modules: tuple[SentenceTransformerModuleSpec, ...]
+    inputs: tuple[SentenceTransformerInputSpec, ...]
+    routes: tuple[SentenceTransformerRouteSpec, ...] = ()
+    route_mappings: tuple[SentenceTransformerRouteMapping, ...] = ()
+    default_route: str | None = None
+    allow_empty_key: bool | None = None
+
+    @property
+    def modalities(self) -> frozenset[Modality]:
+        """Return every atomic modality named by inputs or route selectors."""
+
+        return frozenset(
+            modality
+            for spec in (*self.inputs, *self.route_mappings)
+            for modality in spec.modalities
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class LoadedSentenceTransformer:
@@ -173,9 +281,295 @@ def load_sentence_transformer_modules(
         raise ValueError("modules.json indices must be unique and contiguous")
     if len({module.name for module in modules}) != len(modules):
         raise ValueError("modules.json names must be unique")
-    if not modules or modules[0].kind != "Transformer":
-        raise ValueError("dense sentence models must begin with a Transformer module")
+    if not modules:
+        raise ValueError("modules.json must contain at least one module")
     return tuple(modules)
+
+
+def _atomic_modalities(name: str) -> tuple[Modality, ...]:
+    if name == "message":
+        # Messages are structured containers, not an additional modality.
+        return ()
+    values = tuple(part.strip() for part in name.split("+") if part.strip())
+    if not values:
+        raise ValueError("modality names must be non-empty")
+    return tuple(Modality(value) for value in values)
+
+
+def _input_specs(
+    config: Mapping[str, Any],
+    *,
+    legacy_clip: bool,
+) -> tuple[SentenceTransformerInputSpec, ...]:
+    raw = config.get("modality_config")
+    if raw is None:
+        names = ("text", "image") if legacy_clip else ("text",)
+        return tuple(
+            SentenceTransformerInputSpec(
+                name=name,
+                modalities=(Modality(name),),
+                method="forward",
+                output_name=str(config.get("module_output_name", "token_embeddings")),
+            )
+            for name in names
+        )
+    if not isinstance(raw, dict):
+        raise TypeError("modality_config must be a JSON object")
+    inputs: list[SentenceTransformerInputSpec] = []
+    for raw_name, raw_spec in raw.items():
+        name = str(raw_name)
+        if not isinstance(raw_spec, dict):
+            raise TypeError(f"modality_config[{name!r}] must be a JSON object")
+        inputs.append(
+            SentenceTransformerInputSpec(
+                name=name,
+                modalities=_atomic_modalities(name),
+                method=str(raw_spec.get("method", "forward")),
+                output_name=str(
+                    raw_spec.get(
+                        "output_name",
+                        config.get("module_output_name", "token_embeddings"),
+                    )
+                ),
+                format=(
+                    None if raw_spec.get("format") is None else str(raw_spec["format"])
+                ),
+            )
+        )
+    if not inputs:
+        raise ValueError("modality_config must contain at least one input form")
+    return tuple(inputs)
+
+
+def _classify_graph(
+    modules: Sequence[SentenceTransformerModuleSpec],
+    *,
+    model_type: str,
+    module_output_name: str | None,
+) -> SentenceTransformerGraphKind:
+    roles = tuple(module.role for module in modules)
+    first, *suffix = roles
+    if first is SentenceTransformerModuleRole.ROUTER:
+        if any(
+            role
+            not in {
+                SentenceTransformerModuleRole.POOLING,
+                SentenceTransformerModuleRole.DENSE,
+                SentenceTransformerModuleRole.NORMALIZE,
+            }
+            for role in suffix
+        ):
+            raise ValueError(f"unsupported or executable routed graph roles: {roles}")
+        return SentenceTransformerGraphKind.ROUTED_ENCODER
+    if first is SentenceTransformerModuleRole.LEGACY_CLIP:
+        if any(role is not SentenceTransformerModuleRole.NORMALIZE for role in suffix):
+            raise ValueError(
+                f"unsupported or executable legacy CLIP graph roles: {roles}"
+            )
+        return SentenceTransformerGraphKind.LEGACY_CLIP
+    if first not in {
+        SentenceTransformerModuleRole.TRANSFORMER,
+        SentenceTransformerModuleRole.CUSTOM,
+    }:
+        raise ValueError(
+            f"unsupported or executable Sentence Transformers graph roles: {roles}"
+        )
+    if suffix == [SentenceTransformerModuleRole.LOGIT_SCORE]:
+        return SentenceTransformerGraphKind.GENERATIVE_RERANKER
+    if SentenceTransformerModuleRole.POOLING in suffix:
+        if suffix[0] is not SentenceTransformerModuleRole.POOLING or any(
+            role
+            not in {
+                SentenceTransformerModuleRole.DENSE,
+                SentenceTransformerModuleRole.NORMALIZE,
+            }
+            for role in suffix[1:]
+        ):
+            raise ValueError(f"unsupported or executable pooled graph roles: {roles}")
+        if model_type == "CrossEncoder":
+            return SentenceTransformerGraphKind.FEATURE_RERANKER
+        if model_type != "SentenceTransformer":
+            raise ValueError(f"unsupported pooled model type: {model_type!r}")
+        return SentenceTransformerGraphKind.DENSE_EMBEDDING
+    if module_output_name == "sentence_embedding" and all(
+        role
+        in {
+            SentenceTransformerModuleRole.DENSE,
+            SentenceTransformerModuleRole.NORMALIZE,
+        }
+        for role in suffix
+    ):
+        return SentenceTransformerGraphKind.DIRECT_EMBEDDING
+    raise ValueError(
+        f"unsupported or executable Sentence Transformers graph roles: {roles}"
+    )
+
+
+def _router_mapping(
+    key: str,
+    route: str,
+    *,
+    route_names: frozenset[str],
+) -> SentenceTransformerRouteMapping:
+    try:
+        selector = literal_eval(key)
+    except (ValueError, SyntaxError) as error:
+        raise ValueError(f"invalid Router selector: {key!r}") from error
+    if not isinstance(selector, tuple) or len(selector) != 2:
+        raise ValueError(f"Router selector must be a (task, modality) pair: {key!r}")
+    task, modality = selector
+    if task is not None and not isinstance(task, str):
+        raise TypeError("Router task selectors must be strings or null")
+    if modality is None:
+        modalities: tuple[Modality, ...] = ()
+    elif isinstance(modality, str):
+        modalities = _atomic_modalities(modality)
+    elif isinstance(modality, tuple) and all(
+        isinstance(value, str) for value in modality
+    ):
+        modalities = tuple(Modality(value) for value in modality)
+    else:
+        raise TypeError("Router modality selectors must be strings, tuples, or null")
+    if route not in route_names:
+        raise ValueError(f"Router selector targets unknown route {route!r}")
+    return SentenceTransformerRouteMapping(
+        task=task,
+        modalities=modalities,
+        route=route,
+    )
+
+
+def _router_spec(
+    root: Path,
+    module: SentenceTransformerModuleSpec,
+) -> tuple[
+    tuple[SentenceTransformerRouteSpec, ...],
+    tuple[SentenceTransformerRouteMapping, ...],
+    str | None,
+    bool,
+]:
+    directory = _module_directory(root, module.path)
+    config = _json_object(directory / "router_config.json")
+    types = config.get("types")
+    structure = config.get("structure")
+    parameters = config.get("parameters", {})
+    if not isinstance(types, dict) or not isinstance(structure, dict):
+        raise TypeError("Router config requires types and structure objects")
+    if not isinstance(parameters, dict):
+        raise TypeError("Router parameters must be a JSON object")
+    routes: list[SentenceTransformerRouteSpec] = []
+    used: set[str] = set()
+    for raw_name, raw_module_ids in structure.items():
+        name = str(raw_name)
+        if not isinstance(raw_module_ids, list) or not raw_module_ids:
+            raise ValueError(f"Router route {name!r} must contain modules")
+        route_modules: list[SentenceTransformerModuleSpec] = []
+        for index, raw_module_id in enumerate(raw_module_ids):
+            module_id = str(raw_module_id)
+            try:
+                module_type = str(types[module_id])
+            except KeyError as error:
+                raise ValueError(
+                    f"Router route {name!r} references unknown module {module_id!r}"
+                ) from error
+            used.add(module_id)
+            module_directory = _module_directory(directory, module_id)
+            route_modules.append(
+                SentenceTransformerModuleSpec(
+                    index=index,
+                    name=module_id,
+                    path=str(module_directory.relative_to(root.resolve())),
+                    type=module_type,
+                )
+            )
+        if route_modules[0].role not in {
+            SentenceTransformerModuleRole.TRANSFORMER,
+            SentenceTransformerModuleRole.CUSTOM,
+            SentenceTransformerModuleRole.LEGACY_CLIP,
+        }:
+            raise ValueError(f"Router route {name!r} lacks an input module")
+        routes.append(
+            SentenceTransformerRouteSpec(name=name, modules=tuple(route_modules))
+        )
+    unused = set(map(str, types)) - used
+    if unused:
+        raise ValueError(f"Router config contains unused modules: {sorted(unused)}")
+    route_names = frozenset(route.name for route in routes)
+    default_route = parameters.get("default_route")
+    if default_route is not None:
+        default_route = str(default_route)
+        if default_route not in route_names:
+            raise ValueError(f"Router default route {default_route!r} is unknown")
+    raw_mappings = parameters.get("route_mappings", {})
+    if not isinstance(raw_mappings, dict):
+        raise TypeError("Router route_mappings must be a JSON object")
+    mappings = tuple(
+        _router_mapping(str(key), str(route), route_names=route_names)
+        for key, route in raw_mappings.items()
+    )
+    allow_empty_key = parameters.get("allow_empty_key", True)
+    if not isinstance(allow_empty_key, bool):
+        raise TypeError("Router allow_empty_key must be a boolean")
+    return tuple(routes), mappings, default_route, allow_empty_key
+
+
+def load_sentence_transformer_graph(
+    checkpoint: str | Path,
+) -> SentenceTransformerGraphSpec:
+    """Inspect a local Sentence Transformers graph without executing its code."""
+
+    root = Path(checkpoint)
+    modules = load_sentence_transformer_modules(root)
+    model_config = _json_object(
+        root / "config_sentence_transformers.json",
+        required=False,
+    )
+    model_type = str(model_config.get("model_type", "SentenceTransformer"))
+    first = modules[0]
+    first_directory = _module_directory(root, first.path)
+    transformer_config = _json_object(
+        first_directory / "sentence_bert_config.json",
+        required=False,
+    )
+    module_output_name = transformer_config.get("module_output_name")
+    if module_output_name is not None:
+        module_output_name = str(module_output_name)
+    graph_kind = _classify_graph(
+        modules,
+        model_type=model_type,
+        module_output_name=module_output_name,
+    )
+    routes: tuple[SentenceTransformerRouteSpec, ...] = ()
+    route_mappings: tuple[SentenceTransformerRouteMapping, ...] = ()
+    default_route: str | None = None
+    allow_empty_key: bool | None = None
+    if graph_kind is SentenceTransformerGraphKind.ROUTED_ENCODER:
+        routes, route_mappings, default_route, allow_empty_key = _router_spec(
+            root,
+            first,
+        )
+    inputs = _input_specs(
+        transformer_config,
+        legacy_clip=graph_kind is SentenceTransformerGraphKind.LEGACY_CLIP,
+    )
+    if graph_kind is SentenceTransformerGraphKind.ROUTED_ENCODER:
+        inputs = ()
+    return SentenceTransformerGraphSpec(
+        kind=graph_kind,
+        model_type=model_type,
+        transformer_task=(
+            None
+            if transformer_config.get("transformer_task") is None
+            else str(transformer_config["transformer_task"])
+        ),
+        module_output_name=module_output_name,
+        modules=modules,
+        inputs=inputs,
+        routes=routes,
+        route_mappings=route_mappings,
+        default_route=default_route,
+        allow_empty_key=allow_empty_key,
+    )
 
 
 def _pooling_modes(config: Mapping[str, Any]) -> tuple[PoolingMode, ...]:
@@ -387,8 +781,19 @@ def load_sentence_transformer_artifact(
         token=token,
         allow_patterns=_MODEL_ALLOW_PATTERNS,
     )
-    modules = load_sentence_transformer_modules(resolved.path)
+    graph = load_sentence_transformer_graph(resolved.path)
+    if graph.kind is not SentenceTransformerGraphKind.DENSE_EMBEDDING:
+        raise ValueError(
+            f"Sentence Transformers graph is {graph.kind.value!r}; "
+            "the native dense loader requires 'dense_embedding'"
+        )
+    modules = graph.modules
     transformer = modules[0]
+    if transformer.role is not SentenceTransformerModuleRole.TRANSFORMER:
+        raise ValueError(
+            f"Sentence Transformers input module {transformer.type!r} is "
+            "catalogued but not a registered native backbone"
+        )
     transformer_directory = _module_directory(resolved.path, transformer.path)
     hf_config = load_hf_config(transformer_directory)
     backbone = _text_backbone(
@@ -403,13 +808,13 @@ def load_sentence_transformer_artifact(
     postprocessors: list[SentencePostprocessor] = []
     current_dimension = input_dimension
     for module in modules[1:]:
-        if module.kind == "Pooling":
+        if module.role is SentenceTransformerModuleRole.POOLING:
             directory = _module_directory(resolved.path, module.path)
             if pooling is not None or postprocessors:
                 raise ValueError("Pooling must occur exactly once before dense modules")
             pooling = _load_pooling(directory, input_dimension=input_dimension)
             current_dimension = pooling.output_dimension
-        elif module.kind == "Dense":
+        elif module.role is SentenceTransformerModuleRole.DENSE:
             directory = _module_directory(resolved.path, module.path)
             if pooling is None:
                 raise ValueError("Dense cannot precede Pooling")
@@ -420,7 +825,7 @@ def load_sentence_transformer_artifact(
             )
             postprocessors.append(dense)
             current_dimension = dense.output_dimension
-        elif module.kind == "Normalize":
+        elif module.role is SentenceTransformerModuleRole.NORMALIZE:
             if pooling is None:
                 raise ValueError("Normalize cannot precede Pooling")
             postprocessors.append(SentenceNormalize())
@@ -450,7 +855,7 @@ def load_sentence_transformer_artifact(
             revision=resolved.revision,
             output_dimension=output_dimension,
             routes=frozenset(Route),
-            modalities=frozenset({Modality.TEXT}),
+            modalities=graph.modalities,
         ),
         truncate_dimension=truncate_dimension,
     )
@@ -531,9 +936,16 @@ def load_sentence_transformer(
 __all__ = [
     "LoadedSentenceTransformer",
     "SENTENCE_TRANSFORMERS_ORACLE_VERSION",
+    "SentenceTransformerGraphKind",
+    "SentenceTransformerGraphSpec",
+    "SentenceTransformerInputSpec",
     "SentenceTransformerModuleSpec",
+    "SentenceTransformerModuleRole",
+    "SentenceTransformerRouteMapping",
+    "SentenceTransformerRouteSpec",
     "SimilarityFunction",
     "load_sentence_transformer",
     "load_sentence_transformer_artifact",
+    "load_sentence_transformer_graph",
     "load_sentence_transformer_modules",
 ]
