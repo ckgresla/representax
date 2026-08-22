@@ -275,7 +275,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   Jina v5 Omni's CC-BY-NC-4.0 weights remain an external compatibility oracle;
   native code support must not imply that Representax redistributes those
   weights or grants commercial rights to them.
-*** NEXT Wrap the official Sentence Transformers multimodal checkpoint panel :models:multimodal:paper:
+*** TODO Wrap the official Sentence Transformers multimodal checkpoint panel :models:multimodal:paper:
    Treat every embedding and reranker linked by the April 2026 Hugging Face
    multimodal release as a minimum integration target.  Resolve them through a
    small set of native backbone families and shared static module-graph forms,
@@ -297,10 +297,21 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      Qwen3-VL 2B embedder/reranker, legacy CLIP, and BGE-VL base artifacts all
      classify into their expected forms; these graph probes deliberately do
      not claim that their native forwards are implemented.
-**** TODO Accept Qwen3-VL embedding and reranking variants
+**** DONE Accept Qwen3-VL embedding and reranking variants
      Start with the 2B embedder and reranker, then require the 8B variants to
      reuse the same forward while exercising FSDP and larger-model capacity.
-**** TODO Accept Qwen2.5-Omni embedding variants
+     Accepted on the immutable Apache-2.0 2B embedding and reranking revisions
+     with one shared native Equinox text/vision/DeepStack forward, exact
+     625-tensor checkpoint conversion, model-associated Hugging Face processing
+     into finite sequence/patch buckets, last-token normalized embeddings, and
+     tied-token binary reranking.  Tiny same-tensor forward, input-gradient,
+     parameter-gradient, and AdamW-update gates pass against Transformers 5.3;
+     both real 2.13B-parameter artifacts load and execute on GPUs.  A real
+     image/text FP32 forward reaches 0.9999998 hidden-state cosine and 0.9999999
+     embedding cosine against the upstream implementation.  BF16 and timing
+     measurements remain systems evidence, not a paper-level training claim.
+     The 8B capacity acceptance remains part of the FSDP benchmark frontier.
+**** NEXT Accept Qwen2.5-Omni embedding variants
      Use LCO Omni 3B as the first linked text/image/audio/video checkpoint, then
      reuse the family for LCO 7B and both E5-Omni variants.
 **** TODO Accept the linked CLIP and BGE-VL small-model variants

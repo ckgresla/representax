@@ -11,7 +11,7 @@ ARCHITECTURE_CATALOG_SHA256 = (
     "2af65737162af25c40803b987355fb09d4547d922842edeeb6c0f80838f4117c"
 )
 FAMILY_MANIFEST_SHA256 = (
-    "3efe9c086171f82f1b756716a3495fe0634f32104b2c8a53c19d70b859220c4c"
+    "1c89d8839fd3f671e7361bb900871b19423f3c0b4f16ed410b3cef951591e81f"
 )
 
 MODEL_FAMILY_ROWS = json.loads(
@@ -66,5 +66,21 @@ MODEL_FAMILY_ROWS = json.loads(
     'acts":[["text",["input_ids","attention_mask"]],["embedded_text",["inputs'
     '_embeds","attention_mask"]]],"modalities":["text"],"model_types":["mpnet'
     '"],"name":"mpnet","output_contracts":["last_hidden_state","pooler_output'
-    '","mean_pooled_l2_normalized_representation"],"support":"verified"}]'
+    '","mean_pooled_l2_normalized_representation"],"support":"verified"},{"ac'
+    'ceptance_gates":["config_mapping","checkpoint_roundtrip","forward","inpu'
+    't_gradient","parameter_gradient","optimizer_update"],"checkpoint_adapter'
+    '":"representax.models.qwen3_vl.Qwen3VLCheckpointAdapter","checkpoint_lay'
+    'out":"huggingface_safetensors","components":["causal_grouped_query_atten'
+    'tion","interleaved_multimodal_rotary_position_embedding","vision_patch_t'
+    'ransformer","bilinear_learned_position_interpolation","deepstack_vision_'
+    'fusion","last_token_pooling","l2_normalized_embedding","tied_token_binar'
+    'y_reranking"],"config_adapter":"representax.models.qwen3_vl.Qwen3VLConfi'
+    'g.from_hf_config","configuration_constraints":["checkpoint=Qwen3-VL-Embe'
+    'dding-2B|Qwen3-VL-Reranker-2B","revisions_are_pinned=true"],"implementat'
+    'ion_module":"representax.models.qwen3_vl","input_contracts":[["text",["i'
+    'nput_ids","attention_mask","position_ids"]],["text_image_video",["input_'
+    'ids","attention_mask","position_ids","pixel_values","vision_layout"]]],"'
+    'modalities":["text","image","video"],"model_types":["qwen3_vl"],"name":"'
+    'qwen3_vl","output_contracts":["last_hidden_state","last_token_l2_normali'
+    'zed_representation","binary_relevance_score"],"support":"native"}]'
 )

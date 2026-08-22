@@ -1,0 +1,61 @@
+#+title: Native Qwen3-VL 2B acceptance — 2026-08-21
+
+* Contract
+
+- Apache-2.0 embedding artifact
+  =Qwen/Qwen3-VL-Embedding-2B@9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda=.
+- Apache-2.0 reranking artifact
+  =Qwen/Qwen3-VL-Reranker-2B@4bd860ac4f15ad1897a214615cccc700f8f71818=.
+- One native Equinox Qwen3-VL family with 625 checkpoint tensors and
+  2,127,532,032 parameters.
+- Tiny FP32 same-tensor forward, pixel-gradient, all-parameter-gradient, and
+  AdamW-update comparisons against Transformers 5.3.0.
+- Real text, image/text, and reranking forwards on RTX 4090 GPUs 4 and 5.
+- Hugging Face processing runs on the host; the compiled boundary receives
+  only finite-bucket arrays.  No Sentence Transformers or PyTorch code is used
+  by the Representax runtime.
+
+* Numerical acceptance
+
+The tiny multimodal oracle reaches 2.38e-7 maximum hidden-state error,
+9.20e-8 relative L2, and 1.0 cosine.  Pixel gradients reach 1.49e-7 maximum
+absolute error, 2.65e-7 relative L2, and 1.0 cosine.  The worst parameter
+gradient differs by 7.63e-6 absolute and the worst post-AdamW parameter by
+1.19e-7 absolute.
+
+A real 32-by-32 image and text produce 28 tokens, 16 flattened vision patches,
+and four merged visual tokens.  Against the full upstream 2B FP32 forward, the
+native hidden states reach 0.9999998 cosine and 4.62e-4 relative L2; the final
+normalized embedding reaches 0.9999999 cosine and 5.06e-4 relative L2.
+
+The native BF16 result differs more from the upstream BF16 result: 0.9979005
+hidden-state cosine and 0.9988514 embedding cosine.  The upstream model's own
+BF16-versus-FP32 drift is 5.34% relative hidden-state L2 and 3.86% relative
+embedding L2, so this is recorded as precision-policy evidence rather than a
+model-layout failure.  Tight checkpoint acceptance remains the FP32 contract.
+
+* Systems evidence
+
+These are synchronized inference probes, not paired training-paper claims.
+
+| artifact/path | compile or first (s) | steady step (ms) | peak live bytes |
+|---------------+----------------------+------------------+-----------------|
+| native embedding, text-only BF16 | 2.508 | 6.647 | — |
+| native embedding, synthetic multimodal BF16 | 5.197 | 9.622 | 7,906,189,312 |
+| native reranker, text-only BF16 | 1.374 | 6.534 | — |
+| upstream real image/text BF16 | 3.590 | 52.899 | 4,272,531,968 |
+| native real image/text BF16 | 6.085 | 9.872 | 7,894,591,488 |
+| upstream real image/text FP32 | 0.583 | 53.090 | 8,528,644,096 |
+| native real image/text FP32 | 9.580 | 22.791 | 15,866,801,152 |
+
+The tiny real-image forward shows useful native steady-state performance, but
+it is deliberately not described as a monotonic Sentence Transformers training
+improvement.  Compilation, live allocation, larger batches, video processing,
+and dataset-to-trained-model behavior remain separate systems and paper gates.
+
+* Verification
+
+- =2 passed in 36.50s= in the pinned Qwen3-VL Transformers parity lane.
+- =35 passed, 2 deselected in 33.64s= in the focused native/integration lane.
+- =266 passed, 1 skipped, 110 deselected in 204.63s= in the full fast suite.
+- Ruff format/check, ty, source distribution, wheel build, and Twine checks pass.

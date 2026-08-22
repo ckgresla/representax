@@ -327,8 +327,11 @@ def _input_specs(
                 method=str(raw_spec.get("method", "forward")),
                 output_name=str(
                     raw_spec.get(
-                        "output_name",
-                        config.get("module_output_name", "token_embeddings"),
+                        "method_output_name",
+                        raw_spec.get(
+                            "output_name",
+                            config.get("module_output_name", "token_embeddings"),
+                        ),
                     )
                 ),
                 format=(

@@ -3,7 +3,9 @@
 This is Representax's minimum external checkpoint panel for multimodal model
 coverage. It snapshots the models linked by Hugging Face's April 2026
 [Multimodal Embedding & Reranker Models with Sentence Transformers](https://huggingface.co/blog/multimodal-sentence-transformers)
-release. Presence here means **acceptance target**, not native support.
+release. Presence here means **acceptance target**, not native support; the
+Qwen3-VL 2B embedding and reranking revisions are the first entries to complete
+the native acceptance slice.
 
 Representax must not implement one bespoke wrapper per checkpoint. A checkpoint
 resolves through:
@@ -63,6 +65,53 @@ The graph contract is checked against pinned upstream JSON metadata:
 | Qwen3 text ranking | — | `Qwen/Qwen3-Reranker-0.6B`, `Qwen/Qwen3-Reranker-4B`, `Qwen/Qwen3-Reranker-8B`, `ContextualAI/ctxl-rerank-v2-instruct-multilingual-1b` | text |
 | Qwen2 text ranking | — | `mixedbread-ai/mxbai-rerank-base-v2`, `mixedbread-ai/mxbai-rerank-large-v2` | text |
 
+## Native Qwen3-VL 2B usage
+
+Both accepted 2B artifacts are Apache-2.0. Loading resolves one immutable
+Hugging Face snapshot, constructs the native Equinox model once, and returns
+the model-associated processor that turns text, image, video, or their
+composition into finite-shape native batches:
+
+```python
+from representax.core import Route
+from representax.models import Qwen3VLEncoder, Qwen3VLReranker
+
+encoder, processor = Qwen3VLEncoder.load_from_hf(
+    "Qwen/Qwen3-VL-Embedding-2B",
+    revision="9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda",
+)
+batch = processor(
+    [{"text": "A tabby cat", "image": image}],
+    route=Route.DOCUMENT,
+)
+representations = encoder.encode(batch, route=Route.DOCUMENT)
+
+reranker, pair_processor = Qwen3VLReranker.load_from_hf(
+    "Qwen/Qwen3-VL-Reranker-2B",
+    revision="4bd860ac4f15ad1897a214615cccc700f8f71818",
+)
+pair_batch = pair_processor(
+    [{"query": "Which animal?", "document": {"image": image}}],
+    route=Route.DOCUMENT,
+)
+scores = reranker.score(pair_batch)
+```
+
+The processor uses the checkpoint's Hugging Face tokenizer and media artifacts,
+so it requires `representax[hf]`; it does not require Sentence Transformers or
+PyTorch. Host preprocessing admits only configured sequence and patch buckets
+before the compiled step. The JAX forward therefore receives clean,
+fixed-shape arrays and does not decode media or trigger shape-dependent Python
+work.
+
+The shared family has 625 tensors and 2,127,532,032 parameters. Tiny models pass
+same-tensor forward, input-gradient, parameter-gradient, and AdamW-update gates
+against Transformers 5.3.0. On the real 2B embedding artifact, an FP32
+image/text forward reaches 0.9999998 hidden-state cosine and 0.9999999 final
+embedding cosine. BF16 throughput probes are useful implementation evidence,
+but do not substitute for the matched dataset-to-trained-model jobs required
+for a paper claim.
+
 The Hugging Face article currently lists 20 multimodal embedders, four
 multimodal rerankers, six text rerankers, and four legacy CLIP variants. Some
 entries use integration PR revisions or repository remote code. Before an
@@ -73,9 +122,10 @@ unless its terms are compatible with the intended use.
 
 ## Implementation order
 
-1. **Qwen3-VL 2B embedder and reranker.** One backbone proves image/video
-   preprocessing, dense pooling, and `LogitScore`; the 8B variants then test
-   configuration scaling and FSDP capacity rather than a new forward.
+1. **Qwen3-VL 2B embedder and reranker — accepted.** One backbone proves
+   image/video preprocessing, dense pooling, and tied-token scoring; the 8B
+   variants test configuration scaling and FSDP capacity rather than a new
+   forward.
 2. **Qwen2.5-Omni 3B.** LCO supplies the first linked text/image/audio/video
    acceptance case; the 7B and E5 variants should reuse the same family.
 3. **BGE-VL base/large and legacy CLIP.** These provide inexpensive image-text

@@ -247,7 +247,7 @@ def test_static_graph_describes_multimodal_dense_embedding_without_imports(tmp_p
             "modality_config": {
                 "text": {
                     "method": "forward",
-                    "output_name": "last_hidden_state",
+                    "method_output_name": "last_hidden_state",
                 },
                 "image": {
                     "method": "forward",
@@ -271,6 +271,9 @@ def test_static_graph_describes_multimodal_dense_embedding_without_imports(tmp_p
     assert graph.kind is SentenceTransformerGraphKind.DENSE_EMBEDDING
     assert graph.transformer_task == "feature-extraction"
     assert graph.modalities == {"text", "image", "video"}
+    assert next(spec for spec in graph.inputs if spec.name == "text").output_name == (
+        "last_hidden_state"
+    )
     message = next(spec for spec in graph.inputs if spec.name == "message")
     assert message.modalities == ()
     assert tuple(module.role for module in graph.modules) == (

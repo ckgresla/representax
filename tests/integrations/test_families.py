@@ -101,6 +101,23 @@ def test_jina_v5_family_is_checkpoint_specific_and_native():
     }
 
 
+def test_qwen3_vl_family_has_multimodal_embedding_and_reranking_gates():
+    family = get_model_family("qwen3_vl")
+    assert family is get_model_type_family("qwen3_vl")
+    assert family.support is FamilySupport.NATIVE
+    assert family.modalities == (Modality.TEXT, Modality.IMAGE, Modality.VIDEO)
+    assert "deepstack_vision_fusion" in family.components
+    assert "tied_token_binary_reranking" in family.components
+    assert family.acceptance_gates == {
+        AcceptanceGate.CONFIG_MAPPING,
+        AcceptanceGate.CHECKPOINT_ROUNDTRIP,
+        AcceptanceGate.FORWARD,
+        AcceptanceGate.INPUT_GRADIENT,
+        AcceptanceGate.PARAMETER_GRADIENT,
+        AcceptanceGate.OPTIMIZER_UPDATE,
+    }
+
+
 def test_generated_family_registry_is_current_and_torch_free():
     assert REFERENCE_CATALOG_SHA256 == CATALOG_SHA256
     assert FAMILY_MANIFEST_SHA256
