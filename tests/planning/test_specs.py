@@ -10,6 +10,7 @@ from representax.config import (
     BatchConfig,
     ComponentConfig,
     CustomShardingConfig,
+    DataConfig,
     DDPConfig,
     FSDPConfig,
     GradCacheConfig,
@@ -68,6 +69,25 @@ def _job(**overrides: Any) -> JobConfig:
     }
     values.update(overrides)
     return JobConfig(**values)
+
+
+def test_data_wait_heartbeat_precedes_fatal_deadline():
+    distribution = mix(source("file:///tmp/data.jsonl", map="tests.data.identity"))
+
+    assert (
+        DataConfig(
+            distribution=distribution,
+            data_wait_heartbeat_seconds=5.0,
+            data_wait_timeout_seconds=30.0,
+        ).host_memory_budget_bytes
+        is None
+    )
+    with pytest.raises(ValidationError, match="must be below"):
+        DataConfig(
+            distribution=distribution,
+            data_wait_heartbeat_seconds=30.0,
+            data_wait_timeout_seconds=30.0,
+        )
 
 
 @pytest.mark.parametrize("policy", ["none", "selective", "full"])

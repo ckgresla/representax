@@ -8,10 +8,12 @@ from typing import TYPE_CHECKING, Any
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+import numpy as np
 from jax.sharding import NamedSharding
-from jaxtyping import Array, Bool, Float
+from jaxtyping import Array, ArrayLike, Bool, Float
 
 from representax.core import Route
+from representax.tasks._batch import asarray, ones
 
 if TYPE_CHECKING:
     from representax.models.processing import Processor
@@ -51,7 +53,7 @@ class RetrievalCollator:
         return retrieval_batch(
             query=self.processor(queries, route=Route.QUERY),
             document=self.processor(documents, route=Route.DOCUMENT),
-            positive_mask=jnp.eye(size, dtype=jnp.bool_),
+            positive_mask=np.eye(size, dtype=np.bool_),
         )
 
 
@@ -141,28 +143,28 @@ def retrieval_batch(
     *,
     query: Any,
     document: Any,
-    positive_mask: Bool[Array, "query document"],
-    positive_weights: Float[Array, "query document"] | None = None,
-    query_valid: Bool[Array, " query"] | None = None,
-    document_valid: Bool[Array, " document"] | None = None,
+    positive_mask: Bool[ArrayLike, "query document"],
+    positive_weights: Float[ArrayLike, "query document"] | None = None,
+    query_valid: Bool[ArrayLike, " query"] | None = None,
+    document_valid: Bool[ArrayLike, " document"] | None = None,
 ) -> RetrievalBatch:
     """Build a fixed-shape retrieval batch with sensible validity defaults."""
 
-    positive_mask = jnp.asarray(positive_mask, dtype=jnp.bool_)
+    positive_mask = asarray(positive_mask, dtype=jnp.bool_)
     query_count, document_count = positive_mask.shape
     if query_valid is None:
-        query_valid = jnp.ones((query_count,), dtype=jnp.bool_)
+        query_valid = ones((query_count,), dtype=jnp.bool_, like=positive_mask)
     if document_valid is None:
-        document_valid = jnp.ones((document_count,), dtype=jnp.bool_)
+        document_valid = ones((document_count,), dtype=jnp.bool_, like=positive_mask)
     return RetrievalBatch(
         query=query,
         document=document,
         positive_mask=positive_mask,
         positive_weights=(
-            None if positive_weights is None else jnp.asarray(positive_weights)
+            None if positive_weights is None else asarray(positive_weights)
         ),
-        query_valid=jnp.asarray(query_valid, dtype=jnp.bool_),
-        document_valid=jnp.asarray(document_valid, dtype=jnp.bool_),
+        query_valid=asarray(query_valid, dtype=jnp.bool_),
+        document_valid=asarray(document_valid, dtype=jnp.bool_),
     )
 
 
@@ -170,14 +172,14 @@ def process_local_retrieval_batch(
     *,
     query: Any,
     document: Any,
-    positive_mask: Bool[Array, "local_query global_document"],
-    positive_weights: Float[Array, "local_query global_document"] | None = None,
-    query_valid: Bool[Array, " local_query"] | None = None,
-    document_valid: Bool[Array, " local_document"] | None = None,
+    positive_mask: Bool[ArrayLike, "local_query global_document"],
+    positive_weights: Float[ArrayLike, "local_query global_document"] | None = None,
+    query_valid: Bool[ArrayLike, " local_query"] | None = None,
+    document_valid: Bool[ArrayLike, " local_document"] | None = None,
 ) -> ProcessLocalRetrievalBatch:
     """Build process-local rows that retain the global document relation axis."""
 
-    positive_mask = jnp.asarray(positive_mask, dtype=jnp.bool_)
+    positive_mask = asarray(positive_mask, dtype=jnp.bool_)
     local_query_count = positive_mask.shape[0]
     document_leaves = [
         value for value in jax.tree.leaves(document) if eqx.is_array(value)
@@ -186,18 +188,22 @@ def process_local_retrieval_batch(
         raise ValueError("document payloads must contain arrays")
     local_document_count = document_leaves[0].shape[0]
     if query_valid is None:
-        query_valid = jnp.ones((local_query_count,), dtype=jnp.bool_)
+        query_valid = ones((local_query_count,), dtype=jnp.bool_, like=positive_mask)
     if document_valid is None:
-        document_valid = jnp.ones((local_document_count,), dtype=jnp.bool_)
+        document_valid = ones(
+            (local_document_count,),
+            dtype=jnp.bool_,
+            like=positive_mask,
+        )
     return ProcessLocalRetrievalBatch(
         query=query,
         document=document,
         positive_mask=positive_mask,
         positive_weights=(
-            None if positive_weights is None else jnp.asarray(positive_weights)
+            None if positive_weights is None else asarray(positive_weights)
         ),
-        query_valid=jnp.asarray(query_valid, dtype=jnp.bool_),
-        document_valid=jnp.asarray(document_valid, dtype=jnp.bool_),
+        query_valid=asarray(query_valid, dtype=jnp.bool_),
+        document_valid=asarray(document_valid, dtype=jnp.bool_),
     )
 
 

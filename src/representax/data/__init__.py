@@ -2,7 +2,9 @@
 
 from .distribution import (
     Artifact,
+    BatchTelemetry,
     DataDistributionConfig,
+    DataIterator,
     DataLoader,
     DataSourceConfig,
     Mapper,
@@ -36,8 +38,10 @@ __all__ = [
     "ArtifactResolver",
     "ArtifactSpec",
     "Artifact",
+    "BatchTelemetry",
     "BUILTIN_ARTIFACT_READERS",
     "DataDistributionConfig",
+    "DataIterator",
     "DataLoader",
     "DataSourceConfig",
     "JsonLinesSource",

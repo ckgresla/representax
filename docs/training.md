@@ -113,9 +113,24 @@ worker requests all metric leaves for an iteration in one `jax.device_get` while
 the host continues dispatching later work. This follows JAX's asynchronous
 execution model and lets host reporting overlap accelerator work.
 
+Data execution is fail-closed when configured. While `next()` is blocked,
+`data_wait_heartbeat_seconds` emits repeated `data_wait_heartbeat` lifecycle
+events; `data_wait_timeout_seconds` raises `DataStarvationError`, closes the
+iterator, and records the failed run. Fatal deadlines use POSIX main-thread
+signals so they can interrupt the blocked call rather than merely notice it
+afterward.
+
+`perf/data_wait_seconds`, `perf/preprocess_seconds`,
+`perf/host_batch_bytes`, `perf/prefetch_ready_batches`, and
+`perf/prefetch_capacity` describe the host input path.
 `perf/placement_enqueue_seconds` and `perf/step_dispatch_seconds` measure host
-enqueue cost, not device execution. Exact steady-state throughput and memory are
-measured by the dedicated performance lane with explicit synchronization.
+enqueue cost, not device execution. One bounded asynchronous completion
+observer emits `perf/device_input_idle_seconds_lower_bound` only when the
+immediately preceding update is known complete before the next batch arrives;
+zero is deliberately inconclusive. It adds neither a per-step barrier nor an
+unbounded queue of retained states. Exact steady-state throughput, utilization,
+and memory remain dedicated performance-lane measurements with explicit
+synchronization and profiler evidence.
 
 An attempted iteration and an accepted optimizer update are distinct. The
 compiled step forms one ordinary Equinox/Optax proposed state, then uses Optax's

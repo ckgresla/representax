@@ -6,6 +6,9 @@ from typing import Any
 
 import equinox as eqx
 import jax
+import jax.numpy as jnp
+import numpy as np
+from jax import core as jax_core
 
 
 def payload_row_count(payload: Any, *, name: str) -> int:
@@ -22,4 +25,20 @@ def payload_row_count(payload: Any, *, name: str) -> int:
     return row_count
 
 
-__all__ = ["payload_row_count"]
+def asarray(value: Any, *, dtype: Any | None = None) -> Any:
+    """Preserve JAX callers while keeping ordinary collation on the host."""
+
+    if isinstance(value, (jax.Array, jax_core.Tracer)):
+        return jnp.asarray(value, dtype=dtype)
+    return np.asarray(value, dtype=dtype)
+
+
+def ones(shape: tuple[int, ...], *, dtype: Any, like: Any) -> Any:
+    """Construct defaults in the same host/JAX domain as an existing array."""
+
+    if isinstance(like, (jax.Array, jax_core.Tracer)):
+        return jnp.ones(shape, dtype=dtype)
+    return np.ones(shape, dtype=dtype)
+
+
+__all__ = ["asarray", "ones", "payload_row_count"]

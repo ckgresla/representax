@@ -31,7 +31,7 @@ from .job import (
     run_job,
 )
 from .logging import MetricRecord, Reporter, RunLogger
-from .loop import TrainingRunResult, run_training
+from .loop import DataStarvationError, TrainingRunResult, run_training
 from .mega_batch import MegaBatchMining
 from .optimizer import build_optimizer, build_schedule
 from .sharding import (
@@ -57,6 +57,7 @@ __all__ = [
     "CheckpointTicket",
     "CheckpointWriteError",
     "Direct",
+    "DataStarvationError",
     "ShardingPlan",
     "ExecutionContext",
     "EvaluationResult",

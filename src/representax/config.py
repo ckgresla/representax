@@ -71,6 +71,9 @@ class DataConfig(FrozenConfig):
     drop_remainder: Scientific[bool] = True
     num_threads: Execution[NonNegativeInt] = 16
     prefetch_buffer_size: Execution[NonNegativeInt] = 16
+    host_memory_budget_bytes: Execution[PositiveInt | None] = None
+    data_wait_heartbeat_seconds: Execution[PositiveFloat | None] = None
+    data_wait_timeout_seconds: Execution[PositiveFloat | None] = None
 
     @model_validator(mode="before")
     @classmethod
@@ -86,6 +89,20 @@ class DataConfig(FrozenConfig):
         ):
             return {"distribution": value}
         return value
+
+    @model_validator(mode="after")
+    def validate_data_wait_thresholds(self) -> Self:
+        """Keep liveness heartbeats strictly inside the fatal deadline."""
+
+        if (
+            self.data_wait_heartbeat_seconds is not None
+            and self.data_wait_timeout_seconds is not None
+            and self.data_wait_heartbeat_seconds >= self.data_wait_timeout_seconds
+        ):
+            raise ValueError(
+                "data_wait_heartbeat_seconds must be below data_wait_timeout_seconds"
+            )
+        return self
 
 
 class EvaluatorConfig(FrozenConfig):

@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 from collections.abc import Sequence
 
-import jax.numpy as jnp
+import numpy as np
 
 from representax.config import (
     BatchConfig,
@@ -72,20 +72,27 @@ def resolve_toy_retrieval(_artifact):
 def collate_retrieval(examples: Sequence[dict]):
     size = len(examples)
     return retrieval_batch(
-        query=jnp.asarray([example["query"] for example in examples]),
-        document=jnp.asarray([example["document"] for example in examples]),
-        positive_mask=jnp.eye(size, dtype=jnp.bool_),
+        query=np.asarray([example["query"] for example in examples]),
+        document=np.asarray([example["document"] for example in examples]),
+        positive_mask=np.eye(size, dtype=np.bool_),
     )
 
 
-def build_toy_retrieval_batches(*, seed: int = 23):
+def build_toy_retrieval_batches(
+    *,
+    seed: int = 23,
+    num_threads: int = 1,
+    prefetch_buffer_size: int = 1,
+    host_memory_budget_bytes: int | None = None,
+):
     artifact = source("memory://nontrivial-retrieval", map=identity)
     return build_data_loader(
         mix(artifact, shuffle=False, seed=seed),
         batch_size=TOY_BATCH_SIZE,
         batch_fn=collate_retrieval,
-        num_threads=1,
-        prefetch_buffer_size=1,
+        num_threads=num_threads,
+        prefetch_buffer_size=prefetch_buffer_size,
+        host_memory_budget_bytes=host_memory_budget_bytes,
         resolvers={"memory": resolve_toy_retrieval},
         mappers={artifact.mapper: identity},
     )
@@ -96,6 +103,7 @@ def toy_job_config(
     global_batch_size: int = TOY_BATCH_SIZE,
     max_steps: int = TOY_STEPS,
     seed: int = 23,
+    data: DataConfig | None = None,
     logging: LoggingConfig | None = None,
     checkpointing: CheckpointConfig | None = None,
 ) -> JobConfig:
@@ -119,7 +127,11 @@ def toy_job_config(
                 parameters={"learning_rate": 0.03, "weight_decay": 0.0},
             )
         ),
-        data=DataConfig(distribution=mix(artifact, shuffle=False, seed=seed)),
+        data=(
+            DataConfig(distribution=mix(artifact, shuffle=False, seed=seed))
+            if data is None
+            else data
+        ),
         training=TrainingConfig(
             global_batch_size=global_batch_size,
             max_steps=max_steps,

@@ -7,6 +7,8 @@ import importlib
 import inspect
 import json
 import math
+import sys
+import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from functools import partial
@@ -16,6 +18,7 @@ from typing import TYPE_CHECKING, Any, Self
 from urllib.parse import urlparse
 
 import grain
+import jax
 from pydantic import model_validator
 
 from representax._config import FrozenConfig
@@ -197,6 +200,89 @@ class Artifact:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class BatchTelemetry:
+    """Host preprocessing evidence attached to one consumed batch."""
+
+    data_wait_seconds: float
+    preprocess_seconds: float | None
+    host_batch_bytes: int
+    prefetch_ready_batches: int | None
+    prefetch_capacity: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class _BatchEnvelope:
+    payload: Any
+    preprocess_seconds: float | None
+    host_batch_bytes: int
+
+
+def _prefetch_state(iterator: Any) -> tuple[int | None, int | None]:
+    """Read Grain's current ready-buffer telemetry without owning its queue."""
+
+    buffer = getattr(iterator, "_buffer", None)
+    capacity = getattr(iterator, "_target_prefetch_buffer_size", None)
+    if buffer is None or not isinstance(capacity, int):
+        return None, None
+    lock = getattr(iterator, "_lock", None)
+
+    def ready_count() -> int:
+        queue_size = getattr(buffer, "qsize", None)
+        if queue_size is not None:
+            return int(queue_size())
+        ready = 0
+        for item in buffer:
+            if not bool(getattr(item, "done", lambda: True)()):
+                break
+            ready += 1
+        return ready
+
+    if lock is None:
+        return ready_count(), capacity
+    with lock:
+        return ready_count(), capacity
+
+
+class DataIterator:
+    """Transparent Grain iterator with per-batch host telemetry."""
+
+    def __init__(self, iterator: Any) -> None:
+        self._iterator = iterator
+        self.last_telemetry: BatchTelemetry | None = None
+
+    def __iter__(self) -> DataIterator:
+        return self
+
+    def __next__(self) -> Any:
+        ready, capacity = _prefetch_state(self._iterator)
+        started = time.perf_counter()
+        envelope = next(self._iterator)
+        waited = time.perf_counter() - started
+        if not isinstance(envelope, _BatchEnvelope):
+            raise TypeError("instrumented Grain pipeline emitted an unwrapped batch")
+        self.last_telemetry = BatchTelemetry(
+            data_wait_seconds=waited,
+            preprocess_seconds=envelope.preprocess_seconds,
+            host_batch_bytes=envelope.host_batch_bytes,
+            prefetch_ready_batches=ready,
+            prefetch_capacity=capacity,
+        )
+        return envelope.payload
+
+    def get_state(self) -> Mapping[str, Any]:
+        return self._iterator.get_state()
+
+    def set_state(self, state: Mapping[str, Any]) -> None:
+        self._iterator.set_state(state)
+        self.last_telemetry = None
+
+    def close(self) -> None:
+        close = getattr(self._iterator, "close", None)
+        if close is not None:
+            close()
+
+
 @dataclass(frozen=True)
 class DataLoader:
     """Thin iterable metadata wrapper around a native Grain ``IterDataset``.
@@ -211,12 +297,81 @@ class DataLoader:
     global_batch_size: int | None
     data_contract: Mapping[str, Any]
 
-    def __iter__(self):
-        return iter(self.dataset)
+    def __iter__(self) -> DataIterator:
+        return DataIterator(iter(self.dataset))
 
     @property
     def data_fingerprint(self) -> str:
         return _json_fingerprint(self.data_contract)
+
+
+def _host_batch_nbytes(batch: Any) -> int:
+    """Conservatively count host leaves and reject premature device placement."""
+
+    total = 0
+    seen: set[int] = set()
+    for leaf in jax.tree.leaves(batch, is_leaf=lambda value: value is None):
+        if leaf is None:
+            continue
+        if isinstance(leaf, jax.Array):
+            devices = leaf.devices()
+            if any(device.platform != "cpu" for device in devices):
+                placements = sorted(
+                    f"{device.platform}:{device.id}" for device in devices
+                )
+                raise TypeError(
+                    "Grain preprocessing emitted a device-resident JAX array on "
+                    f"{placements}; emit NumPy host arrays and let place_batch own "
+                    "accelerator placement"
+                )
+        identity = id(leaf)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        if isinstance(leaf, (bytes, bytearray, memoryview)):
+            total += len(leaf)
+            continue
+        nbytes = getattr(leaf, "nbytes", None)
+        if nbytes is not None:
+            total += int(nbytes)
+            continue
+        total += sys.getsizeof(leaf)
+    return total
+
+
+@dataclass(frozen=True, slots=True)
+class _BatchMonitor:
+    maximum_bytes: int | None
+
+    def __call__(
+        self,
+        batch: Any,
+        *,
+        preprocess_seconds: float | None = None,
+    ) -> _BatchEnvelope:
+        size = _host_batch_nbytes(batch)
+        if self.maximum_bytes is not None and size > self.maximum_bytes:
+            raise MemoryError(
+                f"model-ready host batch uses {size} bytes; configured per-slot "
+                f"limit is {self.maximum_bytes} bytes"
+            )
+        return _BatchEnvelope(
+            payload=batch,
+            preprocess_seconds=preprocess_seconds,
+            host_batch_bytes=size,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class _TimedBatchFn:
+    batch_fn: Callable[[Sequence[Any]], Any]
+    monitor: _BatchMonitor
+
+    def __call__(self, values: Sequence[Any]) -> _BatchEnvelope:
+        started = time.perf_counter()
+        batch = self.batch_fn(values)
+        duration = time.perf_counter() - started
+        return self.monitor(batch, preprocess_seconds=duration)
 
 
 def _json_fingerprint(value: Any) -> str:
@@ -530,6 +685,7 @@ def build_data_loader(
     drop_remainder: bool = True,
     num_threads: int = 16,
     prefetch_buffer_size: int = 2,
+    host_memory_budget_bytes: int | None = None,
     resolvers: Mapping[str, ArtifactResolver] | None = None,
     mappers: Mapping[str, Callable[[Any], Any]] | None = None,
     data_contract: Mapping[str, Any] | None = None,
@@ -549,15 +705,48 @@ def build_data_loader(
         raise ValueError("num_threads must be non-negative")
     if prefetch_buffer_size < 0:
         raise ValueError("prefetch_buffer_size must be non-negative")
-    if isinstance(distribution, DataDistributionConfig):
-        dataset = build_dataset(
-            distribution,
-            resolvers=resolvers,
-            mappers=mappers,
-        ).batch(
+    if host_memory_budget_bytes is not None and host_memory_budget_bytes <= 0:
+        raise ValueError("host_memory_budget_bytes must be positive or None")
+
+    def monitor_for(*, prefetched: bool) -> _BatchMonitor:
+        slots = (
+            prefetch_buffer_size + 1
+            if prefetched and num_threads > 0 and prefetch_buffer_size > 0
+            else 1
+        )
+        maximum = (
+            None
+            if host_memory_budget_bytes is None
+            else host_memory_budget_bytes // slots
+        )
+        if maximum == 0:
+            raise ValueError(
+                "host_memory_budget_bytes is smaller than the configured "
+                f"{slots} model-ready batch slots"
+            )
+        return _BatchMonitor(maximum)
+
+    def batch_dataset(dataset: Any, *, prefetched: bool) -> Any:
+        monitor = monitor_for(prefetched=prefetched)
+        if batch_fn is None:
+            return dataset.batch(
+                batch_size,
+                drop_remainder=drop_remainder,
+            ).map(monitor)
+        return dataset.batch(
             batch_size,
             drop_remainder=drop_remainder,
-            batch_fn=batch_fn,
+            batch_fn=_TimedBatchFn(batch_fn, monitor),
+        )
+
+    if isinstance(distribution, DataDistributionConfig):
+        dataset = batch_dataset(
+            build_dataset(
+                distribution,
+                resolvers=resolvers,
+                mappers=mappers,
+            ),
+            prefetched=True,
         )
         iterator = dataset.to_iter_dataset(
             grain.ReadOptions(
@@ -579,10 +768,9 @@ def build_data_loader(
     elif isinstance(distribution, grain.MapDataset):
         if data_contract is None:
             raise ValueError("direct Grain datasets require data_contract")
-        dataset = distribution.batch(
-            batch_size,
-            drop_remainder=drop_remainder,
-            batch_fn=batch_fn,
+        dataset = batch_dataset(
+            distribution,
+            prefetched=True,
         )
         iterator = dataset.to_iter_dataset(
             grain.ReadOptions(
@@ -598,10 +786,9 @@ def build_data_loader(
     elif isinstance(distribution, grain.IterDataset):
         if data_contract is None:
             raise ValueError("direct Grain datasets require data_contract")
-        iterator = distribution.batch(
-            batch_size,
-            drop_remainder=drop_remainder,
-            batch_fn=batch_fn,
+        iterator = batch_dataset(
+            distribution,
+            prefetched=False,
         )
         source_contract = {
             "kind": "grain-iter-dataset",
@@ -616,7 +803,7 @@ def build_data_loader(
         dataset=iterator,
         global_batch_size=batch_size if drop_remainder else None,
         data_contract={
-            "schema_version": "representax-data-loader-v2",
+            "schema_version": "representax-data-loader-v3",
             "loader": "grain",
             "grain_version": grain.__version__,
             "source": source_contract,

@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import signal
+import threading
 import time
 from collections.abc import Callable, Iterable, Mapping
-from contextlib import suppress
+from concurrent.futures import Future, ThreadPoolExecutor
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -24,6 +27,60 @@ from .evaluation import EvaluationRunner
 from .logging import MetricRecord, Reporter, RunLogger
 from .state import StepResult, TrainState
 from .step import TrainStep
+
+
+class DataStarvationError(TimeoutError):
+    """Raised when a configured batch wait exceeds its fatal deadline."""
+
+
+@contextmanager
+def _data_wait_deadline(seconds: float | None):
+    if seconds is None:
+        yield
+        return
+    if threading.current_thread() is not threading.main_thread() or not hasattr(
+        signal, "SIGALRM"
+    ):
+        raise RuntimeError(
+            "fatal data-wait deadlines require the POSIX Python main thread"
+        )
+    previous_timer = signal.getitimer(signal.ITIMER_REAL)
+    if previous_timer[0] > 0:
+        raise RuntimeError("cannot install data-wait deadline over an active timer")
+    previous_handler = signal.getsignal(signal.SIGALRM)
+
+    def timed_out(_signum: int, _frame: Any) -> None:
+        raise DataStarvationError(f"batch preprocessing exceeded {seconds:.3f} seconds")
+
+    signal.signal(signal.SIGALRM, timed_out)
+    signal.setitimer(signal.ITIMER_REAL, seconds)
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous_handler)
+
+
+def _ready_timestamp(value: Any) -> float:
+    jax.block_until_ready(value)
+    return time.perf_counter()
+
+
+def _report_data_wait_heartbeats(
+    *,
+    stop: threading.Event,
+    interval_seconds: float,
+    iteration: int,
+    wait_started: float,
+    logger: RunLogger,
+) -> None:
+    while not stop.wait(interval_seconds):
+        logger.event(
+            "data_wait_heartbeat",
+            iteration=iteration,
+            elapsed_seconds=time.perf_counter() - wait_started,
+            interval_seconds=interval_seconds,
+        )
 
 
 @dataclass(frozen=True)
@@ -96,6 +153,11 @@ def _training_metric_record(
     placement_enqueue_seconds: float,
     step_dispatch_seconds: float,
     compilation_and_first_step_seconds: float | None,
+    preprocess_seconds: float | None = None,
+    host_batch_bytes: int | None = None,
+    prefetch_ready_batches: int | None = None,
+    prefetch_capacity: int | None = None,
+    device_input_idle_seconds_lower_bound: float | None = None,
 ) -> MetricRecord:
     values: dict[str, Any] = {
         "train/loss": result.metrics.loss,
@@ -110,6 +172,18 @@ def _training_metric_record(
         "perf/placement_enqueue_seconds": placement_enqueue_seconds,
         "perf/step_dispatch_seconds": step_dispatch_seconds,
     }
+    optional = {
+        "perf/preprocess_seconds": preprocess_seconds,
+        "perf/host_batch_bytes": host_batch_bytes,
+        "perf/prefetch_ready_batches": prefetch_ready_batches,
+        "perf/prefetch_capacity": prefetch_capacity,
+        "perf/device_input_idle_seconds_lower_bound": (
+            device_input_idle_seconds_lower_bound
+        ),
+    }
+    values.update(
+        {name: value for name, value in optional.items() if value is not None}
+    )
     for name, value in result.metrics.task.items():
         metric_name = name if name.startswith("train/") else f"train/{name}"
         if metric_name in values:
@@ -211,6 +285,12 @@ def run_training(
     run_failed = False
     best_iteration: int | None = None
     best_metrics: Mapping[str, Any] | None = None
+    completion_pool = ThreadPoolExecutor(
+        max_workers=1,
+        thread_name_prefix="representax-device-completion",
+    )
+    previous_completion: Future[float] | None = None
+    observed_iteration: int | None = None
     try:
         restored = None
         if resume:
@@ -395,13 +475,56 @@ def run_training(
 
         for iteration_index in range(completed, training.max_steps):
             wait_started = time.perf_counter()
+            heartbeat_stop = threading.Event()
+            heartbeat_thread = None
+            if job.data.data_wait_heartbeat_seconds is not None:
+                heartbeat_interval = job.data.data_wait_heartbeat_seconds
+                heartbeat_thread = threading.Thread(
+                    target=_report_data_wait_heartbeats,
+                    kwargs={
+                        "stop": heartbeat_stop,
+                        "interval_seconds": heartbeat_interval,
+                        "iteration": iteration_index,
+                        "wait_started": wait_started,
+                        "logger": logger,
+                    },
+                    name="representax-data-wait-heartbeat",
+                    daemon=True,
+                )
+                heartbeat_thread.start()
             try:
-                host_batch = next(iterator)
+                with _data_wait_deadline(job.data.data_wait_timeout_seconds):
+                    host_batch = next(iterator)
             except StopIteration as error:
                 raise RuntimeError(
                     "batch source exhausted before training.max_steps"
                 ) from error
+            except DataStarvationError:
+                logger.event(
+                    "data_starvation_timeout",
+                    iteration=iteration_index,
+                    threshold_seconds=job.data.data_wait_timeout_seconds,
+                )
+                raise
+            finally:
+                heartbeat_stop.set()
+                if heartbeat_thread is not None:
+                    heartbeat_thread.join()
             data_wait_seconds = time.perf_counter() - wait_started
+            batch_ready_at = time.perf_counter()
+            device_input_idle_seconds_lower_bound = 0.0
+            if previous_completion is not None and previous_completion.done():
+                completed_at = previous_completion.result()
+                if observed_iteration == iteration_index - 1:
+                    device_input_idle_seconds_lower_bound = max(
+                        0.0,
+                        batch_ready_at - completed_at,
+                    )
+                previous_completion = None
+                observed_iteration = None
+            batch_telemetry = getattr(iterator, "last_telemetry", None)
+            if batch_telemetry is not None:
+                data_wait_seconds = batch_telemetry.data_wait_seconds
 
             placement_started = time.perf_counter()
             batch = place_batch(host_batch)
@@ -423,6 +546,9 @@ def run_training(
             if first_use:
                 jax.block_until_ready(update)
                 compilation_and_first_step_seconds = time.perf_counter() - step_started
+                previous_completion = Future()
+                previous_completion.set_result(time.perf_counter())
+                observed_iteration = iteration_index
                 seen_signatures.add(signature)
                 logger.event(
                     "executable_first_use_finished",
@@ -431,6 +557,12 @@ def run_training(
                     duration_seconds=compilation_and_first_step_seconds,
                     includes_execution=True,
                 )
+            elif previous_completion is None:
+                previous_completion = completion_pool.submit(
+                    _ready_timestamp,
+                    update,
+                )
+                observed_iteration = iteration_index
 
             completed = iteration_index + 1
             current = update.state
@@ -441,6 +573,29 @@ def run_training(
                 placement_enqueue_seconds=placement_enqueue_seconds,
                 step_dispatch_seconds=step_dispatch_seconds,
                 compilation_and_first_step_seconds=(compilation_and_first_step_seconds),
+                preprocess_seconds=(
+                    None
+                    if batch_telemetry is None
+                    else batch_telemetry.preprocess_seconds
+                ),
+                host_batch_bytes=(
+                    None
+                    if batch_telemetry is None
+                    else batch_telemetry.host_batch_bytes
+                ),
+                prefetch_ready_batches=(
+                    None
+                    if batch_telemetry is None
+                    else batch_telemetry.prefetch_ready_batches
+                ),
+                prefetch_capacity=(
+                    None
+                    if batch_telemetry is None
+                    else batch_telemetry.prefetch_capacity
+                ),
+                device_input_idle_seconds_lower_bound=(
+                    device_input_idle_seconds_lower_bound
+                ),
             )
             if pending_metric is not None:
                 logger.metrics(
@@ -583,6 +738,7 @@ def run_training(
                 pass
         raise
     finally:
+        completion_pool.shutdown(wait=True, cancel_futures=True)
         if logger is not None:
             try:
                 logger.close()
@@ -591,4 +747,4 @@ def run_training(
                     raise
 
 
-__all__ = ["TrainingRunResult", "run_training"]
+__all__ = ["DataStarvationError", "TrainingRunResult", "run_training"]

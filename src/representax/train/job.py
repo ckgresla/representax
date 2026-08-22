@@ -177,6 +177,7 @@ def build_batches(
         drop_remainder=config.drop_remainder,
         num_threads=config.num_threads,
         prefetch_buffer_size=config.prefetch_buffer_size,
+        host_memory_budget_bytes=config.host_memory_budget_bytes,
         resolvers=resolvers,
         mappers=mappers,
     )

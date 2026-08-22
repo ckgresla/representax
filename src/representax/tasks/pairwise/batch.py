@@ -7,11 +7,12 @@ from typing import TYPE_CHECKING, Any
 
 import equinox as eqx
 import jax.numpy as jnp
-from jaxtyping import Array, Bool, Float
+import numpy as np
+from jaxtyping import Array, ArrayLike, Bool, Float
 
 if TYPE_CHECKING:
     from representax.models.processing import Processor
-from representax.tasks._batch import payload_row_count
+from representax.tasks._batch import asarray, ones, payload_row_count
 
 
 class PairwiseCollator:
@@ -65,8 +66,8 @@ class PairwiseCollator:
         return pairwise_batch(
             left=self.processor(left),
             right=self.processor(right),
-            labels=jnp.asarray(labels, dtype=jnp.float32),
-            valid=jnp.asarray(valid),
+            labels=np.asarray(labels, dtype=np.float32),
+            valid=np.asarray(valid),
         )
 
 
@@ -93,19 +94,19 @@ def pairwise_batch(
     *,
     left: Any,
     right: Any,
-    labels: Float[Array, " pair"],
-    valid: Bool[Array, " pair"] | None = None,
+    labels: Float[ArrayLike, " pair"],
+    valid: Bool[ArrayLike, " pair"] | None = None,
 ) -> PairwiseBatch:
     """Build a labeled-pair batch with all rows valid by default."""
 
-    resolved_labels = jnp.asarray(labels, dtype=jnp.float32)
+    resolved_labels = asarray(labels, dtype=jnp.float32)
     if valid is None:
-        valid = jnp.ones(resolved_labels.shape, dtype=jnp.bool_)
+        valid = ones(resolved_labels.shape, dtype=jnp.bool_, like=resolved_labels)
     return PairwiseBatch(
         left=left,
         right=right,
         labels=resolved_labels,
-        valid=jnp.asarray(valid, dtype=jnp.bool_),
+        valid=asarray(valid, dtype=jnp.bool_),
     )
 
 

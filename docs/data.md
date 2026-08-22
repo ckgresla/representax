@@ -168,7 +168,8 @@ returns the shape required by that model policy. Representax selects one bucket
 for the complete batch. Only then does
 `prepare(artifact, bucket=..., route=..., rng=...)` resolve bytes, decode,
 select content, transform it, and emit fixed-shape NumPy leaves. Finally,
-`batch_builder(**stacked_arrays)` constructs the model-native JAX batch.
+`batch_builder(**stacked_arrays)` constructs the model-native batch from NumPy
+arrays. Accelerator placement remains an explicit training-loop operation.
 
 The audio and video constructors use the same execution path, with conventional
 shape meanings `(samples,)` and `(frames, height, width)`. A supplied seed is
@@ -222,8 +223,28 @@ loader = data.build_data_loader(
     drop_remainder=True,
     num_threads=16,
     prefetch_buffer_size=2,
+    host_memory_budget_bytes=2 * 1024**3,
 )
 ```
+
+Grain owns the only preprocessing worker pool and bounded prefetch queue.
+Representax divides `host_memory_budget_bytes` across that queue plus the batch
+currently consumed by the host loop, then rejects any model-ready batch that
+exceeds its slot before it can accumulate. Thus a two-entry prefetch queue uses
+three bounded batch slots. The accounting covers NumPy arrays, bytes, and CPU
+JAX arrays in the completed batch, counting each distinct leaf object once and
+conservatively counting shared views independently. It deliberately does not
+pretend to measure compressed source objects, transient decoder scratch space,
+or JAX transfer staging; model processors must still decode directly toward an
+admitted finite shape. Collators must emit host arrays. A worker that places an
+array on an accelerator fails before the explicit `place_batch` boundary.
+
+Each consumed batch carries timing and queue evidence which is stripped before
+device placement: aggregate probe/decode/collation time, model-ready host bytes,
+consecutive ready entries at the head of Grain's queue, queue capacity, and the
+actual wait in `next()`. The training loop publishes these under `perf/...`.
+Queue evidence is omitted when the supplied Grain iterator does not expose a
+compatible bounded-prefetch state; execution never depends on that telemetry.
 
 Advanced Python callers can start from an existing Grain dataset directly:
 
@@ -244,7 +265,10 @@ The loader fingerprint includes source revisions, distribution and sampling
 policy, mapper/resolver implementations, batch mapper, batch size, remainder
 policy, and Grain version. Grain's native `get_state` and `set_state` are stored
 in each training checkpoint, so resume seeks directly to the next logical
-batch instead of replaying preprocessing.
+batch instead of replaying preprocessing. Worker count, prefetch depth, host
+memory budget, and data-wait deadlines are execution choices rather than data
+semantics. A saved logical cursor can therefore resume under a different one of
+those configurations while producing the identical remaining batch sequence.
 
 ## Extension boundary
 

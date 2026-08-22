@@ -14,6 +14,7 @@ from representax.data import build_data_loader, mix, source
 from representax.models import DenseEncoder
 from representax.tasks.retrieval import MNRTask
 from representax.train import (
+    DataStarvationError,
     EvaluationRunner,
     LoggingConfig,
     MetricRecord,
@@ -48,6 +49,21 @@ class ClosingBatches:
 
     def close(self):
         self.closed = True
+
+
+class SleepingBatches(ClosingBatches):
+    def __init__(self, values, *, delay_seconds):
+        super().__init__(values)
+        self.delay_seconds = delay_seconds
+        self.last_wait_seconds = None
+
+    def __next__(self):
+        started = time.perf_counter()
+        try:
+            time.sleep(self.delay_seconds)
+        finally:
+            self.last_wait_seconds = time.perf_counter() - started
+        return super().__next__()
 
 
 class RecordingReporter:
@@ -190,6 +206,41 @@ def test_training_loop_records_exhaustion_as_a_real_failure(tmp_path):
     assert run["completed_iterations"] == 1
     assert events[-1]["event"] == "training_failed"
     assert events[-1]["error_type"] == "RuntimeError"
+
+
+def test_training_loop_heartbeats_then_fails_closed_on_data_starvation(tmp_path):
+    batches = SleepingBatches(
+        [jnp.asarray([1.0, 3.0])],
+        delay_seconds=1.0,
+    )
+    base = _job(global_batch_size=2, max_steps=1, seed=17)
+    data_config = DataConfig(
+        distribution=base.data.distribution,
+        data_wait_heartbeat_seconds=0.01,
+        data_wait_timeout_seconds=0.05,
+    )
+    with pytest.raises(DataStarvationError, match="exceeded 0.050"):
+        run_training(
+            state=_state(),
+            step=_step,
+            batches=batches,
+            job=_job(
+                global_batch_size=2,
+                max_steps=1,
+                seed=17,
+                data=data_config,
+            ),
+            run_directory=tmp_path / "starved-run",
+        )
+
+    assert batches.last_wait_seconds is not None
+    assert batches.last_wait_seconds < 0.5
+    assert batches.closed is True
+    events = _read_jsonl(tmp_path / "starved-run" / "events.jsonl")
+    assert [row["event"] for row in events].count("data_wait_heartbeat") >= 2
+    assert "data_starvation_timeout" in [row["event"] for row in events]
+    assert events[-1]["event"] == "training_failed"
+    assert events[-1]["error_type"] == "DataStarvationError"
 
 
 def test_training_loop_rejects_grain_batch_size_drift(tmp_path):
@@ -340,6 +391,13 @@ def test_grain_recipe_drives_compiled_updates_end_to_end(tmp_path):
     metrics = _read_jsonl(tmp_path / "grain-run" / "metrics.jsonl")
     assert len(metrics) == TOY_STEPS
     assert all(row["metrics"]["train/numeric_finite"] for row in metrics)
+    assert all(row["metrics"]["perf/host_batch_bytes"] > 0 for row in metrics)
+    assert all("perf/preprocess_seconds" in row["metrics"] for row in metrics)
+    assert all("perf/prefetch_ready_batches" in row["metrics"] for row in metrics)
+    assert all(
+        "perf/device_input_idle_seconds_lower_bound" in row["metrics"]
+        for row in metrics
+    )
     losses = [row["metrics"]["train/loss"] for row in metrics]
     assert losses[-1] < losses[0] * 0.5
 

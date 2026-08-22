@@ -12,6 +12,7 @@ import numpy as np
 import optax
 import pytest
 
+from representax.config import DataConfig
 from representax.models import DenseEncoder
 from representax.tasks.retrieval import MNRTask
 from representax.train import (
@@ -361,7 +362,23 @@ def test_orbax_preserves_mixed_training_dtypes(tmp_path):
 
 @pytest.mark.runtime
 def test_donated_training_with_async_orbax_resumes_exactly(tmp_path):
-    job = toy_job_config(seed=29)
+    base = toy_job_config(seed=29)
+    serial_data = DataConfig(
+        distribution=base.data.distribution,
+        num_threads=0,
+        prefetch_buffer_size=0,
+    )
+    parallel_data = DataConfig(
+        distribution=base.data.distribution,
+        num_threads=4,
+        prefetch_buffer_size=4,
+    )
+    baseline_data = DataConfig(
+        distribution=base.data.distribution,
+        num_threads=2,
+        prefetch_buffer_size=2,
+    )
+    job = toy_job_config(seed=29, data=baseline_data)
     optimizer = optax.adamw(learning_rate=0.03, weight_decay=0.0)
 
     def fresh_initial():
@@ -379,7 +396,11 @@ def test_donated_training_with_async_orbax_resumes_exactly(tmp_path):
     uninterrupted = run_training(
         state=fresh_initial(),
         step=train_step,
-        batches=build_toy_retrieval_batches(seed=29),
+        batches=build_toy_retrieval_batches(
+            seed=29,
+            num_threads=2,
+            prefetch_buffer_size=2,
+        ),
         job=job,
         run_directory=tmp_path / "uninterrupted",
     )
@@ -397,23 +418,40 @@ def test_donated_training_with_async_orbax_resumes_exactly(tmp_path):
 
     run = tmp_path / "resumed"
     checkpoint = CheckpointConfig(every=4, keep=2, asynchronous=True)
-    checkpoint_job = toy_job_config(seed=29, checkpointing=checkpoint)
+    checkpoint_job = toy_job_config(
+        seed=29,
+        checkpointing=checkpoint,
+        data=serial_data,
+    )
     with pytest.raises(RuntimeError, match="simulated interruption"):
         run_training(
             state=fresh_initial(),
             step=crash_after_checkpoint,
-            batches=build_toy_retrieval_batches(seed=29),
+            batches=build_toy_retrieval_batches(
+                seed=29,
+                num_threads=0,
+                prefetch_buffer_size=0,
+            ),
             job=checkpoint_job,
             run_directory=run,
         )
 
+    resumed_job = toy_job_config(
+        seed=29,
+        checkpointing=checkpoint,
+        data=parallel_data,
+    )
     resumed = run_training(
         # A real restart constructs a fresh abstract/state template. Reusing the
         # donated object from the interrupted run is invalid JAX ownership.
         state=fresh_initial(),
         step=train_step,
-        batches=build_toy_retrieval_batches(seed=29),
-        job=checkpoint_job,
+        batches=build_toy_retrieval_batches(
+            seed=29,
+            num_threads=4,
+            prefetch_buffer_size=4,
+        ),
+        job=resumed_job,
         run_directory=run,
         resume=True,
     )
@@ -442,5 +480,7 @@ def test_donated_training_with_async_orbax_resumes_exactly(tmp_path):
     assert manifest["status"] == "completed"
     assert manifest["resume_count"] == 1
     assert manifest["config"]["checkpointing"]["every"] == 4
+    assert manifest["execution"]["data"]["num_threads"] == 4
+    assert manifest["execution"]["data"]["prefetch_buffer_size"] == 4
     assert "error" not in manifest
     assert "error_type" not in manifest

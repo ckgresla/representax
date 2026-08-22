@@ -800,12 +800,23 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
     gates exercise metadata-only probing before reads, selected image spans,
     seeded audio windows, and seeded noncontiguous video-frame ranges before
     decoding into the already admitted static bucket.
-**** TODO Bound preprocessing memory and make starvation observable and fatal
+**** DONE Bound preprocessing memory and make starvation observable and fatal
     Keep workers model-free; use bounded queues, heartbeats, timeouts, clean
     failure propagation, and explicit host-memory budgets. Emit
-    =train/data_wait_seconds=, queue occupancy, decode/preprocess/placement time,
+    =perf/data_wait_seconds=, queue occupancy, decode/preprocess/placement time,
     and device-idle telemetry. Checkpoint the logical consumed cursor and require
     identical resumed batches across worker and prefetch configurations.
+    Accepted with Grain as the sole bounded queue: the configured host budget is
+    divided across its prefetch capacity plus the consumed model-ready batch,
+    accelerator-resident worker output is rejected, and aggregate
+    probe/decode/collation time plus host bytes and queue readiness flow through
+    the existing asynchronous reporter. Repeated liveness heartbeats precede a
+    fatal POSIX data-wait deadline with clean run and iterator failure. A bounded
+    completion observer reports only a defensible device-idle lower bound and
+    never retains an unbounded sequence of train states. Raw Grain and real
+    asynchronous Orbax gates prove identical remaining batches and final model,
+    optimizer, iteration, and RNG trajectories when resuming from =0/0= to
+    =4/4= worker/prefetch execution.
 ** TODO Support =encode_query= and =encode_document= behavior through typed routes :api:retrieval:
 ** TODO Add Hugging Face Hub loading, local loading, and model export :api:hf:
 ** TODO Add multi-dataset functionality through source sampling policies :api:data:

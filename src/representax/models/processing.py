@@ -12,7 +12,6 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
-import jax.numpy as jnp
 import numpy as np
 
 from representax.core import Modality, Route
@@ -274,7 +273,7 @@ def make_media_processor(
                     f"prepared media field {name!r} has unstable shapes "
                     f"{field_shapes!r} for bucket {bucket!r}"
                 )
-            arrays[name] = jnp.asarray(np.stack([row[name] for row in rows]))
+            arrays[name] = np.stack([row[name] for row in rows])
         return batch_builder(**arrays)
 
     return Processor(
@@ -515,12 +514,12 @@ def make_text_processor(
                 f"tokenizer output is missing required field {error.args[0]!r}"
             ) from error
         inputs = batch_builder(
-            input_ids=jnp.asarray(input_ids),
-            attention_mask=jnp.asarray(attention_mask),
+            input_ids=input_ids,
+            attention_mask=attention_mask,
             token_type_ids=(
                 None
                 if encoded.get("token_type_ids") is None
-                else jnp.asarray(encoded["token_type_ids"])
+                else encoded["token_type_ids"]
             ),
         )
         if include_prompt or not prefix:
@@ -531,7 +530,7 @@ def make_text_processor(
         pooling_mask[positions < (first_token + prompt_length(prefix))[:, None]] = 0
         if pooling_batch_builder is None:  # pragma: no cover - guarded above
             raise AssertionError("pooling batch builder disappeared")
-        return pooling_batch_builder(inputs, jnp.asarray(pooling_mask))
+        return pooling_batch_builder(inputs, pooling_mask)
 
     tokenizer_type = type(tokenizer)
     return Processor(

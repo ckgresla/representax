@@ -9,6 +9,7 @@ import tarfile
 import zipfile
 from typing import cast
 
+import numpy as np
 import pytest
 
 from representax import data
@@ -47,6 +48,10 @@ def collate_records(records):
 
 def collate_values(values):
     return tuple(values)
+
+
+def collate_numpy_values(values):
+    return np.asarray(values, dtype=np.float32)
 
 
 class StatefulCollator:
@@ -494,3 +499,82 @@ def test_direct_grain_dataset_requires_a_reproducibility_contract():
             num_threads=0,
             prefetch_buffer_size=0,
         )
+
+
+def test_data_loader_bounds_model_ready_host_memory_and_reports_prefetch():
+    dataset = grain.MapDataset.range(16)
+    loader = data.build_data_loader(
+        dataset,
+        batch_size=4,
+        batch_fn=collate_numpy_values,
+        num_threads=2,
+        prefetch_buffer_size=2,
+        host_memory_budget_bytes=48,
+        data_contract={"name": "bounded-values", "revision": "1"},
+    )
+    iterator = iter(loader)
+
+    batch = next(iterator)
+
+    assert batch.shape == (4,)
+    assert iterator.last_telemetry is not None
+    assert iterator.last_telemetry.host_batch_bytes == 16
+    assert iterator.last_telemetry.preprocess_seconds is not None
+    assert iterator.last_telemetry.prefetch_capacity == 2
+    assert iterator.last_telemetry.prefetch_ready_batches == 0
+    iterator.close()
+
+    too_small = data.build_data_loader(
+        grain.MapDataset.range(16),
+        batch_size=4,
+        batch_fn=collate_numpy_values,
+        num_threads=2,
+        prefetch_buffer_size=2,
+        host_memory_budget_bytes=47,
+        data_contract={"name": "bounded-values", "revision": "1"},
+    )
+    with pytest.raises(MemoryError, match="per-slot limit"):
+        next(iter(too_small))
+
+
+def test_grain_cursor_resumes_identically_across_worker_and_prefetch_settings():
+    def dataset():
+        return grain.MapDataset.range(40).seed(31).shuffle()
+
+    contract = {"name": "resume-values", "revision": "1"}
+    serial = data.build_data_loader(
+        dataset(),
+        batch_size=4,
+        batch_fn=collate_values,
+        num_threads=0,
+        prefetch_buffer_size=0,
+        data_contract=contract,
+    )
+    parallel = data.build_data_loader(
+        dataset(),
+        batch_size=4,
+        batch_fn=collate_values,
+        num_threads=4,
+        prefetch_buffer_size=4,
+        data_contract=contract,
+    )
+    reference = data.build_data_loader(
+        dataset(),
+        batch_size=4,
+        batch_fn=collate_values,
+        num_threads=2,
+        prefetch_buffer_size=2,
+        data_contract=contract,
+    )
+
+    assert serial.data_fingerprint == parallel.data_fingerprint
+    serial_iterator = iter(serial)
+    prefix = [next(serial_iterator), next(serial_iterator), next(serial_iterator)]
+    state = serial_iterator.get_state()
+    serial_iterator.close()
+    parallel_iterator = iter(parallel)
+    parallel_iterator.set_state(state)
+    resumed = list(parallel_iterator)
+    uninterrupted = list(reference)
+
+    assert [*prefix, *resumed] == uninterrupted
