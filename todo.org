@@ -789,11 +789,17 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
     video-frame tests cover lazy references, deterministic replay, wrong
     modalities, unstable leaves, Grain-native batching, implementation digests,
     and fingerprint changes.
-**** TODO Preserve artifact references and decode only admitted media selections
+**** DONE Preserve artifact references and decode only admitted media selections
     Carry URI, revision/ETag, archive member, byte range, checksum, and probed
     metadata through lazy sampling. Choose deterministic audio windows and video
     frames before decoding, decode directly toward an admitted bucket, and do
     not materialize a proprietary intermediate dataset or whole media column.
+    Accepted with immutable URI Artifacts, local/HTTP byte readers, ZIP/TAR
+    member selection, fail-closed HTTP Range and ETag validation, SHA-256
+    payload validation, and a custom scheme-reader boundary. The processor
+    gates exercise metadata-only probing before reads, selected image spans,
+    seeded audio windows, and seeded noncontiguous video-frame ranges before
+    decoding into the already admitted static bucket.
 **** TODO Bound preprocessing memory and make starvation observable and fatal
     Keep workers model-free; use bounded queues, heartbeats, timeouts, clean
     failure propagation, and explicit host-memory budgets. Emit

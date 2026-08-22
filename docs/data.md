@@ -42,8 +42,8 @@ mapping, deterministic shuffle, and weighted mixing directly.
 
 ## Artifacts and samples
 
-An `Artifact` is one raw model-input leaf. It contains either inline data or a
-lazy key into a named source:
+An `Artifact` is one raw model-input leaf. It contains either inline data or an
+immutable lazy URI reference:
 
 ```python
 from dataclasses import dataclass
@@ -62,12 +62,31 @@ sample = RetrievalSample(
     query={"instruction": data.Artifact.text("find the matching image")},
     document=data.Artifact.ref(
         Modality.IMAGE,
-        source="images",
-        key="00042.jpg",
+        uri="s3://images/00042.jpg",
+        revision="dataset-v2",
+        etag='"immutable-object-etag"',
         metadata={"width": 1024, "height": 768},
     ),
 )
 ```
+
+Lazy references preserve the identity and selectors needed to avoid an
+intermediate media dataset: URI, revision or ETag, optional archive member,
+an optional `[start, stop)` byte range, checksum, and probe metadata. The
+checksum is over the selected bytes returned to the decoder. Local files,
+ZIP/TAR members, and HTTP(S) ranges use the built-in `read_artifact()` boundary;
+additional URI schemes supply one byte reader:
+
+```python
+payload = data.read_artifact(
+    artifact,
+    readers={"s3": read_s3_object_range},
+)
+```
+
+HTTP range reads fail closed if the server ignores the requested range, and
+ETag/checksum mismatches abort preprocessing. Remote archives similarly require
+an indexed scheme reader rather than silently downloading the whole shard.
 
 A sample is one task-specific training unit. Representax deliberately does not
 impose a universal `Sample` base class: retrieval, classification, reward, and
@@ -231,6 +250,6 @@ batch instead of replaying preprocessing.
 
 Additional URI schemes plug in as source resolvers returning a random-access
 object accepted by `grain.MapDataset.source`. Model-specific media processing
-belongs to the model-associated processor rather than the source resolver. The source
-supplies rows and lazy references; the processor determines how those artifacts
-become model inputs.
+belongs to the model-associated processor rather than the source resolver. The
+source supplies rows and lazy references; the processor determines how those
+artifacts become model inputs.

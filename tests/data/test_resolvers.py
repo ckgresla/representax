@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import hashlib
+import io
 import json
+import tarfile
+import zipfile
 from typing import cast
 
 import pytest
 
 from representax import data
+from representax.data import resolvers as data_resolvers
 
 datasets = pytest.importorskip("datasets")
 grain = pytest.importorskip("grain")
@@ -70,6 +75,159 @@ def _write_local_artifact(path, kind: str) -> None:
             writer.write_table(table)
     else:  # pragma: no cover - test helper contract
         raise AssertionError(kind)
+
+
+def test_lazy_local_artifact_reads_only_selected_verified_bytes(tmp_path):
+    path = tmp_path / "audio.pcm"
+    path.write_bytes(b"header:0123456789:footer")
+    selected = b"23456"
+    artifact = data.Artifact.ref(
+        "audio",
+        uri=path.as_uri(),
+        revision="manifest-v3",
+        byte_range=(9, 14),
+        checksum="sha256:" + hashlib.sha256(selected).hexdigest(),
+        metadata={"sample_rate": 16_000, "samples": 5},
+    )
+
+    assert artifact.read_bytes() == selected
+    assert artifact.revision == "manifest-v3"
+    assert artifact.metadata["samples"] == 5
+
+
+def test_lazy_artifact_checksums_fail_closed(tmp_path):
+    path = tmp_path / "image.raw"
+    path.write_bytes(b"pixels")
+    artifact = data.Artifact.ref(
+        "image",
+        uri=path.as_uri(),
+        checksum="sha256:" + "0" * 64,
+    )
+
+    with pytest.raises(OSError, match="checksum mismatch"):
+        artifact.read_bytes()
+    with pytest.raises(ValueError, match="sha256"):
+        data.Artifact.ref(
+            "image",
+            uri=path.as_uri(),
+            checksum="md5:invalid",
+        )
+
+
+@pytest.mark.parametrize("archive_kind", ("zip", "tar"))
+def test_lazy_artifact_reads_one_archive_member_range(tmp_path, archive_kind):
+    path = tmp_path / f"shard.{archive_kind}"
+    payload = b"0123456789"
+    if archive_kind == "zip":
+        with zipfile.ZipFile(path, "w") as archive:
+            archive.writestr("clips/0001.raw", payload)
+    else:
+        member = tarfile.TarInfo("clips/0001.raw")
+        member.size = len(payload)
+        with tarfile.open(path, "w") as archive:
+            archive.addfile(member, io.BytesIO(payload))
+    artifact = data.Artifact.ref(
+        "video",
+        uri=path.as_uri(),
+        archive_member="clips/0001.raw",
+        byte_range=(3, 7),
+    )
+
+    assert data.read_artifact(artifact) == b"3456"
+
+
+def test_lazy_artifact_reader_registry_is_scheme_extensible():
+    observed = []
+
+    def read_object(artifact):
+        observed.append(
+            (
+                artifact.uri,
+                artifact.revision,
+                artifact.etag,
+                artifact.byte_range,
+            )
+        )
+        return b"selected"
+
+    artifact = data.Artifact.ref(
+        "image",
+        uri="s3://bucket/images/42.jpg",
+        revision="version-7",
+        etag='"object-etag"',
+        byte_range=(1024, 2048),
+    )
+
+    assert data.read_artifact(artifact, readers={"s3": read_object}) == b"selected"
+    assert observed == [
+        (
+            "s3://bucket/images/42.jpg",
+            "version-7",
+            '"object-etag"',
+            (1024, 2048),
+        )
+    ]
+
+
+def test_http_artifact_requires_range_and_etag_to_be_honored(monkeypatch):
+    requests = []
+
+    class Response:
+        status = 206
+        headers = {
+            "ETag": '"immutable"',
+            "Content-Range": "bytes 2-5/32",
+        }
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def read(self):
+            return b"cdef"
+
+    def open_request(request):
+        requests.append(request)
+        return Response()
+
+    monkeypatch.setattr(data_resolvers, "urlopen", open_request)
+    artifact = data.Artifact.ref(
+        "audio",
+        uri="https://example.test/audio.raw",
+        etag='"immutable"',
+        byte_range=(2, 6),
+    )
+
+    assert artifact.read_bytes() == b"cdef"
+    headers = {name.lower(): value for name, value in requests[0].header_items()}
+    assert headers == {"if-match": '"immutable"', "range": "bytes=2-5"}
+
+
+def test_http_artifact_refuses_server_that_ignores_range(monkeypatch):
+    class Response:
+        status = 200
+        headers = {}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def read(self):
+            pytest.fail("ignored range must fail before reading the response body")
+
+    monkeypatch.setattr(data_resolvers, "urlopen", lambda _request: Response())
+    artifact = data.Artifact.ref(
+        "video",
+        uri="https://example.test/video.mp4",
+        byte_range=(0, 1024),
+    )
+
+    with pytest.raises(OSError, match="ignored byte-range"):
+        artifact.read_bytes()
 
 
 @pytest.mark.parametrize(

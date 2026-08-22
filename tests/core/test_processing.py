@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from typing import Any
 
 import equinox as eqx
@@ -67,18 +68,31 @@ def test_processor_is_a_serializable_host_boundary():
     assert processor.data_contract() == {"kind": "identity", "shape": [2]}
 
 
-def test_image_processor_probes_before_lazy_decode_and_pads_one_bucket():
+def test_image_processor_probes_before_lazy_decode_and_pads_one_bucket(tmp_path):
     stored = {
         "small": np.ones((120, 160, 3), dtype=np.uint8),
         "large": np.ones((180, 200, 3), dtype=np.uint8),
     }
+    references: dict[str, tuple[str, tuple[int, int], str]] = {}
+    for name, image in stored.items():
+        prefix = f"ignored-{name}:".encode()
+        payload = image.tobytes()
+        path = tmp_path / f"{name}.bin"
+        path.write_bytes(prefix + payload + b":also-ignored")
+        references[name] = (
+            path.as_uri(),
+            (len(prefix), len(prefix) + len(payload)),
+            "sha256:" + hashlib.sha256(payload).hexdigest(),
+        )
     decoded: list[str] = []
 
     def prepare(artifact, *, bucket, route, rng):
         del route, rng
-        assert artifact.key is not None
-        decoded.append(artifact.key)
-        image = stored[artifact.key]
+        name = str(artifact.metadata["name"])
+        decoded.append(name)
+        image = np.frombuffer(artifact.read_bytes(), dtype=np.uint8).reshape(
+            artifact.metadata["source_shape"]
+        )
         height, width = bucket
         pixels = np.zeros((3, height, width), dtype=np.float32)
         valid_height = min(height, image.shape[0])
@@ -102,15 +116,25 @@ def test_image_processor_probes_before_lazy_decode_and_pads_one_bucket():
     artifacts = (
         Artifact.ref(
             Modality.IMAGE,
-            source="images",
-            key="small",
-            metadata={"required_shape": (120, 160)},
+            uri=references["small"][0],
+            byte_range=references["small"][1],
+            checksum=references["small"][2],
+            metadata={
+                "name": "small",
+                "required_shape": (120, 160),
+                "source_shape": stored["small"].shape,
+            },
         ),
         Artifact.ref(
             Modality.IMAGE,
-            source="images",
-            key="large",
-            metadata={"required_shape": (180, 200)},
+            uri=references["large"][0],
+            byte_range=references["large"][1],
+            checksum=references["large"][2],
+            metadata={
+                "name": "large",
+                "required_shape": (180, 200),
+                "source_shape": stored["large"].shape,
+            },
         ),
     )
 
@@ -191,15 +215,21 @@ def test_media_processor_is_a_native_grain_batch_mapper_and_fingerprint():
     assert loader.data_fingerprint != expanded.data_fingerprint
 
 
-def test_audio_processor_is_seeded_and_emits_one_static_window():
+def test_audio_processor_selects_seeded_byte_window_before_decode(tmp_path):
     def prepare(artifact, *, bucket, route, rng):
         del route
         assert rng is not None
-        values = np.asarray(artifact.data, dtype=np.float32)
         samples = bucket[0]
-        start = int(rng.integers(0, values.size - samples + 1))
+        available = int(artifact.metadata["samples"])
+        start = int(rng.integers(0, available - samples + 1))
+        item_size = np.dtype(np.float32).itemsize
+        selected = artifact.with_byte_range(
+            start * item_size,
+            (start + samples) * item_size,
+        )
+        values = np.frombuffer(selected.read_bytes(), dtype=np.float32)
         return {
-            "audio_values": values[start : start + samples],
+            "audio_values": values,
             "audio_mask": np.ones((samples,), dtype=bool),
         }
 
@@ -210,10 +240,12 @@ def test_audio_processor_is_seeded_and_emits_one_static_window():
         batch_builder=audio_batch,
         configuration={"window": "random", "sample_rate": 16_000},
     )
-    artifact = Artifact.inline(
+    path = tmp_path / "audio.f32"
+    path.write_bytes(np.arange(2048, dtype=np.float32).tobytes())
+    artifact = Artifact.ref(
         Modality.AUDIO,
-        np.arange(2048, dtype=np.float32),
-        metadata={"required_shape": (256,)},
+        uri=path.as_uri(),
+        metadata={"required_shape": (256,), "samples": 2048},
     )
 
     first = processor((artifact,), seed=11)
@@ -225,15 +257,28 @@ def test_audio_processor_is_seeded_and_emits_one_static_window():
     assert not np.array_equal(first.audio_values, different.audio_values)
 
 
-def test_video_processor_selects_frames_into_a_finite_spatiotemporal_bucket():
+def test_video_processor_selects_ranges_before_decoding_static_frames(tmp_path):
     def prepare(artifact, *, bucket, route, rng):
         del route
         assert rng is not None
-        source = np.asarray(artifact.data, dtype=np.float32)
         frames, height, width = bucket
-        indices = np.sort(rng.choice(source.shape[0], size=frames, replace=False))
+        source_shape = tuple(artifact.metadata["source_shape"])
+        indices = np.sort(rng.choice(source_shape[0], size=frames, replace=False))
+        frame_values = int(np.prod(source_shape[1:]))
+        frame_bytes = frame_values * np.dtype(np.float32).itemsize
+        selected = np.stack(
+            [
+                np.frombuffer(
+                    artifact.with_byte_range(
+                        int(index) * frame_bytes,
+                        (int(index) + 1) * frame_bytes,
+                    ).read_bytes(),
+                    dtype=np.float32,
+                ).reshape(source_shape[1:])
+                for index in indices
+            ]
+        )
         pixels = np.zeros((frames, 3, height, width), dtype=np.float32)
-        selected = source[indices]
         copy_height = min(height, selected.shape[1])
         copy_width = min(width, selected.shape[2])
         pixels[:, :, :copy_height, :copy_width] = np.moveaxis(
@@ -253,16 +298,29 @@ def test_video_processor_selects_frames_into_a_finite_spatiotemporal_bucket():
         batch_builder=video_batch,
         configuration={"frames": "random-without-replacement"},
     )
-    artifact = Artifact.inline(
+    source = np.broadcast_to(
+        np.arange(24, dtype=np.float32)[:, None, None, None],
+        (24, 96, 112, 3),
+    ).copy()
+    path = tmp_path / "video.f32"
+    path.write_bytes(source.tobytes())
+    artifact = Artifact.ref(
         Modality.VIDEO,
-        np.ones((24, 96, 112, 3), dtype=np.float32),
-        metadata={"required_shape": (8, 96, 112)},
+        uri=path.as_uri(),
+        metadata={
+            "required_shape": (8, 96, 112),
+            "source_shape": source.shape,
+        },
     )
 
     batch = processor((artifact,), seed=7)
+    repeated = processor((artifact,), seed=7)
+    different = processor((artifact,), seed=8)
 
     assert batch.pixel_values.shape == (1, 8, 3, 128, 128)
     assert batch.frame_mask.shape == (1, 8)
+    np.testing.assert_array_equal(batch.pixel_values, repeated.pixel_values)
+    assert not np.array_equal(batch.pixel_values, different.pixel_values)
 
 
 def test_media_processors_reject_wrong_modalities_and_unstable_outputs():

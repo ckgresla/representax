@@ -120,16 +120,18 @@ def test_artifacts_compose_into_task_specific_samples_without_a_shared_schema():
         query={"instruction": data.Artifact.text("find the matching image")},
         document=data.Artifact.ref(
             Modality.IMAGE,
-            source="images",
-            key="00042.jpg",
+            uri="s3://images/00042.jpg",
+            revision="dataset-v2",
+            etag='"abc123"',
             metadata={"width": 1024, "height": 768},
         ),
     )
 
     assert sample.query["instruction"].data == "find the matching image"
     assert sample.document.modality == Modality.IMAGE
-    assert sample.document.source == "images"
-    assert sample.document.key == "00042.jpg"
+    assert sample.document.uri == "s3://images/00042.jpg"
+    assert sample.document.revision == "dataset-v2"
+    assert sample.document.etag == '"abc123"'
     assert sample.document.metadata == {"width": 1024, "height": 768}
     with pytest.raises(TypeError):
         setitem(cast(Any, sample.document.metadata), "width", 512)
@@ -142,8 +144,13 @@ def test_artifact_requires_exactly_one_inline_value_or_lazy_reference():
         data.Artifact(
             modality=Modality.AUDIO,
             data=b"wav",
-            source="audio",
-            key="clip.wav",
+            uri="s3://audio/clip.wav",
         )
-    with pytest.raises(ValueError, match="both source and key"):
-        data.Artifact(modality=Modality.VIDEO, source="video")
+    with pytest.raises(ValueError, match="non-empty uri"):
+        data.Artifact(modality=Modality.VIDEO, uri="")
+    with pytest.raises(ValueError, match="byte_range"):
+        data.Artifact.ref(
+            Modality.VIDEO,
+            uri="s3://video/clip.mp4",
+            byte_range=(10, 10),
+        )

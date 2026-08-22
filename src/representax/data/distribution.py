@@ -8,11 +8,11 @@ import inspect
 import json
 import math
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from functools import partial
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Self
+from typing import TYPE_CHECKING, Any, Self
 from urllib.parse import urlparse
 
 import grain
@@ -22,6 +22,9 @@ from representax._config import FrozenConfig
 from representax.core import Modality
 
 from .resolvers import BUILTIN_RESOLVERS, ArtifactResolver
+
+if TYPE_CHECKING:
+    from .resolvers import ArtifactReader
 
 Mapper = str | Callable[[Any], Any]
 
@@ -36,7 +39,7 @@ def identity(record: Any) -> Any:
 class Artifact:
     """One raw input leaf in a mapped training sample.
 
-    An artifact is either inline data or a lazy ``source``/``key`` reference.
+    An artifact is either inline data or one immutable lazy URI reference.
     One source row may map to several artifacts, and task-specific sample
     dataclasses compose them naturally::
 
@@ -44,8 +47,9 @@ class Artifact:
             query={"text": Artifact.text("find this")},
             document=Artifact.ref(
                 Modality.IMAGE,
-                source="images",
-                key="00042.jpg",
+                uri="s3://images/00042.jpg",
+                etag="<immutable-object-etag>",
+                metadata={"height": 768, "width": 1024},
             ),
         )
 
@@ -55,18 +59,54 @@ class Artifact:
 
     modality: Modality
     data: Any | None = None
-    source: str | None = None
-    key: str | None = None
+    uri: str | None = None
+    revision: str | None = None
+    etag: str | None = None
+    archive_member: str | None = None
+    byte_range: tuple[int, int] | None = None
+    checksum: str | None = None
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "modality", Modality(self.modality))
         inline = self.data is not None
-        referenced = self.source is not None or self.key is not None
+        referenced = self.uri is not None
         if inline == referenced:
             raise ValueError("an artifact must contain inline data or one reference")
-        if referenced and (not self.source or not self.key):
-            raise ValueError("referenced artifacts require both source and key")
+        if referenced and not self.uri:
+            raise ValueError("referenced artifacts require a non-empty uri")
+        if inline and any(
+            value is not None
+            for value in (
+                self.revision,
+                self.etag,
+                self.archive_member,
+                self.byte_range,
+            )
+        ):
+            raise ValueError("inline artifacts cannot declare reference selectors")
+        for name in ("revision", "etag", "archive_member", "checksum"):
+            value = getattr(self, name)
+            if value is not None and not value:
+                raise ValueError(f"artifact {name} must be non-empty or None")
+        if self.byte_range is not None:
+            start, stop = self.byte_range
+            if start < 0 or stop <= start:
+                raise ValueError(
+                    "artifact byte_range must be a non-empty [start, stop) span"
+                )
+        if self.checksum is not None:
+            algorithm, separator, digest = self.checksum.partition(":")
+            if (
+                algorithm != "sha256"
+                or separator != ":"
+                or len(digest) != 64
+                or any(
+                    character not in "0123456789abcdefABCDEF" for character in digest
+                )
+            ):
+                raise ValueError("artifact checksum must use sha256:<64 hex digits>")
+            object.__setattr__(self, "checksum", f"sha256:{digest.lower()}")
         object.__setattr__(self, "metadata", MappingProxyType(dict(self.metadata)))
 
     @classmethod
@@ -98,17 +138,62 @@ class Artifact:
         cls,
         modality: Modality | str,
         *,
-        source: str,
-        key: str,
+        uri: str,
+        revision: str | None = None,
+        etag: str | None = None,
+        archive_member: str | None = None,
+        byte_range: tuple[int, int] | None = None,
+        checksum: str | None = None,
         metadata: Mapping[str, Any] | None = None,
     ) -> Artifact:
-        """Construct a lazy reference into one named data source."""
+        """Construct one lazy, immutable reference to raw artifact bytes.
+
+        ``byte_range`` uses Python slice semantics: its start is inclusive and
+        its stop is exclusive. ``checksum`` describes the bytes returned after
+        archive-member and byte-range selection.
+        """
 
         return cls(
             modality=Modality(modality),
-            source=source,
-            key=key,
+            uri=uri,
+            revision=revision,
+            etag=etag,
+            archive_member=archive_member,
+            byte_range=byte_range,
+            checksum=checksum,
             metadata={} if metadata is None else metadata,
+        )
+
+    def read_bytes(
+        self,
+        *,
+        readers: Mapping[str, ArtifactReader] | None = None,
+    ) -> bytes:
+        """Resolve this artifact through the shared lazy byte boundary."""
+
+        from .resolvers import read_artifact
+
+        return read_artifact(self, readers=readers)
+
+    def with_byte_range(
+        self,
+        start: int,
+        stop: int,
+        *,
+        checksum: str | None = None,
+    ) -> Artifact:
+        """Derive a lazy selection without reading the underlying object.
+
+        The original checksum cannot describe a newly selected span, so it is
+        cleared unless the caller supplies the selected payload's checksum.
+        """
+
+        if self.uri is None:
+            raise TypeError("byte-range selection requires a referenced artifact")
+        return replace(
+            self,
+            byte_range=(start, stop),
+            checksum=checksum,
         )
 
 
