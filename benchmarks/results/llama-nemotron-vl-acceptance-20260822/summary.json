@@ -1,0 +1,11 @@
+{
+  "checkpoints": {
+    "embedding": "nvidia/llama-nemotron-embed-vl-1b-v2@582e3bf72aee355e3c59ed89de53543c5b0657ee",
+    "reranking": "nvidia/llama-nemotron-rerank-vl-1b-v2@9e95da054312436dfc703319dd2b793a3bee2465"
+  },
+  "embedding_minimum_cosine": 0.9998946189880371,
+  "export_reload_max_absolute": 0.0,
+  "preprocessing_exact": true,
+  "reranking_max_relative_l2": 0.0023461179807782173,
+  "training_updates": 3
+}

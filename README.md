@@ -122,6 +122,32 @@ installations intentionally use a system toolkit. This advice applies to the
 pip-managed extras documented above and follows JAX's
 [NVIDIA installation guidance](https://docs.jax.dev/en/latest/installation.html#pip-installation-nvidia-gpu-cuda-installed-via-pip-easier).
 
+### CUDA 12 and CUDA 13 packages can overwrite one another
+
+Keep the Torch parity runtime separate from the ordinary Representax runtime.
+Both CUDA generations install files into the same `site-packages/nvidia`
+namespace, so installing Torch's CUDA 13 packages into a JAX CUDA 12 environment
+can leave a mixed cuDNN installation.
+
+Did you see this?
+
+```text
+RuntimeError: CUDNN_BACKEND_TENSOR_DESCRIPTOR cudnnFinalize failed:
+CUDNN_STATUS_SUBLIBRARY_VERSION_MISMATCH
+```
+
+First inspect the environment rather than changing model code:
+
+```bash
+python -m pip freeze | rg '^nvidia-(cublas|cudnn)-cu(12|13)'
+```
+
+If both generations are present, recreate the dedicated training environment
+with exactly one of `representax[cuda12]` or `representax[cuda13]`. Install the
+repository-only Sentence Transformers/Torch parity group in a separate
+environment. Reinstalling only one cuDNN wheel may appear to repair the current
+process, but another package operation can overwrite the shared files again.
+
 ### A near-capacity sharded job can fragment the default GPU pool
 
 First verify from the resolved `ShardingPlan` that the persistent model and

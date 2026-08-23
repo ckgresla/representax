@@ -103,15 +103,40 @@ def validate_manifest(
                 f"{family}.support must be one of {sorted(SUPPORT_LEVELS)}"
             )
 
-        model_types = _nonempty_strings(
-            raw.get("model_types"), field="model_types", family=family
+        model_types = _strings(
+            raw.get("model_types", ()), field="model_types", family=family
         )
+        custom_model_types = _strings(
+            raw.get("custom_model_types", ()),
+            field="custom_model_types",
+            family=family,
+        )
+        all_model_types = model_types + custom_model_types
+        if not all_model_types:
+            raise ValueError(f"{family} must own at least one model type")
+        if len(all_model_types) != len(set(all_model_types)):
+            raise ValueError(f"{family} contains duplicate model types")
         for model_type in model_types:
             if model_type not in catalog:
                 raise ValueError(f"{family} owns unknown model type {model_type!r}")
             if support == "catalogued" and not catalog[model_type][3]:
                 raise ValueError(
                     f"{family} owns {model_type!r}, which has no task-neutral AutoModel"
+                )
+            if model_type in owners:
+                raise ValueError(
+                    f"model type {model_type!r} is owned by both "
+                    f"{owners[model_type]!r} and {family!r}"
+                )
+            owners[model_type] = family
+        for model_type in custom_model_types:
+            if model_type in catalog:
+                raise ValueError(
+                    f"{family} declares catalogued model type {model_type!r} as custom"
+                )
+            if support == "catalogued":
+                raise ValueError(
+                    f"catalogued family {family!r} cannot own custom model types"
                 )
             if model_type in owners:
                 raise ValueError(
@@ -197,7 +222,7 @@ def validate_manifest(
         normalized.append(
             {
                 "name": family,
-                "model_types": model_types,
+                "model_types": all_model_types,
                 "modalities": modalities,
                 "components": components,
                 "configuration_constraints": constraints,

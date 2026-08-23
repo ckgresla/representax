@@ -24,6 +24,28 @@ from representax.models.components import (
 from representax.planning import RematerializationPolicy
 
 RotaryDecoderFamily = Literal["llama", "mistral"]
+RotaryAttentionMode = Literal["causal", "bidirectional"]
+
+
+class Llama3RopeScalingConfig(FrozenConfig):
+    """Llama 3 frequency interpolation parameters."""
+
+    factor: float
+    low_frequency_factor: float
+    high_frequency_factor: float
+    original_max_position_embeddings: int
+
+    @model_validator(mode="after")
+    def validate_scaling(self) -> Self:
+        for name in ("factor", "low_frequency_factor", "high_frequency_factor"):
+            value = getattr(self, name)
+            if not math.isfinite(value) or value <= 0:
+                raise ValueError(f"{name} must be finite and positive")
+        if self.high_frequency_factor <= self.low_frequency_factor:
+            raise ValueError("high_frequency_factor must exceed low_frequency_factor")
+        if self.original_max_position_embeddings <= 0:
+            raise ValueError("original_max_position_embeddings must be positive")
+        return self
 
 
 class RotaryDecoderConfig(FrozenConfig):
@@ -42,6 +64,8 @@ class RotaryDecoderConfig(FrozenConfig):
     norm_epsilon: float
     attention_bias: bool = False
     initializer_range: float = 0.02
+    attention_mode: RotaryAttentionMode = "causal"
+    rope_scaling: Llama3RopeScalingConfig | None = None
 
     @model_validator(mode="after")
     def validate_architecture(self) -> Self:
@@ -72,10 +96,28 @@ class RotaryDecoderConfig(FrozenConfig):
     @classmethod
     def from_hf_config(cls, value: Mapping[str, Any]) -> RotaryDecoderConfig:
         family = str(value.get("model_type", ""))
+        bidirectional = family in {"llama_bidirec", "llama_bidirectional"}
+        if bidirectional:
+            family = "llama"
         if family not in {"llama", "mistral"}:
             raise ValueError("expected a Llama or Mistral text_config")
         hidden_size = int(value.get("hidden_size", 4096))
         heads = int(value.get("num_attention_heads", 32))
+        raw_rope = value.get("rope_parameters", value.get("rope_scaling"))
+        rope_scaling = None
+        if isinstance(raw_rope, Mapping):
+            rope_type = str(raw_rope.get("rope_type", raw_rope.get("type", "")))
+            if rope_type == "llama3":
+                rope_scaling = Llama3RopeScalingConfig(
+                    factor=float(raw_rope["factor"]),
+                    low_frequency_factor=float(raw_rope["low_freq_factor"]),
+                    high_frequency_factor=float(raw_rope["high_freq_factor"]),
+                    original_max_position_embeddings=int(
+                        raw_rope["original_max_position_embeddings"]
+                    ),
+                )
+            elif rope_type not in {"", "default"}:
+                raise ValueError(f"unsupported rotary scaling {rope_type!r}")
         return cls(
             family=family,
             vocab_size=int(value["vocab_size"]),
@@ -90,10 +132,12 @@ class RotaryDecoderConfig(FrozenConfig):
             norm_epsilon=float(value.get("rms_norm_eps", 1e-6)),
             attention_bias=bool(value.get("attention_bias", False)),
             initializer_range=float(value.get("initializer_range", 0.02)),
+            attention_mode="bidirectional" if bidirectional else "causal",
+            rope_scaling=rope_scaling,
         )
 
     def to_hf_config(self) -> dict[str, Any]:
-        return {
+        value: dict[str, Any] = {
             "model_type": self.family,
             "vocab_size": self.vocab_size,
             "hidden_size": self.hidden_size,
@@ -110,6 +154,17 @@ class RotaryDecoderConfig(FrozenConfig):
             "hidden_act": "silu",
             "use_cache": True,
         }
+        if self.rope_scaling is not None:
+            value["rope_scaling"] = {
+                "rope_type": "llama3",
+                "factor": self.rope_scaling.factor,
+                "low_freq_factor": self.rope_scaling.low_frequency_factor,
+                "high_freq_factor": self.rope_scaling.high_frequency_factor,
+                "original_max_position_embeddings": (
+                    self.rope_scaling.original_max_position_embeddings
+                ),
+            }
+        return value
 
 
 def _rotate_half(value: Float[Array, "*batch head"]) -> Float[Array, "*batch head"]:
@@ -131,6 +186,27 @@ def rotary_embedding(
             / config.head_dimension
         )
     )
+    scaling = config.rope_scaling
+    if scaling is not None:
+        wavelength = 2 * math.pi / inverse_frequency
+        low_wavelength = (
+            scaling.original_max_position_embeddings / scaling.low_frequency_factor
+        )
+        high_wavelength = (
+            scaling.original_max_position_embeddings / scaling.high_frequency_factor
+        )
+        scaled = jnp.where(
+            wavelength > low_wavelength,
+            inverse_frequency / scaling.factor,
+            inverse_frequency,
+        )
+        smooth = (
+            scaling.original_max_position_embeddings / wavelength
+            - scaling.low_frequency_factor
+        ) / (scaling.high_frequency_factor - scaling.low_frequency_factor)
+        interpolated = (1 - smooth) * scaled / scaling.factor + smooth * scaled
+        medium = (wavelength >= high_wavelength) & (wavelength <= low_wavelength)
+        inverse_frequency = jnp.where(medium, interpolated, scaled)
     frequency = position_ids.astype(jnp.float32)[..., None] * inverse_frequency
     embedding = jnp.concatenate((frequency, frequency), axis=-1)
     return jnp.cos(embedding), jnp.sin(embedding)
@@ -325,9 +401,12 @@ class RotaryDecoderTower(eqx.Module):
                 jnp.arange(sequence, dtype=jnp.int32)[None], (batch, sequence)
             )
         cosine, sine = rotary_embedding(self.config, position_ids)
-        target = jnp.arange(sequence)[:, None]
-        source = jnp.arange(sequence)[None, :]
-        allowed = (source <= target)[None, None]
+        if self.config.attention_mode == "causal":
+            target = jnp.arange(sequence)[:, None]
+            source = jnp.arange(sequence)[None, :]
+            allowed = (source <= target)[None, None]
+        else:
+            allowed = jnp.ones((1, 1, sequence, sequence), dtype=bool)
         allowed = allowed & attention_mask[:, None, None, :].astype(bool)
 
         def apply_layer(carry, index):
@@ -356,6 +435,7 @@ class RotaryDecoderTower(eqx.Module):
 
 
 __all__ = [
+    "Llama3RopeScalingConfig",
     "RotaryDecoderConfig",
     "RotaryDecoderLayer",
     "RotaryDecoderLayerStack",

@@ -243,6 +243,61 @@ MODEL_FAMILIES = (
         "support": "native",
     },
     {
+        "name": "nemotron_vl",
+        "custom_model_types": (
+            "llama_nemotron_vl",
+            "llama_nemotron_vl_rerank",
+        ),
+        "modalities": ("text", "image"),
+        "components": (
+            "siglip_vision_transformer",
+            "dynamic_image_tiling",
+            "pixel_unshuffle_projector",
+            "bidirectional_llama3_rotary_decoder",
+            "mean_pooled_embedding",
+            "linear_relevance_scoring",
+        ),
+        "configuration_constraints": (
+            "nvidia/llama-nemotron-embed-vl-1b-v2@582e3bf72aee355e3c59ed89de53543c5b0657ee",
+            "nvidia/llama-nemotron-rerank-vl-1b-v2@9e95da054312436dfc703319dd2b793a3bee2465",
+            "attention=bidirectional",
+        ),
+        "config_adapter": (
+            "representax.models.nemotron_vl.LlamaNemotronVLConfig.from_hf_config"
+        ),
+        "input_contracts": (
+            ("text", ("input_ids", "attention_mask")),
+            (
+                "text_image",
+                (
+                    "input_ids",
+                    "attention_mask",
+                    "pixel_values",
+                    "visual_token_indices",
+                ),
+            ),
+        ),
+        "output_contracts": (
+            "mean_pooled_representation",
+            "scalar_relevance_score",
+        ),
+        "checkpoint_layout": "huggingface_safetensors",
+        "checkpoint_adapter": (
+            "representax.models.nemotron_vl.LlamaNemotronVLCheckpointAdapter"
+        ),
+        "implementation_module": "representax.models.nemotron_vl",
+        "acceptance_gates": (
+            "config_mapping",
+            "checkpoint_roundtrip",
+            "forward",
+            "input_gradient",
+            "parameter_gradient",
+            "optimizer_update",
+            "export_reload",
+        ),
+        "support": "native",
+    },
+    {
         "name": "mpnet",
         "model_types": ("mpnet",),
         "modalities": ("text",),
@@ -289,6 +344,7 @@ MODEL_FAMILIES = (
     {
         "name": "qwen2_5_omni",
         "model_types": ("qwen2_5_omni",),
+        "custom_model_types": ("nvomniembed",),
         "modalities": ("text", "image", "audio", "video"),
         "components": (
             "causal_grouped_query_attention",

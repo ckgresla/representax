@@ -18,11 +18,11 @@ from representax.models.clip.checkpoint import (
     clip_vision_from_state_dict,
     clip_vision_state_dict,
 )
-from representax.models.components import AttentionImplementation, Linear, RMSNorm
-from representax.models.decoder import (
-    RotaryDecoderLayer,
-    RotaryDecoderLayerStack,
-    RotaryDecoderTower,
+from representax.models.components import AttentionImplementation, Linear
+from representax.models.decoder_checkpoint import (
+    rotary_decoder_from_state_dict,
+    rotary_decoder_state_dict,
+    rotary_decoder_weight_names,
 )
 from representax.planning import RematerializationPolicy
 
@@ -102,8 +102,6 @@ def llava_next_weight_names(
         "image_newline",
         "multi_modal_projector.linear_1.weight",
         "multi_modal_projector.linear_2.weight",
-        text_prefix + "embed_tokens.weight",
-        text_prefix + "norm.weight",
         vision_prefix + "embeddings.class_embedding",
         vision_prefix + "embeddings.patch_embedding.weight",
         vision_prefix + "embeddings.position_embedding.weight",
@@ -119,26 +117,7 @@ def llava_next_weight_names(
                 "multi_modal_projector.linear_2.bias",
             }
         )
-    for index in range(config.text.num_hidden_layers):
-        prefix = text_prefix + f"layers.{index}."
-        names.update(
-            prefix + suffix
-            for suffix in (
-                "input_layernorm.weight",
-                "post_attention_layernorm.weight",
-                "self_attn.q_proj.weight",
-                "self_attn.k_proj.weight",
-                "self_attn.v_proj.weight",
-                "self_attn.o_proj.weight",
-                "mlp.gate_proj.weight",
-                "mlp.up_proj.weight",
-                "mlp.down_proj.weight",
-            )
-        )
-        if config.text.attention_bias:
-            names.update(
-                prefix + f"self_attn.{name}_proj.bias" for name in ("q", "k", "v")
-            )
+    names.update(rotary_decoder_weight_names(config.text, prefix=text_prefix))
     for index in range(config.vision.num_hidden_layers):
         prefix = vision_prefix + f"encoder.layers.{index}."
         names.update(
@@ -165,109 +144,6 @@ def llava_next_weight_names(
     return frozenset(names)
 
 
-def _text_from_state_dict(
-    config,
-    state: Mapping[str, Any],
-    *,
-    prefix: str,
-    dtype: jnp.dtype,
-) -> RotaryDecoderTower:
-    hidden = config.hidden_size
-    attention = config.num_attention_heads * config.head_dimension
-    key_value = config.num_key_value_heads * config.head_dimension
-    layers = []
-    for index in range(config.num_hidden_layers):
-        layer = prefix + f"layers.{index}."
-        layers.append(
-            RotaryDecoderLayer(
-                input_norm=RMSNorm(
-                    _array(
-                        state,
-                        layer + "input_layernorm.weight",
-                        (hidden,),
-                        dtype,
-                    ),
-                    config.norm_epsilon,
-                ),
-                post_attention_norm=RMSNorm(
-                    _array(
-                        state,
-                        layer + "post_attention_layernorm.weight",
-                        (hidden,),
-                        dtype,
-                    ),
-                    config.norm_epsilon,
-                ),
-                query=_linear(
-                    state,
-                    layer + "self_attn.q_proj",
-                    input_size=hidden,
-                    output_size=attention,
-                    dtype=dtype,
-                    bias=config.attention_bias,
-                ),
-                key=_linear(
-                    state,
-                    layer + "self_attn.k_proj",
-                    input_size=hidden,
-                    output_size=key_value,
-                    dtype=dtype,
-                    bias=config.attention_bias,
-                ),
-                value=_linear(
-                    state,
-                    layer + "self_attn.v_proj",
-                    input_size=hidden,
-                    output_size=key_value,
-                    dtype=dtype,
-                    bias=config.attention_bias,
-                ),
-                output=_linear(
-                    state,
-                    layer + "self_attn.o_proj",
-                    input_size=attention,
-                    output_size=hidden,
-                    dtype=dtype,
-                ),
-                gate=_linear(
-                    state,
-                    layer + "mlp.gate_proj",
-                    input_size=hidden,
-                    output_size=config.intermediate_size,
-                    dtype=dtype,
-                ),
-                up=_linear(
-                    state,
-                    layer + "mlp.up_proj",
-                    input_size=hidden,
-                    output_size=config.intermediate_size,
-                    dtype=dtype,
-                ),
-                down=_linear(
-                    state,
-                    layer + "mlp.down_proj",
-                    input_size=config.intermediate_size,
-                    output_size=hidden,
-                    dtype=dtype,
-                ),
-            )
-        )
-    return RotaryDecoderTower(
-        token_embedding=_array(
-            state,
-            prefix + "embed_tokens.weight",
-            (config.vocab_size, hidden),
-            dtype,
-        ),
-        layers=RotaryDecoderLayerStack.from_layers(tuple(layers)),
-        final_norm=RMSNorm(
-            _array(state, prefix + "norm.weight", (hidden,), dtype),
-            config.norm_epsilon,
-        ),
-        config=config,
-    )
-
-
 @dataclass(frozen=True, slots=True)
 class LlavaNextCheckpointAdapter:
     attention_implementation: AttentionImplementation = "xla"
@@ -286,7 +162,7 @@ class LlavaNextCheckpointAdapter:
         revision: str = "local",
     ) -> LlavaNextEncoder:
         return LlavaNextEncoder(
-            text=_text_from_state_dict(
+            text=rotary_decoder_from_state_dict(
                 config.text,
                 state,
                 prefix=text_prefix,
@@ -377,34 +253,12 @@ class LlavaNextCheckpointAdapter:
             "multi_modal_projector.linear_2.weight": (
                 model.projector.output.output_major().weight
             ),
-            prefix + "embed_tokens.weight": model.text.token_embedding,
-            prefix + "norm.weight": model.text.final_norm.weight,
+            **rotary_decoder_state_dict(model.text, prefix=prefix),
             **clip_vision_state_dict(model.vision, prefix="vision_tower."),
         }
         if model.config.projector_bias:
             state["multi_modal_projector.linear_1.bias"] = _bias(model.projector.input)
             state["multi_modal_projector.linear_2.bias"] = _bias(model.projector.output)
-        for index in range(model.text.layers.depth):
-            layer = model.text.layers.layer(index)
-            layer_prefix = prefix + f"layers.{index}."
-            post_norm_name = layer_prefix + "post_attention_layernorm.weight"
-            state.update(
-                {
-                    layer_prefix + "input_layernorm.weight": layer.input_norm.weight,
-                    post_norm_name: layer.post_attention_norm.weight,
-                    layer_prefix + "self_attn.q_proj.weight": layer.query.weight,
-                    layer_prefix + "self_attn.k_proj.weight": layer.key.weight,
-                    layer_prefix + "self_attn.v_proj.weight": layer.value.weight,
-                    layer_prefix + "self_attn.o_proj.weight": layer.output.weight,
-                    layer_prefix + "mlp.gate_proj.weight": layer.gate.weight,
-                    layer_prefix + "mlp.up_proj.weight": layer.up.weight,
-                    layer_prefix + "mlp.down_proj.weight": layer.down.weight,
-                }
-            )
-            if model.config.text.attention_bias:
-                state[layer_prefix + "self_attn.q_proj.bias"] = _bias(layer.query)
-                state[layer_prefix + "self_attn.k_proj.bias"] = _bias(layer.key)
-                state[layer_prefix + "self_attn.v_proj.bias"] = _bias(layer.value)
         return state
 
     def save(self, model: LlavaNextEncoder, directory: str | Path) -> Path:

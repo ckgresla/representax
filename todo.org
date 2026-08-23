@@ -406,10 +406,18 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
       Sentence Transformers 5.4/Transformers 5.5 oracle because the 5.6 base
       loader demonstrably drops its legacy vision prefix. See
       =benchmarks/results/llava-next-acceptance-20260822/README.org=.
-***** NEXT Implement and accept native Llama Nemotron VL
+***** DONE Implement and accept native Llama Nemotron VL
       Cover the 1B embed and rerank checkpoints with one SigLIP-plus-Llama
       architecture and explicit embedding versus scoring heads.
-***** TODO Implement and accept native BidirLM Omni
+      Accepted both immutable NVIDIA v2 checkpoints with exact native
+      preprocessing, BF16 upstream inference parity, finite image cotangents,
+      three real multimodal adapter updates, exact native checkpoint round trip,
+      and fresh Transformers export/reload. The architecture reuses one scanned
+      rotary-decoder checkpoint boundary and maps only the 589/590 tensors in
+      the executed graph; exported SigLIP configuration disables the 11 unused
+      classification-pooler tensors. See
+      =benchmarks/results/llama-nemotron-vl-acceptance-20260822/README.org=.
+***** NEXT Implement and accept native BidirLM Omni
       Cover text, image, and audio with its bidirectional Qwen-like text tower,
       vision deep-stack injection, audio encoder, model-associated processor,
       and native representation pooling.

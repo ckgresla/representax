@@ -16,6 +16,11 @@ from representax.integrations.huggingface import (
     load_safetensor_subset,
 )
 from representax.models.components import LayerNorm, Linear
+from representax.models.siglip_checkpoint import (
+    siglip_vision_from_state_dict,
+    siglip_vision_state_dict,
+    siglip_vision_weight_names,
+)
 from representax.planning import RematerializationPolicy
 
 from .config import (
@@ -35,13 +40,6 @@ from .model import (
     ModernVBERTTextTower,
 )
 from .multimodal import ModernVBERTEncoder
-from .vision import (
-    PatchEmbedding,
-    SigLIPVisionAttention,
-    SigLIPVisionLayer,
-    SigLIPVisionMLP,
-    SigLIPVisionTower,
-)
 
 
 def modernvbert_text_weight_map(
@@ -137,53 +135,6 @@ def modernvbert_vision_weight_map(
             }
         )
     return mapping
-
-
-def _expected_vision_shapes(
-    config: ModernVBERTConfig,
-) -> dict[str, tuple[int, ...]]:
-    vision = config.vision
-    hidden = vision.hidden_size
-    intermediate = vision.intermediate_size
-    shapes = {
-        "vision.patch_embedding.weight": (
-            hidden,
-            vision.num_channels,
-            vision.patch_size,
-            vision.patch_size,
-        ),
-        "vision.patch_embedding.bias": (hidden,),
-        "vision.position_embedding": (vision.patch_count, hidden),
-        "vision.final_norm.weight": (hidden,),
-        "vision.final_norm.bias": (hidden,),
-        "connector.weight": (
-            config.text.hidden_size,
-            hidden * config.pixel_shuffle_factor**2,
-        ),
-    }
-    for index in range(vision.num_hidden_layers):
-        prefix = f"vision.layers.{index}."
-        shapes.update(
-            {
-                prefix + "attention_norm.weight": (hidden,),
-                prefix + "attention_norm.bias": (hidden,),
-                prefix + "attention.query.weight": (hidden, hidden),
-                prefix + "attention.query.bias": (hidden,),
-                prefix + "attention.key.weight": (hidden, hidden),
-                prefix + "attention.key.bias": (hidden,),
-                prefix + "attention.value.weight": (hidden, hidden),
-                prefix + "attention.value.bias": (hidden,),
-                prefix + "attention.output.weight": (hidden, hidden),
-                prefix + "attention.output.bias": (hidden,),
-                prefix + "mlp_norm.weight": (hidden,),
-                prefix + "mlp_norm.bias": (hidden,),
-                prefix + "mlp.input.weight": (intermediate, hidden),
-                prefix + "mlp.input.bias": (intermediate,),
-                prefix + "mlp.output.weight": (hidden, intermediate),
-                prefix + "mlp.output.bias": (hidden,),
-            }
-        )
-    return shapes
 
 
 def _array(
@@ -396,63 +347,6 @@ class ModernVBERTTextCheckpointAdapter:
         return {mapping[name]: value for name, value in native.items()}
 
 
-def _vision_native_state(model: ModernVBERTEncoder) -> dict[str, jax.Array]:
-    def required(value: jax.Array | None, name: str) -> jax.Array:
-        if value is None:
-            raise ValueError(f"ModernVBERT vision parameter {name} requires a bias")
-        return value
-
-    native: dict[str, jax.Array] = {
-        "vision.patch_embedding.weight": model.vision.patch_embedding.weight,
-        "vision.patch_embedding.bias": model.vision.patch_embedding.bias,
-        "vision.position_embedding": model.vision.position_embedding,
-        "vision.final_norm.weight": model.vision.final_norm.weight,
-        "vision.final_norm.bias": required(
-            model.vision.final_norm.bias, "vision.final_norm.bias"
-        ),
-        "connector.weight": model.connector.weight,
-    }
-    for index, layer in enumerate(model.vision.layers):
-        prefix = f"vision.layers.{index}."
-        native.update(
-            {
-                prefix + "attention_norm.weight": layer.attention_norm.weight,
-                prefix + "attention_norm.bias": required(
-                    layer.attention_norm.bias, prefix + "attention_norm.bias"
-                ),
-                prefix + "attention.query.weight": layer.attention.query.weight,
-                prefix + "attention.query.bias": required(
-                    layer.attention.query.bias, prefix + "attention.query.bias"
-                ),
-                prefix + "attention.key.weight": layer.attention.key.weight,
-                prefix + "attention.key.bias": required(
-                    layer.attention.key.bias, prefix + "attention.key.bias"
-                ),
-                prefix + "attention.value.weight": layer.attention.value.weight,
-                prefix + "attention.value.bias": required(
-                    layer.attention.value.bias, prefix + "attention.value.bias"
-                ),
-                prefix + "attention.output.weight": layer.attention.output.weight,
-                prefix + "attention.output.bias": required(
-                    layer.attention.output.bias, prefix + "attention.output.bias"
-                ),
-                prefix + "mlp_norm.weight": layer.mlp_norm.weight,
-                prefix + "mlp_norm.bias": required(
-                    layer.mlp_norm.bias, prefix + "mlp_norm.bias"
-                ),
-                prefix + "mlp.input.weight": layer.mlp.input.weight,
-                prefix + "mlp.input.bias": required(
-                    layer.mlp.input.bias, prefix + "mlp.input.bias"
-                ),
-                prefix + "mlp.output.weight": layer.mlp.output.weight,
-                prefix + "mlp.output.bias": required(
-                    layer.mlp.output.bias, prefix + "mlp.output.bias"
-                ),
-            }
-        )
-    return native
-
-
 @dataclass(frozen=True)
 class ModernVBERTCheckpointAdapter:
     """Load and export ModernVBERT's executed text, vision, and connector path.
@@ -490,81 +384,27 @@ class ModernVBERTCheckpointAdapter:
             attention_implementation=attention_implementation,
             rematerialization=rematerialization,
         )
-        mapping = modernvbert_vision_weight_map(config.vision)
-        shapes = _expected_vision_shapes(config)
-
-        def get(native_name: str) -> jax.Array:
-            return _array(
-                state_dict,
-                mapping[native_name],
-                parameter_dtype,
-                shapes[native_name],
-            )
-
-        layers = []
-        for index in range(config.vision.num_hidden_layers):
-            prefix = f"vision.layers.{index}."
-            layers.append(
-                SigLIPVisionLayer(
-                    attention_norm=LayerNorm(
-                        weight=get(prefix + "attention_norm.weight"),
-                        bias=get(prefix + "attention_norm.bias"),
-                        epsilon=config.vision.norm_epsilon,
-                    ),
-                    attention=SigLIPVisionAttention(
-                        query=Linear(
-                            weight=get(prefix + "attention.query.weight"),
-                            bias=get(prefix + "attention.query.bias"),
-                        ),
-                        key=Linear(
-                            weight=get(prefix + "attention.key.weight"),
-                            bias=get(prefix + "attention.key.bias"),
-                        ),
-                        value=Linear(
-                            weight=get(prefix + "attention.value.weight"),
-                            bias=get(prefix + "attention.value.bias"),
-                        ),
-                        output=Linear(
-                            weight=get(prefix + "attention.output.weight"),
-                            bias=get(prefix + "attention.output.bias"),
-                        ),
-                    ),
-                    mlp_norm=LayerNorm(
-                        weight=get(prefix + "mlp_norm.weight"),
-                        bias=get(prefix + "mlp_norm.bias"),
-                        epsilon=config.vision.norm_epsilon,
-                    ),
-                    mlp=SigLIPVisionMLP(
-                        input=Linear(
-                            weight=get(prefix + "mlp.input.weight"),
-                            bias=get(prefix + "mlp.input.bias"),
-                        ),
-                        output=Linear(
-                            weight=get(prefix + "mlp.output.weight"),
-                            bias=get(prefix + "mlp.output.bias"),
-                        ),
-                    ),
-                )
-            )
-        vision = SigLIPVisionTower(
-            patch_embedding=PatchEmbedding(
-                weight=get("vision.patch_embedding.weight"),
-                bias=get("vision.patch_embedding.bias"),
-                patch_size=config.vision.patch_size,
-            ),
-            position_embedding=get("vision.position_embedding"),
-            layers=tuple(layers),
-            final_norm=LayerNorm(
-                weight=get("vision.final_norm.weight"),
-                bias=get("vision.final_norm.bias"),
-                epsilon=config.vision.norm_epsilon,
-            ),
-            config=config.vision,
+        vision_prefix = "model.vision_model.vision_model."
+        vision = siglip_vision_from_state_dict(
+            config.vision,
+            state_dict,
+            prefix=vision_prefix,
+            dtype=parameter_dtype,
         )
         return ModernVBERTEncoder(
             text=text,
             vision=vision,
-            connector=Linear(weight=get("connector.weight")),
+            connector=Linear(
+                weight=_array(
+                    state_dict,
+                    "model.connector.modality_projection.weight",
+                    parameter_dtype,
+                    (
+                        config.text.hidden_size,
+                        config.vision.hidden_size * config.pixel_shuffle_factor**2,
+                    ),
+                )
+            ),
             metadata=EncoderMetadata(
                 model_id=self.model_id,
                 revision=self.revision,
@@ -589,10 +429,15 @@ class ModernVBERTCheckpointAdapter:
         hf_config = load_hf_config(checkpoint)
         config = ModernVBERTConfig.from_hf_config(hf_config)
         text_names = modernvbert_text_weight_map(config.text).values()
-        vision_names = modernvbert_vision_weight_map(config.vision).values()
+        vision_names = siglip_vision_weight_names(
+            config.vision,
+            prefix="model.vision_model.vision_model.",
+        )
         tensors = load_safetensor_subset(
             checkpoint,
-            set(text_names) | set(vision_names),
+            set(text_names)
+            | set(vision_names)
+            | {"model.connector.modality_projection.weight"},
             dtype=parameter_dtype,
         )
         return self.from_state_dict(
@@ -611,21 +456,11 @@ class ModernVBERTCheckpointAdapter:
             model_id=self.model_id,
             revision=self.revision,
         ).state_dict(model.text)
-        mapping = modernvbert_vision_weight_map(model.config.vision)
-        shapes = _expected_vision_shapes(model.config)
-        native = _vision_native_state(model)
-        if set(native) != set(mapping):
-            missing = set(mapping).difference(native)
-            extra = set(native).difference(mapping)
-            raise ValueError(
-                "native ModernVBERT vision tree does not match its weight map: "
-                f"missing={sorted(missing)}, extra={sorted(extra)}"
+        state.update(
+            siglip_vision_state_dict(
+                model.vision,
+                prefix="model.vision_model.vision_model.",
             )
-        for name, value in native.items():
-            if value.shape != shapes[name]:
-                raise ValueError(
-                    f"native ModernVBERT parameter {name} has shape {value.shape}; "
-                    f"expected {shapes[name]}"
-                )
-        state.update({mapping[name]: value for name, value in native.items()})
+        )
+        state["model.connector.modality_projection.weight"] = model.connector.weight
         return state
