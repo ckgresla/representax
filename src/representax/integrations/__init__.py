@@ -43,6 +43,7 @@ from .sentence_transformers import (
     load_sentence_transformer_artifact,
     load_sentence_transformer_graph,
     load_sentence_transformer_modules,
+    save_sentence_transformer_artifact,
 )
 
 __all__ = [
@@ -81,5 +82,6 @@ __all__ = [
     "load_sentence_transformer_artifact",
     "load_sentence_transformer_graph",
     "load_sentence_transformer_modules",
+    "save_sentence_transformer_artifact",
     "resolve_hf_checkpoint",
 ]

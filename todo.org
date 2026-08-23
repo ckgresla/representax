@@ -445,10 +445,21 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
       Sentence Transformers export/reload pass. ContextualAI's
       CC-BY-NC-SA-4.0 weights remain an external oracle. See
       =benchmarks/results/qwen-reranker-acceptance-20260822/README.org=.
-***** NEXT Implement and accept multilingual CLIP-aligned DistilBERT
+***** DONE Implement and accept multilingual CLIP-aligned DistilBERT
       Import the Transformer, Pooling, and Dense Sentence Transformers graph as
       a text tower aligned to the existing CLIP representation space.
-***** TODO Run the complete multimodal family acceptance matrix
+      Accepted the immutable Apache-2.0 multilingual CLIP text student as a
+      native scanned DistilBERT plus generic mean-pooling and bias-free Dense
+      graph. Exact checkpoint-authored preprocessing, tiny Transformers 5.6
+      hidden/input-gradient/parameter-gradient/AdamW/export gates, and real
+      Sentence Transformers 5.6 parity pass. The three-language physical probe
+      has =9.54e-7= maximum embedding error and =1.90e-7= relative L2; all 100
+      backbone tensors round-trip bit-identically. Three real packed-base
+      adapter updates are finite and nonzero, and the trained graph merges,
+      exports, and reloads from the ordinary Hugging Face/Sentence Transformers
+      artifact. See
+      =benchmarks/results/distilbert-clip-acceptance-20260822/README.org=.
+***** NEXT Run the complete multimodal family acceptance matrix
       Re-run static, fast, package, installed smoke, isolated GPU inference and
       update, preprocessing, upstream parity, and HF export/reload lanes for
       every checkpoint before closing the parent family item.

@@ -58,6 +58,52 @@ MODEL_FAMILIES = (
         "support": "native",
     },
     {
+        "name": "distilbert",
+        "model_types": ("distilbert",),
+        "modalities": ("text",),
+        "components": (
+            "token_embedding",
+            "absolute_position_embedding",
+            "multi_head_attention",
+            "post_norm_residual",
+            "dense_mlp",
+            "mean_pooling",
+            "sentence_dense_projection",
+        ),
+        "configuration_constraints": (
+            "sentence-transformers/clip-ViT-B-32-multilingual-v1@58edf8cada9e398793dca955574a48cbb7f18be2",
+            "token_type_embeddings=false",
+            "sentence_projection_dimension=512",
+        ),
+        "config_adapter": (
+            "representax.models.distilbert.DistilBertConfig.from_hf_config"
+        ),
+        "input_contracts": (
+            ("text", ("input_ids", "attention_mask")),
+            ("embedded_text", ("inputs_embeds", "attention_mask")),
+        ),
+        "output_contracts": (
+            "last_hidden_state",
+            "mean_pooled_representation",
+            "sentence_dense_projection",
+        ),
+        "checkpoint_layout": "huggingface_safetensors",
+        "checkpoint_adapter": (
+            "representax.models.distilbert.DistilBertCheckpointAdapter"
+        ),
+        "implementation_module": "representax.models.distilbert",
+        "acceptance_gates": (
+            "config_mapping",
+            "checkpoint_roundtrip",
+            "forward",
+            "input_gradient",
+            "parameter_gradient",
+            "optimizer_update",
+            "export_reload",
+        ),
+        "support": "native",
+    },
+    {
         "name": "clip",
         "model_types": ("clip",),
         "modalities": ("text", "image"),

@@ -207,6 +207,24 @@ class SentenceEncoder(eqx.Module):
         loaded = load_sentence_transformer(model_name_or_path, **options)
         return loaded.model, loaded.processor
 
+    def save_to_hf(
+        self,
+        directory: str | Path,
+        *,
+        source_checkpoint: str | Path,
+    ) -> Path:
+        """Export this native graph with its tokenizer and module metadata."""
+
+        from representax.integrations.sentence_transformers import (
+            save_sentence_transformer_artifact,
+        )
+
+        return save_sentence_transformer_artifact(
+            self,
+            directory,
+            source_checkpoint=source_checkpoint,
+        )
+
     def make_batch(
         self,
         *,

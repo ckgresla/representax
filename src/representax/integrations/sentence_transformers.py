@@ -8,6 +8,7 @@ execution remain ordinary Representax components after import.
 from __future__ import annotations
 
 import json
+import shutil
 from ast import literal_eval
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -17,12 +18,17 @@ from types import MappingProxyType
 from typing import Any, Literal, cast
 
 import jax.numpy as jnp
+import numpy as np
 
 from representax.core import EncoderMetadata, Modality, Route
 from representax.inference import TextEmbeddingModel
-from representax.models.bert import BertCheckpointAdapter
+from representax.models.bert import BertCheckpointAdapter, BertEncoder
 from representax.models.components import AttentionImplementation, Linear
-from representax.models.mpnet import MPNetCheckpointAdapter
+from representax.models.distilbert import (
+    DistilBertCheckpointAdapter,
+    DistilBertEncoder,
+)
+from representax.models.mpnet import MPNetCheckpointAdapter, MPNetEncoder
 from representax.models.processing import make_text_processor
 from representax.models.sentence import (
     POOLING_MODES,
@@ -697,6 +703,15 @@ def _text_backbone(
             parameter_dtype=parameter_dtype,
             compute_dtype=compute_dtype,
         )
+    if model_type == "distilbert":
+        return DistilBertCheckpointAdapter(
+            attention_implementation=attention_implementation,
+            rematerialization=rematerialization,
+        ).load(
+            checkpoint,
+            parameter_dtype=parameter_dtype,
+            compute_dtype=compute_dtype,
+        )
     raise ValueError(
         f"Sentence Transformers backbone {model_type!r} is catalogued but not native"
     )
@@ -936,6 +951,89 @@ def load_sentence_transformer(
     )
 
 
+def save_sentence_transformer_artifact(
+    model: SentenceEncoder,
+    directory: str | Path,
+    *,
+    source_checkpoint: str | Path,
+) -> Path:
+    """Export a trained native dense graph with its Hugging Face assets."""
+
+    from safetensors.numpy import save_file
+
+    source = Path(source_checkpoint)
+    target = Path(directory)
+    if source.resolve() == target.resolve():
+        raise ValueError("Sentence Transformers export must not overwrite its source")
+    graph = load_sentence_transformer_graph(source)
+    if graph.kind is not SentenceTransformerGraphKind.DENSE_EMBEDDING:
+        raise ValueError("only native dense Sentence Transformers graphs can export")
+    shutil.copytree(
+        source,
+        target,
+        dirs_exist_ok=True,
+        ignore=shutil.ignore_patterns(
+            "model.safetensors",
+            "model.safetensors.index.json",
+            "model-*.safetensors",
+            "pytorch_model.bin",
+            "tf_model.h5",
+            "onnx",
+            "openvino",
+        ),
+    )
+    transformer = graph.modules[0]
+    transformer_target = _module_directory(target, transformer.path)
+    if isinstance(model.backbone, BertEncoder):
+        BertCheckpointAdapter().save(model.backbone, transformer_target)
+    elif isinstance(model.backbone, MPNetEncoder):
+        MPNetCheckpointAdapter().save(model.backbone, transformer_target)
+    elif isinstance(model.backbone, DistilBertEncoder):
+        DistilBertCheckpointAdapter().save(model.backbone, transformer_target)
+    else:
+        raise TypeError("sentence backbone does not provide Hugging Face export")
+    # Preserve source-owned compatibility metadata which is not part of the
+    # native architecture contract (for example ``transformers_version``),
+    # while allowing the exported native structure to replace every field it
+    # actually defines. Stale machine-specific source paths must not relocate.
+    source_config = _json_object(
+        _module_directory(source, transformer.path) / "config.json"
+    )
+    exported_config_path = transformer_target / "config.json"
+    exported_config = _json_object(exported_config_path)
+    merged_config = {**source_config, **exported_config}
+    merged_config.pop("_name_or_path", None)
+    exported_config_path.write_text(
+        json.dumps(merged_config, indent=2, sort_keys=True) + "\n"
+    )
+
+    postprocessors = iter(model.postprocessors)
+    for module in graph.modules[1:]:
+        if module.role is SentenceTransformerModuleRole.POOLING:
+            continue
+        if module.role is SentenceTransformerModuleRole.DENSE:
+            value = next(postprocessors, None)
+            if not isinstance(value, SentenceDense):
+                raise ValueError("serialized Dense graph does not match native modules")
+            state = {"linear.weight": np.array(value.linear.weight, copy=True)}
+            if value.linear.bias is not None:
+                state["linear.bias"] = np.array(value.linear.bias, copy=True)
+            dense_target = _module_directory(target, module.path)
+            dense_target.mkdir(parents=True, exist_ok=True)
+            save_file(state, dense_target / "model.safetensors")
+        elif module.role is SentenceTransformerModuleRole.NORMALIZE:
+            value = next(postprocessors, None)
+            if not isinstance(value, SentenceNormalize):
+                raise ValueError(
+                    "serialized Normalize graph does not match native modules"
+                )
+        else:
+            raise ValueError(f"unsupported exported sentence module {module.type!r}")
+    if next(postprocessors, None) is not None:
+        raise ValueError("native sentence postprocessors exceed serialized graph")
+    return target
+
+
 __all__ = [
     "LoadedSentenceTransformer",
     "SENTENCE_TRANSFORMERS_ORACLE_VERSION",
@@ -951,4 +1049,5 @@ __all__ = [
     "load_sentence_transformer_artifact",
     "load_sentence_transformer_graph",
     "load_sentence_transformer_modules",
+    "save_sentence_transformer_artifact",
 ]

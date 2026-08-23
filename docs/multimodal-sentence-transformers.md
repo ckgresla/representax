@@ -4,9 +4,10 @@ This is Representax's minimum external checkpoint panel for multimodal model
 coverage. It snapshots the models linked by Hugging Face's April 2026
 [Multimodal Embedding & Reranker Models with Sentence Transformers](https://huggingface.co/blog/multimodal-sentence-transformers)
 release. Presence here means **acceptance target**, not native support. The
-Qwen3-VL, Qwen2.5-Omni, Qwen2/Qwen2.5-VL, CLIP, BGE-VL CLIP, and LLaVA-NeXT
-rows identify checkpoints that have completed native acceptance; the remaining
-rows are still targets.
+Qwen3-VL, Qwen2.5-Omni, Qwen2/Qwen2.5-VL, CLIP, BGE-VL CLIP, LLaVA-NeXT,
+Llama Nemotron VL, BidirLM Omni, Qwen text reranker, and multilingual
+CLIP-aligned DistilBERT rows identify checkpoints that have completed native
+acceptance; any remaining rows are targets rather than support claims.
 
 Representax must not implement one bespoke wrapper per checkpoint. A checkpoint
 resolves through:
@@ -212,8 +213,37 @@ small inference workload.
 
 The similarly named `clip-ViT-B-32-multilingual-v1` is not another CLIP
 dual-encoder checkpoint: it is a text-only DistilBERT projection trained into
-CLIP space. It remains a separate text-family target rather than being falsely
-claimed by this implementation.
+CLIP space. It is implemented as the separate native family below rather than
+being falsely claimed by the CLIP forward.
+
+## Native multilingual CLIP-aligned DistilBERT usage
+
+The Apache-2.0 multilingual checkpoint is loaded as its actual serialized graph:
+native DistilBERT, mean pooling, and a bias-free 768-to-512 identity-activation
+projection. Sentence Transformers and PyTorch remain unnecessary at runtime:
+
+```python
+from representax.core import Route
+from representax.models import SentenceEncoder
+
+model, processor = SentenceEncoder.load_from_hf(
+    "sentence-transformers/clip-ViT-B-32-multilingual-v1",
+    revision="58edf8cada9e398793dca955574a48cbb7f18be2",
+)
+text_batch = processor(("A red shape.", "Eine rote Form."))
+representations = model.encode(text_batch, route=Route.GENERIC)
+```
+
+The processor reproduces the checkpoint tokenizer exactly and admits only
+configured finite sequence buckets. The six transformer layers execute as one
+native `lax.scan`; DistilBERT's absent token-type embedding is represented
+honestly rather than forced through the BERT checkpoint layout. On the physical
+135.1M-parameter anchor, English/German/French representations match Sentence
+Transformers 5.6.1 with `9.54e-7` maximum absolute error and `1.90e-7` relative
+L2. Three generic packed-base adapter updates are finite and nonzero, and both
+the original and trained native graph export and reload in the standard Hugging
+Face/Sentence Transformers layout. Detailed evidence lives in
+`benchmarks/results/distilbert-clip-acceptance-20260822/README.org`.
 
 ## Native Qwen2/Qwen2.5-VL usage
 

@@ -1,0 +1,1 @@
+"""DistilBERT model acceptance tests."""

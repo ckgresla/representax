@@ -58,6 +58,17 @@ from .composition import (
     TokenReconstructionDecoder,
 )
 from .dense import DenseEncoder
+from .distilbert import (
+    CLIP_MULTILINGUAL_MODEL_ID,
+    CLIP_MULTILINGUAL_REVISION,
+    DistilBertBatch,
+    DistilBertCheckpointAdapter,
+    DistilBertConfig,
+    DistilBertEmbeddings,
+    DistilBertEncoder,
+    DistilBertTower,
+    distilbert_weight_names,
+)
 from .jina_v5 import (
     JINA_V5_SMALL_MODEL_ID,
     JINA_V5_SMALL_REVISION,
@@ -226,8 +237,16 @@ __all__ = [
     "CLIPVisionConfig",
     "CLIP_VIT_B32_MODEL_ID",
     "CLIP_VIT_B32_REVISION",
+    "CLIP_MULTILINGUAL_MODEL_ID",
+    "CLIP_MULTILINGUAL_REVISION",
     "DenseEncoder",
     "DenoisingAutoEncoder",
+    "DistilBertBatch",
+    "DistilBertCheckpointAdapter",
+    "DistilBertConfig",
+    "DistilBertEmbeddings",
+    "DistilBertEncoder",
+    "DistilBertTower",
     "EAGER_EMBED_V1_MODEL_ID",
     "EAGER_EMBED_V1_REVISION",
     "EncoderPair",
@@ -336,6 +355,7 @@ __all__ = [
     "clip_weight_names",
     "bidirlm_omni_weight_names",
     "create_mpnet_position_ids",
+    "distilbert_weight_names",
     "dot_product_attention",
     "dropout",
     "embedding_lookup",
