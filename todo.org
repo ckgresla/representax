@@ -432,10 +432,20 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
       unreachable third DeepStack tap; a fresh Sentence Transformers reload is
       bit-identical to the source oracle. See
       =benchmarks/results/bidirlm-omni-acceptance-20260822/README.org=.
-***** NEXT Implement and accept native Qwen2/Qwen3 text ranking
+***** DONE Implement and accept native Qwen2/Qwen3 text ranking
       Cover Qwen3 and ContextualAI rerankers plus mixedbread Qwen2 rerankers
       using a shared generative-score interface and checkpoint-owned prompts.
-***** TODO Implement and accept multilingual CLIP-aligned DistilBERT
+      Accepted one native scanned Qwen2/Qwen3 Equinox family over the pinned
+      Qwen3 0.6B, mixedbread base, and ContextualAI 1B physical anchors, with
+      the Qwen3 4B/8B and mixedbread large architecture metadata pinned to the
+      same implementation. Exact checkpoint-authored tokenization and padding,
+      separate raw-logit and inference-activation contracts, BF16 Sentence
+      Transformers parity, tied and untied score heads, three real packed-base
+      adapter updates per anchor, bit-identical native reload, and fresh
+      Sentence Transformers export/reload pass. ContextualAI's
+      CC-BY-NC-SA-4.0 weights remain an external oracle. See
+      =benchmarks/results/qwen-reranker-acceptance-20260822/README.org=.
+***** NEXT Implement and accept multilingual CLIP-aligned DistilBERT
       Import the Transformer, Pooling, and Dense Sentence Transformers graph as
       a text tower aligned to the existing CLIP representation space.
 ***** TODO Run the complete multimodal family acceptance matrix

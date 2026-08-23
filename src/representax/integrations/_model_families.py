@@ -11,7 +11,7 @@ ARCHITECTURE_CATALOG_SHA256 = (
     "2af65737162af25c40803b987355fb09d4547d922842edeeb6c0f80838f4117c"
 )
 FAMILY_MANIFEST_SHA256 = (
-    "08cacce6494ca372f60bce9565a20d6f164c8fa1dab6d283380a88a43cb05b9a"
+    "53b9a3c32fa7a78f3fbcd8cc99f01739ac5a3621077180d2b10879a44ec8c5db"
 )
 
 # The fixed-width JSON chunks are generated data, not Python string style.
@@ -189,6 +189,24 @@ MODEL_FAMILY_ROWS = json.loads(
     's","vision_layout"]]],"modalities":["text","image","video"],"model_types'
     '":["qwen3_vl"],"name":"qwen3_vl","output_contracts":["last_hidden_state"'
     ',"last_token_l2_normalized_representation","binary_relevance_score"],"su'
-    'pport":"native"}]'
+    'pport":"native"},{"acceptance_gates":["config_mapping","checkpoint_round'
+    'trip","forward","input_gradient","parameter_gradient","optimizer_update"'
+    ',"export_reload"],"checkpoint_adapter":"representax.models.qwen_reranker'
+    '.QwenRerankerCheckpointAdapter","checkpoint_layout":"huggingface_safeten'
+    'sors","components":["causal_grouped_query_attention","rotary_position_em'
+    'bedding","query_key_rms_normalization","swiglu_mlp","final_token_logit_s'
+    'core","checkpoint_configured_score_activation"],"config_adapter":"repres'
+    'entax.models.qwen_reranker.QwenRerankerConfig.from_checkpoint","configur'
+    'ation_constraints":["Qwen3-Reranker-0.6B@e61197ed45024b0ed8a2d74b80b4d90'
+    '9f1255473","Qwen3-Reranker-4B@22e683669bc0f0bd69640a1354a6d0aebcfeede5",'
+    '"Qwen3-Reranker-8B@77d193c791ed757ca307ee72715aa132723da912","ctxl-reran'
+    'k-v2-instruct-multilingual-1b@8fd1edf6a98564cb712064f884b8ef7df5c1b876",'
+    '"mxbai-rerank-base-v2@3ea9d4dffa7d12a4f366be8e275c349de9fc9865","mxbai-r'
+    'erank-large-v2@ca7e1ee484c37c0ddd8d178a9a5c33cec575c5e6"],"implementatio'
+    'n_module":"representax.models.qwen_reranker","input_contracts":[["query_'
+    'document",["input_ids","attention_mask"]]],"modalities":["text"],"model_'
+    'types":["qwen2","qwen3"],"name":"qwen_reranker","output_contracts":["raw'
+    '_relevance_logit","checkpoint_configured_inference_score"],"support":"na'
+    'tive"}]'
 )
 # fmt: on

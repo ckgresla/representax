@@ -504,6 +504,50 @@ MODEL_FAMILIES = (
         "support": "native",
     },
     {
+        "name": "qwen_reranker",
+        "model_types": ("qwen2", "qwen3"),
+        "modalities": ("text",),
+        "components": (
+            "causal_grouped_query_attention",
+            "rotary_position_embedding",
+            "query_key_rms_normalization",
+            "swiglu_mlp",
+            "final_token_logit_score",
+            "checkpoint_configured_score_activation",
+        ),
+        "configuration_constraints": (
+            "Qwen3-Reranker-0.6B@e61197ed45024b0ed8a2d74b80b4d909f1255473",
+            "Qwen3-Reranker-4B@22e683669bc0f0bd69640a1354a6d0aebcfeede5",
+            "Qwen3-Reranker-8B@77d193c791ed757ca307ee72715aa132723da912",
+            "ctxl-rerank-v2-instruct-multilingual-1b@8fd1edf6a98564cb712064f884b8ef7df5c1b876",
+            "mxbai-rerank-base-v2@3ea9d4dffa7d12a4f366be8e275c349de9fc9865",
+            "mxbai-rerank-large-v2@ca7e1ee484c37c0ddd8d178a9a5c33cec575c5e6",
+        ),
+        "config_adapter": (
+            "representax.models.qwen_reranker.QwenRerankerConfig.from_checkpoint"
+        ),
+        "input_contracts": (("query_document", ("input_ids", "attention_mask")),),
+        "output_contracts": (
+            "raw_relevance_logit",
+            "checkpoint_configured_inference_score",
+        ),
+        "checkpoint_layout": "huggingface_safetensors",
+        "checkpoint_adapter": (
+            "representax.models.qwen_reranker.QwenRerankerCheckpointAdapter"
+        ),
+        "implementation_module": "representax.models.qwen_reranker",
+        "acceptance_gates": (
+            "config_mapping",
+            "checkpoint_roundtrip",
+            "forward",
+            "input_gradient",
+            "parameter_gradient",
+            "optimizer_update",
+            "export_reload",
+        ),
+        "support": "native",
+    },
+    {
         "name": "qwen3_vl",
         "model_types": ("qwen3_vl",),
         "modalities": ("text", "image", "video"),
