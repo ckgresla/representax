@@ -390,11 +390,23 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
       checkpoint boundary now performs CPU-first conversion and host-sliced
       FSDP placement, preventing one accelerator from staging all parameter
       shards. See =benchmarks/results/qwen2-vl-acceptance-20260822/README.org=.
-***** NEXT Implement and accept native LLaVA-NeXT retrieval
+***** DONE Implement and accept native LLaVA-NeXT retrieval
       Share the CLIP vision tower across the Mistral-backed BGE S1/S2/v1.5
       checkpoints and Llama-backed E5-V while preserving any-resolution image
       packing, projector, prompt, pooling, and normalization semantics.
-***** TODO Implement and accept native Llama Nemotron VL
+      Accepted as one native scanned Equinox family over all five immutable
+      checkpoints. The model-associated processor exactly matches upstream
+      text-only, image-only, and composed token/mask/pixel arrays before
+      admitting finite sequence, image, and tile buckets. Tiny Transformers
+      5.6 gates cover hidden states, pixel and parameter cotangents, AdamW, and
+      native export/fresh upstream reload. Every real 7B/8B BF16 checkpoint
+      reaches >=0.99950 normalized-embedding cosine against its valid Sentence
+      Transformers oracle and completes three finite INT4-base/LoRA updates
+      through the generic task trainer. E5-V uses its checkpoint-authored
+      Sentence Transformers 5.4/Transformers 5.5 oracle because the 5.6 base
+      loader demonstrably drops its legacy vision prefix. See
+      =benchmarks/results/llava-next-acceptance-20260822/README.org=.
+***** NEXT Implement and accept native Llama Nemotron VL
       Cover the 1B embed and rerank checkpoints with one SigLIP-plus-Llama
       architecture and explicit embedding versus scoring heads.
 ***** TODO Implement and accept native BidirLM Omni

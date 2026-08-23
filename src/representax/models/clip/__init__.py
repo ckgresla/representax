@@ -3,6 +3,8 @@
 from .checkpoint import (
     CLIPCheckpointAdapter,
     clip_checkpoint_directory,
+    clip_vision_from_state_dict,
+    clip_vision_state_dict,
     clip_weight_names,
 )
 from .config import (
@@ -15,7 +17,7 @@ from .config import (
     CLIPVisionConfig,
 )
 from .loading import load_clip
-from .model import CLIPBatch, CLIPEncoder
+from .model import CLIPBatch, CLIPEncoder, CLIPVisionTower
 from .processing import make_clip_processor
 
 __all__ = [
@@ -27,9 +29,12 @@ __all__ = [
     "CLIPEncoder",
     "CLIPTextConfig",
     "CLIPVisionConfig",
+    "CLIPVisionTower",
     "CLIP_VIT_B32_MODEL_ID",
     "CLIP_VIT_B32_REVISION",
     "clip_checkpoint_directory",
+    "clip_vision_from_state_dict",
+    "clip_vision_state_dict",
     "clip_weight_names",
     "load_clip",
     "make_clip_processor",

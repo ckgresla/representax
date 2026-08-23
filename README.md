@@ -65,6 +65,7 @@ python -m pip install -e ".[config,hf]"
 python -m pip install -e ".[config,hf,test,performance]" --group static
 python -m pip install -e ".[test]" --group parity
 python -m pip install -e ".[test]" --group parity-modernvbert
+python -m pip install -e ".[test]" --group parity-llava-next-legacy
 python -m pip install -e ".[test,performance]" --group parity-modernvbert
 ```
 
@@ -72,10 +73,11 @@ The v0 Hugging Face reference is pinned to Transformers 5.3.0. Its complete
 architecture catalog is distinct from native support: BERT, MPNet, and
 ModernVBERT have the broadest current acceptance, Jina v5 Omni Small has a
 pinned native text path, Qwen3-VL 2B has native text/image/video embedding and
-reranking paths, and Qwen2.5-Omni has a native text/image/audio/video embedding
-path. Repository-only
-dense-route acceptance uses Sentence Transformers 5.6.1, the latest stable
-multimodal release line.
+reranking paths, Qwen2.5-Omni has a native text/image/audio/video embedding
+path, and the Qwen2/Qwen2.5-VL, CLIP/BGE-VL, and LLaVA-NeXT families have native
+text-image paths. Repository-only dense-route acceptance uses Sentence
+Transformers 5.6.1, with a checkpoint-authored 5.4/5.5 oracle retained for
+E5-V's legacy LLaVA-NeXT layout.
 
 See the [compatibility matrix](https://github.com/ckgresla/representax/blob/main/docs/compatibility.md) for the locally accepted
 Python/JAX combinations and the distinction between CPU CI and accelerator

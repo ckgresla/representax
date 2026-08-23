@@ -178,6 +178,24 @@ def test_clip_family_has_text_image_training_and_export_gates():
     }
 
 
+def test_llava_next_family_owns_bge_and_e5_retrieval_contracts():
+    family = get_model_family("llava_next")
+    assert family is get_model_type_family("llava_next")
+    assert family.support is FamilySupport.NATIVE
+    assert family.modalities == (Modality.TEXT, Modality.IMAGE)
+    assert "any_resolution_image_packing" in family.components
+    assert "llama_or_mistral_rotary_decoder" in family.components
+    assert family.acceptance_gates == {
+        AcceptanceGate.CONFIG_MAPPING,
+        AcceptanceGate.CHECKPOINT_ROUNDTRIP,
+        AcceptanceGate.FORWARD,
+        AcceptanceGate.INPUT_GRADIENT,
+        AcceptanceGate.PARAMETER_GRADIENT,
+        AcceptanceGate.OPTIMIZER_UPDATE,
+        AcceptanceGate.EXPORT_RELOAD,
+    }
+
+
 def test_generated_family_registry_is_current_and_torch_free():
     assert REFERENCE_CATALOG_SHA256 == CATALOG_SHA256
     assert FAMILY_MANIFEST_SHA256

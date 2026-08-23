@@ -237,9 +237,12 @@ FAMILY_MANIFEST_SHA256 = (
     "{digest}"
 )
 
+# The fixed-width JSON chunks are generated data, not Python string style.
+# fmt: off
 MODEL_FAMILY_ROWS = json.loads(
 {chunks}
 )
+# fmt: on
 '''
 
 

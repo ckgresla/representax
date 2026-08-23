@@ -249,6 +249,116 @@ def _layers(
     )
 
 
+def clip_vision_from_state_dict(
+    config,
+    state: Mapping[str, Any],
+    *,
+    prefix: str = "vision_model.",
+    dtype: jnp.dtype = jnp.float32,
+) -> CLIPVisionTower:
+    """Construct the reusable CLIP vision tower from a prefixed state dict."""
+
+    return CLIPVisionTower(
+        patch_weight=_array(
+            state,
+            prefix + "embeddings.patch_embedding.weight",
+            (
+                config.hidden_size,
+                config.num_channels,
+                config.patch_size,
+                config.patch_size,
+            ),
+            dtype,
+        ),
+        class_embedding=_array(
+            state,
+            prefix + "embeddings.class_embedding",
+            (config.hidden_size,),
+            dtype,
+        ),
+        position_embedding=_array(
+            state,
+            prefix + "embeddings.position_embedding.weight",
+            (config.patch_count + 1, config.hidden_size),
+            dtype,
+        ),
+        pre_norm=_norm(
+            state,
+            prefix + "pre_layrnorm",
+            config.hidden_size,
+            config.layer_norm_epsilon,
+            dtype,
+        ),
+        layers=_layers(
+            state,
+            prefix.removesuffix("."),
+            depth=config.num_hidden_layers,
+            hidden_size=config.hidden_size,
+            intermediate_size=config.intermediate_size,
+            epsilon=config.layer_norm_epsilon,
+            dtype=dtype,
+        ),
+        post_norm=_norm(
+            state,
+            prefix + "post_layernorm",
+            config.hidden_size,
+            config.layer_norm_epsilon,
+            dtype,
+        ),
+    )
+
+
+def clip_vision_state_dict(
+    tower: CLIPVisionTower,
+    *,
+    prefix: str = "vision_model.",
+) -> dict[str, jax.Array]:
+    """Export one native CLIP vision tower under an arbitrary HF prefix."""
+
+    state: dict[str, jax.Array] = {
+        prefix + "embeddings.class_embedding": tower.class_embedding,
+        prefix + "embeddings.patch_embedding.weight": tower.patch_weight,
+        prefix + "embeddings.position_embedding.weight": tower.position_embedding,
+        prefix + "pre_layrnorm.weight": tower.pre_norm.weight,
+        prefix + "pre_layrnorm.bias": _required_bias(tower.pre_norm),
+        prefix + "post_layernorm.weight": tower.post_norm.weight,
+        prefix + "post_layernorm.bias": _required_bias(tower.post_norm),
+    }
+    for index in range(tower.layers.depth):
+        layer = tower.layers.layer(index)
+        layer_prefix = prefix + f"encoder.layers.{index}."
+        state.update(
+            {
+                layer_prefix + "layer_norm1.weight": layer.attention_norm.weight,
+                layer_prefix + "layer_norm1.bias": _required_bias(layer.attention_norm),
+                layer_prefix + "layer_norm2.weight": layer.mlp_norm.weight,
+                layer_prefix + "layer_norm2.bias": _required_bias(layer.mlp_norm),
+                layer_prefix + "self_attn.q_proj.weight": layer.attention.query.weight,
+                layer_prefix + "self_attn.q_proj.bias": _required_bias(
+                    layer.attention.query
+                ),
+                layer_prefix + "self_attn.k_proj.weight": layer.attention.key.weight,
+                layer_prefix + "self_attn.k_proj.bias": _required_bias(
+                    layer.attention.key
+                ),
+                layer_prefix + "self_attn.v_proj.weight": layer.attention.value.weight,
+                layer_prefix + "self_attn.v_proj.bias": _required_bias(
+                    layer.attention.value
+                ),
+                layer_prefix
+                + "self_attn.out_proj.weight": layer.attention.output.weight,
+                layer_prefix + "self_attn.out_proj.bias": _required_bias(
+                    layer.attention.output
+                ),
+                layer_prefix + "mlp.fc1.weight": layer.mlp.up.weight,
+                layer_prefix + "mlp.fc1.bias": _required_bias(layer.mlp.up),
+                layer_prefix + "mlp.fc2.weight": layer.mlp.down.weight,
+                layer_prefix + "mlp.fc2.bias": _required_bias(layer.mlp.down),
+            }
+        )
+    return state
+
+
 @dataclass(frozen=True, slots=True)
 class CLIPCheckpointAdapter:
     """Bidirectional conversion between Hugging Face and native CLIP trees."""
@@ -491,6 +601,8 @@ class CLIPCheckpointAdapter:
 
 __all__ = [
     "CLIPCheckpointAdapter",
+    "clip_vision_from_state_dict",
+    "clip_vision_state_dict",
     "clip_checkpoint_directory",
     "clip_weight_names",
 ]

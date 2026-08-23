@@ -247,6 +247,23 @@ Native MPNet parameter, input-gradient, optimizer-update, and export parity use
 the same Transformers 5.3.0 environment through
 `REPRESENTAX_MPNET_TRANSFORMERS_PYTHON`.
 
+LLaVA-NeXT acceptance uses current Sentence Transformers 5.6.1 for the four
+BGE checkpoints. E5-V records Sentence Transformers 5.4.0 and Transformers
+5.5.0 in its own artifact metadata, so its upstream oracle lives in a separate
+repository-only environment:
+
+```bash
+python -m pip install -e ".[test,performance]" --group parity-llava-next-legacy
+export REPRESENTAX_E5_SENTENCE_TRANSFORMERS_PYTHON=/path/to/legacy/bin/python
+export REPRESENTAX_E5_SENTENCE_TRANSFORMERS_VERSION=5.4.0
+```
+
+This split is intentional. Sentence Transformers 5.6.1 delegates E5-V to the
+new Transformers 5.6 base `LlavaNextModel`, whose renamed vision prefix leaves
+all 24 source vision layers missing and randomly initialized. The legacy oracle
+loads all 686 encoder tensors; Representax's native loader accepts both layouts
+without executing repository code.
+
 The pinned Jina v5 Omni Small text path has its own BF16 forward gate. The
 checkpoint is optional, non-redistributed test data and remains governed by its
 CC BY-NC 4.0 artifact license:

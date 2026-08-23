@@ -4,9 +4,9 @@ This is Representax's minimum external checkpoint panel for multimodal model
 coverage. It snapshots the models linked by Hugging Face's April 2026
 [Multimodal Embedding & Reranker Models with Sentence Transformers](https://huggingface.co/blog/multimodal-sentence-transformers)
 release. Presence here means **acceptance target**, not native support. The
-Qwen3-VL, Qwen2.5-Omni, Qwen2/Qwen2.5-VL, CLIP, and BGE-VL CLIP rows identify
-checkpoints that have completed native acceptance; the remaining rows are still
-targets.
+Qwen3-VL, Qwen2.5-Omni, Qwen2/Qwen2.5-VL, CLIP, BGE-VL CLIP, and LLaVA-NeXT
+rows identify checkpoints that have completed native acceptance; the remaining
+rows are still targets.
 
 Representax must not implement one bespoke wrapper per checkpoint. A checkpoint
 resolves through:
@@ -258,6 +258,39 @@ Its acceptance test records that failure and compares Representax against the
 underlying pinned Transformers Qwen2.5-VL forward rather than concealing the
 incompatibility.
 
+## Native LLaVA-NeXT retrieval usage
+
+One scanned CLIP-plus-rotary-decoder implementation owns BGE S1, S2, both v1.5
+checkpoints, and E5-V. The processor performs upstream chat formatting and
+any-resolution image transforms on the host, converts irregular patch grids to
+one gather/newline plan, and admits only finite model-ready buckets:
+
+```python
+from representax.core import Route
+from representax.models import LlavaNextEncoder
+
+model, processor = LlavaNextEncoder.load_from_hf(
+    "BAAI/BGE-VL-v1.5-mmeb",
+    revision="59f60b95765b32014df235059c4d8c60e8204be5",
+)
+batch = processor(
+    [{"text": "Which chart answers the question?", "image": image}],
+    route=Route.QUERY,
+    instruction="Retrieve the visual document that answers the question.",
+)
+representations = model.encode(batch, route=Route.QUERY)
+```
+
+Text-only, image-only, and composed processor arrays match their source
+Sentence Transformers artifacts exactly. All five full checkpoints reach at
+least =0.99950= normalized-embedding cosine and complete three generic
+INT4-base/LoRA updates. E5-V is compared to the Sentence Transformers 5.4 and
+Transformers 5.5 versions recorded in its checkpoint: the 5.6 base loader
+renamed the vision prefix and silently initializes the complete vision tower.
+Representax accepts both layouts explicitly and fails closed on missing names.
+Detailed evidence is in
+[`benchmarks/results/llava-next-acceptance-20260822`](../benchmarks/results/llava-next-acceptance-20260822/README.org).
+
 The Hugging Face article currently lists 20 multimodal embedders, four
 multimodal rerankers, six text rerankers, and four legacy CLIP variants. Some
 entries use integration PR revisions or repository remote code. Before an
@@ -280,7 +313,7 @@ unless its terms are compatible with the intended use.
 4. **Qwen2/Qwen2.5-VL — accepted.** BGE-VL-Screenshot, Nomic multimodal
    3B/7B, and Jina reranker-m0 establish dense embedding, imported PEFT, MLP
    scoring, two-GPU FP32 FSDP inference, and packed-base adapter training.
-5. **LLaVA-NeXT retrieval — next.** Share one CLIP vision tower across BGE
+5. **LLaVA-NeXT retrieval — accepted.** One CLIP vision tower spans BGE
    S1/S2/v1.5 and E5-V while preserving any-resolution packing and the exact
    Mistral/Llama projection and pooling contracts.
 6. **The remaining architecture families.** Add them by shared forward family,

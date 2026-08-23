@@ -189,6 +189,60 @@ MODEL_FAMILIES = (
         "support": "verified",
     },
     {
+        "name": "llava_next",
+        "model_types": ("llava_next",),
+        "modalities": ("text", "image"),
+        "components": (
+            "clip_vision_transformer",
+            "any_resolution_image_packing",
+            "multimodal_projector",
+            "llama_or_mistral_rotary_decoder",
+            "last_token_pooling",
+            "l2_normalization",
+        ),
+        "configuration_constraints": (
+            "BAAI/BGE-VL-MLLM-S1@455ac20c111813fbb263dd0f22d47d173a971582",
+            "BAAI/BGE-VL-MLLM-S2@20137e245f277e7eca277bbb436ce7d632a16406",
+            "BAAI/BGE-VL-v1.5-zs@a7ca46102a1a8be517e85cc1f03d1df39498e56c",
+            "BAAI/BGE-VL-v1.5-mmeb@59f60b95765b32014df235059c4d8c60e8204be5",
+            "royokong/e5-v@684c4c91ebabce3806d4fd8ac52c9c543043f962",
+        ),
+        "config_adapter": (
+            "representax.models.llava_next.LlavaNextConfig.from_hf_config"
+        ),
+        "input_contracts": (
+            ("text", ("input_ids", "attention_mask")),
+            (
+                "text_image",
+                (
+                    "input_ids",
+                    "attention_mask",
+                    "pixel_values",
+                    "image_pack_indices",
+                ),
+            ),
+        ),
+        "output_contracts": (
+            "last_hidden_state",
+            "last_token_l2_normalized_representation",
+        ),
+        "checkpoint_layout": "huggingface_safetensors",
+        "checkpoint_adapter": (
+            "representax.models.llava_next.LlavaNextCheckpointAdapter"
+        ),
+        "implementation_module": "representax.models.llava_next",
+        "acceptance_gates": (
+            "config_mapping",
+            "checkpoint_roundtrip",
+            "forward",
+            "input_gradient",
+            "parameter_gradient",
+            "optimizer_update",
+            "export_reload",
+        ),
+        "support": "native",
+    },
+    {
         "name": "mpnet",
         "model_types": ("mpnet",),
         "modalities": ("text",),

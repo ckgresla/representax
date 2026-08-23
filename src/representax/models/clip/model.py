@@ -291,15 +291,30 @@ class CLIPLayerStack(eqx.Module):
     def from_layers(cls, values: tuple[CLIPLayer, ...]) -> CLIPLayerStack:
         if not values:
             raise ValueError("CLIP towers require at least one layer")
+        compute_layers = tuple(
+            jax.tree.map(
+                lambda value: (
+                    value.input_major() if isinstance(value, Linear) else value
+                ),
+                layer,
+                is_leaf=lambda value: isinstance(value, Linear),
+            )
+            for layer in values
+        )
         return cls(
-            layers=jax.tree.map(lambda *items: jnp.stack(items), *values),
+            layers=jax.tree.map(lambda *items: jnp.stack(items), *compute_layers),
             depth=len(values),
         )
 
     def layer(self, index: int) -> CLIPLayer:
         if not 0 <= index < self.depth:
             raise IndexError(index)
-        return jax.tree.map(lambda value: value[index], self.layers)
+        layer = jax.tree.map(lambda value: value[index], self.layers)
+        return jax.tree.map(
+            lambda value: value.output_major() if isinstance(value, Linear) else value,
+            layer,
+            is_leaf=lambda value: isinstance(value, Linear),
+        )
 
     def __call__(
         self,
@@ -310,15 +325,25 @@ class CLIPLayerStack(eqx.Module):
         key: PRNGKeyArray | None,
         implementation: AttentionImplementation,
         rematerialization: RematerializationPolicy,
+        layer_count: int | None = None,
     ) -> jax.Array:
+        depth = self.depth if layer_count is None else layer_count
+        if not 0 <= depth <= self.depth:
+            raise ValueError("layer_count must select a prefix of the CLIP stack")
         keys = jax.random.split(
             jax.random.key(0) if key is None else key,
-            self.depth,
+            depth,
         )
         training = key is not None
 
         def apply_layer(carry, values):
-            layer, layer_key = values
+            index, layer_key = values
+            layer = jax.tree.map(
+                lambda value: jax.lax.dynamic_index_in_dim(
+                    value, index, axis=0, keepdims=False
+                ),
+                self.layers,
+            )
             output = layer(
                 carry,
                 mask,
@@ -331,7 +356,7 @@ class CLIPLayerStack(eqx.Module):
         hidden, _ = jax.lax.scan(
             rematerialize(apply_layer, rematerialization),
             hidden,
-            (self.layers, keys),
+            (jnp.arange(depth, dtype=jnp.int32), keys),
         )
         return hidden
 
@@ -471,7 +496,7 @@ class CLIPVisionTower(eqx.Module):
             ),
         )
 
-    def __call__(
+    def token_states(
         self,
         pixels: Float[Array, "batch channel height width"],
         *,
@@ -480,7 +505,10 @@ class CLIPVisionTower(eqx.Module):
         compute_dtype: jnp.dtype,
         implementation: AttentionImplementation,
         rematerialization: RematerializationPolicy,
-    ) -> Float[Array, "batch hidden"]:
+        layer_count: int | None = None,
+    ) -> Float[Array, "batch sequence hidden"]:
+        """Return token states after a selected prefix of vision layers."""
+
         if pixels.shape[1:] != (
             config.num_channels,
             config.image_size,
@@ -515,6 +543,27 @@ class CLIPVisionTower(eqx.Module):
             None,
             config=config,
             key=key,
+            implementation=implementation,
+            rematerialization=rematerialization,
+            layer_count=layer_count,
+        )
+        return hidden
+
+    def __call__(
+        self,
+        pixels: Float[Array, "batch channel height width"],
+        *,
+        config: CLIPVisionConfig,
+        key: PRNGKeyArray | None,
+        compute_dtype: jnp.dtype,
+        implementation: AttentionImplementation,
+        rematerialization: RematerializationPolicy,
+    ) -> Float[Array, "batch hidden"]:
+        hidden = self.token_states(
+            pixels,
+            config=config,
+            key=key,
+            compute_dtype=compute_dtype,
             implementation=implementation,
             rematerialization=rematerialization,
         )
