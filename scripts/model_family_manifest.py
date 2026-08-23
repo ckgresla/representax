@@ -400,6 +400,57 @@ MODEL_FAMILIES = (
         "support": "native",
     },
     {
+        "name": "bidirlm_omni",
+        "model_types": (),
+        "custom_model_types": ("bidirlm_omni",),
+        "modalities": ("text", "image", "audio", "video"),
+        "components": (
+            "bidirectional_grouped_query_attention",
+            "sectioned_multimodal_rotary_position_embedding",
+            "deepstack_vision_transformer",
+            "masked_convolutional_audio_transformer",
+            "mean_pooled_representation",
+            "finite_static_shape_media_processing",
+        ),
+        "configuration_constraints": (
+            "BidirLM/BidirLM-Omni-2.5B-Embedding@447a6e31be61b84443144afda21374339ce408e6",
+            "deepstack_visual_indexes=8|16",
+            "source_deepstack_index_24_is_unreachable",
+        ),
+        "config_adapter": (
+            "representax.models.bidirlm_omni.BidirLMOmniConfig.from_hf_config"
+        ),
+        "input_contracts": (
+            ("text", ("input_ids", "attention_mask", "position_ids")),
+            (
+                "multimodal",
+                (
+                    "input_ids",
+                    "attention_mask",
+                    "position_ids",
+                    "vision_layout",
+                    "audio_layout",
+                ),
+            ),
+        ),
+        "output_contracts": ("mean_pooled_representation",),
+        "checkpoint_layout": "huggingface_safetensors",
+        "checkpoint_adapter": (
+            "representax.models.bidirlm_omni.BidirLMOmniCheckpointAdapter"
+        ),
+        "implementation_module": "representax.models.bidirlm_omni",
+        "acceptance_gates": (
+            "config_mapping",
+            "checkpoint_roundtrip",
+            "forward",
+            "input_gradient",
+            "parameter_gradient",
+            "optimizer_update",
+            "export_reload",
+        ),
+        "support": "native",
+    },
+    {
         "name": "qwen2_vl",
         "model_types": ("qwen2_vl", "qwen2_5_vl"),
         "modalities": ("text", "image", "video"),

@@ -288,6 +288,7 @@ class Qwen3VLTextTower(eqx.Module):
         deepstack_visual: Float[Array, "depth visual hidden"] | None = None,
         visual_token_indices: Int[Array, " visual"] | None = None,
         visual_token_valid: Bool[Array, " visual"] | None = None,
+        bidirectional: bool = False,
         compute_dtype: jnp.dtype,
         attention_implementation: AttentionImplementation,
         rematerialization: RematerializationPolicy,
@@ -303,10 +304,13 @@ class Qwen3VLTextTower(eqx.Module):
         if attention_mask.shape != input_ids.shape:
             raise ValueError("attention_mask and input_ids must align")
         cosine, sine = text_rotary_embedding(self.config, position_ids)
-        target = jnp.arange(sequence)[:, None]
-        source = jnp.arange(sequence)[None, :]
-        allowed = (source <= target)[None, None]
-        allowed = allowed & attention_mask[:, None, None, :].astype(bool)
+        key_valid = attention_mask[:, None, None, :].astype(bool)
+        if bidirectional:
+            allowed = key_valid
+        else:
+            target = jnp.arange(sequence)[:, None]
+            source = jnp.arange(sequence)[None, :]
+            allowed = (source <= target)[None, None] & key_valid
         has_deepstack = deepstack_visual is not None
         if has_deepstack and (
             visual_token_indices is None or visual_token_valid is None

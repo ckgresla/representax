@@ -417,11 +417,22 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
       the executed graph; exported SigLIP configuration disables the 11 unused
       classification-pooler tensors. See
       =benchmarks/results/llama-nemotron-vl-acceptance-20260822/README.org=.
-***** NEXT Implement and accept native BidirLM Omni
-      Cover text, image, and audio with its bidirectional Qwen-like text tower,
-      vision deep-stack injection, audio encoder, model-associated processor,
-      and native representation pooling.
-***** TODO Implement and accept native Qwen2/Qwen3 text ranking
+***** DONE Implement and accept native BidirLM Omni
+      Cover text, image, video, and audio with its bidirectional Qwen-like text
+      tower, vision deep-stack injection, audio encoder, model-associated
+      processor, and native representation pooling.
+      Accepted the immutable Apache-2.0 2.45B checkpoint as one native Equinox
+      text/image/video/audio encoder. Exact host preprocessing gates cover token
+      IDs, masks, image/video pixels, audio features, Qwen3 video timestamp
+      expansion, and finite static buckets. Full-checkpoint BF16 Sentence
+      Transformers parity reaches at least 0.999779 cosine across text, image,
+      video, audio, and composed inputs. Tiny input/parameter cotangents and
+      three real mixed image/audio INT4-LoRA optimizer updates are finite and
+      nonzero. Native export preserves the six source tensors attached to an
+      unreachable third DeepStack tap; a fresh Sentence Transformers reload is
+      bit-identical to the source oracle. See
+      =benchmarks/results/bidirlm-omni-acceptance-20260822/README.org=.
+***** NEXT Implement and accept native Qwen2/Qwen3 text ranking
       Cover Qwen3 and ContextualAI rerankers plus mixedbread Qwen2 rerankers
       using a shared generative-score interface and checkpoint-owned prompts.
 ***** TODO Implement and accept multilingual CLIP-aligned DistilBERT
