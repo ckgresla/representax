@@ -3,11 +3,13 @@
 This is Representax's minimum external checkpoint panel for multimodal model
 coverage. It snapshots the models linked by Hugging Face's April 2026
 [Multimodal Embedding & Reranker Models with Sentence Transformers](https://huggingface.co/blog/multimodal-sentence-transformers)
-release. Presence here means **acceptance target**, not native support. The
-Qwen3-VL, Qwen2.5-Omni, Qwen2/Qwen2.5-VL, CLIP, BGE-VL CLIP, LLaVA-NeXT,
-Llama Nemotron VL, BidirLM Omni, Qwen text reranker, and multilingual
-CLIP-aligned DistilBERT rows identify checkpoints that have completed native
-acceptance; any remaining rows are targets rather than support claims.
+release. The distinct native backbone, processor, and output-graph families in
+the panel have completed physical acceptance. This is deliberately a
+family-level claim: larger parameter-count variants that reuse an accepted
+forward remain capacity targets until physically executed. The consolidated
+evidence and the exact distinction between physical anchors and capacity
+variants live in
+=benchmarks/results/multimodal-family-matrix-20260822/README.org=.
 
 Representax must not implement one bespoke wrapper per checkpoint. A checkpoint
 resolves through:

@@ -275,7 +275,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   Jina v5 Omni's CC-BY-NC-4.0 weights remain an external compatibility oracle;
   native code support must not imply that Representax redistributes those
   weights or grants commercial rights to them.
-*** TODO Wrap the official Sentence Transformers multimodal checkpoint panel :models:multimodal:paper:
+*** DONE Wrap the official Sentence Transformers multimodal checkpoint panel :models:multimodal:paper:
    Treat every embedding and reranker linked by the April 2026 Hugging Face
    multimodal release as a minimum integration target.  Resolve them through a
    small set of native backbone families and shared static module-graph forms,
@@ -344,11 +344,13 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      error; its 15.54-second first compile amortizes after about 8,250 steps in
      this small inference workload. The multilingual CLIP-aligned DistilBERT checkpoint is
      recorded honestly as a separate text family rather than a CLIP forward.
-**** TODO Grow through the remaining linked backbone families
+**** DONE Grow through the remaining linked backbone families
      Implement shared native architecture families rather than one-off model
-     wrappers.  Every named checkpoint is accepted only after pinned upstream
-     preprocessing and tensor parity, inference, several optimizer updates, and
-     native plus Hugging Face export/fresh reload pass.
+     wrappers. Accept every distinct forward, processor, and output graph only
+     after pinned upstream preprocessing and tensor parity, inference, several
+     optimizer updates, and native plus Hugging Face export/fresh reload pass.
+     Track larger same-forward variants as capacity targets until their
+     physical paper runs complete.
 ***** DONE Accept the remaining checkpoints owned by existing Qwen families
       Cover =eagerworks/eager-embed-v1= through Qwen3-VL and
       =nvidia/omni-embed-nemotron-3b= through Qwen2.5-Omni wherever their pinned
@@ -459,10 +461,14 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
       exports, and reloads from the ordinary Hugging Face/Sentence Transformers
       artifact. See
       =benchmarks/results/distilbert-clip-acceptance-20260822/README.org=.
-***** NEXT Run the complete multimodal family acceptance matrix
-      Re-run static, fast, package, installed smoke, isolated GPU inference and
-      update, preprocessing, upstream parity, and HF export/reload lanes for
-      every checkpoint before closing the parent family item.
+***** DONE Run the complete multimodal family acceptance matrix
+      Close each distinct architecture, processor, and output graph with at
+      least one physical immutable checkpoint. Keep larger same-forward
+      capacity variants explicit rather than claiming that catalogue/config
+      compatibility is a physical run. Static, fast, package, installed smoke,
+      isolated GPU inference and update, preprocessing, upstream parity, and HF
+      export/reload evidence is consolidated in
+      =benchmarks/results/multimodal-family-matrix-20260822/README.org=.
 *** TODO Select and accept the paper's 25-model compatibility panel :models:paper:
    Snapshot a transparent Hugging Face popularity and relevance ranking, then
    select 25 checkpoints spanning the native families and four modalities used
@@ -880,6 +886,13 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
 ****** TODO Reduce cold train/evaluator compilation and steady-state update time
       Preserve the exact model, task, precision, batch, and validation contract;
       report persistent-cache behavior separately from an honest cold process.
+*** NEXT Design the additional representation-learning regimes from maintained references :tasks:research:
+    Review the exact maintained implementations for late interaction,
+    cross-encoders, sparse encoders, reward modeling, and current JEPA/LeJEPA.
+    Produce one implementation-ready Representax design that identifies shared
+    train-step semantics, genuinely task-specific state, native model outputs,
+    losses, preprocessing, indexing/evaluation boundaries, and pinned parity
+    oracles before implementation begins.
 *** TODO Implement late-interaction and multi-vector representation learning :tasks:late_interaction:
    Support token-level and learned multi-vector embeddings, ColBERT-style MaxSim,
    masking and compression, in-batch negatives, cached/replayed representations,
