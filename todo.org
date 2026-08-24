@@ -932,8 +932,21 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      PyLate-compatible Hugging Face artifact, and reloads it with exact native
      outputs.  PyLate remains isolated to the oracle generator and its 350 KiB
      result fixture; it is not a Representax dependency.
-**** NEXT Validate late-interaction GradCache and global negatives on two and four GPUs
-**** TODO Add exact flat indexing and streaming retrieval evaluation
+**** DONE Validate late-interaction GradCache and global negatives on two and four GPUs
+     Keep one global JAX program: shard query rows, replicate the compact
+     candidate token representations at the MaxSim boundary, scan finite
+     document tiles, and reshard the transposed score matrix for the symmetric
+     direction.  No task-specific distributed trainer or explicit collective
+     implementation is required.  Accepted physically on GPUs 2--5 with one
+     eight-example global batch: DDP and FSDP at world sizes two and four match
+     the single-device global-batch metrics and state for ten AdamW updates at
+     =rtol=4e-5= and =atol=4e-6=, while an explicit rank-local-negative loss is
+     measurably different.  Partitioned GPU HLO contains the expected async
+     candidate =all-gather-start/done= and gradient =all-reduce-start=.  The
+     real pinned GTE-ModernColBERT checkpoint additionally completes three
+     finite GradCache updates with 16-token queries, 32-token documents, and an
+     eight-pair global batch on both two- and four-GPU DDP meshes.
+**** NEXT Add exact flat indexing and streaming retrieval evaluation
 **** TODO Benchmark pure-JAX MaxSim before considering a Pallas kernel
 **** TODO Add compressed PLAID/WARP adapters behind the indexing protocol
 *** TODO Implement cross-encoder and reranker training :tasks:cross_encoder:
