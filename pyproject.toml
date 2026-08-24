@@ -128,6 +128,7 @@ include = [
     "tests/models/**/performance_probe.py",
     "tests/models/**/transformers_*.py",
     "tests/models/upstream.py",
+    "tests/tasks/late_interaction_oracle.py",
 ]
 
 [tool.ty.overrides.analysis]
@@ -135,6 +136,8 @@ include = [
 replace-imports-with-any = [
     "PIL",
     "PIL.**",
+    "pylate",
+    "pylate.**",
     "sentence_transformers",
     "sentence_transformers.**",
     "torch",

@@ -45,6 +45,11 @@ from .distillation.task import (
     MarginDistillationTask,
 )
 from .guided import GISTBatch, GISTConfig, GISTTask, GuidedRetrievalConfig
+from .late_interaction import (
+    LateInteractionConfig,
+    LateInteractionContrastiveConfig,
+    LateInteractionTask,
+)
 from .mega_batch import (
     MegaBatch,
     MegaBatchConfig,
@@ -303,6 +308,21 @@ def _build_mnr_task(task: TaskConfig, loss: LossConfig) -> MNRTask:
         raise TypeError("mnr requires MNRConfig")
     return MNRTask(
         scale=loss.scale,
+        symmetric=loss.symmetric,
+        negative_scope=loss.negative_scope,
+    )
+
+
+def _build_late_interaction_task(
+    task: TaskConfig,
+    loss: LossConfig,
+) -> LateInteractionTask:
+    if not isinstance(task, LateInteractionConfig) or not isinstance(
+        loss, LateInteractionContrastiveConfig
+    ):
+        raise TypeError("late interaction requires its task and loss configs")
+    return LateInteractionTask(
+        temperature=loss.temperature,
         symmetric=loss.symmetric,
         negative_scope=loss.negative_scope,
     )
@@ -621,6 +641,11 @@ BUILTIN_TASKS = TaskRegistry(
             batch_type=RetrievalBatch,
         ),
         TaskDefinition(
+            kind="late_interaction",
+            config_type=LateInteractionConfig,
+            batch_type=RetrievalBatch,
+        ),
+        TaskDefinition(
             kind="pairwise",
             config_type=PairwiseConfig,
             batch_type=PairwiseBatch,
@@ -694,6 +719,13 @@ BUILTIN_LOSSES = LossRegistry(
             config_type=MNRConfig,
             build=_build_mnr_task,
             task_kinds=frozenset({"retrieval"}),
+            training_strategies=frozenset({"direct", "grad_cache"}),
+        ),
+        LossDefinition(
+            kind="late_interaction_contrastive",
+            config_type=LateInteractionContrastiveConfig,
+            build=_build_late_interaction_task,
+            task_kinds=frozenset({"late_interaction"}),
             training_strategies=frozenset({"direct", "grad_cache"}),
         ),
         LossDefinition(

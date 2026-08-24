@@ -1,5 +1,10 @@
 """Public core contracts."""
 
+from .late_interaction import (
+    LateInteractionEncoder,
+    LateInteractionRepresentation,
+    encode_late_interaction,
+)
 from .model import (
     BUILTIN_MODALITIES,
     BoundEncoder,
@@ -20,6 +25,8 @@ __all__ = [
     "Encoder",
     "EncoderMetadata",
     "LayerwiseEncoder",
+    "LateInteractionEncoder",
+    "LateInteractionRepresentation",
     "EncodeFunction",
     "LossOutput",
     "Modality",
@@ -29,5 +36,6 @@ __all__ = [
     "bind",
     "encode",
     "encode_layers",
+    "encode_late_interaction",
     "evaluate_loss",
 ]

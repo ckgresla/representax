@@ -13,7 +13,10 @@ from representax.precision import accumulated_values, loss_value
 
 ModelT = TypeVar("ModelT")
 
-EncodeFunction = Callable[..., Float[Array, "*leading representation"]]
+# Representation functions may return one dense array or a structured PyTree
+# such as token values plus their validity mask. Every array leaf remains
+# leading-batch-major so execution transforms can chunk and replay it generically.
+EncodeFunction = Callable[..., Any]
 
 
 class LossOutput(eqx.Module):

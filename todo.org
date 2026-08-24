@@ -886,7 +886,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
 ****** TODO Reduce cold train/evaluator compilation and steady-state update time
       Preserve the exact model, task, precision, batch, and validation contract;
       report persistent-cache behavior separately from an honest cold process.
-*** NEXT Design the additional representation-learning regimes from maintained references :tasks:research:
+*** DONE Design the additional representation-learning regimes from maintained references :tasks:research:
     Review the exact maintained implementations for late interaction,
     cross-encoders, sparse encoders, reward modeling, and current JEPA/LeJEPA.
     Produce one implementation-ready Representax design that identifies shared
@@ -903,6 +903,27 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
    token embeddings, masks, MaxSim values and gradients before benchmarking a
    Pallas MaxSim kernel, GradCache over token matrices, compressed indexing,
    index size, retrieval QPS, and quality at fixed latency.
+**** DONE Land the exact native late-interaction execution core
+     Define =LateInteractionRepresentation(values, valid)= and the structural
+     =LateInteractionEncoder= protocol at the core boundary.  Normalize and mask
+     tokens once at that boundary; compute exact MaxSim with a pure-JAX document
+     tile =lax.scan=; reuse the retrieval relation matrix for weighted and
+     symmetric contrastive losses; and generalize GradCache replay and global
+     gathering from dense arrays to leading-row representation PyTrees.
+     Accepted with full-versus-tiled value and representation-gradient parity,
+     JIT execution, direct-versus-GradCache optimizer-update parity, and a
+     checked-in 3.1 KiB PyLate 1.6.0 oracle containing immutable inputs, scores,
+     contrastive loss, gradients, and dependency provenance.  Ordinary tests do
+     not import or install PyLate, Torch, Sentence Transformers, or Transformers.
+**** NEXT Load and train one native ColBERT-family checkpoint end to end
+     Add the projection and skip-list/token-mask semantics to one maintained
+     native text backbone, load immutable Hugging Face/PyLate artifacts without
+     the upstream runtime, and accept projected token values, masks, MaxSim,
+     three optimizer updates, export, and clean reload against the pinned oracle.
+**** TODO Validate late-interaction GradCache and global negatives on two and four GPUs
+**** TODO Add exact flat indexing and streaming retrieval evaluation
+**** TODO Benchmark pure-JAX MaxSim before considering a Pallas kernel
+**** TODO Add compressed PLAID/WARP adapters behind the indexing protocol
 *** TODO Implement cross-encoder and reranker training :tasks:cross_encoder:
    Cover encoder and generative scoring modules; pointwise, pairwise, and listwise
    losses; classification, correlation, reranking, and NanoBEIR evaluators; and

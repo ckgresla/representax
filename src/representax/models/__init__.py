@@ -1,5 +1,11 @@
 """Native model implementations and integrations."""
 
+from representax.core import (
+    LateInteractionEncoder,
+    LateInteractionRepresentation,
+    encode_late_interaction,
+)
+
 from .adapters import (
     LoRALinear,
     QuantizedLoRALinear,
@@ -251,6 +257,8 @@ __all__ = [
     "EAGER_EMBED_V1_REVISION",
     "EncoderPair",
     "LayerNorm",
+    "LateInteractionEncoder",
+    "LateInteractionRepresentation",
     "Linear",
     "RMSNorm",
     "LoRALinear",
@@ -359,6 +367,7 @@ __all__ = [
     "dot_product_attention",
     "dropout",
     "embedding_lookup",
+    "encode_late_interaction",
     "l2_normalize",
     "lora_parameter_filter",
     "image_pack_indices",

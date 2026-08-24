@@ -9,13 +9,22 @@ import equinox as eqx
 import jax
 from jaxtyping import Array, Float, PRNGKeyArray
 
-from representax.core import Encoder, LossOutput, Route, Task, encode
+from representax.core import (
+    EncodeFunction,
+    Encoder,
+    LossOutput,
+    Route,
+    Task,
+    encode,
+    encode_late_interaction,
+)
 from representax.core.sharding import (
     batch_to_scan,
     constrain_activation,
     scan_to_batch,
 )
 from representax.tasks.guided import GISTBatch, GISTTask
+from representax.tasks.late_interaction import LateInteractionTask
 from representax.tasks.modifiers import MatryoshkaTask
 from representax.tasks.retrieval import MNRTask, RetrievalBatch
 
@@ -58,14 +67,15 @@ def _pad_and_chunk(inputs: Any, *, batch_size: int, chunk_size: int) -> Any:
 
 
 def _rematerialized_encode(
-    model: Encoder,
+    model: Any,
     inputs: Any,
     *,
     route: Route,
     batch_size: int,
     chunk_size: int,
     key: PRNGKeyArray | None,
-) -> Float[Array, "batch representation"]:
+    encode_fn: EncodeFunction = encode,
+) -> Any:
     """Encode chunks while retaining only representations across the forward scan."""
 
     chunks = _pad_and_chunk(inputs, batch_size=batch_size, chunk_size=chunk_size)
@@ -74,10 +84,8 @@ def _rematerialized_encode(
 
     if key is None:
 
-        def body(
-            _: None, chunk: Any
-        ) -> tuple[None, Float[Array, "chunk representation"]]:
-            return None, encode(model, chunk, route=route)
+        def body(_: None, chunk: Any) -> tuple[None, Any]:
+            return None, encode_fn(model, chunk, route=route)
 
         scan_inputs = chunks
     else:
@@ -86,9 +94,9 @@ def _rematerialized_encode(
         def body(
             _: None,
             values: tuple[Any, PRNGKeyArray],
-        ) -> tuple[None, Float[Array, "chunk representation"]]:
+        ) -> tuple[None, Any]:
             chunk, chunk_key = values
-            return None, encode(model, chunk, route=route, key=chunk_key)
+            return None, encode_fn(model, chunk, route=route, key=chunk_key)
 
         scan_inputs = (chunks, keys)
 
@@ -97,14 +105,55 @@ def _rematerialized_encode(
         policy=jax.checkpoint_policies.nothing_saveable,
     )
     _, encoded_chunks = jax.lax.scan(rematerialized_body, None, scan_inputs)
-    embeddings = constrain_activation(
-        scan_to_batch(
-            encoded_chunks,
-            batch_size=batch_size,
-            local_chunk_size=chunk_size,
-        )
+    representations = jax.tree.map(
+        lambda values: constrain_activation(
+            scan_to_batch(
+                values,
+                batch_size=batch_size,
+                local_chunk_size=chunk_size,
+            )
+        )[:batch_size],
+        encoded_chunks,
     )
-    return embeddings[:batch_size]
+    return representations
+
+
+def _gather_retrieval_rows(
+    batch: RetrievalBatch,
+    queries: Any,
+    documents: Any,
+    *,
+    axis_name: str,
+) -> tuple[Any, Any, RetrievalBatch]:
+    def gather(tree: Any) -> Any:
+        return jax.tree.map(
+            lambda value: jax.lax.all_gather(
+                value,
+                axis_name,
+                axis=0,
+                tiled=True,
+            ),
+            tree,
+        )
+
+    queries = gather(queries)
+    documents = gather(documents)
+    return (
+        queries,
+        documents,
+        RetrievalBatch(
+            query=queries,
+            document=documents,
+            positive_mask=gather(batch.positive_mask),
+            positive_weights=(
+                None
+                if batch.positive_weights is None
+                else gather(batch.positive_weights)
+            ),
+            query_valid=gather(batch.query_valid),
+            document_valid=gather(batch.document_valid),
+        ),
+    )
 
 
 @dataclass(frozen=True)
@@ -133,9 +182,14 @@ class GradCache:
 
     def validate(self, task: Task[Any]) -> None:
         base_task = task.task if isinstance(task, MatryoshkaTask) else task
-        if not isinstance(base_task, (MNRTask, GISTTask)):
+        if isinstance(task, MatryoshkaTask) and isinstance(
+            base_task, LateInteractionTask
+        ):
+            raise TypeError("Matryoshka does not apply to token-level representations")
+        if not isinstance(base_task, (MNRTask, GISTTask, LateInteractionTask)):
             raise TypeError(
-                "GradCache requires MNRTask, GISTTask, or their Matryoshka modifier"
+                "GradCache requires MNRTask, GISTTask, LateInteractionTask, "
+                "or a supported representation modifier"
             )
 
     def evaluate(
@@ -206,6 +260,66 @@ class GradCache:
             return base_task.loss_from_representations(
                 representations, batch, row_chunk_size=self.resolved_loss_row_chunk_size
             )
+        if isinstance(base_task, LateInteractionTask) and isinstance(
+            batch, RetrievalBatch
+        ):
+            if modifier is not None:  # validate() rejects this before tracing.
+                raise AssertionError("late interaction modifier passed validation")
+            axis_name = context.data_axis_name
+            if axis_name is not None and base_task.negative_scope != "global":
+                raise NotImplementedError(
+                    "distributed GradCache currently implements global negatives only"
+                )
+            if axis_name is not None and representation_key is not None:
+                representation_key = jax.random.fold_in(
+                    representation_key,
+                    jax.lax.axis_index(axis_name),
+                )
+            if representation_key is None:
+                query_key = document_key = None
+            else:
+                query_key, document_key = jax.random.split(representation_key)
+            query_count = _leading_batch_size(batch.query, role="query")
+            document_count = _leading_batch_size(batch.document, role="document")
+            queries = _rematerialized_encode(
+                model,
+                batch.query,
+                route=Route.QUERY,
+                batch_size=query_count,
+                chunk_size=self.query_chunk_size,
+                key=query_key,
+                encode_fn=encode_late_interaction,
+            )
+            documents = _rematerialized_encode(
+                model,
+                batch.document,
+                route=Route.DOCUMENT,
+                batch_size=document_count,
+                chunk_size=self.resolved_document_chunk_size,
+                key=document_key,
+                encode_fn=encode_late_interaction,
+            )
+            if axis_name is not None:
+                queries, documents, batch = _gather_retrieval_rows(
+                    batch,
+                    queries,
+                    documents,
+                    axis_name=axis_name,
+                )
+            output = base_task.loss_from_representations(
+                (queries, documents),
+                batch,
+                row_chunk_size=self.resolved_loss_row_chunk_size,
+            )
+            if axis_name is None:
+                return output
+            return LossOutput(
+                loss=jax.lax.pmean(output.loss, axis_name),
+                metrics=jax.tree.map(
+                    lambda value: jax.lax.pmean(value, axis_name),
+                    output.metrics,
+                ),
+            )
         if not isinstance(base_task, MNRTask) or not isinstance(batch, RetrievalBatch):
             raise TypeError(
                 "GradCache requires MNR/Retrieval or GIST/GuidedRetrieval contracts"
@@ -244,51 +358,11 @@ class GradCache:
             key=document_key,
         )
         if axis_name is not None:
-            queries = jax.lax.all_gather(
+            queries, documents, batch = _gather_retrieval_rows(
+                batch,
                 queries,
-                axis_name,
-                axis=0,
-                tiled=True,
-            )
-            documents = jax.lax.all_gather(
                 documents,
-                axis_name,
-                axis=0,
-                tiled=True,
-            )
-            positive_mask = jax.lax.all_gather(
-                batch.positive_mask,
-                axis_name,
-                axis=0,
-                tiled=True,
-            )
-            positive_weights = (
-                None
-                if batch.positive_weights is None
-                else jax.lax.all_gather(
-                    batch.positive_weights,
-                    axis_name,
-                    axis=0,
-                    tiled=True,
-                )
-            )
-            batch = RetrievalBatch(
-                query=queries,
-                document=documents,
-                positive_mask=positive_mask,
-                positive_weights=positive_weights,
-                query_valid=jax.lax.all_gather(
-                    batch.query_valid,
-                    axis_name,
-                    axis=0,
-                    tiled=True,
-                ),
-                document_valid=jax.lax.all_gather(
-                    batch.document_valid,
-                    axis_name,
-                    axis=0,
-                    tiled=True,
-                ),
+                axis_name=axis_name,
             )
         if modifier is None:
             output = base_task.loss_from_embeddings(

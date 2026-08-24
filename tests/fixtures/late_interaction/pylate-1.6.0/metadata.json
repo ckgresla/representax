@@ -1,0 +1,9 @@
+{
+  "backend": "torch",
+  "oracle": "pylate.scores.colbert_scores + torch cross_entropy",
+  "pylate_version": "1.6.0",
+  "sentence_transformers_version": "5.3.0",
+  "source": "https://github.com/lightonai/pylate/tree/1.6.0",
+  "torch_version": "2.11.0",
+  "transformers_version": "5.3.0"
+}
