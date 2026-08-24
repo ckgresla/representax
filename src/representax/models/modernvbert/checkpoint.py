@@ -44,10 +44,11 @@ from .multimodal import ModernVBERTEncoder
 
 def modernvbert_text_weight_map(
     config: ModernVBERTTextConfig,
+    *,
+    prefix: str = "model.text_model.",
 ) -> dict[str, str]:
     """Map stable native parameter paths to Transformers tensor names."""
 
-    prefix = "model.text_model."
     mapping = {
         "tower.token_embedding": prefix + "embeddings.tok_embeddings.weight",
         "tower.embedding_norm.weight": prefix + "embeddings.norm.weight",
@@ -193,6 +194,7 @@ class ModernVBERTTextCheckpointAdapter:
 
     model_id: str = MODERNVBERT_MODEL_ID
     revision: str = MODERNVBERT_REVISION
+    weight_prefix: str = "model.text_model."
 
     def __post_init__(self) -> None:
         if not self.model_id or not self.revision:
@@ -208,7 +210,7 @@ class ModernVBERTTextCheckpointAdapter:
         attention_implementation: AttentionImplementation = "xla",
         rematerialization: RematerializationPolicy = "full",
     ) -> ModernVBERTTextEncoder:
-        mapping = modernvbert_text_weight_map(config)
+        mapping = modernvbert_text_weight_map(config, prefix=self.weight_prefix)
         shapes = _expected_text_shapes(config)
 
         def get(native_name: str) -> jax.Array:
@@ -290,7 +292,9 @@ class ModernVBERTTextCheckpointAdapter:
     ) -> ModernVBERTTextEncoder:
         hf_config = load_hf_config(checkpoint)
         config = ModernVBERTTextConfig.from_hf_config(hf_config)
-        names = set(modernvbert_text_weight_map(config).values())
+        names = set(
+            modernvbert_text_weight_map(config, prefix=self.weight_prefix).values()
+        )
         tensors = load_safetensor_subset(checkpoint, names, dtype=parameter_dtype)
         return self.from_state_dict(
             config,
@@ -308,7 +312,7 @@ class ModernVBERTTextCheckpointAdapter:
         """Return Transformers-compatible text tensor names and values."""
 
         config = model.tower.config
-        mapping = modernvbert_text_weight_map(config)
+        mapping = modernvbert_text_weight_map(config, prefix=self.weight_prefix)
         shapes = _expected_text_shapes(config)
         _require_biasless(model)
         native: dict[str, jax.Array] = {

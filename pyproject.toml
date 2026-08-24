@@ -129,6 +129,7 @@ include = [
     "tests/models/**/transformers_*.py",
     "tests/models/upstream.py",
     "tests/tasks/late_interaction_oracle.py",
+    "tests/models/late_interaction/gte_modern_colbert_oracle.py",
 ]
 
 [tool.ty.overrides.analysis]

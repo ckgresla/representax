@@ -83,6 +83,7 @@ from .jina_v5 import (
     JinaV5TextConfig,
     JinaV5TextEncoder,
 )
+from .late_interaction import LateInteractionTextEncoder
 from .llava_next import (
     BGE_VL_MLLM_S1_MODEL_ID,
     BGE_VL_MLLM_S1_REVISION,
@@ -257,6 +258,7 @@ __all__ = [
     "EAGER_EMBED_V1_REVISION",
     "EncoderPair",
     "LayerNorm",
+    "LateInteractionTextEncoder",
     "LateInteractionEncoder",
     "LateInteractionRepresentation",
     "Linear",

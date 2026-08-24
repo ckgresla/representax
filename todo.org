@@ -915,12 +915,24 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      checked-in 3.1 KiB PyLate 1.6.0 oracle containing immutable inputs, scores,
      contrastive loss, gradients, and dependency provenance.  Ordinary tests do
      not import or install PyLate, Torch, Sentence Transformers, or Transformers.
-**** NEXT Load and train one native ColBERT-family checkpoint end to end
+**** DONE Load and train one native ColBERT-family checkpoint end to end
      Add the projection and skip-list/token-mask semantics to one maintained
      native text backbone, load immutable Hugging Face/PyLate artifacts without
      the upstream runtime, and accept projected token values, masks, MaxSim,
      three optimizer updates, export, and clean reload against the pinned oracle.
-**** TODO Validate late-interaction GradCache and global negatives on two and four GPUs
+     Accepted on =lightonai/GTE-ModernColBERT-v1= at immutable revision
+     =cbbe53366e564450558f5e639dd499171f127538=: the torch-free importer maps
+     the root ModernBERT checkpoint and 128-dimensional Dense projection into a
+     native =LateInteractionTextEncoder=; the generic processor reproduces
+     PyLate's query/document prefixes, finite lengths, query-expansion policy,
+     punctuation skip list, input IDs, and attention masks; projected normalized
+     tokens and validity masks match a checked-in PyLate 1.6.0 eager-FP32 oracle
+     at the repository's numerical acceptance tolerance.  A real two-pair job
+     completes three AdamW updates, changes the projection, writes a
+     PyLate-compatible Hugging Face artifact, and reloads it with exact native
+     outputs.  PyLate remains isolated to the oracle generator and its 350 KiB
+     result fixture; it is not a Representax dependency.
+**** NEXT Validate late-interaction GradCache and global negatives on two and four GPUs
 **** TODO Add exact flat indexing and streaming retrieval evaluation
 **** TODO Benchmark pure-JAX MaxSim before considering a Pallas kernel
 **** TODO Add compressed PLAID/WARP adapters behind the indexing protocol
