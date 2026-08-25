@@ -1,4 +1,4 @@
-"""Embedding-similarity evaluator contracts."""
+"""Similarity-evaluator contracts."""
 
 import jax
 import jax.numpy as jnp
@@ -6,8 +6,8 @@ import numpy as np
 
 from representax.core import Route, encode
 from representax.evaluation import (
-    EmbeddingSimilarityEvaluator,
-    embedding_similarity_metrics,
+    SimilarityEvaluator,
+    similarity_metrics,
 )
 from representax.models import DenseEncoder
 from representax.tasks.pairwise import pairwise_batch
@@ -28,9 +28,9 @@ def _batches():
     )
 
 
-def test_embedding_similarity_runner_reduces_over_the_complete_corpus():
+def test_similarity_runner_reduces_over_the_complete_corpus():
     model = DenseEncoder(2, 2, key=jax.random.key(17))
-    evaluator = EmbeddingSimilarityEvaluator(
+    evaluator = SimilarityEvaluator(
         name="sts",
         similarity_functions=("cosine", "dot"),
         main_similarity="cosine",
@@ -53,7 +53,7 @@ def test_embedding_similarity_runner_reduces_over_the_complete_corpus():
     )
     labels = np.concatenate([np.asarray(batch.labels) for batch in all_batches])
     valid = np.concatenate([np.asarray(batch.valid) for batch in all_batches])
-    expected = embedding_similarity_metrics(
+    expected = similarity_metrics(
         left[valid],
         right[valid],
         labels[valid],
@@ -68,8 +68,8 @@ def test_embedding_similarity_runner_reduces_over_the_complete_corpus():
         np.testing.assert_allclose(result.metrics[f"valid/sts/{name}"], value)
 
 
-def test_embedding_similarity_rejects_less_than_two_valid_pairs():
-    evaluator = EmbeddingSimilarityEvaluator()
+def test_similarity_rejects_less_than_two_valid_pairs():
+    evaluator = SimilarityEvaluator()
     model = DenseEncoder(2, 2, key=jax.random.key(19))
     batch = pairwise_batch(
         left=jnp.asarray([[1.0, 0.0], [0.0, 1.0]]),

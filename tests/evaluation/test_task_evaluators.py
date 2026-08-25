@@ -1,6 +1,7 @@
 """Task-specific evaluator inventory and composition contracts."""
 
 import equinox as eqx
+import grain
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -15,11 +16,11 @@ from representax.evaluation import (
     MSEEvaluator,
     ParaphraseMiningEvaluator,
     RerankingEvaluator,
+    RewardEvaluator,
     SequentialEvaluator,
-    TranslationEvaluator,
     TripletEvaluator,
+    beir_evaluation,
     classification_metrics,
-    nanobeir_evaluation,
     ranking_metrics,
     regression_metrics,
 )
@@ -29,7 +30,6 @@ from representax.tasks.cross_encoder import (
     PointwiseBatch,
 )
 from representax.tasks.jepa import JEPABatch, LeJEPATask
-from representax.tasks.pairwise import pairwise_batch
 from representax.tasks.reward_modeling import PairwiseRewardBatch
 from representax.tasks.triplet import explicit_triplet_batch
 from representax.train import EvaluationRunner
@@ -115,7 +115,7 @@ def test_classification_mse_and_sequential_evaluation_compile() -> None:
     assert "valid/score/mse" in result.metrics
 
 
-def test_triplet_translation_and_paraphrase_evaluators() -> None:
+def test_triplet_and_paraphrase_evaluators() -> None:
     model = encoder(2)
     triplet = explicit_triplet_batch(
         anchor=Inputs(jnp.asarray(((1.0, 0.0), (0.0, 1.0)))),
@@ -124,14 +124,6 @@ def test_triplet_translation_and_paraphrase_evaluators() -> None:
     )
     triplet_result = EvaluationRunner(TripletEvaluator()).run(model, (triplet,))
     assert triplet_result.metrics["valid/triplet/accuracy"] == 1.0
-
-    aligned = pairwise_batch(
-        left=Inputs(jnp.asarray(((1.0, 0.0), (0.0, 1.0)))),
-        right=Inputs(jnp.asarray(((0.9, 0.1), (0.1, 0.9)))),
-        labels=jnp.zeros((2,)),
-    )
-    translation = EvaluationRunner(TranslationEvaluator()).run(model, (aligned,))
-    assert translation.metrics["valid/translation/accuracy_mean"] == 1.0
 
     mining = MiningEvaluationBatch(
         inputs=Inputs(jnp.asarray(((1.0, 0.0), (0.99, 0.01), (0.0, 1.0)))),
@@ -162,10 +154,11 @@ def test_reranking_reward_and_jepa_evaluators() -> None:
         margins=jnp.zeros((2,)),
         valid=jnp.ones((2,), dtype=jnp.bool_),
     )
-    reward_result = EvaluationRunner(
-        RerankingEvaluator(name="reward", at_k=(1, 2))
-    ).run(scorer, (reward,))
+    reward_result = EvaluationRunner(RewardEvaluator()).run(scorer, (reward,))
     assert reward_result.metrics["valid/reward/pairwise_accuracy"] == 1.0
+    assert "valid/reward/ndcg@1" not in reward_result.metrics
+    assert "valid/reward/mrr@1" not in reward_result.metrics
+    assert "valid/reward/map@1" not in reward_result.metrics
 
     jepa_batch = JEPABatch(
         views=Inputs(
@@ -197,19 +190,26 @@ def _process(values, **_options):
     )
 
 
-def test_nanobeir_adapter_and_serializable_evaluator_inventory() -> None:
-    evaluator, batches = nanobeir_evaluation(
-        queries=({"_id": "q1", "text": "aa"},),
-        corpus=(
-            {"_id": "d1", "text": "aa"},
-            {"_id": "d2", "text": "bbbb"},
+def test_beir_adapter_and_serializable_evaluator_inventory() -> None:
+    evaluator, batches = beir_evaluation(
+        queries=grain.MapDataset.source([{"_id": "q1", "text": "aa"}]),
+        corpus=grain.MapDataset.source(
+            [
+                {"_id": "d1", "text": "aa"},
+                {"_id": "d2", "text": "bbbb"},
+            ]
         ),
-        qrels=({"query-id": "q1", "corpus-id": "d1", "score": 1},),
+        qrels=grain.MapDataset.source(
+            [{"query-id": "q1", "corpus-id": "d1", "score": 1}]
+        ),
         processor=Processor(_process, {"kind": "test"}),
         batch_size=2,
+        name="retrieval",
     )
+    batches = tuple(batches)
     result = EvaluationRunner(evaluator).run(encoder(2), batches)
-    assert result.metrics["valid/nanobeir/cosine_ndcg@10"] == 1.0
+    assert all(batch.ids.shape == (2,) for batch in batches)
+    assert result.metrics["valid/retrieval/cosine_ndcg@10"] == 1.0
 
     configuration = EvaluationConfig(
         data=DataConfig(
@@ -225,7 +225,6 @@ def test_nanobeir_adapter_and_serializable_evaluator_inventory() -> None:
             {"kind": "reranking"},
             {"kind": "reward"},
             {"kind": "jepa"},
-            {"kind": "translation"},
             {
                 "kind": "paraphrase_mining",
                 "duplicate_pairs": ((1, 2),),
@@ -244,7 +243,6 @@ def test_nanobeir_adapter_and_serializable_evaluator_inventory() -> None:
         "reranking",
         "reward",
         "jepa",
-        "translation",
         "paraphrase_mining",
         "information_retrieval",
     )

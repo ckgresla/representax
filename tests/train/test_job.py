@@ -17,7 +17,6 @@ from representax.config import (
     CheckpointConfig,
     ComponentConfig,
     DataConfig,
-    EmbeddingSimilarityEvaluatorConfig,
     EvaluationConfig,
     EvaluatorConfig,
     ExportConfig,
@@ -25,6 +24,7 @@ from representax.config import (
     ModelConfig,
     OptimizationConfig,
     PrecisionConfig,
+    SimilarityEvaluatorConfig,
     TrainingConfig,
 )
 from representax.core import Encoder, Route, encode
@@ -183,7 +183,7 @@ def test_run_job_trains_evaluates_selects_and_exports_from_disk(tmp_path):
             batch_size=4,
             evaluators=(
                 EvaluatorConfig(),
-                EmbeddingSimilarityEvaluatorConfig(
+                SimilarityEvaluatorConfig(
                     similarity_functions=("cosine",),
                     main_similarity="cosine",
                 ),

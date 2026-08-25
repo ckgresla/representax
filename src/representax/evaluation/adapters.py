@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
-from typing import TYPE_CHECKING, Any
+from collections.abc import Iterable, Iterator, Mapping, Sequence
+from itertools import chain
+from typing import TYPE_CHECKING, Any, Protocol
 
 import jax.numpy as jnp
+
+from representax.core import Route
 
 if TYPE_CHECKING:
     from representax.models.processing import Processor
@@ -18,11 +21,22 @@ from .retrieval import (
 )
 
 
-def nanobeir_evaluation(
+class RecordDataset(Protocol):
+    """The random-access subset shared by sequences and Grain MapDatasets."""
+
+    def __len__(self) -> int: ...
+
+    def __getitem__(self, index: Any) -> Any: ...
+
+
+Records = Sequence[Mapping[str, Any]] | RecordDataset
+
+
+def beir_evaluation(
     *,
-    queries: Sequence[Mapping[str, Any]],
-    corpus: Sequence[Mapping[str, Any]],
-    qrels: Sequence[Mapping[str, Any]],
+    queries: Records,
+    corpus: Records,
+    qrels: Records,
     processor: Processor,
     batch_size: int,
     query_id_field: str = "_id",
@@ -32,59 +46,81 @@ def nanobeir_evaluation(
     qrel_query_field: str = "query-id",
     qrel_document_field: str = "corpus-id",
     qrel_score_field: str = "score",
-    name: str = "nanobeir",
-) -> tuple[InformationRetrievalEvaluator, tuple[RetrievalEvaluationBatch, ...]]:
-    """Adapt NanoBEIR/BEIR-style records without creating an intermediate dataset."""
+    name: str = "retrieval",
+) -> tuple[InformationRetrievalEvaluator, Iterable[RetrievalEvaluationBatch]]:
+    """Adapt random-access BEIR records without an intermediate dataset.
+
+    ``queries``, ``corpus``, and ``qrels`` may be native Grain ``MapDataset``
+    objects built from local, Hugging Face, or custom sources. Only identifiers
+    and relevance judgments are retained on the host; text is processed lazily
+    in fixed-size query batches followed by corpus batches.
+    """
 
     if batch_size <= 0:
-        raise ValueError("NanoBEIR batch_size must be positive")
+        raise ValueError("BEIR batch_size must be positive")
+    query_rows = tuple(queries[index] for index in range(len(queries)))
+    document_ids = tuple(
+        str(corpus[index][document_id_field]) for index in range(len(corpus))
+    )
     external_ids = [
-        *(str(row[query_id_field]) for row in queries),
-        *(str(row[document_id_field]) for row in corpus),
+        *(str(row[query_id_field]) for row in query_rows),
+        *document_ids,
     ]
     id_map = {value: index for index, value in enumerate(dict.fromkeys(external_ids))}
     relevant: dict[int, set[int]] = {}
-    for row in qrels:
+    for index in range(len(qrels)):
+        row = qrels[index]
         if float(row.get(qrel_score_field, 1.0)) <= 0:
             continue
         query_id = id_map[str(row[qrel_query_field])]
-        document_id = id_map[str(row[qrel_document_field])]
-        relevant.setdefault(query_id, set()).add(document_id)
+        document_values = row[qrel_document_field]
+        if not isinstance(document_values, (list, tuple, set, frozenset)):
+            document_values = (document_values,)
+        relevant.setdefault(query_id, set()).update(
+            id_map[str(document_id)] for document_id in document_values
+        )
 
     def batches(
-        records: Sequence[Mapping[str, Any]],
+        records: Records,
         *,
         id_field: str,
         text_field: str,
         kind: RetrievalInputKind,
-    ) -> list[RetrievalEvaluationBatch]:
-        output = []
+        route: Route,
+    ) -> Iterator[RetrievalEvaluationBatch]:
         for start in range(0, len(records), batch_size):
-            rows = records[start : start + batch_size]
-            output.append(
-                retrieval_evaluation_batch(
-                    processor([row[text_field] for row in rows]),
-                    jnp.asarray(
-                        [id_map[str(row[id_field])] for row in rows],
-                        dtype=jnp.int32,
-                    ),
-                    kind=kind,
-                )
+            stop = min(start + batch_size, len(records))
+            rows = tuple(records[index] for index in range(start, stop))
+            padding = batch_size - len(rows)
+            texts = tuple(row[text_field] for row in rows) + ("",) * padding
+            identifiers = tuple(id_map[str(row[id_field])] for row in rows)
+            yield retrieval_evaluation_batch(
+                processor(texts, route=route),
+                jnp.asarray(
+                    (*identifiers, *(-1 for _ in range(padding))),
+                    dtype=jnp.int32,
+                ),
+                kind=kind,
+                valid=jnp.asarray(
+                    (True,) * len(rows) + (False,) * padding,
+                    dtype=jnp.bool_,
+                ),
             )
-        return output
 
-    evaluation_batches = (
-        *batches(
+    evaluation_batches = chain(
+        batches(
             queries,
             id_field=query_id_field,
             text_field=query_text_field,
             kind="query",
+            route=Route.QUERY,
         ),
-        *batches(
+        batches(
             corpus,
             id_field=document_id_field,
             text_field=document_text_field,
             kind="document",
+            route=Route.DOCUMENT,
         ),
     )
     return (
@@ -93,4 +129,4 @@ def nanobeir_evaluation(
     )
 
 
-__all__ = ["nanobeir_evaluation"]
+__all__ = ["RecordDataset", "beir_evaluation"]

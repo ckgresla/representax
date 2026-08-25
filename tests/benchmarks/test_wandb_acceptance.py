@@ -10,14 +10,13 @@ def test_wandb_acceptance_matrix_covers_every_builtin_task():
 def test_wandb_acceptance_matrix_covers_the_evaluator_inventory():
     assert set(evaluation_cases()) == {
         "classification",
-        "embedding_similarity",
-        "information_retrieval_nanobeir",
+        "information_retrieval",
         "jepa",
         "loss",
         "mse",
         "paraphrase_mining",
         "reranking",
         "reward",
-        "translation",
+        "similarity",
         "triplet",
     }

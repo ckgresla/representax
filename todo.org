@@ -692,13 +692,14 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
     correlation or classification behavior; retrieval evaluators consume
     queries, corpora, and relevance judgments and report ranking behavior such
     as nDCG, MRR, MAP, and recall. Cover both families plus triplet, reranking,
-    paraphrase mining, translation, MSE, NanoBEIR, and sequential composition
-    through reusable metric protocols.
+    reward, paraphrase mining, MSE, BEIR-format sources, and sequential
+    composition through reusable metric protocols. Translation is deliberately
+    absent until a distinct evaluation contract is justified by a real use case.
 ***** DONE Define one typed evaluator protocol and namespaced =valid/...= results
      Keep compiled batch inference separate from host corpus accumulation and
      finalization so exact correlation/ranking metrics do not enter JIT. The
      same runner is reusable during training and offline.
-***** DONE Implement embedding-similarity evaluation and 5.6.1 parity
+***** DONE Implement similarity evaluation and 5.6.1 parity
      Cosine, dot, Euclidean, and Manhattan Pearson/Spearman metrics match the
      pinned Sentence Transformers oracle on identical representations, including
      average-rank tie behavior. Evaluation always uses deterministic inference;
@@ -710,7 +711,11 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      MAP. Exact same-ranking metric parity passes against Sentence Transformers
      5.6.1, including multiple relevant documents and every configured cutoff.
 ***** DONE Implement classification, triplet, and MSE evaluators
-***** DONE Implement reranking, paraphrase, translation, and NanoBEIR adapters
+***** DONE Implement reranking, reward, paraphrase, and BEIR-source evaluation
+     Reranking and reward are distinct evaluator classes with task-native metric
+     contracts. Generic BEIR query/corpus/qrel records map directly from Grain
+     into information retrieval; a revision-pinned NanoBEIR example demonstrates
+     the mapping without creating an intermediate dataset.
 ***** DONE Add sequential composition and explicit primary-metric selection
      Compatible evaluators now share one compiled validation traversal rather
      than rereading and preprocessing the same source once per metric family.
@@ -718,7 +723,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      metric for best-model retention. Classification reports accuracy, macro
      precision/recall/F1 and binary AP/best-threshold metrics; regression reports
      MSE/RMSE/MAE and Pearson/Spearman; triplet, finite reranking, reward,
-     paraphrase mining, bitext retrieval, streaming IR/NanoBEIR, and LeJEPA
+     paraphrase mining, streaming IR over BEIR-format sources, and LeJEPA
      collapse diagnostics retain task-native reducer state.
 **** DONE Land configuration-driven end-to-end training jobs
     Support source-neutral single and multi-source training, per-source tasks and
@@ -780,6 +785,12 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
       4-device FSDP training and evaluation runs completed. The 39 accepted W&B
       runs contain 780 optimizer updates and finished within a 30-minute bounded
       campaign. See =benchmarks/results/wandb-acceptance-20260825/=.
+      The historical campaign included a provisional translation evaluator that
+      was subsequently removed; the current inventory contains ten semantic
+      evaluator classes. W&B keeps iteration on its native step axis, attaches
+      optimizer position only to training rows, records evaluation work under
+      =perf/...=, and keeps backend, world, accelerator, and mesh facts as static
+      run metadata.
 ***** TODO Add source-neutral offline hard-negative mining with artifact provenance
 **** TODO Prove a matched dense-retrieval training advantage over Sentence Transformers
     Use a pinned local retrieval dataset, identical raw examples, tokenizer,
@@ -893,7 +904,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      appendix, not as the primary claim about training throughput.
 ****** DONE Establish cold MiniLM and Jina Small paired baselines
       The immutable STSB JSONL flow now covers raw Grain/Sentence Transformers
-      input through training, start/end embedding-similarity evaluation,
+      input through training, start/end similarity evaluation,
       checkpoint synchronization, final export, and fresh-process reload.
       MiniLM initial Spearman differs by only =7.8e-10=; Jina differs by
       =6.1e-6= and passes native BF16 forward parity across all rematerialization
@@ -974,7 +985,8 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
 **** TODO Add compressed PLAID/WARP adapters behind the indexing protocol
 *** DONE Implement cross-encoder and reranker training :tasks:cross_encoder:
    Cover encoder and generative scoring modules; pointwise, pairwise, and listwise
-   losses; classification, correlation, reranking, and NanoBEIR evaluators; and
+   losses; classification, correlation, reranking, and information-retrieval
+   evaluators; and
    text/image/audio/video pair routing under the shared trainer.
    Pin Sentence Transformers CrossEncoder as the implementation oracle and cover
    BCE, multiclass cross-entropy, MSE and MarginMSE, RankNet, LambdaLoss, ListNet,

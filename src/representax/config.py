@@ -112,10 +112,10 @@ class EvaluatorConfig(FrozenConfig):
     name: NonEmptyString = "loss"
 
 
-class EmbeddingSimilarityEvaluatorConfig(EvaluatorConfig):
+class SimilarityEvaluatorConfig(EvaluatorConfig):
     """Corpus-level correlations between labels and paired similarities."""
 
-    kind: Literal["embedding_similarity"] = "embedding_similarity"
+    kind: Literal["similarity"] = "similarity"
     name: NonEmptyString = "similarity"
     similarity_functions: tuple[
         Literal["cosine", "dot", "euclidean", "manhattan"], ...
@@ -164,22 +164,18 @@ class RerankingEvaluatorConfig(EvaluatorConfig):
     at_k: tuple[PositiveInt, ...] = (1, 3, 5, 10)
 
 
-class RewardEvaluatorConfig(RerankingEvaluatorConfig):
+class RewardEvaluatorConfig(EvaluatorConfig):
+    """Metrics for one explicit reward-supervision contract."""
+
     kind: Literal["reward"] = "reward"
     name: NonEmptyString = "reward"
+    mode: Literal["pairwise", "listwise", "pointwise", "process"] = "pairwise"
+    at_k: tuple[PositiveInt, ...] = (1, 3, 5, 10)
 
 
 class JEPAEvaluatorConfig(EvaluatorConfig):
     kind: Literal["jepa"] = "jepa"
     name: NonEmptyString = "jepa"
-
-
-class TranslationEvaluatorConfig(EvaluatorConfig):
-    kind: Literal["translation"] = "translation"
-    name: NonEmptyString = "translation"
-    source_route: Route = Route.GENERIC
-    target_route: Route = Route.GENERIC
-    block_size: PositiveInt = 1024
 
 
 class ParaphraseMiningEvaluatorConfig(EvaluatorConfig):
@@ -238,14 +234,13 @@ class EvaluationConfig(FrozenConfig):
             kind = evaluator.get("kind", "loss")
             evaluator_types = {
                 "loss": EvaluatorConfig,
-                "embedding_similarity": EmbeddingSimilarityEvaluatorConfig,
+                "similarity": SimilarityEvaluatorConfig,
                 "classification": ClassificationEvaluatorConfig,
                 "mse": MSEEvaluatorConfig,
                 "triplet": TripletEvaluatorConfig,
                 "reranking": RerankingEvaluatorConfig,
                 "reward": RewardEvaluatorConfig,
                 "jepa": JEPAEvaluatorConfig,
-                "translation": TranslationEvaluatorConfig,
                 "paraphrase_mining": ParaphraseMiningEvaluatorConfig,
                 "information_retrieval": InformationRetrievalEvaluatorConfig,
             }
@@ -852,7 +847,7 @@ __all__ = [
     "CustomShardingConfig",
     "DataConfig",
     "DDPConfig",
-    "EmbeddingSimilarityEvaluatorConfig",
+    "SimilarityEvaluatorConfig",
     "EvaluationConfig",
     "EvaluatorConfig",
     "ExportConfig",

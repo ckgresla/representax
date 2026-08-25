@@ -11,7 +11,7 @@ import argparse
 import json
 import os
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, cast
@@ -33,16 +33,16 @@ from representax.core import (
 )
 from representax.evaluation import (
     ClassificationEvaluator,
-    EmbeddingSimilarityEvaluator,
     JEPAEvaluator,
     LossEvaluator,
     MiningEvaluationBatch,
     MSEEvaluator,
     ParaphraseMiningEvaluator,
     RerankingEvaluator,
-    TranslationEvaluator,
+    RewardEvaluator,
+    SimilarityEvaluator,
     TripletEvaluator,
-    nanobeir_evaluation,
+    beir_evaluation,
 )
 from representax.models import (
     DenoisingAutoEncoder,
@@ -198,6 +198,7 @@ class AcceptanceJob:
     name: str
     kind: str
     group: str
+    execution: Mapping[str, Any]
 
     def model_dump(self, *, mode: str) -> dict[str, Any]:
         if mode != "json":
@@ -205,6 +206,7 @@ class AcceptanceJob:
         return {
             "name": self.name,
             "acceptance": {"kind": self.kind, "group": self.group, "steps": 30},
+            "execution": dict(self.execution),
         }
 
 
@@ -532,7 +534,7 @@ def evaluation_cases() -> dict[str, EvaluationCase]:
             )
         )
 
-    ir_evaluator, ir_batches = nanobeir_evaluation(
+    ir_evaluator, ir_batches = beir_evaluation(
         queries=({"_id": "q1", "text": "aa"},),
         corpus=({"_id": "d1", "text": "aa"}, {"_id": "d2", "text": "bbbb"}),
         qrels=({"query-id": "q1", "corpus-id": "d1", "score": 1},),
@@ -543,8 +545,8 @@ def evaluation_cases() -> dict[str, EvaluationCase]:
         "loss": EvaluationCase(
             "loss", loss_case.model, LossEvaluator(loss_case.task), (loss_case.batch,)
         ),
-        "embedding_similarity": EvaluationCase(
-            "embedding_similarity", identity, EmbeddingSimilarityEvaluator(), (pair,)
+        "similarity": EvaluationCase(
+            "similarity", identity, SimilarityEvaluator(), (pair,)
         ),
         "classification": EvaluationCase(
             "classification", scorer, ClassificationEvaluator(), (pointwise,)
@@ -554,17 +556,12 @@ def evaluation_cases() -> dict[str, EvaluationCase]:
         "reranking": EvaluationCase(
             "reranking", scorer, RerankingEvaluator(at_k=(1, 3)), (listwise,)
         ),
-        "reward": EvaluationCase(
-            "reward", scorer, RerankingEvaluator(name="reward", at_k=(1, 2)), (reward,)
-        ),
+        "reward": EvaluationCase("reward", scorer, RewardEvaluator(), (reward,)),
         "jepa": EvaluationCase(
             "jepa",
             identity,
             JEPAEvaluator(build_task(JEPAConfig(), LeJEPAConfig(slices=8))),
             (jepa_batch,),
-        ),
-        "translation": EvaluationCase(
-            "translation", identity, TranslationEvaluator(), (pair,)
         ),
         "paraphrase_mining": EvaluationCase(
             "paraphrase_mining",
@@ -572,14 +569,21 @@ def evaluation_cases() -> dict[str, EvaluationCase]:
             ParaphraseMiningEvaluator(frozenset({(10, 11)}), max_pairs=3),
             (mining,),
         ),
-        "information_retrieval_nanobeir": EvaluationCase(
-            "information_retrieval_nanobeir", identity, ir_evaluator, tuple(ir_batches)
+        "information_retrieval": EvaluationCase(
+            "information_retrieval", identity, ir_evaluator, tuple(ir_batches)
         ),
     }
 
 
 def _reporter(
-    *, project: str, entity: str, group: str, name: str, kind: str, root: Path
+    *,
+    project: str,
+    entity: str,
+    group: str,
+    name: str,
+    kind: str,
+    root: Path,
+    execution: Mapping[str, Any],
 ) -> tuple[RunLogger, Path]:
     run_directory = root / name
     reporter = WandbReporter(
@@ -591,7 +595,15 @@ def _reporter(
             run_id=f"{group}-{name}"[:128],
             tags=("acceptance", kind),
         ),
-        job=cast(JobConfig, AcceptanceJob(name=name, kind=kind, group=group)),
+        job=cast(
+            JobConfig,
+            AcceptanceJob(
+                name=name,
+                kind=kind,
+                group=group,
+                execution=execution,
+            ),
+        ),
         run_directory=run_directory,
     )
     logger = RunLogger(
@@ -632,6 +644,11 @@ def run_training_case(
         name=name,
         kind="task",
         root=root,
+        execution={
+            "sharding": "single" if plan is None else "distributed",
+            "mesh_shape": [1] if plan is None else list(plan.mesh.devices.shape),
+            "mesh_axis_names": [] if plan is None else list(plan.mesh.axis_names),
+        },
     )
     initial = [np.asarray(x) for x in jax.tree.leaves(state.model) if eqx.is_array(x)]
     started = time.perf_counter()
@@ -711,6 +728,11 @@ def run_evaluation_case(
         name=name,
         kind="evaluator",
         root=root,
+        execution={
+            "sharding": "single" if device_count == 1 else "data_parallel",
+            "mesh_shape": [device_count],
+            "mesh_axis_names": [] if device_count == 1 else ["data"],
+        },
     )
     place_batch: Callable[[Any], Any] = jax.device_put
     if device_count > 1:
@@ -742,10 +764,18 @@ def run_evaluation_case(
             np.isfinite(value) for value in result.metrics.values()
         ):
             raise RuntimeError(f"{name} produced invalid metrics")
-        logger.metrics(
-            MetricRecord(iteration=0, event="evaluation", values=result.metrics)
-        )
         duration = time.perf_counter() - started
+        logger.metrics(
+            MetricRecord(
+                iteration=0,
+                event="evaluation",
+                values={
+                    **result.metrics,
+                    "perf/evaluation_seconds": duration,
+                    "perf/evaluation_batches": len(case.batches),
+                },
+            )
+        )
         logger.finish("completed", completed_iterations=0, duration_seconds=duration)
         return {
             "name": name,

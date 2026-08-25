@@ -1,4 +1,4 @@
-"""Paraphrase mining and bitext retrieval evaluators."""
+"""Paraphrase-mining evaluation."""
 
 from __future__ import annotations
 
@@ -8,12 +8,10 @@ from dataclasses import dataclass
 from typing import Any
 
 import equinox as eqx
-import jax
 import numpy as np
 from jaxtyping import Array, Bool, Float, Int, PRNGKeyArray
 
 from representax.core import Encoder, Route, encode
-from representax.tasks.pairwise import PairwiseBatch
 
 
 class MiningEvaluationBatch(eqx.Module):
@@ -132,89 +130,8 @@ class ParaphraseMiningEvaluator:
         }
 
 
-class TranslationBatchOutput(eqx.Module):
-    source: Float[Array, "batch dimension"]
-    target: Float[Array, "batch dimension"]
-    valid: Bool[Array, " batch"]
-
-
-@dataclass(frozen=True, slots=True)
-class _TranslationAccumulator:
-    source: tuple[np.ndarray, ...] = ()
-    target: tuple[np.ndarray, ...] = ()
-    valid: tuple[np.ndarray, ...] = ()
-
-
-@dataclass(frozen=True, slots=True)
-class TranslationEvaluator:
-    """Aligned bitext retrieval in both directions using bounded score blocks."""
-
-    name: str = "translation"
-    source_route: Route = Route.GENERIC
-    target_route: Route = Route.GENERIC
-    block_size: int = 1024
-
-    @property
-    def primary_metric(self) -> str:
-        return f"valid/{self.name}/accuracy_mean"
-
-    def evaluate_batch(
-        self,
-        model: eqx.Module,
-        batch: PairwiseBatch,
-        *,
-        key: PRNGKeyArray | None = None,
-    ) -> TranslationBatchOutput:
-        if not isinstance(model, Encoder):
-            raise TypeError("translation evaluation requires an Encoder")
-        keys = (None, None) if key is None else jax.random.split(key)
-        return TranslationBatchOutput(
-            source=encode(model, batch.left, route=self.source_route, key=keys[0]),
-            target=encode(model, batch.right, route=self.target_route, key=keys[1]),
-            valid=batch.valid,
-        )
-
-    def initialize(self) -> _TranslationAccumulator:
-        return _TranslationAccumulator()
-
-    def accumulate(
-        self, accumulator: _TranslationAccumulator, output: TranslationBatchOutput
-    ) -> _TranslationAccumulator:
-        return _TranslationAccumulator(
-            source=(*accumulator.source, np.asarray(output.source)),
-            target=(*accumulator.target, np.asarray(output.target)),
-            valid=(*accumulator.valid, np.asarray(output.valid, dtype=bool)),
-        )
-
-    def finalize(self, accumulator: _TranslationAccumulator) -> Mapping[str, float]:
-        if not accumulator.source:
-            raise ValueError("translation evaluation received no batches")
-        valid = np.concatenate(accumulator.valid)
-        source = _normalize(np.concatenate(accumulator.source)[valid])
-        target = _normalize(np.concatenate(accumulator.target)[valid])
-
-        def accuracy(left: np.ndarray, right: np.ndarray) -> float:
-            correct = 0
-            for start in range(0, len(left), self.block_size):
-                stop = min(start + self.block_size, len(left))
-                predicted = np.argmax(left[start:stop] @ right.T, axis=-1)
-                correct += int(np.sum(predicted == np.arange(start, stop)))
-            return correct / max(len(left), 1)
-
-        forward = accuracy(source, target)
-        backward = accuracy(target, source)
-        prefix = f"valid/{self.name}"
-        return {
-            f"{prefix}/source_to_target_accuracy": forward,
-            f"{prefix}/target_to_source_accuracy": backward,
-            f"{prefix}/accuracy_mean": (forward + backward) / 2,
-        }
-
-
 __all__ = [
     "MiningBatchOutput",
     "MiningEvaluationBatch",
     "ParaphraseMiningEvaluator",
-    "TranslationBatchOutput",
-    "TranslationEvaluator",
 ]

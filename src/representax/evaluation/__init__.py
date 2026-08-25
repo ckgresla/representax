@@ -1,6 +1,6 @@
 """Reusable evaluators and exact host-side metric reducers."""
 
-from .adapters import nanobeir_evaluation
+from .adapters import beir_evaluation
 from .classification import (
     ClassificationBatchOutput,
     ClassificationEvaluator,
@@ -12,14 +12,11 @@ from .mining import (
     MiningBatchOutput,
     MiningEvaluationBatch,
     ParaphraseMiningEvaluator,
-    TranslationBatchOutput,
-    TranslationEvaluator,
 )
 from .protocol import Evaluator
 from .ranking import (
     RankingBatchOutput,
     RerankingEvaluator,
-    RewardEvaluator,
     ranking_metrics,
 )
 from .regression import MSEEvaluator, RegressionBatchOutput, regression_metrics
@@ -33,21 +30,20 @@ from .retrieval import (
     information_retrieval_metrics,
     retrieval_evaluation_batch,
 )
+from .reward import RewardBatchOutput, RewardEvaluationKind, RewardEvaluator
 from .sequential import SequentialEvaluator
 from .similarity import (
     SIMILARITY_FUNCTIONS,
-    EmbeddingSimilarityBatchOutput,
-    EmbeddingSimilarityEvaluator,
+    SimilarityBatchOutput,
+    SimilarityEvaluator,
     SimilarityFunction,
-    embedding_similarity_metrics,
+    similarity_metrics,
 )
 from .triplet import TripletBatchOutput, TripletEvaluator
 
 __all__ = [
     "ClassificationBatchOutput",
     "ClassificationEvaluator",
-    "EmbeddingSimilarityBatchOutput",
-    "EmbeddingSimilarityEvaluator",
     "Evaluator",
     "InformationRetrievalEvaluator",
     "JEPABatchOutput",
@@ -67,18 +63,20 @@ __all__ = [
     "RetrievalScoreFunction",
     "RerankingEvaluator",
     "RewardEvaluator",
+    "RewardBatchOutput",
+    "RewardEvaluationKind",
     "SIMILARITY_FUNCTIONS",
     "SequentialEvaluator",
     "SimilarityFunction",
-    "TranslationBatchOutput",
-    "TranslationEvaluator",
+    "SimilarityBatchOutput",
+    "SimilarityEvaluator",
     "TripletBatchOutput",
     "TripletEvaluator",
     "classification_metrics",
-    "embedding_similarity_metrics",
+    "beir_evaluation",
     "information_retrieval_metrics",
-    "nanobeir_evaluation",
     "ranking_metrics",
     "regression_metrics",
     "retrieval_evaluation_batch",
+    "similarity_metrics",
 ]

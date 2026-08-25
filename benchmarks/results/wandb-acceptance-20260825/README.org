@@ -17,6 +17,20 @@ the 30-minute budget.
 | total accepted updates | 780 |
 | W&B state | all 39 accepted runs =finished= with =representax/status=completed= |
 
+This table preserves the historical campaign exactly. A subsequent evaluator
+audit removed the provisional translation evaluator, renamed embedding
+similarity to similarity, and made NanoBEIR a pinned source recipe over generic
+information retrieval. It also separated reward evaluation from reranking:
+pairwise reward now reports preference and margin metrics rather than IR
+metrics. The historical W&B rows and =manifest.json= remain immutable evidence
+of what the original campaign ran; the current executable inventory contains
+ten evaluators and no translation evaluator.
+
+The audit also removed =runtime/iteration= and =runtime/optimizer_step= from
+evaluation rows. New runs use W&B's native step coordinate, emit
+=train/optimizer_step= only for training, put evaluation timing under =perf/=,
+and record JAX world/device/mesh facts as static run configuration.
+
 The public project is [[https://wandb.ai/ckgresla/representax][ckgresla/representax]]. The
 accepted runs share group =acceptance-20260825-093931=. Representative runs:
 

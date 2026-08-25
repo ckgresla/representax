@@ -1,4 +1,4 @@
-"""Reranking and reward-model evaluation over finite candidate sets."""
+"""Cross-encoder reranking evaluation over finite candidate sets."""
 
 from __future__ import annotations
 
@@ -17,14 +17,8 @@ from representax.tasks.cross_encoder import (
     ListwiseRankingBatch,
     PairwiseRankingBatch,
 )
-from representax.tasks.reward_modeling import (
-    ListwiseRewardBatch,
-    PairwiseRewardBatch,
-    PointwiseRewardBatch,
-    ProcessRewardBatch,
-)
 
-RankingKind = Literal["pairwise", "listwise", "pointwise", "process"]
+RankingKind = Literal["pairwise", "listwise"]
 
 
 class RankingBatchOutput(eqx.Module):
@@ -140,7 +134,7 @@ def ranking_metrics(
 
 @dataclass(frozen=True, slots=True)
 class RerankingEvaluator:
-    """Evaluate cross-encoder ranking or scalar reward models."""
+    """Evaluate pairwise or listwise cross-encoder rankings."""
 
     name: str = "reranking"
     at_k: tuple[int, ...] = (1, 3, 5, 10)
@@ -156,17 +150,9 @@ class RerankingEvaluator:
         *,
         key: PRNGKeyArray | None = None,
     ) -> RankingBatchOutput:
-        if isinstance(batch, (PairwiseRankingBatch, PairwiseRewardBatch)):
-            left_inputs = (
-                batch.positive
-                if isinstance(batch, PairwiseRankingBatch)
-                else batch.chosen
-            )
-            right_inputs = (
-                batch.negative
-                if isinstance(batch, PairwiseRankingBatch)
-                else batch.rejected
-            )
+        if isinstance(batch, PairwiseRankingBatch):
+            left_inputs = batch.positive
+            right_inputs = batch.negative
             keys = (None, None) if key is None else jax.random.split(key)
             left = _scalar_scores(score_logits(model, left_inputs, key=keys[0]))
             right = _scalar_scores(score_logits(model, right_inputs, key=keys[1]))
@@ -174,34 +160,16 @@ class RerankingEvaluator:
             labels = jnp.broadcast_to(jnp.asarray((1.0, 0.0)), scores.shape)
             valid = jnp.broadcast_to(batch.valid[:, None], scores.shape)
             kind: RankingKind = "pairwise"
-        elif isinstance(batch, (ListwiseRankingBatch, ListwiseRewardBatch)):
-            labels = (
-                batch.labels
-                if isinstance(batch, ListwiseRankingBatch)
-                else batch.preferences
-            )
-            inputs = (
-                batch.inputs
-                if isinstance(batch, ListwiseRankingBatch)
-                else batch.candidates
-            )
+        elif isinstance(batch, ListwiseRankingBatch):
+            labels = batch.labels
+            inputs = batch.inputs
             scores = _scalar_scores(
                 score_logits(model, _flatten(inputs, labels.shape), key=key)
             ).reshape(labels.shape)
             valid = batch.valid
             kind = "listwise"
-        elif isinstance(batch, PointwiseRewardBatch):
-            scores = _scalar_scores(score_logits(model, batch.inputs, key=key))[:, None]
-            labels = batch.labels[:, None]
-            valid = batch.valid[:, None]
-            kind = "pointwise"
-        elif isinstance(batch, ProcessRewardBatch):
-            scores = jnp.asarray(score_logits(model, batch.inputs, key=key))
-            labels = batch.labels
-            valid = batch.valid
-            kind = "process"
         else:
-            raise TypeError("unsupported reranking or reward evaluation batch")
+            raise TypeError("reranking requires a pairwise or listwise ranking batch")
         return RankingBatchOutput(scores=scores, labels=labels, valid=valid, kind=kind)
 
     def initialize(self) -> _RankingAccumulator:
@@ -226,38 +194,20 @@ class RerankingEvaluator:
         labels = np.concatenate(accumulator.labels)
         valid = np.concatenate(accumulator.valid)
         prefix = f"valid/{self.name}"
-        if accumulator.kind in {"pairwise", "listwise"}:
-            metrics = ranking_metrics(scores, labels, valid, at_k=self.at_k)
-            if accumulator.kind == "pairwise":
-                active = np.all(valid, axis=-1)
-                if not np.any(active):
-                    raise ValueError("pairwise evaluation received no valid pairs")
-                metrics["pairwise_accuracy"] = float(
-                    np.mean(scores[active, 0] > scores[active, 1])
-                )
-                metrics["reward_margin"] = float(
-                    np.mean(scores[active, 0] - scores[active, 1])
-                )
-        else:
-            active_scores = scores[valid]
-            active_labels = labels[valid]
-            predictions = active_scores >= 0
-            binary = active_labels >= 0.5
-            error = active_scores - active_labels
-            metrics = {
-                "accuracy": float(np.mean(predictions == binary)),
-                "mse": float(np.mean(np.square(error))),
-                "mae": float(np.mean(np.abs(error))),
-            }
+        metrics = ranking_metrics(scores, labels, valid, at_k=self.at_k)
+        if accumulator.kind == "pairwise":
+            active = np.all(valid, axis=-1)
+            if not np.any(active):
+                raise ValueError("pairwise evaluation received no valid pairs")
+            margins = scores[active, 0] - scores[active, 1]
+            metrics["pairwise_accuracy"] = float(np.mean(margins > 0))
+            metrics["score_margin"] = float(np.mean(margins))
         return {f"{prefix}/{name}": value for name, value in metrics.items()}
 
-
-RewardEvaluator = RerankingEvaluator
 
 __all__ = [
     "RankingBatchOutput",
     "RankingKind",
     "RerankingEvaluator",
-    "RewardEvaluator",
     "ranking_metrics",
 ]

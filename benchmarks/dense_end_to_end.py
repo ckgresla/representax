@@ -181,13 +181,13 @@ def _representax_report(
         CheckpointConfig,
         ComponentConfig,
         DataConfig,
-        EmbeddingSimilarityEvaluatorConfig,
         EvaluationConfig,
         ExportConfig,
         JobConfig,
         LoggingConfig,
         ModelConfig,
         OptimizationConfig,
+        SimilarityEvaluatorConfig,
         TrainingConfig,
     )
     from representax.core import Encoder, Route, encode
@@ -273,7 +273,7 @@ def _representax_report(
             data=data(validation_path, evaluation=True),
             batch_size=spec.batch_size,
             evaluators=(
-                EmbeddingSimilarityEvaluatorConfig(
+                SimilarityEvaluatorConfig(
                     name="sts",
                     similarity_functions=("cosine",),
                     main_similarity="cosine",

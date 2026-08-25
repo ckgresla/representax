@@ -4,8 +4,8 @@ import numpy as np
 import pytest
 
 from representax.evaluation import (
-    embedding_similarity_metrics,
     information_retrieval_metrics,
+    similarity_metrics,
 )
 
 
@@ -24,7 +24,7 @@ def test_embedding_similarity_matches_sentence_transformers_5_6_1():
     # Exercise SciPy's average-rank tie semantics instead of testing only unique data.
     labels[[2, 9, 21]] = 0.5
 
-    actual = embedding_similarity_metrics(left, right, labels)
+    actual = similarity_metrics(left, right, labels)
     tensors = (
         __import__("torch").from_numpy(left),
         __import__("torch").from_numpy(right),

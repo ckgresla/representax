@@ -89,22 +89,21 @@ def test_wandb_receives_canonical_metrics_on_the_reporter_worker(tmp_path) -> No
     assert client.calls[0]["project"] == "representax"
     assert client.calls[0]["name"] == "wandb-contract"
     assert client.calls[0]["resume"] == "allow"
+    assert client.calls[0]["config"]["runtime"]["global_device_count"] >= 1
+    assert client.calls[0]["config"]["runtime"]["process_count"] >= 1
     assert client.run.rows == [
         (
             {
                 "train/loss": 0.75,
                 "train/skipped_update": False,
                 "perf/examples_per_second": 128.0,
-                "runtime/optimizer_step": 1,
-                "runtime/iteration": 1,
+                "train/optimizer_step": 1,
             },
             1,
         ),
         (
             {
                 "valid/retrieval/ndcg@10": 0.42,
-                "runtime/optimizer_step": 1,
-                "runtime/iteration": 1,
             },
             1,
         ),

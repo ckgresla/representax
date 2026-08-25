@@ -19,7 +19,6 @@ from representax.config import (
     CustomShardingConfig,
     DataConfig,
     DDPConfig,
-    EmbeddingSimilarityEvaluatorConfig,
     FSDPConfig,
     InformationRetrievalEvaluatorConfig,
     JEPAEvaluatorConfig,
@@ -30,21 +29,21 @@ from representax.config import (
     QuantizedLoRAConfig,
     RerankingEvaluatorConfig,
     RewardEvaluatorConfig,
-    TranslationEvaluatorConfig,
+    SimilarityEvaluatorConfig,
     TripletEvaluatorConfig,
 )
 from representax.data import ArtifactResolver, build_data_loader
 from representax.evaluation import (
     ClassificationEvaluator,
-    EmbeddingSimilarityEvaluator,
     InformationRetrievalEvaluator,
     JEPAEvaluator,
     LossEvaluator,
     MSEEvaluator,
     ParaphraseMiningEvaluator,
     RerankingEvaluator,
+    RewardEvaluator,
     SequentialEvaluator,
-    TranslationEvaluator,
+    SimilarityEvaluator,
     TripletEvaluator,
 )
 from representax.models import apply_quantized_lora, lora_parameter_filter
@@ -355,8 +354,8 @@ def build_job_runtime(
         def build_evaluator(config: Any) -> Any:
             if config.kind == "loss":
                 return LossEvaluator(task, name=config.name)
-            if isinstance(config, EmbeddingSimilarityEvaluatorConfig):
-                return EmbeddingSimilarityEvaluator(
+            if isinstance(config, SimilarityEvaluatorConfig):
+                return SimilarityEvaluator(
                     name=config.name,
                     similarity_functions=config.similarity_functions,
                     main_similarity=config.main_similarity,
@@ -375,17 +374,16 @@ def build_job_runtime(
                     positive_route=config.positive_route,
                     negative_route=config.negative_route,
                 )
-            if isinstance(config, (RerankingEvaluatorConfig, RewardEvaluatorConfig)):
+            if isinstance(config, RerankingEvaluatorConfig):
                 return RerankingEvaluator(name=config.name, at_k=config.at_k)
+            if isinstance(config, RewardEvaluatorConfig):
+                return RewardEvaluator(
+                    kind=config.mode,
+                    name=config.name,
+                    at_k=config.at_k,
+                )
             if isinstance(config, JEPAEvaluatorConfig):
                 return JEPAEvaluator(task=task, name=config.name)
-            if isinstance(config, TranslationEvaluatorConfig):
-                return TranslationEvaluator(
-                    name=config.name,
-                    source_route=config.source_route,
-                    target_route=config.target_route,
-                    block_size=config.block_size,
-                )
             if isinstance(config, ParaphraseMiningEvaluatorConfig):
                 return ParaphraseMiningEvaluator(
                     duplicate_pairs=config.duplicate_pairs,

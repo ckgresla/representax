@@ -8,7 +8,26 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+import jax
+
 from representax.config import JobConfig, WandbConfig
+
+
+def _runtime_metadata() -> dict[str, Any]:
+    """Describe the visible JAX world as static run metadata."""
+
+    devices = jax.devices()
+    return {
+        "backend": jax.default_backend(),
+        "process_index": jax.process_index(),
+        "process_count": jax.process_count(),
+        "local_device_count": jax.local_device_count(),
+        "global_device_count": jax.device_count(),
+        "device_platforms": sorted({device.platform for device in devices}),
+        "device_models": sorted(
+            {str(getattr(device, "device_kind", "unknown")) for device in devices}
+        ),
+    }
 
 
 class WandbReporter:
@@ -46,6 +65,7 @@ class WandbReporter:
         run_id = self.config.run_id
         if run_id is None:
             run_id = hashlib.sha256(str(self.run_directory).encode()).hexdigest()[:16]
+        job_config = self.job.model_dump(mode="json")
         self._run = self._client.init(
             project=self.config.project,
             entity=self.config.entity,
@@ -56,7 +76,7 @@ class WandbReporter:
             mode=self.config.mode,
             resume="must" if self.resume else "allow",
             dir=str(self.run_directory),
-            config=self.job.model_dump(mode="json"),
+            config={**job_config, "runtime": _runtime_metadata()},
         )
         return self._run
 
@@ -65,8 +85,8 @@ class WandbReporter:
         if row.get("category") != "metric":
             return
         values = dict(row["metrics"])
-        values["runtime/optimizer_step"] = int(row["optimizer_step"])
-        values["runtime/iteration"] = int(row["iteration"])
+        if row.get("event") == "training_step":
+            values["train/optimizer_step"] = int(row["optimizer_step"])
         run.log(values, step=int(row["iteration"]))
 
     def flush(self) -> None:
