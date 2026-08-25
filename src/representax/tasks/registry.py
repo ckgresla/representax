@@ -72,6 +72,7 @@ from .distillation.task import (
     MarginDistillationTask,
 )
 from .guided import GISTBatch, GISTConfig, GISTTask, GuidedRetrievalConfig
+from .jepa import JEPABatch, JEPAConfig, LeJEPAConfig, LeJEPATask
 from .late_interaction import (
     LateInteractionConfig,
     LateInteractionContrastiveConfig,
@@ -115,6 +116,24 @@ from .regularization import (
 from .retrieval.batch import RetrievalBatch
 from .retrieval.config import MNRConfig, RetrievalConfig
 from .retrieval.mnr import MNRTask
+from .reward_modeling import (
+    BradleyTerryConfig,
+    ListwiseRewardBatch,
+    ListwiseRewardConfig,
+    ListwiseRewardTask,
+    PairwiseRewardBatch,
+    PairwiseRewardConfig,
+    PairwiseRewardTask,
+    PlackettLuceConfig,
+    PointwiseRewardBatch,
+    PointwiseRewardConfig,
+    PointwiseRewardLossConfig,
+    PointwiseRewardTask,
+    ProcessRewardBatch,
+    ProcessRewardConfig,
+    ProcessRewardLossConfig,
+    ProcessRewardTask,
+)
 from .triplet.batch import ExplicitTripletBatch, LabeledExamplesBatch
 from .triplet.config import (
     BatchHardSoftMarginLossConfig,
@@ -473,6 +492,50 @@ def _build_cross_list_mle_task(
     )
 
 
+def _build_bradley_terry_task(task: TaskConfig, loss: LossConfig) -> PairwiseRewardTask:
+    _require_task(task, PairwiseRewardConfig)
+    if not isinstance(loss, BradleyTerryConfig):
+        raise TypeError("pairwise rewards require BradleyTerryConfig")
+    return PairwiseRewardTask(
+        center_rewards_coefficient=loss.center_rewards_coefficient
+    )
+
+
+def _build_plackett_luce_task(task: TaskConfig, loss: LossConfig) -> ListwiseRewardTask:
+    _require_task(task, ListwiseRewardConfig)
+    if not isinstance(loss, PlackettLuceConfig):
+        raise TypeError("listwise rewards require PlackettLuceConfig")
+    return ListwiseRewardTask()
+
+
+def _build_pointwise_reward_task(
+    task: TaskConfig, loss: LossConfig
+) -> PointwiseRewardTask:
+    _require_task(task, PointwiseRewardConfig)
+    if not isinstance(loss, PointwiseRewardLossConfig):
+        raise TypeError("pointwise rewards require PointwiseRewardLossConfig")
+    return PointwiseRewardTask(objective=loss.objective)
+
+
+def _build_process_reward_task(task: TaskConfig, loss: LossConfig) -> ProcessRewardTask:
+    _require_task(task, ProcessRewardConfig)
+    if not isinstance(loss, ProcessRewardLossConfig):
+        raise TypeError("process rewards require ProcessRewardLossConfig")
+    return ProcessRewardTask(objective=loss.objective)
+
+
+def _build_lejepa_task(task: TaskConfig, loss: LossConfig) -> LeJEPATask:
+    _require_task(task, JEPAConfig)
+    if not isinstance(loss, LeJEPAConfig):
+        raise TypeError("LeJEPA requires LeJEPAConfig")
+    return LeJEPATask(
+        regularization_weight=loss.regularization_weight,
+        knots=loss.knots,
+        slices=loss.slices,
+        max_frequency=loss.max_frequency,
+    )
+
+
 def _pairwise_routes(task: TaskConfig) -> tuple[Route, Route]:
     if not isinstance(task, PairwiseConfig):
         raise TypeError("pairwise losses require PairwiseConfig")
@@ -816,6 +879,31 @@ BUILTIN_TASKS = TaskRegistry(
             batch_type=PairwiseBatch,
         ),
         TaskDefinition(
+            kind="pairwise_reward",
+            config_type=PairwiseRewardConfig,
+            batch_type=PairwiseRewardBatch,
+        ),
+        TaskDefinition(
+            kind="listwise_reward",
+            config_type=ListwiseRewardConfig,
+            batch_type=ListwiseRewardBatch,
+        ),
+        TaskDefinition(
+            kind="pointwise_reward",
+            config_type=PointwiseRewardConfig,
+            batch_type=PointwiseRewardBatch,
+        ),
+        TaskDefinition(
+            kind="process_reward",
+            config_type=ProcessRewardConfig,
+            batch_type=ProcessRewardBatch,
+        ),
+        TaskDefinition(
+            kind="jepa",
+            config_type=JEPAConfig,
+            batch_type=JEPABatch,
+        ),
+        TaskDefinition(
             kind="explicit_triplet",
             config_type=ExplicitTripletConfig,
             batch_type=ExplicitTripletBatch,
@@ -961,6 +1049,45 @@ BUILTIN_LOSSES = LossRegistry(
             task_kinds=frozenset({"listwise_ranking"}),
             training_strategies=frozenset({"direct"}),
             microbatch_accumulation=True,
+        ),
+        LossDefinition(
+            kind="bradley_terry",
+            config_type=BradleyTerryConfig,
+            build=_build_bradley_terry_task,
+            task_kinds=frozenset({"pairwise_reward"}),
+            training_strategies=frozenset({"direct"}),
+            microbatch_accumulation=True,
+        ),
+        LossDefinition(
+            kind="plackett_luce",
+            config_type=PlackettLuceConfig,
+            build=_build_plackett_luce_task,
+            task_kinds=frozenset({"listwise_reward"}),
+            training_strategies=frozenset({"direct"}),
+            microbatch_accumulation=True,
+        ),
+        LossDefinition(
+            kind="pointwise_reward",
+            config_type=PointwiseRewardLossConfig,
+            build=_build_pointwise_reward_task,
+            task_kinds=frozenset({"pointwise_reward"}),
+            training_strategies=frozenset({"direct"}),
+            microbatch_accumulation=True,
+        ),
+        LossDefinition(
+            kind="process_reward",
+            config_type=ProcessRewardLossConfig,
+            build=_build_process_reward_task,
+            task_kinds=frozenset({"process_reward"}),
+            training_strategies=frozenset({"direct"}),
+            microbatch_accumulation=True,
+        ),
+        LossDefinition(
+            kind="lejepa",
+            config_type=LeJEPAConfig,
+            build=_build_lejepa_task,
+            task_kinds=frozenset({"jepa"}),
+            training_strategies=frozenset({"direct"}),
         ),
         LossDefinition(
             kind="cosine_regression",

@@ -31,10 +31,10 @@ Hub publication. Those are the concrete upstream capabilities assessed below.
 | Batch sampling | Missing | Add default, no-duplicate, hashed no-duplicate, and group-by-label policies. |
 | Multi-source sampling | Partial | Grain provides weighted mixing; add explicit proportional and round-robin policies plus per-source task/loss routing. |
 | Generic training loop | Complete core | One validated `JobConfig` constructs data, model, task, optimizer/schedule, compiled updates, evaluation, checkpointing, and final export. Extend its sampler and routing inventory without adding a second trainer. |
-| Evaluators and model selection | Partial | Shared offline/in-training loss and embedding-similarity evaluation, validation cadence, primary metrics, and Orbax best-checkpoint selection are complete; add the remaining released dense evaluator inventory. |
+| Evaluators and model selection | Complete core | The shared offline/in-training runner now covers the released dense evaluator inventory, sequential composition, explicit primary metrics, distributed single-host data meshes, and Orbax best-checkpoint selection. |
 | Offline hard-negative mining | Missing | Add a source-neutral mining transform that emits a new recipe/artifact manifest without hiding data provenance. |
 | Final dense artifact export | Partial | Atomic native export and source-compatible Hugging Face export/reload are complete; add prompt/truncation metadata, model cards, and optional Hub publication outside the training core. |
-| Reporters and lifecycle hooks | Partial | Keep namespaced asynchronous metrics; add W&B and a small typed lifecycle protocol rather than copying Trainer callbacks. |
+| Reporters and lifecycle hooks | Complete core | JSONL remains the source of truth; optional W&B consumes the same bounded asynchronous metric and lifecycle stream without entering the trainer core. |
 | Distributed execution | Single-host complete core | Named DDP/FSDP and custom partition rules share one global runtime; exact 2/4-device updates, Orbax restore, StableHLO, physical memory placement, NCCL execution, and a two-GPU 1.9795B FSDP capacity point are accepted. Complete physical multi-host acceptance when hardware is available. |
 
 ## What to add first
@@ -42,21 +42,16 @@ Hub publication. Those are the concrete upstream capabilities assessed below.
 1. **Complete the trainer input policies.** Add prompt-aware model-ready mapping,
    batch-sampler policies, and per-source task/loss routing to the accepted
    `JobConfig`-driven runtime.
-2. **Complete the evaluator inventory.** Implement embedding similarity,
-   binary classification, label accuracy, triplet, information retrieval,
-   reranking, paraphrase mining, translation, MSE, NanoBEIR, and sequential
-   composition through one evaluator protocol. Validation metrics should use
-   `valid/...` names and drive best-checkpoint selection explicitly.
-3. **Complete portable-model metadata.** Extend the accepted atomic native and
+2. **Complete portable-model metadata.** Extend the accepted atomic native and
    Hugging Face export path with prompts, truncation metadata, model cards, and
    optional Hub publication.
-4. **Complete the dense inference surface.** Add typed `embed_query` and
+3. **Complete the dense inference surface.** Add typed `embed_query` and
    `embed_document` functions, truncation, float/int8/uint8/binary output
    policies, token embeddings, semantic search, and multi-device encoding.
-5. **Add data curation utilities.** Implement offline hard-negative mining and
+4. **Add data curation utilities.** Implement offline hard-negative mining and
    the planned online JEST selector as reproducible transforms over artifact
    recipes, not opaque mutations of datasets.
-6. **Close systems acceptance.** Measure disk-to-final-model wall time, peak
+5. **Close systems acceptance.** Measure disk-to-final-model wall time, peak
    host/device memory, compile phases, throughput, restart cost, final quality,
    and single-device/device-scaled behavior against the pinned oracle.
 

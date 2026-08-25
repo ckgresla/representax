@@ -59,6 +59,9 @@ cuda13 = [
 performance = [
     "nvidia-ml-py>=12",
 ]
+wandb = [
+    "wandb>=0.19",
+]
 test = [
     "pytest>=8",
 ]

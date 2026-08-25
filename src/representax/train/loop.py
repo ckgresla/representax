@@ -233,7 +233,9 @@ def run_training(
                 "job.evaluation requires evaluation runners and a batch factory"
             )
         configured_names = tuple(item.name for item in evaluation.evaluators)
-        runtime_names = tuple(runner.name for runner in evaluation_runners)
+        runtime_names = tuple(
+            name for runner in evaluation_runners for name in runner.names
+        )
         if runtime_names != configured_names:
             raise ValueError(
                 "evaluation runner names differ from configuration: "

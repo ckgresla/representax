@@ -474,6 +474,18 @@ strategy, evaluator cache, Orbax lifecycle, and selected inference artifact.
 The lower-level builders and `run_training` remain public for research programs
 that need to assemble those pieces directly.
 
+W&B is an optional reporter rather than a training dependency. Install
+`representax[wandb]`, then configure the existing logging boundary:
+
+```python
+from representax.config import LoggingConfig, WandbConfig
+
+logging = LoggingConfig(wandb=WandbConfig(project="representax"))
+```
+
+JSONL remains the local source of truth and the W&B client runs on the bounded
+reporter worker.
+
 Mixed precision keeps parameters, checkpoints, Optax state, gradients, and
 objectives in FP32 while using transient BF16 parameter views and activations.
 The same policy applies to in-training validation and composes with direct,
@@ -531,11 +543,12 @@ directly on model forwards, tasks, losses, and compiled-step keys. Representax
 does not install a runtime type-checking hook; explicit domain validation remains
 responsible for semantic requirements that shapes and dtypes cannot express.
 
-The loop records W&B-ready metric names such as `train/loss`, `valid/loss`, and
+The loop records canonical metric names such as `train/loss`, `valid/loss`, and
 `perf/...` in `metrics.jsonl`, lifecycle events in `events.jsonl`, and final
 status in `run.json`. A bounded reporter worker performs the device-to-host
-metric transfer and fans the same ordered rows out to optional consumers without
-placing a synchronization barrier in every training iteration. Checkpoints are
+metric transfer and fans the same ordered rows out to optional consumers,
+including W&B, without placing a synchronization barrier in every training
+iteration. Checkpoints are
 written by Orbax with at most one asynchronous save in flight. Recreate the same
 distribution, model/state template, task/optimizer program, and batch source and pass
 `resume=True` to continue from the latest complete checkpoint. See

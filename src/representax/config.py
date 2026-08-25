@@ -138,6 +138,74 @@ class EmbeddingSimilarityEvaluatorConfig(EvaluatorConfig):
         return self
 
 
+class ClassificationEvaluatorConfig(EvaluatorConfig):
+    kind: Literal["classification"] = "classification"
+    name: NonEmptyString = "classification"
+
+
+class MSEEvaluatorConfig(EvaluatorConfig):
+    kind: Literal["mse"] = "mse"
+    name: NonEmptyString = "mse"
+    route: Route = Route.GENERIC
+
+
+class TripletEvaluatorConfig(EvaluatorConfig):
+    kind: Literal["triplet"] = "triplet"
+    name: NonEmptyString = "triplet"
+    distance: Literal["cosine", "euclidean", "manhattan"] = "cosine"
+    anchor_route: Route = Route.GENERIC
+    positive_route: Route = Route.GENERIC
+    negative_route: Route = Route.GENERIC
+
+
+class RerankingEvaluatorConfig(EvaluatorConfig):
+    kind: Literal["reranking"] = "reranking"
+    name: NonEmptyString = "reranking"
+    at_k: tuple[PositiveInt, ...] = (1, 3, 5, 10)
+
+
+class RewardEvaluatorConfig(RerankingEvaluatorConfig):
+    kind: Literal["reward"] = "reward"
+    name: NonEmptyString = "reward"
+
+
+class JEPAEvaluatorConfig(EvaluatorConfig):
+    kind: Literal["jepa"] = "jepa"
+    name: NonEmptyString = "jepa"
+
+
+class TranslationEvaluatorConfig(EvaluatorConfig):
+    kind: Literal["translation"] = "translation"
+    name: NonEmptyString = "translation"
+    source_route: Route = Route.GENERIC
+    target_route: Route = Route.GENERIC
+    block_size: PositiveInt = 1024
+
+
+class ParaphraseMiningEvaluatorConfig(EvaluatorConfig):
+    kind: Literal["paraphrase_mining"] = "paraphrase_mining"
+    name: NonEmptyString = "paraphrase"
+    duplicate_pairs: frozenset[tuple[int, int]]
+    max_pairs: PositiveInt = 100_000
+    block_size: PositiveInt = 1024
+    route: Route = Route.GENERIC
+
+
+class InformationRetrievalEvaluatorConfig(EvaluatorConfig):
+    kind: Literal["information_retrieval"] = "information_retrieval"
+    name: NonEmptyString = "retrieval"
+    relevant_documents: dict[int, frozenset[int]]
+    score_functions: tuple[Literal["cosine", "dot"], ...] = ("cosine",)
+    main_score_function: Literal["cosine", "dot"] = "cosine"
+    accuracy_at_k: tuple[PositiveInt, ...] = (1, 3, 5, 10)
+    precision_recall_at_k: tuple[PositiveInt, ...] = (1, 3, 5, 10)
+    mrr_at_k: tuple[PositiveInt, ...] = (10,)
+    ndcg_at_k: tuple[PositiveInt, ...] = (10,)
+    map_at_k: tuple[PositiveInt, ...] = (100,)
+    query_route: Route = Route.QUERY
+    document_route: Route = Route.DOCUMENT
+
+
 class EvaluationConfig(FrozenConfig):
     """Offline-compatible validation data, cadence, and model selection."""
 
@@ -168,14 +236,23 @@ class EvaluationConfig(FrozenConfig):
             if not isinstance(evaluator, Mapping):
                 raise TypeError("each evaluator must be a config or mapping")
             kind = evaluator.get("kind", "loss")
-            if kind == "loss":
-                parsed.append(EvaluatorConfig.model_validate(evaluator))
-            elif kind == "embedding_similarity":
-                parsed.append(
-                    EmbeddingSimilarityEvaluatorConfig.model_validate(evaluator)
-                )
-            else:
+            evaluator_types = {
+                "loss": EvaluatorConfig,
+                "embedding_similarity": EmbeddingSimilarityEvaluatorConfig,
+                "classification": ClassificationEvaluatorConfig,
+                "mse": MSEEvaluatorConfig,
+                "triplet": TripletEvaluatorConfig,
+                "reranking": RerankingEvaluatorConfig,
+                "reward": RewardEvaluatorConfig,
+                "jepa": JEPAEvaluatorConfig,
+                "translation": TranslationEvaluatorConfig,
+                "paraphrase_mining": ParaphraseMiningEvaluatorConfig,
+                "information_retrieval": InformationRetrievalEvaluatorConfig,
+            }
+            evaluator_type = evaluator_types.get(kind)
+            if evaluator_type is None:
                 raise ValueError(f"unknown evaluator kind {kind!r}")
+            parsed.append(evaluator_type.model_validate(evaluator))
         return tuple(parsed)
 
     @model_validator(mode="after")
@@ -548,11 +625,24 @@ class TrainingConfig(FrozenConfig):
         return self
 
 
+class WandbConfig(FrozenConfig):
+    """Optional Weights & Biases destination for canonical metric rows."""
+
+    project: NonEmptyString
+    entity: NonEmptyString | None = None
+    group: NonEmptyString | None = None
+    name: NonEmptyString | None = None
+    run_id: NonEmptyString | None = None
+    tags: tuple[NonEmptyString, ...] = ()
+    mode: Literal["online", "offline", "disabled"] = "online"
+
+
 class LoggingConfig(FrozenConfig):
     """Asynchronous local and downstream reporting mechanics."""
 
     console_every: PositiveInt = 1
     reporter_queue_size: PositiveInt = 16
+    wandb: WandbConfig | None = None
 
 
 class CheckpointConfig(FrozenConfig):

@@ -69,6 +69,12 @@ class EvaluationRunner:
         precision: PrecisionPolicy = FP32_POLICY,
     ) -> None:
         self.name = evaluator.name
+        children = getattr(evaluator, "evaluators", None)
+        self.names = (
+            tuple(child.name for child in children)
+            if children is not None
+            else (evaluator.name,)
+        )
         self._seen_signatures: set[str] = set()
         self._evaluator = evaluator
 
@@ -100,6 +106,23 @@ class EvaluationRunner:
         accumulator = self._evaluator.initialize()
         examples = 0
         batch_count = 0
+        pending_output: Any = None
+
+        def consume(output: Any) -> None:
+            nonlocal accumulator
+            arrays = [
+                leaf for leaf in jax.tree.leaves(output) if isinstance(leaf, jax.Array)
+            ]
+            if any(not leaf.is_fully_addressable for leaf in arrays):
+                raise NotImplementedError(
+                    "multi-host evaluator reduction is not implemented; run this "
+                    "evaluation on one fully addressable mesh"
+                )
+            accumulator = self._evaluator.accumulate(
+                accumulator,
+                jax.device_get(output),
+            )
+
         iterator = iter(batches)
         try:
             for batch_index, host_batch in enumerate(iterator):
@@ -113,17 +136,26 @@ class EvaluationRunner:
                     None if key is None else jax.random.fold_in(key, batch_index)
                 )
                 dispatch_started = time.perf_counter()
-                output = jax.device_get(self._compiled(model, batch, batch_key))
+                output = self._compiled(model, batch, batch_key)
                 if first_use:
+                    if pending_output is not None:
+                        consume(pending_output)
+                        pending_output = None
+                    consume(output)
                     compilation_seconds += time.perf_counter() - dispatch_started
                     self._seen_signatures.add(signature)
-                accumulator = self._evaluator.accumulate(accumulator, output)
+                else:
+                    if pending_output is not None:
+                        consume(pending_output)
+                    pending_output = output
                 examples += size
                 batch_count += 1
         finally:
             close = getattr(iterator, "close", None)
             if close is not None:
                 close()
+        if pending_output is not None:
+            consume(pending_output)
         if batch_count == 0:
             raise ValueError("evaluation batch source produced no batches")
         return EvaluationResult(

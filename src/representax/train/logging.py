@@ -353,6 +353,10 @@ class RunLogger:
                     item.cursor = self._cursor()
                 elif isinstance(item, _FinishItem):
                     self._flush_outputs()
+                    for reporter in self._reporters:
+                        finish = getattr(reporter, "finish", None)
+                        if callable(finish):
+                            finish(item.status, item.fields)
                     self._manifest = {
                         **self._manifest,
                         **_json_value(item.fields),

@@ -6,6 +6,7 @@ from . import (
     cross_encoder,
     distillation,
     guided,
+    jepa,
     late_interaction,
     mega_batch,
     modifiers,
@@ -13,6 +14,7 @@ from . import (
     reconstruction,
     regularization,
     retrieval,
+    reward_modeling,
     triplet,
 )
 from .config import LossConfig, LossModifierConfig, TaskConfig
@@ -48,6 +50,7 @@ __all__ = [
     "cross_encoder",
     "distillation",
     "guided",
+    "jepa",
     "late_interaction",
     "mega_batch",
     "modifiers",
@@ -55,5 +58,6 @@ __all__ = [
     "regularization",
     "reconstruction",
     "retrieval",
+    "reward_modeling",
     "triplet",
 ]

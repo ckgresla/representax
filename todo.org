@@ -19,12 +19,13 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   Freeze the implementation surface by end of Saturday, 2026-08-22. Arbitrary
   sharding/FSDP and mixed precision are complete. Finish unified AnyModality
   data execution, add the paper's canonical multimodal model panel, then land
-  late-interaction, cross/reranking, sparse, reward, and JEPA recipes before the
-  distributed evaluation layer. Run the long paired evidence campaign only
+  late-interaction, cross/reranking, reward, and LeJEPA recipes before the
+  distributed evaluation layer; sparse retrieval is deliberately deferred.
+  Run the long paired evidence campaign only
   after that implementation freeze. Do not pull general-development work into
   this finite paper path.
 
-** TODO Define measurable monotonic-improvement gates over existing trainers :research:
+** NEXT Define measurable monotonic-improvement gates over existing trainers :research:
    Pin the initial model, tokenizer/processor, raw examples and order, objective,
    optimizer and schedule, precision, global batch, update count, and evaluation
    contract. Require numerical parity and non-inferior held-out quality before a
@@ -580,7 +581,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
 ** TODO Add the host-side =embed= API for preprocessing and batching :api:
 ** TODO Keep compiled =encode= arrays-in and arrays-out :api:
 ** TODO Support reusable pooling, normalization, projection, and routing modules :api:
-** TODO Add evaluator protocols and standard representation metrics :api:eval:
+** DONE Add evaluator protocols and standard representation metrics :api:eval:
 ** TODO Reach Sentence Transformers 5.6.1 capability parity without copying its API :api:parity:
   Pin =sentence-transformers==5.6.1= as the repository-only oracle. Maintain a
   reviewed capability ledger rather than equating upstream class names with our
@@ -680,7 +681,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      Denoising uses explicit encoder/decoder composition and padding-aware
      shifted token reconstruction. Mega-batch margins are scientific loss
      parameters; bounded candidate mining and replay are execution policy.
-**** TODO Complete the released dense evaluator inventory
+**** DONE Complete the released dense evaluator inventory
     Treat semantic similarity and information retrieval as different evaluation
     geometries. Semantic-similarity evaluators consume labeled pairs and report
     correlation or classification behavior; retrieval evaluators consume
@@ -703,9 +704,17 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      embedding matrix, and report accuracy, precision, recall, MRR, nDCG, and
      MAP. Exact same-ranking metric parity passes against Sentence Transformers
      5.6.1, including multiple relevant documents and every configured cutoff.
-***** TODO Implement classification, triplet, and MSE evaluators
-***** TODO Implement reranking, paraphrase, translation, and NanoBEIR adapters
-***** TODO Add sequential composition and explicit primary-metric selection
+***** DONE Implement classification, triplet, and MSE evaluators
+***** DONE Implement reranking, paraphrase, translation, and NanoBEIR adapters
+***** DONE Add sequential composition and explicit primary-metric selection
+     Compatible evaluators now share one compiled validation traversal rather
+     than rereading and preprocessing the same source once per metric family.
+     The validated evaluation config names one explicit =valid/...= primary
+     metric for best-model retention. Classification reports accuracy, macro
+     precision/recall/F1 and binary AP/best-threshold metrics; regression reports
+     MSE/RMSE/MAE and Pearson/Spearman; triplet, finite reranking, reward,
+     paraphrase mining, bitext retrieval, streaming IR/NanoBEIR, and LeJEPA
+     collapse diagnostics retain task-native reducer state.
 **** DONE Land configuration-driven end-to-end training jobs
     Support source-neutral single and multi-source training, per-source tasks and
     losses, deterministic samplers, hard-negative mining, prompts and typed
@@ -756,7 +765,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
 ***** TODO Add default, no-duplicate, hashed no-duplicate, and label-group samplers
 ***** TODO Add proportional/round-robin multi-source and per-source task/loss routing
 ***** TODO Make prompts and typed routes first-class preprocessing configuration
-***** TODO Add W&B reporting through the existing asynchronous reporter protocol
+***** DONE Add W&B reporting through the existing asynchronous reporter protocol
       Land this after the task-specific evaluator inventory so the adapter can
       report the accepted =train/=, =valid/=, and =perf/= metric contracts without
       driving or duplicating evaluator design.
@@ -952,7 +961,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
 **** TODO Add exact flat indexing and streaming retrieval evaluation
 **** TODO Benchmark pure-JAX MaxSim before considering a Pallas kernel
 **** TODO Add compressed PLAID/WARP adapters behind the indexing protocol
-*** TODO Implement cross-encoder and reranker training :tasks:cross_encoder:
+*** DONE Implement cross-encoder and reranker training :tasks:cross_encoder:
    Cover encoder and generative scoring modules; pointwise, pairwise, and listwise
    losses; classification, correlation, reranking, and NanoBEIR evaluators; and
    text/image/audio/video pair routing under the shared trainer.
@@ -973,16 +982,21 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      accumulation for decomposable objectives.  A real Llama Nemotron VL
      reranker completed three finite BF16 LoRA updates through the same generic
      train step, with loss decreasing from 32.2056 to 19.1680.
-**** TODO Add classification, correlation, and reranking evaluators
+**** DONE Add classification, correlation, and reranking evaluators
      Reuse the existing compiled-batch/host-reducer evaluator boundary once the
      scorer and batch contracts are accepted. Report task-standard metrics under
      =valid/...= and expose an explicit primary metric for best-model selection.
-**** TODO Distribute evaluator execution over arbitrary data meshes
+**** DONE Distribute evaluator execution over arbitrary data meshes
      After the task evaluator inventory lands, shard examples and corpus work over
      configured data axes, reduce sufficient statistics exactly, preserve bounded
      host state, and overlap evaluation with training/checkpoint work without
      introducing evaluator-specific distributed trainers.
-*** TODO Implement sparse encoder training and retrieval :tasks:sparse_encoder:
+     Accepted through the same annotation-only =place_batch= boundary as the
+     trainer: one-, two-, and four-device data meshes produce identical metrics.
+     Compatible evaluators traverse each batch once, and one bounded pending
+     device result overlaps the next dispatch with host reduction. Physical
+     multi-host reduction remains explicitly deferred until hardware exists.
+*** WAITING Implement sparse encoder training and retrieval :tasks:sparse_encoder:
    Cover MLM and static sparse backbones, SPLADE and sparse-autoencoder pooling,
    sparse MNR/CoSENT/triplet/MSE/distillation losses, FLOPS regularization, CSR
    reconstruction, sparse retrieval metrics, and reciprocal-rank fusion.
@@ -990,7 +1004,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
    oracle and SPLADE-v3 as the scientific reference. Treat the noncommercial
    SPLADE repository as an external oracle only. Measure effectiveness jointly
    with active dimensions, sparsity, index size, encoding rate, and retrieval QPS.
-**** NEXT Land the native sparse-encoder execution core
+**** TODO Land the native sparse-encoder execution core
      Define the sparse representation/scoring boundary, native pooling and FLOPS
      regularization, task batches, direct and cached losses, and one real
      checkpoint training gate before adding sparse-specific evaluators.
@@ -1099,17 +1113,20 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   Native embedding matching, score-margin regression, and distribution KL keep
   teacher artifacts in fixed-shape batch data and trainable projections in the
   explicit model tree.
-** TODO Implement pairwise reward modeling :tasks:reward_modeling:
-** TODO Implement listwise reward modeling :tasks:reward_modeling:
-** TODO Implement pointwise and process reward modeling :tasks:reward_modeling:
-** TODO Implement JEPA-style self-supervised learning :tasks:jepa:
+** DONE Implement pairwise reward modeling :tasks:reward_modeling:
+** DONE Implement listwise reward modeling :tasks:reward_modeling:
+** DONE Implement pointwise and process reward modeling :tasks:reward_modeling:
+** DONE Implement JEPA-style self-supervised learning :tasks:jepa:
   Use TRL RewardTrainer for pairwise/outcome parity, formula-level
   Plackett--Luce references for listwise rewards, and the pinned experimental TRL
-  PRM trainer plus PRM800K/ProcessBench for process rewards. Use Meta V-JEPA 2.1
-  as the maintained JEPA implementation and systems oracle; require exact masks,
-  EMA target updates, latent objectives, and collapse diagnostics before matched
-  video jobs and frozen probes.
-** TODO Ship reward modeling and JEPA before the first research release :tasks:release:
+  PRM trainer plus PRM800K/ProcessBench for process rewards. The accepted JEPA
+  foundation is LeJEPA: ordinary multi-view encoder projections, invariance, and
+  SIGReg, with no stale target encoder, EMA state, predictor, or stop-gradient.
+  Its whole-batch sketch statistic is correctly rejected under ordinary
+  microbatch gradient accumulation. Pairwise TRL and independent LeJEPA formula
+  oracles match values and gradients; every reward contract and LeJEPA execute
+  through the ordinary compiled train step.
+** DONE Ship reward modeling and JEPA before the first research release :tasks:release:
 
 ** DONE Resolve Hugging Face datasets without proprietary intermediate copies :data:hf:
 ** DONE Resolve local JSONL, Parquet, Arrow, and dataset directories :data:local:
@@ -1559,7 +1576,11 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   evidence shows that mutable =Ref= state from the JAX Training Cookbook is a
   monotonic improvement without weakening checkpoint or model ergonomics.
 ** TODO Evaluate Pallas for performance-critical fused kernels :runtime:performance:research:
-** TODO Add optional experiment logging without coupling the training core :runtime:logging:
+** DONE Add optional experiment logging without coupling the training core :runtime:logging:
+  The optional W&B adapter consumes the existing bounded asynchronous reporter
+  protocol, preserves canonical =train/=, =valid/=, and =perf/= metric names,
+  records lifecycle completion or failure, and never enters the compiled step
+  or task/evaluator APIs. JSONL remains the dependency-free default.
 ** TODO Measure GPU and TPU behavior where hardware is available :research:benchmark:
 
 ** TODO Use the completed trainer to train a state-of-the-art representation model :research:model:
