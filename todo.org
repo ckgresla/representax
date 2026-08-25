@@ -8,7 +8,7 @@ Keep decisions and work items here; record evidence in commits, tests, and
 benchmark artifacts rather than duplicating the roadmap elsewhere.
 
 * Papers
-** Representax paper
+** Representax paper [0/16] [0%]
   This section is the finite acceptance program for the Representax
   systems whitepaper. Establish numerical and scientific equivalence first,
   then demonstrate statistically supported systems improvements on shared
@@ -86,7 +86,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
 *** TODO Write the paper on the monotonic JAX representation-training system :research:paper:
 *** TODO Release the Representax systems paper as an arXiv preprint :research:paper:
 
-** Profilax paper: =So you like to go fast?=
+** Profilax paper: =So you like to go fast?= [0/15] [0%]
   Profilax is a separate installable JAX profiling and semantics-preserving
   execution-planning project. Its paper must demonstrate portability beyond
   Representax. Build and validate the independent core first; only then propose
@@ -116,7 +116,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
 *** TODO Benchmark Profilax across multiple downstream JAX programs :profilax:benchmark:
 *** TODO Write and release =So you like to go fast?= :profilax:research:paper:
 
-* Initial Representax roadmap
+* Initial Representax roadmap [0/42] [0%]
 ** TODO Grow verified native model families from representation-learning needs :models:hf:
   Keep the pinned Transformers 5.3.0 catalogue as a versioned compatibility
   index and code-generation input, not as a promise to backfill every
@@ -257,7 +257,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   Reuse the exact compiled =train_step= for every batch with the same model-ready
   ABI. Bound any finite signature set in configuration and never let raw record
   variability create an uncontrolled executable population.
-* General development
+* General development [0/17] [0%]
 
   This section tracks release engineering, optional integrations, exploratory
   research, deferred hardware validation, and work that is useful but is not a

@@ -7,7 +7,7 @@ import json
 import time
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 import equinox as eqx
 import jax
@@ -67,7 +67,11 @@ class EvaluationRunner:
         evaluator: Evaluator[Any, Any],
         *,
         precision: PrecisionPolicy = FP32_POLICY,
+        namespace: Literal["valid", "eval"] = "valid",
     ) -> None:
+        if namespace not in ("valid", "eval"):
+            raise ValueError("evaluation namespace must be 'valid' or 'eval'")
+        self.namespace = namespace
         self.name = evaluator.name
         children = getattr(evaluator, "evaluators", None)
         self.names = (
@@ -158,13 +162,25 @@ class EvaluationRunner:
             consume(pending_output)
         if batch_count == 0:
             raise ValueError("evaluation batch source produced no batches")
+        metrics = self._evaluator.finalize(accumulator)
+        if self.namespace == "eval":
+            invalid = tuple(name for name in metrics if not name.startswith("valid/"))
+            if invalid:
+                raise ValueError(
+                    "evaluator metrics must use the canonical valid/ namespace: "
+                    f"{invalid}"
+                )
+            metrics = {
+                f"eval/{name.removeprefix('valid/')}": value
+                for name, value in metrics.items()
+            }
         return EvaluationResult(
             iteration=iteration,
             batches=batch_count,
             examples=examples,
             duration_seconds=time.perf_counter() - started,
             compilation_seconds=compilation_seconds,
-            metrics=self._evaluator.finalize(accumulator),
+            metrics=metrics,
         )
 
 
@@ -178,7 +194,12 @@ def evaluate(
 ) -> EvaluationResult:
     """Run the same loss evaluator used by the training lifecycle offline."""
 
-    return EvaluationRunner(LossEvaluator(task), precision=precision).run(
+    namespace = kwargs.pop("namespace", "eval")
+    return EvaluationRunner(
+        LossEvaluator(task),
+        precision=precision,
+        namespace=namespace,
+    ).run(
         model,
         batches,
         **kwargs,

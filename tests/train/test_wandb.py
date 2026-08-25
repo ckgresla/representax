@@ -1,5 +1,6 @@
 """W&B reporting through the bounded asynchronous logger."""
 
+import json
 from typing import Any, cast
 
 from representax.config import JobConfig, LoggingConfig, WandbConfig
@@ -84,6 +85,13 @@ def test_wandb_receives_canonical_metrics_on_the_reporter_worker(tmp_path) -> No
     )
     logger.finish("completed", completed_iterations=1)
     logger.close()
+
+    metric_rows = [
+        json.loads(line)
+        for line in (tmp_path / "run" / "metrics.jsonl").read_text().splitlines()
+    ]
+    assert metric_rows[0]["optimizer_step"] == 1
+    assert "optimizer_step" not in metric_rows[1]
 
     assert len(client.calls) == 1
     assert client.calls[0]["project"] == "representax"

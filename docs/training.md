@@ -147,10 +147,12 @@ Local files are the source of truth:
 - `events.jsonl` is the complete ordered lifecycle and metric stream; and
 - `metrics.jsonl` is the exact metric-row projection of that stream.
 
-Metric values use service-neutral W&B-style namespaces: `train/loss`,
-`valid/loss`, and `perf/...`. A metric row contains `iteration`,
-`optimizer_step`, and a `metrics` mapping, so downstream reporters consume it
-without renaming fields.
+Metric values use service-neutral W&B-style namespaces: `train/loss` for
+optimization, `valid/loss` for validation coupled to training, `eval/loss` for
+standalone or test evaluation, and `perf/...` for systems measurements. Every
+metric row contains `iteration` and a `metrics` mapping; training rows also
+contain `optimizer_step`. Downstream reporters consume these without renaming
+fields.
 
 `RunLogger` owns one bounded, ordered worker queue. That worker materializes
 device metrics once, appends the local JSONL source of truth, and fans the same
@@ -201,8 +203,10 @@ same next batch and random key as an uninterrupted run.
 ## Evaluation, model selection, and inference publication
 
 `EvaluationRunner` is the shared offline and in-training evaluation boundary.
-It caches JAX executables by batch structure and shape, keeps exact host-side
-reducers for corpus metrics, and emits service-neutral `valid/...` metrics.
+It caches JAX executables by batch structure and shape and keeps exact host-side
+reducers for corpus metrics. In-training runners emit `valid/...`; standalone
+runners remap the same reducer outputs to `eval/...` without changing their
+values.
 Compatible evaluators share one compiled traversal; a one-output pipeline can
 overlap device inference with reduction of the preceding batch. The inventory
 covers loss, similarity, classification, regression/MSE, triplet, reranking,

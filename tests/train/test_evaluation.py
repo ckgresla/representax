@@ -25,7 +25,7 @@ def _batches():
     ]
 
 
-def test_offline_evaluation_uses_example_weighted_valid_metrics():
+def test_offline_evaluation_uses_example_weighted_eval_metrics():
     model = DenseEncoder(2, 2, key=jax.random.key(5))
     task = CosineRegressionTask()
     expected = [float(task.loss(model, batch).loss) for batch in _batches()]
@@ -35,7 +35,7 @@ def test_offline_evaluation_uses_example_weighted_valid_metrics():
     assert result.batches == 2
     assert result.examples == 3
     np.testing.assert_allclose(
-        result.metrics["valid/loss"],
+        result.metrics["eval/loss"],
         (2 * expected[0] + expected[1]) / 3,
         rtol=1e-6,
     )

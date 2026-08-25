@@ -668,15 +668,27 @@ def run_training_case(
             ):
                 raise RuntimeError(f"{name} produced an invalid update at {iteration}")
             losses.append(loss)
+            task_metrics = {
+                name if name.startswith("train/") else f"train/{name}": value
+                for name, value in result.metrics.task.items()
+            }
             logger.metrics(
                 MetricRecord(
                     iteration=iteration,
                     values={
                         "train/loss": loss,
                         "train/skipped_update": False,
-                        "train/gradient_norm": float(
+                        "train/numeric_finite": True,
+                        "train/gradient_global_norm": float(
                             result.metrics.gradient_global_norm
                         ),
+                        "train/clipped_gradient_global_norm": float(
+                            result.metrics.clipped_gradient_global_norm
+                        ),
+                        "train/update_global_norm": float(
+                            result.metrics.update_global_norm
+                        ),
+                        **task_metrics,
                         "perf/step_seconds": time.perf_counter() - step_started,
                     },
                 )
@@ -754,7 +766,7 @@ def run_evaluation_case(
     started = time.perf_counter()
     try:
         logger.event("evaluation_started", iteration=0, evaluator=case.kind)
-        result = EvaluationRunner(case.evaluator).run(
+        result = EvaluationRunner(case.evaluator, namespace="eval").run(
             case.model,
             case.batches,
             iteration=0,

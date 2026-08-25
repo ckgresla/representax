@@ -292,9 +292,10 @@ class RunLogger:
             "category": "metric",
             "event": record.event,
             "iteration": record.iteration,
-            "optimizer_step": optimizer_step,
             "metrics": values,
         }
+        if record.event == "training_step":
+            row["optimizer_step"] = optimizer_step
         self._sequence += 1
         self._publish(row, metric=True)
         if record.event == "training_step" and values.get("train/skipped_update"):
@@ -314,8 +315,7 @@ class RunLogger:
                 loss = values.get("valid/loss")
                 loss_text = "" if loss is None else f" loss={loss:.6g}"
                 message = (
-                    f"{record.event} iteration={record.iteration} "
-                    f"step={optimizer_step}{loss_text}{suffix}"
+                    f"{record.event} iteration={record.iteration}{loss_text}{suffix}"
                 )
             print(message, flush=True)
 

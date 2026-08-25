@@ -543,8 +543,9 @@ directly on model forwards, tasks, losses, and compiled-step keys. Representax
 does not install a runtime type-checking hook; explicit domain validation remains
 responsible for semantic requirements that shapes and dtypes cannot express.
 
-The loop records canonical metric names such as `train/loss`, `valid/loss`, and
-`perf/...` in `metrics.jsonl`, lifecycle events in `events.jsonl`, and final
+The loop records canonical metric names such as `train/loss`, `valid/loss`,
+standalone `eval/loss`, and `perf/...` in `metrics.jsonl`, lifecycle events in
+`events.jsonl`, and final
 status in `run.json`. A bounded reporter worker performs the device-to-host
 metric transfer and fans the same ordered rows out to optional consumers,
 including W&B, without placing a synchronization barrier in every training
