@@ -221,7 +221,7 @@ class Qwen2VLReranker(eqx.Module):
 
         return load_qwen2_vl_reranker(model_name_or_path, **options)
 
-    def score(
+    def logits(
         self,
         inputs: Qwen2VLBatch,
         *,
@@ -229,7 +229,17 @@ class Qwen2VLReranker(eqx.Module):
     ) -> Float[Array, " batch"]:
         states = self.model.hidden_states(inputs, key=key)
         logits = self.output(jax.nn.relu(self.hidden(states[:, -1])))[:, 0]
-        return jax.nn.sigmoid(logits - self.score_bias)
+        return logits - self.score_bias
+
+    def score(
+        self,
+        inputs: Qwen2VLBatch,
+        *,
+        key: PRNGKeyArray | None = None,
+    ) -> Float[Array, " batch"]:
+        """Return checkpoint-configured inference probabilities."""
+
+        return jax.nn.sigmoid(self.logits(inputs, key=key))
 
 
 __all__ = ["Qwen2VLBatch", "Qwen2VLEncoder", "Qwen2VLReranker"]

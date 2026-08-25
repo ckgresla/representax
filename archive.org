@@ -1,0 +1,1267 @@
+#+TITLE: Representax Roadmap Archive
+#+STARTUP: overview
+#+OPTIONS: toc:nil num:nil
+
+This tracked archive preserves completed and canceled roadmap subtrees removed
+from =todo.org=. The active roadmap remains the source of truth for outstanding
+work; commits, tests, documentation, and benchmark artifacts remain the source
+of truth for acceptance evidence.
+
+* Archived completed milestones
+** DONE Make native Equinox models the supported execution path :architecture:
+** DONE Define a model-neutral task protocol for future task families :architecture:
+** DONE Define one route-aware =encode= API with bound-route convenience :api:
+** DONE Implement direct, symmetric, graded, and Matryoshka MNR :retrieval:
+** DONE Implement a generic compiled Equinox and Optax update step :runtime:
+** DONE Separate scientific configuration from execution choices :planning:
+** DONE Define unit, runtime, parity, distributed, and performance test lanes :testing:
+** DONE Use pytest with out-of-tree tests mirrored by model, task, and subsystem :testing:
+** DONE Select environment-sensitive test lanes with orthogonal pytest markers :testing:
+** DONE Require every checkpoint-backed model to register numerical and systems gates :testing:models:
+** DONE Isolate upstream Torch references in the optional =parity= extra :testing:
+** DONE Define lazy data distributions and sampling policies for Grain :data:
+** DONE Make Python and Hydra-Zen recipes Git-trackable :data:
+** DONE Treat one dataset as the one-source form of a sampling policy :data:
+** DONE Borrow Levanter's mixture semantics without depending on its LM stack :data:
+
+** DONE Land the verified ModernVBERT port as the second public commit :models:release:
+  Scope: native text, vision, connector, checkpoint adapters, mirrored tests,
+  and public interoperability documentation. Do not add another subsystem.
+  Done when the public diff is reviewed; lint, fast, runtime, pinned parity,
+  and matched performance gates pass; and one =models: ...= commit is created.
+** DONE Port the ModernVBERT text tower and bidirectional HF weight mapping :models:hf:
+** DONE Add pinned ModernVBERT text forward and input-gradient parity :models:testing:
+** DONE Add matched ModernVBERT Transformers speed and peak-memory gates :models:testing:performance:
+** DONE Complete ModernVBERT with its native vision tower and connector :models:multimodal:
+** DONE Add upstream vision, fused, multicrop, and pixel-gradient parity for ModernVBERT :models:testing:
+** DONE Add Grain resolvers for Hugging Face and local artifacts :data:
+  Resolve revision-pinned upstream records lazily into Grain and apply the
+  distribution's importable mapper directly. Do not materialize an intermediate copy
+  or expand this slice to S3, media decoding, bucketing, or packing.
+** DONE Complete the end-to-end single-device training loop inspired by Lasso :runtime:data:logging:
+  Audit Lasso's trainer, logging, checkpoint, config, and data boundaries, then
+  connect a lazy Grain iterator to the generic compiled Equinox/Optax step.
+  Preserve deterministic per-iteration RNG, metrics on every update, separate
+  console cadence, first-execution versus steady-state timing, structured local
+  JSONL artifacts, failure events, and unconditional iterator/logger cleanup.
+  Keep model registries, Lasso/Wafer schemas, sharding, GradCache, validation,
+  and checkpoint/resume outside this slice. Done when a real Grain distribution drives
+  multiple compiled updates end to end, the public API and import convention are
+  documented, fast and runtime tests cover success and failure lifecycles, and
+  the resulting run artifacts are inspectable without an external service.
+** DONE Add non-blocking Orbax checkpointing and exact resume :runtime:
+  Keep training asynchronous with at most one in-flight checkpoint, explicit
+  backpressure only when the writer falls behind, and atomic publication of
+  complete checkpoints. Restore model, optimizer, accepted optimizer step,
+  absolute iteration, RNG, Grain iterator state, and logging cursor so the first
+  resumed update and subsequent records are numerically identical to an
+  uninterrupted run. Done when success, failure, incomplete-checkpoint,
+  retention, and exact-resume tests pass without hiding checkpoint latency in
+  steady-state step measurements. Runtime acceptance uses eight batch-16
+  updates over continuous paired views with independent nuisance features and
+  requires the learned retrieval loss to fall by more than half.
+** DONE Validate configuration, data-compatible resume, and async reporting :runtime:config:data:logging:
+  Use frozen Pydantic models as the serializable Python and Hydra-Zen boundary;
+  keep those objects outside compiled JAX programs and let builders consume
+  them.  Resume must fingerprint the pinned recipe, mapper/resolver implementations, batch
+  collation and batching contract, and Grain version.  Dispatch one ordered,
+  bounded reporter stream with W&B-ready =train/=, =valid/=, and =perf/= metric
+  namespaces; local JSONL remains the durable source of truth.  Done when Hydra
+  CLI overrides validate, changed preprocessing rejects an old cursor, normal
+  reporting adds no per-step device barrier, checkpoint cursors fsync queued
+  records, documentation matches the implementation, and fast/runtime tests pass.
+  Validated with a real Hydra-Zen CLI override, 61 fast tests, 10 GPU runtime
+  tests on GPUs 0 and 1, the two-GPU distributed contract, and all three
+  distributed cases over a four-device virtual CPU topology.
+** DONE Organize job configuration by domain and annotate parameter roles :config:tasks:runtime:
+  Make =JobConfig= own first-class model, task, loss, optimization, data,
+  training, logging, and checkpointing configs.  Unify execution values beneath
+  =TrainingConfig= and mark individual values or nested sets as =Scientific[T]=
+  or =Execution[T]= rather than maintaining parallel object trees.  Keep task
+  and loss registries immutable; capability-gate optional
+  =training.grad_cache=.  Serialize portable =jax.make_mesh= shapes and names
+  that unpack directly into JAX while keeping topology-bound devices at runtime.
+  State explicitly that a mesh alone enables no parallelism: batch, parameter,
+  optimizer, and output partition specs remain the arbitrary-sharding milestone.
+  Done when role projections and resume fingerprints are tested, configs
+  round-trip through Pydantic and Hydra-Zen, builders produce task and loss
+  execution objects, mesh configs unpack directly into JAX, and all relevant
+  test lanes and package checks pass.  These annotations are the future
+  Profilax search boundary.
+  Accepted with =69= fast tests, =10= GPU runtime tests on GPUs 0 and 1, the
+  two-device distributed lane, all three four-device virtual topology tests, a
+  real Hydra-Zen CLI override, checked wheel and sdist artifacts, and a
+  one-device CPU training smoke from the installed wheel.  A concrete 2x2 JAX
+  probe also verifies that =P("fsdp", None)= shards batch rows over =fsdp= and
+  replicates them over =tensor=; the mesh config itself assigns no sharding.
+** DONE Implement exact native-JAX GradCache as an execution plan for MNR :retrieval:runtime:
+  Preserve =MNRTask= and one shared row-level MNR primitive as the sole
+  scientific definition.
+  GradCache changes only the differentiation schedule: encode fixed-shape chunks
+  while retaining the full logical negative population, differentiate the same
+  MNR loss with respect to the representations, replay one encoder chunk at a
+  time with its cached cotangent, and perform one ordinary optimizer update.
+
+  Start with a small native-JAX transform: =lax.scan= a
+  =jax.checkpoint(..., policy=nothing_saveable)= encoder body and let JAX's
+  transpose synthesize the reverse replay. Keep query and document chunk sizes
+  in =training.grad_cache=, pad only the execution batch with validity masks,
+  and derive explicit per-role and per-chunk PRNG keys so stochastic forwards
+  replay exactly. Do not add a cached task, a second MNR formula, Python
+  backward hooks, or a second optimizer path.
+
+  Treat Pallas as a later representation-kernel optimization, not as the
+  GradCache orchestrator: an encoder replay must remain ordinary Equinox/JAX.
+  Profile the representation-loss stage first, then consider a tiled Pallas
+  custom VJP for normalized similarity, log-sum-exp, and embedding cotangents
+  only if it is numerically equivalent and beats XLA. Keep a native-JAX tiled
+  fallback for unsupported accelerators.
+
+  Correctness gates compare direct and cached loss, representation cotangents,
+  parameter gradients, clipping, optimizer state, and updated parameters across
+  asymmetric and symmetric MNR, graded positives, Matryoshka dimensions,
+  padding, partial chunks, tied routes, and stochastic dropout. A systems gate
+  must show that peak activation memory follows encoder chunk size rather than
+  logical batch size.
+
+  Use Sentence Transformers' current =CachedMultipleNegativesRankingLoss= as a
+  pinned cross-framework reference and target to beat on the same ModernVBERT
+  weights, inputs, pooling, scale, precision, optimizer, and logical negative
+  population. Report compilation separately from warmup and steady-state time;
+  report OOM boundaries, throughput, and allocator/process peak memory. Relative
+  performance produces an explicit warning rather than a flaky correctness
+  failure, but this item is complete only when Representax fits every matched
+  batch the reference fits and is faster and tighter at steady state. Extend the
+  same semantics to global negatives across devices and hosts only afterward.
+*** DONE Land the exact single-device native-JAX execution :runtime:correctness:
+   The rematerialized scan, one canonical MNR objective, one optimizer path,
+   explicit stochastic replay keys, partial-chunk padding, Dense update parity,
+   and compiled ModernVBERT integration are covered by fast and runtime tests.
+*** DONE Add the pinned ModernVBERT target-to-beat benchmark :performance:reference:
+   The isolated FP32 sequence-512 matrix, raw JSON, fingerprints, replay commands,
+   and analysis live in
+   =benchmarks/results/grad-cache-modernvbert-20260813/=.  At chunk four,
+   Representax is 19.4% to 36.9% faster by throughput from batch 8 through 1,024
+   and both cached runtimes fit every tested batch.  This historical matrix
+   exposed the fixed-memory and cold-compile gaps that the later scanned,
+   chunk-two acceptance matrix closes.
+*** DONE Add a native-JAX tiled representation-loss implementation :runtime:memory:
+   Direct diagnostics and cached training share one canonical row formula.  A
+   rematerialized scan bounds live score rows and is the numerical oracle and
+   unsupported-accelerator fallback for any future custom kernel.
+*** DONE Close the remaining allocator and compilation gaps against the pinned reference :performance:
+   The canonical transaction is now one ordinary Equinox/Optax update followed
+   by =optax.tree.where= over a named proposed =TrainState=.  The controlled
+   final sequence-512, chunk-two matrix in
+   =benchmarks/results/grad-cache-final-20260813/= matches loss to =4.77e-7=
+   absolute and gradient norm to =7.64e-5= relative through batch 1,024.
+   Representax fits every declared reference point, is 16.1% to 26.7% faster,
+   and uses 1.27% to 1.36% less process-visible device memory.  Its allocator
+   peak stays within 1.03% of the reference and grows only 14.6 MiB across the
+   matrix.  A second fresh process using the populated persistent compilation
+   cache reduces compile plus first execution from 39.086 to 3.621 seconds,
+   beating the reference's 4.352-second first step.  Keep state donation
+   explicit at the generic callable boundary; the linear loop may combine it
+   with Orbax V1 async saves after their blocking device-to-host snapshot
+   returns.
+*** DONE Validate exact GradCache across single-host device and process topologies :distributed:
+**** DONE Verify exact replicated data parallel GradCache on two and four GPUs
+    Keep model and optimizer placement separate from GradCache semantics through
+    the named DDP =ShardingPlan=.  Shard query and document records over
+    the =data= mesh axis, gather only compact representations and relation
+    metadata for the global negative pool, replay encoder chunks locally, and
+    synchronize replicated parameter gradients once before the Optax update.
+
+    Acceptance requires the same ModernVBERT checkpoint, global batch, MNR
+    relation, precision, and optimizer update to agree on one, two, and four
+    GPUs.  Compare loss, task metrics, gradient norm, optimizer state, and
+    updated parameters; include a canary whose decisive negative lives on a
+    different device.  Record compile time, steady-state step time, and peak
+    memory separately for each topology on GPUs 0, 1, 2, and 3.
+
+    Accepted on 2026-08-14 with JAX 0.10.1 and four RTX 4090s.  The pinned
+    ModernVBERT checkpoint used global batch 16, sequence length 512, chunk
+    size 2, FP32 highest precision, and one AdamW update.  Both world sizes
+    match the one-device cached update to =4.77e-7= loss absolute, exactly match
+    the reported gradient norm, remain within =1.09e-6= maximum parameter
+    absolute, and keep optimizer-state relative L2 at about =1.02e-6=.  A
+    symmetric Matryoshka test separately proves the complete optimizer update
+    and a cross-device hard-negative canary on both topologies.  See
+    =benchmarks/results/distributed-grad-cache-modernvbert-20260814/=.
+**** DONE Accept process-local data and global negatives across JAX processes
+    Construct globally sharded batches with
+    =jax.make_array_from_process_local_data= so each process supplies only its
+    local query/document records and validity vectors.  A process-local
+    retrieval relation owns local query rows against the complete global
+    document axis, preserving arbitrary cross-process positives as well as
+    negatives without replicating token payloads.
+
+    Acceptance uses two JAX processes with two GPUs each on GPUs 0, 1, 2, and
+    3.  The same ModernVBERT checkpoint, global batch, sequence length,
+    precision, MNR relation, and optimizer update must match a one-process
+    global oracle on both processes.  This validates the process boundary and
+    collective semantics on available hardware, but is not evidence about a
+    physical inter-host network.
+
+    Accepted on 2026-08-14 with two JAX processes, two RTX 4090s per process,
+    and one physical host.  The process-local ModernVBERT batch includes a query
+    whose sole positive document belongs to the other process.  Both workers
+    produce the same distributed result.  Against their one-device global
+    oracle, loss differs by =2.38e-7= absolute, gradient norm by =1.07e-5=
+    relative, updated parameters by =1.77e-6= relative L2, and Adam state by
+    =9.43e-4= relative L2 at =0.99999956= cosine.  Median steady-state time is
+    =0.630= seconds for global batch 16 at sequence length 512.  See
+    =benchmarks/results/multiprocess-grad-cache-modernvbert-20260814/=.
+** DONE Document what qualifies an architecture as supported :models:testing:
+** DONE Wrap the official Sentence Transformers multimodal checkpoint panel :models:multimodal:paper:
+   Treat every embedding and reranker linked by the April 2026 Hugging Face
+   multimodal release as a minimum integration target.  Resolve them through a
+   small set of native backbone families and shared static module-graph forms,
+   never as 34 bespoke forwards or a public PyTorch fallback.  Keep catalogue,
+   native, and verified states distinct; pin immutable revisions and audit
+   remote code plus weight licenses before implementation.  The exact model
+   list, family grouping, ordering, and acceptance contract live in
+   =docs/multimodal-sentence-transformers.md=.
+*** DONE Generalize the static Sentence Transformers graph loader beyond text
+     Support modality-neutral =Transformer -> Pooling -> Normalize=,
+     =Transformer -> LogitScore=, =Transformer -> Pooling -> Dense=, legacy
+     =CLIPModel=, and routed encoder graphs over registered native backbones.
+     Accepted with one Torch-free, fail-closed graph contract for pooled and
+     direct embeddings, generative and feature rerankers, legacy CLIP, and
+     serialized Router branches.  It preserves atomic/composed modalities and
+     structured messages without inventing a fused modality, never imports
+     custom repository code, and is now the source of truth used by the
+     existing native BERT/MPNet dense loader.  Pinned JSON-only probes of the
+     Qwen3-VL 2B embedder/reranker, legacy CLIP, and BGE-VL base artifacts all
+     classify into their expected forms; these graph probes deliberately do
+     not claim that their native forwards are implemented.
+*** DONE Accept Qwen3-VL embedding and reranking variants
+     Start with the 2B embedder and reranker, then require the 8B variants to
+     reuse the same forward while exercising FSDP and larger-model capacity.
+     Accepted on the immutable Apache-2.0 2B embedding and reranking revisions
+     with one shared native Equinox text/vision/DeepStack forward, exact
+     625-tensor checkpoint conversion, model-associated Hugging Face processing
+     into finite sequence/patch buckets, last-token normalized embeddings, and
+     tied-token binary reranking.  Tiny same-tensor forward, input-gradient,
+     parameter-gradient, and AdamW-update gates pass against Transformers 5.3;
+     both real 2.13B-parameter artifacts load and execute on GPUs.  A real
+     image/text FP32 forward reaches 0.9999998 hidden-state cosine and 0.9999999
+     embedding cosine against the upstream implementation.  A real four-frame
+     video processor probe matches all 41 upstream MRoPE token positions
+     exactly and executes through the full 2.13B BF16 model with finite output.
+     BF16 and timing measurements remain systems evidence, not a paper-level
+     training claim.
+     The 8B capacity acceptance remains part of the FSDP benchmark frontier.
+*** DONE Accept Qwen2.5-Omni embedding variants
+     Use LCO Omni 3B as the first linked text/image/audio/video checkpoint, then
+     reuse the family for LCO 7B and both E5-Omni variants.
+     Accepted as one native Equinox Qwen2.5-Omni thinker family spanning the
+     pinned Apache-2.0 LCO 3B/7B and MIT E5-Omni 3B/7B architecture configs.
+     The LCO 3B gate covers exact checkpoint conversion, model-associated
+     tokenizer/image/audio/video processing into finite buckets, same-tensor
+     FP32 hidden states and media/input/parameter gradients against Transformers
+     5.6, three matched AdamW updates, HF export/fresh reload, real BF16
+     inference, and three full-checkpoint INT4-LoRA optimizer updates on a 24 GB
+     GPU. The physical gate also removed a 3.02 GiB FP32 quantizer temporary and
+     proved packed multimodal payloads work through the generic task trainer.
+*** DONE Accept the linked CLIP and BGE-VL small-model variants
+     Establish inexpensive image-text training, processor parity, export, and
+     performance gates that can run more frequently than multi-billion-parameter
+     VLM jobs.
+     Accepted as one native scanned CLIP family over root Hugging Face and
+     legacy =0_CLIPModel/= layouts, with BGE additive text-image fusion and
+     source-graph output normalization. Tiny Transformers 5.6 gates cover
+     forward, pixel and parameter gradients, three AdamW updates, and fresh HF
+     reload. Real BGE-VL base and CLIP-B/32 processors match tokenizer/pixel
+     tensors exactly and reach >=0.99999958 and >=0.99999976 embedding cosine,
+     respectively, against Sentence Transformers 5.6.1. The 149.6M BGE model
+     completes three generic BF16-compute/FP32-master updates and exact native
+     export/reload; HF export preserves root versus nested model layout and
+     processor assets. A matched FP32 text-forward probe sustains 3,495 versus
+     2,404 examples/s for Transformers 5.6 (=1.454x=), with =9.24e-7= maximum
+     error; its 15.54-second first compile amortizes after about 8,250 steps in
+     this small inference workload. The multilingual CLIP-aligned DistilBERT checkpoint is
+     recorded honestly as a separate text family rather than a CLIP forward.
+*** DONE Grow through the remaining linked backbone families
+     Implement shared native architecture families rather than one-off model
+     wrappers. Accept every distinct forward, processor, and output graph only
+     after pinned upstream preprocessing and tensor parity, inference, several
+     optimizer updates, and native plus Hugging Face export/fresh reload pass.
+     Track larger same-forward variants as capacity targets until their
+     physical paper runs complete.
+**** DONE Accept the remaining checkpoints owned by existing Qwen families
+      Cover =eagerworks/eager-embed-v1= through Qwen3-VL and
+      =nvidia/omni-embed-nemotron-3b= through Qwen2.5-Omni wherever their pinned
+      configs and checkpoint layouts prove that family ownership.  Gate both
+      NVIDIA's published bidirectional text-attention contract and the causal
+      behavior currently produced by Sentence Transformers 5.6 after its
+      Transformers mask API changed; never hide that upstream drift.  Preserve
+      masked-mean pooling as a static representation semantic.  Implement
+      checkpoint-specific pooling/prompts as recipes, not duplicate forwards,
+      and reject incompatible layouts explicitly.
+      Accepted =eagerworks/eager-embed-v1@51dfdee= as the existing native
+      Qwen3-VL family with its exact left-padded, instruction-free chat recipe,
+      image processor tensors, FP32 tiny forward/input/parameter-gradient and
+      AdamW parity, native/Hugging Face export and fresh reload, real 3B BF16
+      text/image inference, and three INT4-LoRA updates. Real upstream/native
+      embedding cosine is 0.99984 for text and 0.99861 for image-plus-text;
+      native steady inference is 34.5 ms for the two-record probe.
+      Accepted =nvidia/omni-embed-nemotron-3b@865db1b= as the existing native
+      Qwen2.5-Omni family with checkpoint-owned query/document prompts, masked
+      mean pooling, exact tokenizer/image/audio preprocessing, HF export/reload,
+      and three real INT4-LoRA updates. Query/document cosine against Sentence
+      Transformers 5.6 is >=0.99935. The default preserves that pinned runtime's
+      causal mask while an explicit bidirectional mode matches NVIDIA's
+      published layer intent; tests expose the upstream API drift instead of
+      silently changing semantics.
+**** DONE Implement and accept native Qwen2.5-VL and Qwen2-VL families
+      Reuse the shared Qwen text, vision, rotary, finite-shape processor, and
+      checkpoint primitives while preserving each generation's exact image and
+      video merge semantics.  Accept BGE-VL-Screenshot, Nomic multimodal 3B/7B
+      LoRA adapters, and Jina reranker-m0.
+      Accepted both generations against Transformers 5.6 with same-tensor FP32
+      hidden-state, image-gradient, parameter-gradient, three-step AdamW, and
+      Hugging Face export/fresh-reload gates. Real BGE-VL-Screenshot, Nomic 3B,
+      Nomic 7B, and Jina reranker-m0 artifacts match their pinned upstream
+      preprocessing and inference contracts. Nomic 7B executes full FP32
+      inference with generic two-GPU FSDP placement. Every real checkpoint
+      completes three finite adapter-training updates; imported Nomic adapters
+      remain FP32 while their frozen base is packed to INT4. The generic
+      checkpoint boundary now performs CPU-first conversion and host-sliced
+      FSDP placement, preventing one accelerator from staging all parameter
+      shards. See =benchmarks/results/qwen2-vl-acceptance-20260822/README.org=.
+**** DONE Implement and accept native LLaVA-NeXT retrieval
+      Share the CLIP vision tower across the Mistral-backed BGE S1/S2/v1.5
+      checkpoints and Llama-backed E5-V while preserving any-resolution image
+      packing, projector, prompt, pooling, and normalization semantics.
+      Accepted as one native scanned Equinox family over all five immutable
+      checkpoints. The model-associated processor exactly matches upstream
+      text-only, image-only, and composed token/mask/pixel arrays before
+      admitting finite sequence, image, and tile buckets. Tiny Transformers
+      5.6 gates cover hidden states, pixel and parameter cotangents, AdamW, and
+      native export/fresh upstream reload. Every real 7B/8B BF16 checkpoint
+      reaches >=0.99950 normalized-embedding cosine against its valid Sentence
+      Transformers oracle and completes three finite INT4-base/LoRA updates
+      through the generic task trainer. E5-V uses its checkpoint-authored
+      Sentence Transformers 5.4/Transformers 5.5 oracle because the 5.6 base
+      loader demonstrably drops its legacy vision prefix. See
+      =benchmarks/results/llava-next-acceptance-20260822/README.org=.
+**** DONE Implement and accept native Llama Nemotron VL
+      Cover the 1B embed and rerank checkpoints with one SigLIP-plus-Llama
+      architecture and explicit embedding versus scoring heads.
+      Accepted both immutable NVIDIA v2 checkpoints with exact native
+      preprocessing, BF16 upstream inference parity, finite image cotangents,
+      three real multimodal adapter updates, exact native checkpoint round trip,
+      and fresh Transformers export/reload. The architecture reuses one scanned
+      rotary-decoder checkpoint boundary and maps only the 589/590 tensors in
+      the executed graph; exported SigLIP configuration disables the 11 unused
+      classification-pooler tensors. See
+      =benchmarks/results/llama-nemotron-vl-acceptance-20260822/README.org=.
+**** DONE Implement and accept native BidirLM Omni
+      Cover text, image, video, and audio with its bidirectional Qwen-like text
+      tower, vision deep-stack injection, audio encoder, model-associated
+      processor, and native representation pooling.
+      Accepted the immutable Apache-2.0 2.45B checkpoint as one native Equinox
+      text/image/video/audio encoder. Exact host preprocessing gates cover token
+      IDs, masks, image/video pixels, audio features, Qwen3 video timestamp
+      expansion, and finite static buckets. Full-checkpoint BF16 Sentence
+      Transformers parity reaches at least 0.999779 cosine across text, image,
+      video, audio, and composed inputs. Tiny input/parameter cotangents and
+      three real mixed image/audio INT4-LoRA optimizer updates are finite and
+      nonzero. Native export preserves the six source tensors attached to an
+      unreachable third DeepStack tap; a fresh Sentence Transformers reload is
+      bit-identical to the source oracle. See
+      =benchmarks/results/bidirlm-omni-acceptance-20260822/README.org=.
+**** DONE Implement and accept native Qwen2/Qwen3 text ranking
+      Cover Qwen3 and ContextualAI rerankers plus mixedbread Qwen2 rerankers
+      using a shared generative-score interface and checkpoint-owned prompts.
+      Accepted one native scanned Qwen2/Qwen3 Equinox family over the pinned
+      Qwen3 0.6B, mixedbread base, and ContextualAI 1B physical anchors, with
+      the Qwen3 4B/8B and mixedbread large architecture metadata pinned to the
+      same implementation. Exact checkpoint-authored tokenization and padding,
+      separate raw-logit and inference-activation contracts, BF16 Sentence
+      Transformers parity, tied and untied score heads, three real packed-base
+      adapter updates per anchor, bit-identical native reload, and fresh
+      Sentence Transformers export/reload pass. ContextualAI's
+      CC-BY-NC-SA-4.0 weights remain an external oracle. See
+      =benchmarks/results/qwen-reranker-acceptance-20260822/README.org=.
+**** DONE Implement and accept multilingual CLIP-aligned DistilBERT
+      Import the Transformer, Pooling, and Dense Sentence Transformers graph as
+      a text tower aligned to the existing CLIP representation space.
+      Accepted the immutable Apache-2.0 multilingual CLIP text student as a
+      native scanned DistilBERT plus generic mean-pooling and bias-free Dense
+      graph. Exact checkpoint-authored preprocessing, tiny Transformers 5.6
+      hidden/input-gradient/parameter-gradient/AdamW/export gates, and real
+      Sentence Transformers 5.6 parity pass. The three-language physical probe
+      has =9.54e-7= maximum embedding error and =1.90e-7= relative L2; all 100
+      backbone tensors round-trip bit-identically. Three real packed-base
+      adapter updates are finite and nonzero, and the trained graph merges,
+      exports, and reloads from the ordinary Hugging Face/Sentence Transformers
+      artifact. See
+      =benchmarks/results/distilbert-clip-acceptance-20260822/README.org=.
+**** DONE Run the complete multimodal family acceptance matrix
+      Close each distinct architecture, processor, and output graph with at
+      least one physical immutable checkpoint. Keep larger same-forward
+      capacity variants explicit rather than claiming that catalogue/config
+      compatibility is a physical run. Static, fast, package, installed smoke,
+      isolated GPU inference and update, preprocessing, upstream parity, and HF
+      export/reload evidence is consolidated in
+      =benchmarks/results/multimodal-family-matrix-20260822/README.org=.
+** DONE Generate a semantic model-family implementation manifest :models:codegen:
+   Maintain one reviewed family specification that names its pinned model
+   types, modalities, reusable components, configuration mapping, input/output
+   contract, and checkpoint layout.  Generate Torch-free registry entries,
+   configuration/checkpoint scaffolding, and acceptance-test parameters.  Do
+   not transpile or copy Transformers forward source.  Fail generation on an
+   unknown model type, overlapping family ownership, stale pinned metadata, or
+   a support claim without its required numerical and systems gates.
+   Accepted with a reviewed Python manifest and generated Torch-free runtime
+   index.  ModernVBERT proves the complete contract.  Generation is tested to
+   reject stale catalogue fingerprints, unknown or multiply owned model types,
+   and verified status without configuration, checkpoint, forward,
+   input-gradient, and performance evidence.
+** DONE Extract shared projection, normalization, embedding, and pooling primitives
+    ModernVBERT now consumes the public Equinox components without changing its
+    model tree or numerics.  Fast unit tests cover Hugging Face linear layout,
+    FP32 layer-normalization statistics, repeated-token embedding gradients,
+    masked mean pooling, and stable L2 normalization.
+** DONE Prove shared attention, activation, dropout, and rematerialization with BERT
+    Native BERT reuses the common primitives, executes homogeneous depth with
+    =lax.scan=, preserves inference and keyed-training dropout semantics, and
+    passes a generated pinned Transformers 5.3.0 forward, pooler,
+    input-embedding, and input-gradient oracle.
+** DONE Port the standard bidirectional BERT base model :models:bert:
+    Native configuration, scanned Equinox forward, Hugging Face safetensor
+    import/export, deterministic inference, keyed dropout, representation
+    pooling, and pinned forward/input-gradient parity pass.  Decoder cache and
+    cross-attention modes are rejected explicitly.  Support remains =native=
+    until those configuration modes are implemented and accepted.
+** DONE Complete BERT parameter, optimizer, export/reload, and performance gates :models:bert:testing:
+    The generated Transformers 5.3.0 oracle covers the complete parameter tree
+    and one canonical AdamW update.  Analytically null gradient directions use
+    an absolute update bound because Adam amplifies backend roundoff; all
+    scientifically nonzero leaves retain absolute, relative, and cosine gates.
+    A native safetensor export reloads through upstream =BertModel= with exact
+    outputs.  On RTX 4090 at batch 16 and sequence 128, native FP32 inference is
+    11.034 ms versus 11.516 ms upstream (1.044x; 1450 versus 1389 examples/s),
+    with 8.57e-8 maximum output error.  Native allocator peak is 0.764 GiB
+    versus 0.547 GiB and remains an explicit warning.  Compile-plus-first is
+    15.93 seconds versus 0.268 seconds and remains a cold-start optimization.
+** DONE Port the pinned Jina v5 Omni Small text path :models:jina:
+    Load only the 494M-parameter language path from the immutable Safetensors
+    checkpoint, execute its 28 causal GQA/SwiGLU layers with one rematerializable
+    =lax.scan=, last-token pool, Matryoshka truncate, and L2 normalize. The BF16
+    Sentence Transformers forward gate passes at max absolute =0.00206= and
+    cosine =0.999901= across none/selective/full rematerialization. A real
+    40-update STSB job, native export, and fresh reload pass at batch four.
+    Support remains =native= until parameter-gradient, optimizer-update,
+    source-compatible export, and isolated model-performance gates are added.
+** DONE Stack homogeneous transformer layers and execute model depth with =scan= :models:runtime:performance:
+  ModernVBERT text parameters are depth-major arrays, with the 21 real
+  post-layer-zero attention norms kept separately so the trainable tree exactly
+  matches the upstream checkpoint.  One rematerialized =lax.scan= preserves the
+  full/sliding attention pattern and first-layer norm exception.  Pinned forward
+  and input-gradient parity passes.  At sequence 512, direct batch 10 now
+  compiles plus executes first use in 29.18 seconds at a 4.536 GiB allocator
+  peak; the unscanned program had not compiled after several minutes and XLA
+  planned 20.17 GiB.  Evidence lives in
+  =benchmarks/results/modernvbert-scan-20260813/=.
+** DONE Require numerically equivalent model ports to beat matched upstream throughput :models:testing:performance:
+** DONE Measure matched upstream allocator and process peak memory with explicit warnings :models:testing:performance:
+** DONE Run upstream and native performance probes in isolated fresh processes :models:testing:performance:
+** DONE Add evaluator protocols and standard representation metrics :api:eval:
+** DONE Load the standard serialized dense module chain
+    Resolve a pinned Hub revision or local directory, parse =modules.json= and
+    =config_sentence_transformers.json= without importing PyTorch, and compose a
+    native Transformer, all released pooling modes, optional Dense projections,
+    and optional normalization. Reject unknown or executable remote modules.
+    The Torch-free loader resolves local or revision-pinned Hub artifacts,
+    validates a contiguous static module graph, and supports all six released
+    pooling modes plus allowlisted Dense activations and Normalize modules.
+** DONE Reproduce =all-MiniLM-L6-v2= from text through normalized embeddings
+    Use the already accepted native BERT family so this gate isolates artifact
+    loading, tokenization, pooling, normalization, route handling, and batching.
+    Sentence Transformers 5.6.1 and Transformers 5.3.0 at Hub revision
+    =1110a243fdf4706b3f48f1d95db1a4f5529b4d41= produce normalized embeddings
+    with maximum absolute error =1.0803342e-7=, relative L2 =5.2440890e-7=,
+    and cosine =1.0= on the full host string-to-embedding path.
+** DONE Reproduce =all-mpnet-base-v2= through a native MPNet family
+    Use MPNet to generalize positional, residual, MLP, and layer-stack policies
+    only where a second consumer proves the shared semantics.
+    The native family implements padding-aware positions, shared bucketed
+    relative attention bias, a scanned layer stack, direct safetensor
+    load/export, and the standard dense mean-pooling plus normalization chain.
+    Transformers 5.3.0 parity covers hidden states, pooler output, embedded-input
+    gradients, parameter gradients, one AdamW update, and native-to-upstream
+    checkpoint export.  The full Sentence Transformers 5.6.1 string path at Hub
+    revision =e8c3b32edf5434bc2275fc9bab85f82640a19130= agrees to =1.18e-7=
+    maximum absolute error, =9.10e-7= relative L2, and cosine =1.0=.
+    At batch 16 and sequence 128 on one RTX 4090, Representax sustains 1,445
+    examples/s versus 1,254 upstream, a =1.153x= speedup, and compiles in 15.99
+    seconds. Allocator and process peaks are 27.5% and 33.6% higher; both remain
+    explicit warnings and memory-optimization targets.
+** DONE Complete the released dense loss inventory
+    Cover MNR and cached MNR variants, symmetric ranking, Matryoshka and adaptive
+    layer objectives, triplet families, cosine/CoSENT/AnglE/contrastive families,
+    distillation and MSE families, classification, GISTEmbed, orthogonal
+    regularization, denoising, and mega-batch mining through task-native losses.
+*** DONE Add the labeled-pair loss family
+     Add one modality-neutral fixed-shape pair batch with task-owned semantic
+     routes. Native cosine regression, ordinary and online-mined contrastive
+     losses over cosine, Euclidean, and Manhattan distance, CoSENT, and AnglE
+     match Sentence Transformers 5.6.1 values and both representation gradients
+     across seven pinned oracle cases. All four scientific loss configs run
+     through the generic compiled optimizer step; online mining is a policy on
+     contrastive loss rather than a duplicate task class.
+*** DONE Add explicit and in-batch-mined triplet objectives
+     Keep supplied anchor-positive-negative rows distinct from reusable
+     class-labeled example batches. Native cosine, Euclidean, and Manhattan
+     explicit triplets plus all, hard, hard soft-margin, and semi-hard in-batch
+     mining match all five Sentence Transformers 5.6.1 classes on loss and
+     representation gradients. Both contracts run through the generic compiled
+     optimizer step and preserve task-owned semantic routes. Representax keeps
+     positive Euclidean and Manhattan distance semantics instead of reproducing
+     the pinned oracle's sign-reversed explicit callbacks; that class is gated
+     through its correct cosine path.
+*** DONE Add embedding, score-margin, and distribution distillation objectives
+     Add separate fixed-shape contracts for broadcast or per-column teacher
+     embeddings, positive-minus-negative teacher margins, and candidate-score
+     distributions. Native MSE, L2, cosine, margin MSE, and temperature-scaled
+     KL objectives run through the registered generic optimizer step. One
+     canonical parity file now covers all 29 Sentence Transformers 5.6.1 loss
+     classes through 39 same-tensor loss and relevant-gradient cases plus an
+     explicit inventory assertion. A separate per-class GPU performance lane
+     measures synchronized warmed forward and backward work, reporting
+     regressions as warnings rather than correctness failures. On the August
+     16 RTX 4090 acceptance run, all 29 native objective programs beat their
+     matched upstream class (3.00x--84.69x) with 0.078--1.030 second native
+     compilation. This is precomputed-representation objective math, not an
+     encoder or full optimizer-step speed claim. Learned dimensional
+     projections remain explicit model state.
+*** DONE Generalize Matryoshka and adaptive-layer composition across losses
+     Registered scientific modifier configs now build one-pass Matryoshka,
+     adaptive-layer, and 2D compositions over representation-native tasks.
+     BERT, MPNet, ModernVBERT, and serialized sentence chains expose layerwise
+     results from one scanned forward. Matryoshka composes with local and
+     distributed cached MNR and local cached GIST; 2- and 4-GPU global-update
+     equivalence remains green.
+*** DONE Add GIST-guided negative selection and its cached execution
+     Keep guide representations as explicit offline batch artifacts. Native
+     absolute/relative filtering, explicit negative columns, bounded encoder
+     replay, and score-row chunks match direct values and gradients.
+*** DONE Add classification and contrastive-tension objectives
+     Keep classifier heads, dual encoder branches, and trainable temperature
+     in explicit Equinox model state. Pair softmax, aligned BCE tension, and
+     symmetric in-batch cosine/dot tension match the pinned oracle.
+*** DONE Add orthogonal regularization as a composable loss term
+     Native mean and second-moment penalties support named metrics, modality-
+     neutral representation batches, and mean/sum aggregation.
+*** DONE Add denoising autoencoding and mega-batch mining execution
+     Denoising uses explicit encoder/decoder composition and padding-aware
+     shifted token reconstruction. Mega-batch margins are scientific loss
+     parameters; bounded candidate mining and replay are execution policy.
+** DONE Complete the released dense evaluator inventory
+    Treat semantic similarity and information retrieval as different evaluation
+    geometries. Semantic-similarity evaluators consume labeled pairs and report
+    correlation or classification behavior; retrieval evaluators consume
+    queries, corpora, and relevance judgments and report ranking behavior such
+    as nDCG, MRR, MAP, and recall. Cover both families plus triplet, reranking,
+    reward, paraphrase mining, MSE, BEIR-format sources, and sequential
+    composition through reusable metric protocols. Translation is deliberately
+    absent until a distinct evaluation contract is justified by a real use case.
+*** DONE Define one typed evaluator protocol and namespaced =valid/...= results
+     Keep compiled batch inference separate from host corpus accumulation and
+     finalization so exact correlation/ranking metrics do not enter JIT. The
+     same runner is reusable during training and offline.
+*** DONE Implement similarity evaluation and 5.6.1 parity
+     Cosine, dot, Euclidean, and Manhattan Pearson/Spearman metrics match the
+     pinned Sentence Transformers oracle on identical representations, including
+     average-rank tie behavior. Evaluation always uses deterministic inference;
+     training keys no longer accidentally enable model dropout.
+*** DONE Implement streaming information-retrieval evaluation and 5.6.1 parity
+     Encode all query batches before corpus batches, stream each corpus chunk
+     through bounded top-k state rather than retaining the complete corpus
+     embedding matrix, and report accuracy, precision, recall, MRR, nDCG, and
+     MAP. Exact same-ranking metric parity passes against Sentence Transformers
+     5.6.1, including multiple relevant documents and every configured cutoff.
+*** DONE Implement classification, triplet, and MSE evaluators
+*** DONE Implement reranking, reward, paraphrase, and BEIR-source evaluation
+     Reranking and reward are distinct evaluator classes with task-native metric
+     contracts. Generic BEIR query/corpus/qrel records map directly from Grain
+     into information retrieval; a revision-pinned NanoBEIR example demonstrates
+     the mapping without creating an intermediate dataset.
+*** DONE Add sequential composition and explicit primary-metric selection
+     Compatible evaluators now share one compiled validation traversal rather
+     than rereading and preprocessing the same source once per metric family.
+     The validated evaluation config names one explicit =valid/...= primary
+     metric for best-model retention. Classification reports accuracy, macro
+     precision/recall/F1 and binary AP/best-threshold metrics; regression reports
+     MSE/RMSE/MAE and Pearson/Spearman; triplet, finite reranking, reward,
+     paraphrase mining, streaming IR over BEIR-format sources, and LeJEPA
+     collapse diagnostics retain task-native reducer state.
+** DONE Land configuration-driven end-to-end training jobs
+    Support source-neutral single and multi-source training, per-source tasks and
+    losses, deterministic samplers, hard-negative mining, prompts and typed
+    routes, truncation/quantization/Matryoshka outputs, evaluators, callbacks,
+    checkpoint/resume, and Hub-compatible save/load without copying Trainer.
+    The first acceptance slice is complete when one validated Hydra-Zen/Pydantic
+    =JobConfig= constructs and executes the model, task, loss execution,
+    optimizer/schedule, Grain sources, compiled step, validation lifecycle,
+    Orbax retention, and final exporter without repeating runtime wiring.  The
+    same general evaluation runner must work both during training and offline,
+    reuse compiled signatures, emit =valid/...= metrics, select a configured
+    primary metric, and preserve its best inference-ready checkpoint.  Final
+    publication must atomically emit a self-describing native artifact and an
+    optional verified Hugging Face artifact that reloads without training state.
+*** DONE Build a complete job from =JobConfig= without separately wired objects
+     Construct the model, task/loss/modifiers, optimizer and schedule, Grain
+     source, execution policy, reporters, evaluators, and final exporter from
+     validated declarative configuration at the Python/JAX boundary.
+*** DONE Implement exact capability-gated compiled gradient accumulation
+     Accumulate equal-size microbatches with one =lax.scan= and one Optax update
+     only for losses whose batch reduction decomposes exactly.  Reject unsafe
+     objectives rather than shrinking an MNR negative population; those retain
+     their full scientific batch through GradCache.
+*** DONE Add reusable offline and in-training evaluation with best selection
+     Keep inference/reduction task-owned, cache compiled batch signatures across
+     validation runs, and let Representax provide cadence, metric naming,
+     primary-metric comparison, lifecycle events, and checkpoint association.
+     Pass scalar checkpoint metrics into Orbax and compose latest-N plus best-N
+     preservation rather than reimplementing array storage.
+*** DONE Publish and reload the first inference-ready final/best artifacts
+     Restore only the selected model, atomically serialize a universal native
+     artifact with its exact job/model identity, optionally map back into the
+     source-compatible Hugging Face checkpoint, and verify a clean reload before
+     marking the export complete. This accepted first slice still reconstructs
+     the native template from its source checkpoint; the source-independent,
+     single-load path remains explicitly open under the unified loader milestone.
+    Accepted with one disk-to-final-model runtime test: local JSONL through
+    Grain, compiled two-microbatch accumulation, three optimizer updates,
+    validation at iterations 0--3, asynchronous Orbax latest/best retention,
+    non-final best-model restore, atomic native export, clean reload, and the
+    same offline validation loss.  A separate tiny-BERT contract preserves
+    source tokenizer metadata and requires exact adapter tensor equality after
+    Hugging Face export/reload. Accepted on the final tree with 175 fast CPU
+    tests, 12 runtime CPU tests, 3 four-device virtual distributed tests, and 4
+    compiled GPU-4 lifecycle/accumulation tests; Ruff, ty, strict wheel/sdist
+    metadata, and a fresh installed-wheel CPU smoke also pass at version 0.0.1.
+** DONE Add W&B reporting through the existing asynchronous reporter protocol
+      Land this after the task-specific evaluator inventory so the adapter can
+      report the accepted =train/=, =valid/=, and =perf/= metric contracts without
+      driving or duplicating evaluator design.
+      Accepted live on 2026-08-25 against =ckgresla/representax=: all 24 built-in
+      task kinds completed 30 finite optimizer updates, all 11 evaluator kinds
+      emitted finite =valid/= metrics, and representative 2-device DDP plus
+      4-device FSDP training and evaluation runs completed. The 39 accepted W&B
+      runs contain 780 optimizer updates and finished within a 30-minute bounded
+      campaign. See =benchmarks/results/wandb-acceptance-20260825/=.
+      The historical campaign included a provisional translation evaluator that
+      was subsequently removed; the current inventory contains ten semantic
+      evaluator classes. W&B keeps iteration on its native step axis, attaches
+      optimizer position only to training rows, records evaluation work under
+      =perf/...=, and keeps backend, world, accelerator, and mesh facts as static
+      run metadata.
+** DONE Establish the first pinned MS MARCO to NanoMSMARCO MiniLM evidence
+     Read one revision-pinned 669,531-row MS MARCO text-triplet Parquet directly
+     in both systems, train the same MiniLM checkpoint on the same ordered rows,
+     and evaluate the same 50 queries, 5,043 passages, and qrels. Initial
+     nDCG/MRR/recall/MAP metrics match exactly. A measured four-thread/eight-batch
+     Grain prefetch reduces 200-step data wait from 5.57 seconds to 0.020 seconds
+     and raises direct batch-32 sustained throughput from 435.8 to 626.5
+     examples/s versus 600.7 upstream (=1.043x=).
+     At scientific batch 128, direct Representax is slower (=0.891x=) and peaks
+     at 17.41 GiB, while exact GradCache with chunk 32 sustains 601.8 versus
+     542.9 examples/s (=1.108x=) at 3.42 GiB. At batch 512/chunk 32 it sustains
+     632.0 versus 568.4 examples/s (=1.112x=) and amortizes its 45.6-second
+     compile after about 503 optimizer updates. Final single-seed nDCG@10 deltas
+     range from -0.00325 to +0.01127; treat them as preliminary, not a quality
+     superiority claim. Raw reports live under
+     =/raid/representax/benchmarks/dense-retrieval-minilm-*=.
+** DONE Establish the first pinned MPNet architecture replication
+     Reuse the exact MiniLM data, evaluation, optimizer, precision, and initial
+     metric-parity contract with =sentence-transformers/all-mpnet-base-v2=.
+     Direct batch 32 is not competitive: Representax sustains 165.4 versus
+     183.2 examples/s (=0.903x=) and materially reduces the feasible-workload
+     headroom. Exact GradCache at scientific batch 128/chunk 8 instead sustains
+     110.4 versus 90.6 examples/s (=1.219x=), with compilation amortized after
+     about 171 optimizer updates. Process peaks are 8.43 versus 4.32 GiB, so
+     memory remains real optimization work even though both jobs fit. Initial
+     retrieval metrics match exactly; the final single-seed nDCG@10 delta is
+     =+0.00104= and is not a quality-superiority claim. Raw reports live under
+     =/raid/representax/benchmarks/dense-retrieval-mpnet-*=.
+** DONE Replicate cached MiniLM and MPNet over three explicit paired seeds
+     Seeds 17, 42, and 73 preserve the same ordered rows and matched scientific
+     contract. MiniLM batch 512/chunk 32 wins all three sustained comparisons
+     and averages =1.057x=, although its small-sample 95% t interval
+     =[0.992, 1.123]= is not yet decisive. MPNet batch 128/chunk 8 averages
+     =1.160x= with interval =[1.156, 1.163]=. Endpoint nDCG@10 differences are
+     inconclusive for both models: MiniLM =+0.00099 [-0.05207, +0.05406]= and
+     MPNet =+0.01302 [-0.01633, +0.04238]=. The benchmark now treats seed as a
+     first-class paired-contract field and reproducibly aggregates exactly three
+     contract-identical reports with input hashes.
+** DONE Replicate end-to-end cached ModernVBERT training over three runs
+     Add one pinned native ModernVBERT loader to the same generic job and one
+     typed collator branch; do not fork the trainer, task, loss, evaluator, or
+     Grain path. Match Sentence Transformers' structured-message chat-template
+     preprocessing before the static tensor ABI. The accepted batch 128/chunk 8
+     job averages 78.38 versus 60.92 examples/s, a =1.287x= speedup with 95%
+     systems-replication interval =[1.273, 1.301]=, and is faster including
+     compilation within 100 updates. Initial metrics agree within =6.18e-5=.
+     Because checkpoint dropout is disabled, seeds 17/42/73 are systems repeats,
+     not independent quality seeds. Native final nDCG@10 is =0.0112= lower on
+     average despite closely matched mean training loss; diagnose the full update
+     trajectory before making a quality-equivalence claim.
+** DONE Complete true time-to-quality and direct/cached OOM-frontier runs
+     Record held-out metrics and matched losses at fixed optimizer-update
+     checkpoints rather than only initial/final endpoints. Use truly stochastic
+     seeds where the model has stochastic training behavior, verify one-step
+     parameter-update parity for deterministic ModernVBERT, and establish
+     direct/cached OOM frontiers rather than extrapolating them.
+     Accepted with full one-step comparison over all 134 ModernVBERT text
+     tensors, one continuous batch-128/chunk-8 trajectory evaluated at updates
+     0/25/50/75/100, and explicit sequence-512 first-failure brackets. Loss
+     differs by =9.54e-7= at the first step; clipped-gradient and AdamW-update
+     vectors have cosines =0.999997= and =0.999917=. Sustained native throughput
+     is =1.251x= upstream and cold compilation amortizes after about 83 updates.
+     Both systems first cross nDCG@10 =0.4= at update 25, before compilation
+     amortizes; the 50-query curve is non-monotonic and is not a quality-win
+     claim. Direct batch 32 passes and 64 OOMs; cached global batch 128 passes
+     at chunk 64 and OOMs at chunk 128. Tracked evidence and replay live in
+     =benchmarks/results/dense-retrieval-modernvbert-acceptance-20260818/=.
+** DONE Accept the pinned ModernVBERT GradCache device-step matrix against 5.6.1
+     For logical batches 32, 128, 512, and 1,024 at sequence length 512 and
+     chunk two, require identical checkpoint/input/scientific fingerprints,
+     FP32 highest precision, loss and gradient-norm agreement, no OOM, separate
+     cold/steady/memory reporting, and a live repository-only performance test.
+     This is an encoder/loss/backward/optimizer benchmark, not end-to-end.
+     Accepted on two RTX 4090s at source commit =859d935=: all four points fit,
+     agree within =1.91e-6= loss absolute and =7.64e-5= gradient-norm relative,
+     and run =1.224x--1.303x= faster with a =1.250x= geometric mean speedup.
+     Native allocator usage is 5.1%--5.6% higher while process-visible device
+     usage is 0.8%--1.5% lower. Raw reports, replay, and the validated summary
+     live in =benchmarks/results/grad-cache-st56-20260817/=.
+** DONE Establish cold MiniLM and Jina Small paired baselines
+      The immutable STSB JSONL flow now covers raw Grain/Sentence Transformers
+      input through training, start/end similarity evaluation,
+      checkpoint synchronization, final export, and fresh-process reload.
+      MiniLM initial Spearman differs by only =7.8e-10=; Jina differs by
+      =6.1e-6= and passes native BF16 forward parity across all rematerialization
+      modes.
+      Cold total time remains behind (=0.246x= MiniLM and =0.868x= Jina) and
+      process-visible device peaks are =2.356x= and =1.274x= upstream, so this is
+      a recorded failing systems baseline, not a superiority claim. Evidence is
+      in =benchmarks/results/dense-e2e-20260817/=.
+** DONE Design the additional representation-learning regimes from maintained references :tasks:research:
+    Review the exact maintained implementations for late interaction,
+    cross-encoders, sparse encoders, reward modeling, and current JEPA/LeJEPA.
+    Produce one implementation-ready Representax design that identifies shared
+    train-step semantics, genuinely task-specific state, native model outputs,
+    losses, preprocessing, indexing/evaluation boundaries, and pinned parity
+    oracles before implementation begins.
+** DONE Land the exact native late-interaction execution core
+     Define =LateInteractionRepresentation(values, valid)= and the structural
+     =LateInteractionEncoder= protocol at the core boundary.  Normalize and mask
+     tokens once at that boundary; compute exact MaxSim with a pure-JAX document
+     tile =lax.scan=; reuse the retrieval relation matrix for weighted and
+     symmetric contrastive losses; and generalize GradCache replay and global
+     gathering from dense arrays to leading-row representation PyTrees.
+     Accepted with full-versus-tiled value and representation-gradient parity,
+     JIT execution, direct-versus-GradCache optimizer-update parity, and a
+     checked-in 3.1 KiB PyLate 1.6.0 oracle containing immutable inputs, scores,
+     contrastive loss, gradients, and dependency provenance.  Ordinary tests do
+     not import or install PyLate, Torch, Sentence Transformers, or Transformers.
+** DONE Load and train one native ColBERT-family checkpoint end to end
+     Add the projection and skip-list/token-mask semantics to one maintained
+     native text backbone, load immutable Hugging Face/PyLate artifacts without
+     the upstream runtime, and accept projected token values, masks, MaxSim,
+     three optimizer updates, export, and clean reload against the pinned oracle.
+     Accepted on =lightonai/GTE-ModernColBERT-v1= at immutable revision
+     =cbbe53366e564450558f5e639dd499171f127538=: the torch-free importer maps
+     the root ModernBERT checkpoint and 128-dimensional Dense projection into a
+     native =LateInteractionTextEncoder=; the generic processor reproduces
+     PyLate's query/document prefixes, finite lengths, query-expansion policy,
+     punctuation skip list, input IDs, and attention masks; projected normalized
+     tokens and validity masks match a checked-in PyLate 1.6.0 eager-FP32 oracle
+     at the repository's numerical acceptance tolerance.  A real two-pair job
+     completes three AdamW updates, changes the projection, writes a
+     PyLate-compatible Hugging Face artifact, and reloads it with exact native
+     outputs.  PyLate remains isolated to the oracle generator and its 350 KiB
+     result fixture; it is not a Representax dependency.
+** DONE Validate late-interaction GradCache and global negatives on two and four GPUs
+     Keep one global JAX program: shard query rows, replicate the compact
+     candidate token representations at the MaxSim boundary, scan finite
+     document tiles, and reshard the transposed score matrix for the symmetric
+     direction.  No task-specific distributed trainer or explicit collective
+     implementation is required.  Accepted physically on GPUs 2--5 with one
+     eight-example global batch: DDP and FSDP at world sizes two and four match
+     the single-device global-batch metrics and state for ten AdamW updates at
+     =rtol=4e-5= and =atol=4e-6=, while an explicit rank-local-negative loss is
+     measurably different.  Partitioned GPU HLO contains the expected async
+     candidate =all-gather-start/done= and gradient =all-reduce-start=.  The
+     real pinned GTE-ModernColBERT checkpoint additionally completes three
+     finite GradCache updates with 16-token queries, 32-token documents, and an
+     eight-pair global batch on both two- and four-GPU DDP meshes.
+** DONE Implement cross-encoder and reranker training :tasks:cross_encoder:
+   Cover encoder and generative scoring modules; pointwise, pairwise, and listwise
+   losses; classification, correlation, reranking, and information-retrieval
+   evaluators; and
+   text/image/audio/video pair routing under the shared trainer.
+   Pin Sentence Transformers CrossEncoder as the implementation oracle and cover
+   BCE, multiclass cross-entropy, MSE and MarginMSE, RankNet, LambdaLoss, ListNet,
+   ListMLE/PListMLE, and cached MNR through paired tensor tests before matched
+   candidate-list jobs.
+*** DONE Land the native cross-encoder and reranker execution core
+     Define the scorer output, pointwise/pairwise/listwise batch contracts, native
+     heads, losses, compiled training behavior, and one end-to-end checkpoint
+     integration before specializing the shared evaluator protocol around them.
+     Accepted with one raw-logit =Scorer= boundary; pointwise, pairwise,
+     finite-listwise, and exact cross-in-batch contracts; BCE, multiclass CE,
+     score and margin MSE, RankNet, LambdaLoss, ListNet, ListMLE/PListMLE, and
+     direct/cached cross-MNR execution.  The pinned Sentence Transformers 5.6.1
+     lane matches values and gradients in eleven paired tests; native contracts
+     additionally prove exact direct-versus-score-chunk replay and exact compiled
+     accumulation for decomposable objectives.  A real Llama Nemotron VL
+     reranker completed three finite BF16 LoRA updates through the same generic
+     train step, with loss decreasing from 32.2056 to 19.1680.
+*** DONE Add classification, correlation, and reranking evaluators
+     Reuse the existing compiled-batch/host-reducer evaluator boundary once the
+     scorer and batch contracts are accepted. Report task-standard metrics under
+     =valid/...= and expose an explicit primary metric for best-model selection.
+*** DONE Distribute evaluator execution over arbitrary data meshes
+     After the task evaluator inventory lands, shard examples and corpus work over
+     configured data axes, reduce sufficient statistics exactly, preserve bounded
+     host state, and overlap evaluation with training/checkpoint work without
+     introducing evaluator-specific distributed trainers.
+     Accepted through the same annotation-only =place_batch= boundary as the
+     trainer: one-, two-, and four-device data meshes produce identical metrics.
+     Compatible evaluators traverse each batch once, and one bounded pending
+     device result overlaps the next dispatch with host reduction. Physical
+     multi-host reduction remains explicitly deferred until hardware exists.
+** DONE Validate multimodal capability across every supported encoder route :multimodal:
+   Exercise text, image, audio, video, and composed multimodal examples through
+   preprocessing, model forwards, losses, evaluators, batching, export, and
+   matched systems gates rather than treating multimodality as inference-only
+   metadata.
+*** DONE Make modality identifiers and input contracts extensible
+    Register typed built-in text, image, audio, and video contracts while
+    allowing downstream projects to add named modalities at the Python build
+    boundary. Resolve adapters before JIT so compiled programs receive only
+    static array PyTrees, never arbitrary raw Python payloads.
+*** DONE Express fusion as composition rather than a fifth modality
+    Represent one example as named modality components with explicit fusion
+    semantics. Do not encode =fused= as a mutually exclusive modality value.
+*** DONE Define the Grain-native source, distribution, artifact, sample, and processor boundaries
+    Resolve configured sources directly into native Grain datasets and accept
+    existing Grain MapDataset/IterDataset objects without inventing a framework
+    dataset class. A distribution is only a sampling policy; one source is its
+    ordinary one-dataset form. Task-specific samples compose atomic Artifacts,
+    while a model-associated host Processor emits the fixed-shape array PyTree
+    used by the task and compiled step. The thin DataLoader carries only batch
+    and reproducibility metadata needed for validation and exact cursor resume.
+*** DONE Make finite static-shape admission a processor invariant
+    Require each Processor to publish a reproducibility contract and
+    admit only a finite set of model-native shapes before JIT. Select the unique
+    dimension-wise smallest containing bucket; reject incomparable media
+    tradeoffs for the model-specific processor to resolve deliberately. The
+    first accepted implementation tokenizes sentence batches once, applies route
+    prompts before selection, truncates at the largest configured length, pads
+    directly into =sequence_length_buckets=, and fingerprints the bucket policy
+    through the real Grain-to-retrieval-batch path.
+*** DONE Implement model-associated image, audio, and video processors with finite shape buckets
+    Keep decoding, deterministic selection, model-specific resize/resampling,
+    normalization, special tokens, padding masks, and admitted static shapes in
+    each model's processor. Do not introduce a generic adapter hierarchy;
+    task collators only compose processor outputs with task-owned labels and
+    relations.
+    Accepted with one callable-based media engine and thin image/audio/video
+    constructors. Probe runs on immutable Artifact metadata before decode; the
+    complete batch selects one finite shape; prepare then resolves, decodes,
+    selects, transforms, and pads each row; the model's batch builder receives
+    only shape-stable stacked arrays. Image, seeded audio-window, and seeded
+    video-frame tests cover lazy references, deterministic replay, wrong
+    modalities, unstable leaves, Grain-native batching, implementation digests,
+    and fingerprint changes.
+*** DONE Preserve artifact references and decode only admitted media selections
+    Carry URI, revision/ETag, archive member, byte range, checksum, and probed
+    metadata through lazy sampling. Choose deterministic audio windows and video
+    frames before decoding, decode directly toward an admitted bucket, and do
+    not materialize a proprietary intermediate dataset or whole media column.
+    Accepted with immutable URI Artifacts, local/HTTP byte readers, ZIP/TAR
+    member selection, fail-closed HTTP Range and ETag validation, SHA-256
+    payload validation, and a custom scheme-reader boundary. The processor
+    gates exercise metadata-only probing before reads, selected image spans,
+    seeded audio windows, and seeded noncontiguous video-frame ranges before
+    decoding into the already admitted static bucket.
+*** DONE Bound preprocessing memory and make starvation observable and fatal
+    Keep workers model-free; use bounded queues, heartbeats, timeouts, clean
+    failure propagation, and explicit host-memory budgets. Emit
+    =perf/data_wait_seconds=, queue occupancy, decode/preprocess/placement time,
+    and device-idle telemetry. Checkpoint the logical consumed cursor and require
+    identical resumed batches across worker and prefetch configurations.
+    Accepted with Grain as the sole bounded queue: the configured host budget is
+    divided across its prefetch capacity plus the consumed model-ready batch,
+    accelerator-resident worker output is rejected, and aggregate
+    probe/decode/collation time plus host bytes and queue readiness flow through
+    the existing asynchronous reporter. Repeated liveness heartbeats precede a
+    fatal POSIX data-wait deadline with clean run and iterator failure. A bounded
+    completion observer reports only a defensible device-idle lower bound and
+    never retains an unbounded sequence of train states. Raw Grain and real
+    asynchronous Orbax gates prove identical remaining batches and final model,
+    optimizer, iteration, and RNG trajectories when resuming from =0/0= to
+    =4/4= worker/prefetch execution.
+** DONE Add quantized LoRA and general parameter-selection recipes :api:training:
+   Add one model-shaped trainable-parameter filter to ordinary train-state,
+   optimizer, compiled-step, DDP, FSDP, checkpoint, and export construction.
+   The first accepted recipe replaces selected native linear projections with
+   signed per-output-row INT4 packed bases and FP32 LoRA masters before JIT.
+   Native bundles preserve compact leaves exactly; optional Hugging Face export
+   merges the update and passes the existing exact reload gate.
+
+   Accepted on two and four virtual devices with ten-update DDP/FSDP trajectory
+   parity.  On two physical RTX 4090s, rank-8 adapters over the 149M ModernVBERT
+   control train at 39.15 examples/s and 0.507 GiB peak live JAX memory under
+   DDP, versus 35.91 examples/s and 3.872 GiB for full BF16 training.  FSDP is
+   30.30 examples/s and 0.410 GiB versus 9.93 examples/s and 2.052 GiB.  These
+   are systems/capacity results, not downstream adapter-quality evidence.  See
+   =benchmarks/results/modernvbert-low-bit-20260820/README.org=.
+** DONE Implement triplet losses :tasks:metric_learning:
+** DONE Implement cosine-similarity losses :tasks:metric_learning:
+** DONE Implement CoSENT losses :tasks:metric_learning:
+** DONE Implement representation distillation tasks and losses :tasks:distillation:
+  Native embedding matching, score-margin regression, and distribution KL keep
+  teacher artifacts in fixed-shape batch data and trainable projections in the
+  explicit model tree.
+** DONE Implement pairwise reward modeling :tasks:reward_modeling:
+** DONE Implement listwise reward modeling :tasks:reward_modeling:
+** DONE Implement pointwise and process reward modeling :tasks:reward_modeling:
+** DONE Implement JEPA-style self-supervised learning :tasks:jepa:
+  Use TRL RewardTrainer for pairwise/outcome parity, formula-level
+  Plackett--Luce references for listwise rewards, and the pinned experimental TRL
+  PRM trainer plus PRM800K/ProcessBench for process rewards. The accepted JEPA
+  foundation is LeJEPA: ordinary multi-view encoder projections, invariance, and
+  SIGReg, with no stale target encoder, EMA state, predictor, or stop-gradient.
+  Its whole-batch sketch statistic is correctly rejected under ordinary
+  microbatch gradient accumulation. Pairwise TRL and independent LeJEPA formula
+  oracles match values and gradients; every reward contract and LeJEPA execute
+  through the ordinary compiled train step.
+** DONE Ship reward modeling and JEPA before the first research release :tasks:release:
+
+** DONE Resolve Hugging Face datasets without proprietary intermediate copies :data:hf:
+** DONE Resolve local JSONL, Parquet, Arrow, and dataset directories :data:local:
+  Local Parquet now uses memory-mapped, bounded row-group caching directly;
+  it does not rewrite an immutable upstream Parquet into a Hugging Face Arrow
+  cache before Grain can consume it.
+** DONE Let users map upstream records directly into canonical task examples :data:
+** DONE Implement arbitrary named single-host sharding :distributed:
+  Resolve DDP, FSDP, and explicit partition rules into one internal
+  =ShardingPlan=: mesh, batch layouts, complete model layouts, differentiable
+  gradient layouts, Optax-state layouts, and result layouts. Shared numerical
+  primitives annotate exact parameter-use and activation layouts; JAX derives
+  communication and its autodiff transpose. All presets use the same
+  task-generic compiled trainer; FSDP remains orthogonal to GradCache.
+*** DONE Resolve named DDP and FSDP presets through one =ShardingPlan=
+    Replicated DDP and fully sharded parameter/Adam state now differ only in
+    their resolved layouts and collectives, not in trainer control flow.
+*** DONE Accept user-supplied compatible meshes and parameter partition rules
+    Ordered model-path regular expressions resolve to a model-shaped
+    =PartitionSpec= tree, validate mesh axes, ranks, and divisibility, and flow
+    through the same =JobConfig= runtime on two- and four-device topologies.
+*** DONE Verify exact complete updates on two- and four-device topologies
+    DDP, FSDP, and custom plans match the one-device GradCache loss, metrics,
+    model update, and complete Optax state.  Native ModernVBERT passes the same
+    two- and four-device virtual-topology gate for ten consecutive optimizer
+    updates through the architecture-agnostic global program. Four-physical-GPU
+    full-checkpoint profiles additionally record the complete loss trajectory
+    and per-leaf model/optimizer signatures rather than assuming one-step
+    agreement remains representative.
+*** DONE Inspect declared layouts, physical placement, and generated communication
+    Parameter, Adam, batch, and result layouts are independently recorded rather
+    than inferred from the strategy name.  Physical profiles require active
+    compute and balanced memory on every selected GPU.  Retain lowered-program
+    and Nsight gates when making communication-specific claims; output layouts
+    alone prove storage, not which collective implementation the compiler chose.
+*** DONE Preserve FSDP parameter and optimizer shardings through Orbax resume
+    A real asynchronous save and fresh-manager restore preserves every value,
+    training cursor, and explicit JAX sharding.
+*** DONE Replace manual DDP synchronization with one compiler-managed global program
+    Named DDP now differs from other plans only through input/output shardings;
+    no =DataParallel= trainer or explicit gradient-bucket path remains.  The
+    annotation-driven four-GPU ModernVBERT program sustains 0.346-second steps,
+    26% faster than the superseded 0.474-second manual path, while tracking the
+    one-device ten-update trajectory.  The earlier manual DDP/FSDP profile is
+    invalid as acceptance evidence because it converged to a materially
+    different loss trajectory.
+*** DONE Derive FSDP communication from shared primitive annotations
+    Keep model and Optax state sharded at rest, request replicated matrix values
+    at their exact shared =Linear= use sites, preserve batch-leading activation
+    layouts, and let JAX transpose the global program into sharded gradients.
+    Remove the packed model boundary, per-model =fsdp_materialize()= hook,
+    deferred wrapper, custom VJP, explicit layer collectives, and manual gradient
+    synchronization. The resulting architecture-agnostic program matches ten
+    complete one-device updates on 2/4-device meshes and trains the 1.9795B
+    capacity model without model-specific FSDP code.
+** DONE Establish the physical FSDP capacity and throughput frontier
+    Compare DDP and FSDP on full ModernVBERT and at least one model that cannot
+    fit replicated optimizer state.  Sweep useful batch/sequence/model sizes,
+    report sustained examples or tokens per second and feasible workloads, and
+    run the four-physical-GPU topology when those devices are available.
+
+    The first full-checkpoint correctness artifact is
+    =/raid/representax/benchmarks/fsdp-modernvbert-20260819/world2-b8-s128.json=:
+    two RTX 4090s, batch 8, sequence 128, exact GradCache, accepted with
+    =9.54e-7= loss error, =2.35e-7= model relative L2 error, and =4.28e-5=
+    optimizer-state relative L2 error.  Its mixed oracle/FSDP process is a
+    correctness probe, not clean standalone memory or throughput evidence.
+
+    The corrected isolated systems profile is tracked in
+    =benchmarks/results/fsdp-modernvbert-20260819/README.org=. On GPUs 2--5,
+    global batch 16, and sequence 128, compiler-managed DDP sustains 45.99
+    examples/s at a 5.987 GB live peak. Bucketed full-model FSDP sustains 31.68
+    examples/s at 3.719 GB while quartering persistent model and Adam storage.
+    It matches the corrected explicit-collective control's 31.62 examples/s but
+    compiles in 0.89 rather than 18.66 seconds. Both match
+    the first full-checkpoint update to approximately =1e-6= absolute loss and
+    preserve the same descending ten-update trajectory. The older manual
+    0.474/0.486-second profiles retained their warmup update and therefore
+    describe eleven rather than ten updates; a corrected rerun is retained only
+    as a communication-schedule control. This deterministic
+    synthetic-token program isolates the compiled trainer; it is not
+    dataset-to-quality evidence.
+
+    Post-backward parameter-matching gradient constraints were rejected because
+    they annotate after autodiff has chosen the materialization transpose.
+    Coalescing compatible parameter leaves before the replicated annotation
+    reduces the compiled schedule from 8 AllGather / 9 AllReduce / 1
+    ReduceScatter to 2 / 6 / 2 and improves throughput from 10.09 to 31.68
+    examples/s. =AxisType.Explicit= produces the same trajectory and schedule at
+    31.61 examples/s, but compiles in 18.55 seconds; keep it as a trace-time
+    policy-validation lane and =Auto= as the measured runtime default.
+
+    The two-GPU physical frontier is accepted in
+    =benchmarks/results/fsdp-frontier-20260819/README.org=.  It covers the 149M
+    checkpoint at batch/sequence points 8/128, 8/512, and 2/4096 plus a
+    1,979,520,768-parameter capacity model.  DDP wins the small communication-
+    dominated points; the historical packed FSDP program is 34.8% faster and
+    uses 14.3% less live JAX memory at sequence 4096. The final shared-primitive
+    program completes the 1.9795B model at 21.492 GB peak live memory and
+    11.373 seconds/step, 9.2% faster than the superseded explicit layer control's
+    12.524 seconds/step at 20.995 GB. DDP already OOMs at the smaller 1.9105B
+    point. Evidence is tracked in
+    =benchmarks/results/fsdp-annotations-20260820/README.org=; the default BFC
+    result and a 2.324B upper-bracket OOM remain structured evidence.
+
+** DONE Make precision policy explicit at parameter, compute, activation, and loss boundaries :runtime:precision:
+   Preserve FP32 master parameters, optimizer state, checkpoints, gradients,
+   representation reductions, and losses while allowing a transient BF16 model
+   view and BF16 activations.  FSDP communication follows the transient compute
+   dtype because conversion precedes the shared parameter-materialization
+   primitive; no model family or trainer gets a separate mixed-precision path.
+
+   Complete this slice only when direct, exact GradCache, decomposable gradient
+   accumulation, DDP, FSDP, checkpoint/resume, and export preserve their dtype
+   and numerical contracts.  Inspect lowered sharded programs for BF16
+   communication, record physical throughput and live memory on GPUs 4--5, and
+   keep FP32 parity tests at the highest matmul precision.  Audit compiled Python
+   loops at the same time: replace homogeneous numerical unrolling with =vmap=
+   where it improves the program, but retain construction loops, heterogeneous
+   task structure, and already-batched primitives.
+
+   Accepted with one policy shared by direct, exact GradCache, accumulated,
+   DDP, FSDP, evaluation, checkpoint, and export paths.  FP32 master parameters,
+   gradients, Optax state, representations, metrics, and losses surround a
+   transient BF16 compute/activation view.  On two physical RTX 4090s at global
+   batch 8 and sequence 512, BF16 improves ModernVBERT throughput from 17.84 to
+   35.91 examples/s under DDP and from 5.04 to 9.93 examples/s under FSDP.
+   Optimized GPU HLO proves the large FSDP parameter gathers and corresponding
+   reduce-scatters carry BF16 while optimizer-facing master gradients remain
+   FP32.  FSDP peak live JAX memory falls from 2.122 to 2.052 GiB; persistent
+   FP32 master and Adam state intentionally limit the memory reduction.
+   Distribution-distillation candidate scoring is now one =vmap=; remaining
+   numerical loops are heterogeneous, varying-shape, already scanned, or
+   construction-only.  Contract, trajectory, memory, throughput, collective,
+   and raw-artifact evidence is tracked in
+   =benchmarks/results/modernvbert-mixed-precision-20260820/README.org=.
+** DONE Establish the native FP8 and four-bit training boundaries :runtime:precision:
+   Keep BF16 as the recommended mixed policy.  Experimental
+   =PrecisionConfig.float8_mixed()= applies dynamically scaled E4M3 operands
+   only to owned linear products, uses E5M2 cotangents in its custom VJP, and
+   preserves BF16 communication/non-matrix compute plus FP32 masters, gradients,
+   Optax state, representations, and losses.  Optimized RTX 4090 HLO must prove
+   native FP8 Tensor Core GEMMs rather than dtype emulation.
+
+   Accepted as an experimental capability: a 4096-cubed isolated FP8 GEMM is
+   1.37x faster than BF16 and optimized HLO contains native
+   =__cublas$lt$matmul$f8= calls, but full ModernVBERT DDP is 34.89 examples/s
+   versus BF16's 35.91.  FSDP is 6.40 examples/s because per-use dynamic weight
+   scales add 28 AllReduces.  There is therefore no FP8 performance claim yet.
+   Packed INT4 base plus FP32 LoRA is the accepted four-bit training path; its
+   kernels dequantize into BF16 compute and do not claim native INT4 gradients.
+   Evidence is tracked in
+   =benchmarks/results/modernvbert-low-bit-20260820/README.org=.
+** DONE Support activation rematerialization as a measured execution choice :runtime:memory:
+  Expose =none=, =selective=, and =full= as topology-dependent policies without
+  changing model parameters or scientific semantics.  =selective= uses JAX's
+  transformer-oriented =dots_with_no_batch_dims_saveable= policy; do not expose
+  unstable custom policy callables as public configuration.
+
+  Complete this slice only when all policies preserve forward and gradient
+  parity, the pinned Transformers oracle still passes, and isolated sequence-512
+  ModernVBERT runs report compile-plus-first time, steady-state throughput,
+  allocator peak, and process peak.  Choose the default from measured evidence,
+  document the tradeoff, and keep any performance shortfall as a warning rather
+  than a numerical failure.
+
+  =full= remains the measured default.  At direct batch 8 and sequence 512,
+  =selective= is 5.9% faster but raises allocator peak from 4.259 to 8.129 GiB
+  and process peak from 8.402 to 16.402 GiB; it OOMs at batch 32, where =full=
+  completes at 7.590 GiB allocator peak.  =none= completes batch 4 at 14.757 GiB
+  and OOMs at batch 8.  Native value/parameter-gradient equivalence, all-policy
+  pinned Transformers forward/input-gradient parity, 53 fast tests, and 9
+  runtime tests pass.  Evidence lives in
+  =benchmarks/results/modernvbert-rematerialization-20260813/=.
+** DONE Verify buffer donation with Orbax V1 asynchronous checkpoint/resume :runtime:performance:
+** DONE Establish =representax= as a standalone Git repository :foundation:
+** DONE Adopt the MIT license and public-project policies :foundation:
+** DONE Use permissive Python and dependency ranges with optional extras :foundation:
+** DONE Keep accelerator-specific JAX and PyTorch out of the base install :foundation:
+** DONE Document pip-managed CUDA and =LD_LIBRARY_PATH= conflicts :docs:release:
+** DONE Exclude private history, experiments, Studio, and compiled assets :foundation:
+** DONE Review and land the first clean public commit :release:
+** DONE Adopt =jaxtyping= at stable numerical boundaries :typing:models:tasks:
+  Declare it directly and annotate model forwards, encoder/task protocols,
+  retrieval relations, scalar losses, PRNG keys, and compiled-step boundaries
+  with symbolic axes.  Do not annotate host configuration and orchestration for
+  decoration's sake, and do not enable a production-wide runtime import hook.
+  Preserve explicit domain validation and add focused trace-time checks only
+  where they improve errors without changing compiled performance.
+  Accepted with direct, introspectable dtype and symbolic-shape annotations on
+  encoder/model forwards, text and multimodal batches, attention, RoPE, pooling,
+  vision patching, MNR relations and losses, PRNG keys, train state, GradCache,
+  and compiled-step boundaries.  No decorator or runtime import hook is
+  installed.  Explicit semantic validation remains authoritative.  Ruff and
+  formatting pass, annotation contracts pass, all 78 fast tests pass, and the
+  public Python 3.11-3.13, runtime, distributed, and wheel-install CI matrix is
+  green.
+** DONE Add a fast Ruff and ty static-analysis gate :tooling:typing:ci:
+  Treat this as Representax's =cargo clippy=: one canonical repository command
+  runs =ruff format --check=, =ruff check=, and =ty check= without importing JAX,
+  compiling models, or executing tests. Keep the default =pytest= lane as the
+  longer behavioral equivalent of =cargo test=, with runtime, distributed,
+  parity, and performance markers remaining separate evidence lanes.
+
+  Pin =ty= in a repository-only development dependency group while its
+  diagnostics and configuration remain beta. Baseline =src/representax= first,
+  then extend the clean boundary to tests, examples, and scripts; fix genuine
+  errors and use narrow, explained exceptions only at dynamic third-party or
+  generated-code boundaries. Configure ty in =pyproject.toml= and emit native
+  GitHub annotations in the single static CI job rather than repeating it in
+  every Python-version test job. Record cold and warm timings and keep the local
+  gate tight enough to run continuously during development.
+  Accepted with =ty==0.0.72= and Ruff in a repository-only static dependency
+  group, one =python scripts/check.py= entry point, native GitHub diagnostics,
+  and a clean boundary over =src=, tests, examples, and scripts. The first ty
+  pass found 28 source diagnostics; all were resolved without global rule
+  suppression. The complete warm static gate checks 116 files in 2.14 seconds.
+  Behavioral evidence is 93 fast tests, eight CPU training-runtime tests, two
+  ModernVBERT GPU runtime tests, and all three pinned BERT forward, gradient,
+  optimizer-update, and export/reload parity tests.
+** DONE Publish =representax= 0.0.1 and reserve the package name :release:
+  Published from signed tag =v0.0.1= at commit =8a9bcf6= through GitHub Actions
+  run =31852459601=.  The registered pending publisher created and reserved
+  [[https://pypi.org/project/representax/0.0.1/][representax on PyPI]], and the workflow created the corresponding GitHub
+  [[https://github.com/ckgresla/representax/releases/tag/v0.0.1][Release]] from the same accepted artifact bundle.
+** DONE Publish a minimal CPU-first installation and compatibility matrix :release:
+*** DONE Build bounded wheel and source-distribution artifacts
+   The universal wheel contains only =representax=, package metadata, the MIT
+   license, and =THIRD_PARTY.md=.  The sdist retains source, tests, docs,
+   examples, and benchmark programs while excluding raw result bundles, CI
+   internals, and this roadmap.  Both rebuild successfully through isolated
+   Hatch environments.
+*** DONE Install and execute the wheel in a fresh CPU-only environment
+   Fresh Python 3.11, 3.12, and 3.13 environments installed the built =0.0.1=
+   wheel outside the source tree and completed the same compiled
+   Dense/MNR/Optax update on CPU.  The resolved JAX versions were 0.10.2,
+   0.11.0, and 0.11.0 respectively.  See =docs/compatibility.md=.
+*** DONE Accept the public CPU compatibility workflow
+   Run fast tests on Python 3.11, 3.12, and 3.13; run the generic runtime tree
+   once; exercise two- and four-device sharding through virtual CPU devices;
+   validate wheel/sdist metadata; and smoke-test the installed wheel outside
+   the source checkout.  Accepted on 2026-08-14 in GitHub Actions run
+   =31819008237=: all seven lint, Python 3.11/3.12/3.13, generic runtime,
+   virtual distributed, and release-artifact jobs passed with Node 24 actions.
+*** DONE Configure the protected GitHub OIDC release workflow
+   The dedicated =release.yml= builds and validates one artifact set, verifies
+   that a pushed =v*= tag exactly matches project metadata, smoke-tests the
+   installed wheel on CPU, and passes the same artifacts to PyPI with only
+   =id-token: write=. After PyPI succeeds, it creates the corresponding GitHub
+   Release and attaches that exact wheel and source distribution. GitHub
+   Packages is deliberately unused. The =pypi= environment accepts only =v*=
+   tags and requires approval from =ckgresla=. Release-ready commit =e0ebc76=
+   passed all seven public lint, Python, runtime, virtual-distributed, and
+   artifact jobs in GitHub Actions run =31822635802=.  The tag-driven revision
+   was accepted end to end in release run =31852459601=: build, exact-version
+   validation, CPU smoke, OIDC publish, and GitHub Release creation all passed.
+*** DONE Publish through the registered PyPI trusted publisher
+   The trusted publisher is registered in the PyPI account for
+   =ckgresla@gmail.com= against owner/repository =ckgresla/representax=,
+   workflow =release.yml=, and environment =pypi=. The accepted release scope was
+   Alpha metadata, mandatory Grain and safetensors, optional =hf= ecosystem
+   dependencies, explicit =cuda12=/=cuda13= extras, and repository-only parity
+   groups.
+   The dependency-boundary release candidate passed strict Twine metadata,
+   =58= fast tests, =8= runtime tests, =3= virtual four-device distributed
+   tests, and fresh CPU, CUDA 13, and =hf= installs on 2026-08-14. CPU and GPU
+   produced the same compiled-update loss; both installed Grain and safetensors,
+   the =hf= environment installed Transformers 5.3.0 without PyTorch, and the
+   published wheel metadata exposes no parity extras.
+   Published on 2026-08-14.  PyPI and GitHub independently report the same
+   wheel SHA-256 =f51a7cc8cc81044897bb14b9a780c36ce7219ca22fa4f16412da8767b78b930b=
+   and sdist SHA-256
+   =56f68c804a734bb2dd41f70d24d8ef966dfc13c155fb612d438408237d6b0efe=.
+   A fresh Python 3.13 environment installed =representax==0.0.1= from PyPI,
+   resolved JAX 0.11.0 on CPU, and passed the compiled update smoke with loss
+   =2.3512461185455322=.
+*** DONE Accept clean CPU and NVIDIA GPU installs from the exact release wheel
+   The base wheel must resolve and execute a compiled update on CPU without
+   accelerator packages. The =cuda13= extra must resolve JAX's pip-managed CUDA
+   runtime and execute the same update on an RTX 4090. Keep =cuda12= available
+   for older drivers; defer TPU until suitable hardware is available.
+   Accepted on 2026-08-14 from the rebuilt =0.0.1= wheel in fresh Python
+   3.13.14 environments. Both paths resolved JAX 0.11.0 and produced the same
+   compiled-update loss. The base environment contained no CUDA/NVIDIA package;
+   the =cuda13= environment used GPU 0, driver 580.159.03, and JAX's pip-managed
+   CUDA 13 runtime.
+** DONE Audit source provenance and third-party licenses before release :release:
+  The standalone history contains only commits authored by Chris Kerwell Gresla
+  and no private monorepo history. The wheel contains only the public package,
+  MIT license, and third-party notice; the sdist excludes benchmark result
+  bundles, CI internals, and this roadmap. No checkpoints, datasets, private
+  paths, or vendored dependency/model source are present. The mechanically
+  generated Transformers 5.3.0 identifier catalog is attributed under Apache
+  2.0 in =THIRD_PARTY.md=.
+** DONE Build optimizers from job configs and initialize train state canonically
+   =build_optimizer(job.optimization)= resolves the trusted dotted Optax factory
+   and passes its serialized parameters exactly once. =init_train_state= filters
+   the trainable model leaves and delegates optimizer-state construction to
+   =optimizer.init(parameters)=; =make_train_state= remains a compatibility alias
+   for the published =0.0.1= API.
+** DONE Freeze every Transformers 5.3.0 architecture definition for v0 :models:hf:
+  Mechanically snapshot every config model type and task-neutral =AutoModel=
+  mapping into a Torch-free catalog. Keep =catalogued=, =native=, and =verified=
+  as distinct states: a catalog row is not a model-support claim. Verify the
+  complete snapshot against the exact optional Transformers environment and
+  regenerate it only when deliberately advancing the reference version.
+  Accepted with 475 configuration model types and 441 task-neutral =AutoModel=
+  registrations. A fresh installed-wheel environment matched every model type,
+  module, config class, and base-model class against Transformers 5.3.0.
+** DONE Audit Jina licensing before its pinned native text port :models:release:
+  Representax ships an independent implementation and no upstream code or
+  weights. The optional =jina-embeddings-v5-omni-small-retrieval= checkpoint is
+  CC BY-NC 4.0, is pinned by revision, and is called out in =THIRD_PARTY.md=.
+** DONE Add optional experiment logging without coupling the training core :runtime:logging:
+  The optional W&B adapter consumes the existing bounded asynchronous reporter
+  protocol, preserves canonical =train/=, =valid/=, and =perf/= metric names,
+  records lifecycle completion or failure, and never enters the compiled step
+  or task/evaluator APIs. JSONL remains the dependency-free default. The live
+  registry-wide and 2-/4-device acceptance campaign is recorded in
+  =benchmarks/results/wandb-acceptance-20260825/=.

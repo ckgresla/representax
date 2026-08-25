@@ -147,17 +147,20 @@ Local files are the source of truth:
 - `events.jsonl` is the complete ordered lifecycle and metric stream; and
 - `metrics.jsonl` is the exact metric-row projection of that stream.
 
-Metric values use service-neutral W&B-style namespaces: `train/loss`,
-`valid/loss`, and `perf/...`. A metric row contains `iteration`,
-`optimizer_step`, and a `metrics` mapping, so a future W&B reporter can call
-`wandb.log(row["metrics"], step=row["optimizer_step"])` without renaming fields.
+Metric values use service-neutral W&B-style namespaces: `train/loss` for
+optimization, `valid/loss` for validation coupled to training, `eval/loss` for
+standalone or test evaluation, and `perf/...` for systems measurements. Every
+metric row contains `iteration` and a `metrics` mapping; training rows also
+contain `optimizer_step`. Downstream reporters consume these without renaming
+fields.
 
 `RunLogger` owns one bounded, ordered worker queue. That worker materializes
 device metrics once, appends the local JSONL source of truth, and fans the same
-row out through the small `Reporter` protocol. Disk reporting is implemented;
-tests exercise another reporter; W&B and TensorBoard adapters are deferred. A
-full queue applies bounded backpressure instead of allowing unbounded host
-memory growth.
+row out through the small `Reporter` protocol. Disk reporting is always
+available. The optional W&B reporter is initialized and driven on this worker,
+records terminal success or failure, and requires `representax[wandb]`; it does
+not enter the task, evaluator, or compiled-step APIs. A full queue applies
+bounded backpressure instead of allowing unbounded host memory growth.
 
 At a checkpoint boundary, `RunLogger.cursor()` drains the queue, flushes and
 fsyncs both local streams, flushes downstream reporters, and returns byte and
@@ -199,14 +202,21 @@ same next batch and random key as an uninterrupted run.
 
 ## Evaluation, model selection, and inference publication
 
-`EvaluationRunner` is the shared offline and in-training loss-evaluation
-boundary. It caches JAX executables by batch structure and shape, aggregates
-unequal final batches by the task's exact loss denominator (or example count),
-and emits service-neutral `valid/...` metrics. `EvaluationConfig` controls
-start/end and periodic cadence, a bounded
-number of batches, the primary metric, and min/max selection. Training performs
-evaluation on a separate Grain iterator, leaving the resumable training cursor
-untouched.
+`EvaluationRunner` is the shared offline and in-training evaluation boundary.
+It caches JAX executables by batch structure and shape and keeps exact host-side
+reducers for corpus metrics. In-training runners emit `valid/...`; standalone
+runners remap the same reducer outputs to `eval/...` without changing their
+values.
+Compatible evaluators share one compiled traversal; a one-output pipeline can
+overlap device inference with reduction of the preceding batch. The inventory
+covers loss, similarity, classification, regression/MSE, triplet, reranking,
+reward, paraphrase mining, information retrieval, and LeJEPA collapse
+diagnostics. BEIR-format query, corpus, and qrel sources map into the generic
+information-retrieval evaluator; NanoBEIR is a revision-pinned example rather
+than a separate evaluator. `EvaluationConfig`
+controls start/end and periodic cadence, a bounded number of batches, the
+primary metric, and min/max selection. Training performs evaluation on a
+separate Grain iterator, leaving the resumable training cursor untouched.
 
 Representax computes the metric; Orbax receives the scalar mapping and composes
 latest-N with best-N preservation. Representax publishes an additional durable
@@ -224,9 +234,17 @@ job it restores only the selected model when necessary and atomically publishes
 The same `EvaluationRunner` is available through `representax.train.evaluate`
 for offline evaluation of a loaded inference bundle.
 
+W&B uses its native step axis rather than logging iteration as a metric.
+Training rows additionally expose `train/optimizer_step`; standalone evaluation
+rows do not invent an optimizer coordinate and instead report elapsed work under
+`perf/...`. Static run configuration records the JAX backend, process index and
+world size, local and global device counts, visible accelerator models, and the
+configured training mesh/sharding policy. W&B's system monitor remains
+responsible for time-varying accelerator utilization and memory telemetry.
+
 ## Deliberately deferred
 
-The configured runtime does not yet provide concrete W&B/TensorBoard adapters.
+TensorBoard and additional reporter adapters remain optional future additions.
 Grain owns lazy reading, mapping, batching, prefetch, and iterator state.
 Task-owned collation is the bridge from data examples to the compiled batch
 contract.

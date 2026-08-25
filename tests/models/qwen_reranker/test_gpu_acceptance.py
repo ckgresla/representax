@@ -4,46 +4,20 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any
 
-import equinox as eqx
 import jax
 import jax.numpy as jnp
 import numpy as np
 import optax
 import pytest
-from jaxtyping import Array, Bool, Float, PRNGKeyArray
 
-from representax.core import LossOutput
 from representax.models import apply_quantized_lora, lora_parameter_filter
-from representax.models.qwen_reranker import QwenReranker, load_qwen_reranker
+from representax.models.qwen_reranker import load_qwen_reranker
 from representax.precision import PrecisionPolicy
+from representax.tasks.cross_encoder import PointwiseBatch, PointwiseScoringTask
 from representax.train import build_train_step, init_train_state
 
 pytestmark = pytest.mark.performance
-
-
-class _RerankingBatch(eqx.Module):
-    inputs: Any
-    labels: Float[Array, " batch"]
-    valid: Bool[Array, " batch"]
-
-
-class _BinaryRerankingTask(eqx.Module):
-    """Exercise raw relevance logits through the generic trainer."""
-
-    def loss(
-        self,
-        model: QwenReranker,
-        batch: _RerankingBatch,
-        *,
-        key: PRNGKeyArray | None = None,
-    ) -> LossOutput:
-        logits = model.logits(batch.inputs, key=key)
-        losses = optax.sigmoid_binary_cross_entropy(logits, batch.labels)
-        count = jnp.maximum(jnp.sum(batch.valid), 1)
-        loss = jnp.sum(jnp.where(batch.valid, losses, 0.0)) / count
-        return LossOutput(loss=loss, metrics={"logit_mean": jnp.mean(logits)})
 
 
 def _checkpoint(variable: str) -> Path:
@@ -110,7 +84,7 @@ def test_real_checkpoint_runs_three_adapter_updates(
             ),
         )
     )
-    batch = _RerankingBatch(
+    batch = PointwiseBatch(
         inputs=inputs,
         labels=jnp.asarray((1.0, 0.0), dtype=jnp.float32),
         valid=jnp.ones((2,), dtype=bool),
@@ -124,7 +98,7 @@ def test_real_checkpoint_runs_three_adapter_updates(
         trainable_filter=trainable,
     )
     step = build_train_step(
-        _BinaryRerankingTask(),
+        PointwiseScoringTask(objective="binary_cross_entropy"),
         optimizer,
         max_grad_norm=1.0,
         precision=precision,

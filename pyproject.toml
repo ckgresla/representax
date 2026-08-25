@@ -59,6 +59,9 @@ cuda13 = [
 performance = [
     "nvidia-ml-py>=12",
 ]
+wandb = [
+    "wandb>=0.19",
+]
 test = [
     "pytest>=8",
 ]
@@ -126,9 +129,11 @@ include = ["src", "tests", "examples", "scripts"]
 [[tool.ty.overrides]]
 include = [
     "tests/models/**/performance_probe.py",
+    "tests/models/**/sentence_transformers_*.py",
     "tests/models/**/transformers_*.py",
     "tests/models/upstream.py",
     "tests/tasks/late_interaction_oracle.py",
+    "tests/models/late_interaction/gte_modern_colbert_oracle.py",
 ]
 
 [tool.ty.overrides.analysis]

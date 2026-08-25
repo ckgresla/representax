@@ -24,9 +24,20 @@ from representax.config import (
     PrecisionConfig,
     TrainingConfig,
 )
-from representax.core import Route, encode
+from representax.core import (
+    EncoderMetadata,
+    LateInteractionRepresentation,
+    Modality,
+    Route,
+    encode,
+    encode_late_interaction,
+)
 from representax.models import DenseEncoder
 from representax.precision import resolve_precision_policy
+from representax.tasks.late_interaction import (
+    LateInteractionTask,
+    late_interaction_loss_terms,
+)
 from representax.tasks.modifiers import MatryoshkaTask
 from representax.tasks.retrieval import MNRTask, mnr_loss_terms, retrieval_batch
 from representax.train import (
@@ -64,6 +75,215 @@ def _assert_array_trees_close(
             rtol=rtol,
             atol=atol,
         )
+
+
+class _LateInteractionBatch(eqx.Module):
+    values: jax.Array
+    valid: jax.Array
+
+
+class _LateInteractionEncoder(eqx.Module):
+    projection: jax.Array
+    metadata: EncoderMetadata
+
+    def __init__(self, *, key: jax.Array) -> None:
+        self.projection = jax.random.normal(key, (8, 8)) / jnp.sqrt(8.0)
+        self.metadata = EncoderMetadata(
+            model_id="representax/distributed-late-interaction",
+            revision="1",
+            output_dimension=8,
+            routes=frozenset({Route.QUERY, Route.DOCUMENT}),
+            modalities=frozenset({Modality.TEXT}),
+        )
+
+    def encode_late_interaction(
+        self,
+        inputs: _LateInteractionBatch,
+        *,
+        route: Route,
+        key: jax.Array | None = None,
+    ) -> LateInteractionRepresentation:
+        del route, key
+        return LateInteractionRepresentation(
+            values=jnp.einsum(
+                "bth,hd->btd",
+                inputs.values,
+                self.projection,
+                precision=jax.lax.Precision.HIGHEST,
+            ),
+            valid=inputs.valid,
+        )
+
+
+def _late_interaction_batch():
+    queries = jax.random.normal(jax.random.key(101), (8, 4, 8))
+    documents = queries + 0.15 * jax.random.normal(jax.random.key(102), queries.shape)
+    query_valid = jnp.asarray(
+        [
+            [True, True, True, True],
+            [True, True, True, False],
+            [True, True, False, False],
+            [True, True, True, True],
+            [True, False, False, False],
+            [True, True, True, False],
+            [True, True, True, True],
+            [True, True, False, False],
+        ]
+    )
+    document_valid = jnp.asarray(
+        [
+            [True, True, True, False],
+            [True, True, False, False],
+            [True, True, True, True],
+            [True, False, False, False],
+            [True, True, True, True],
+            [True, True, False, False],
+            [True, True, True, False],
+            [True, True, True, True],
+        ]
+    )
+    return retrieval_batch(
+        query=_LateInteractionBatch(queries, query_valid),
+        document=_LateInteractionBatch(documents, document_valid),
+        positive_mask=jnp.eye(8, dtype=jnp.bool_),
+    )
+
+
+@pytest.mark.distributed
+@pytest.mark.parametrize("world_size", [2, 4])
+@pytest.mark.parametrize("strategy", ["ddp", "fsdp"])
+def test_late_interaction_grad_cache_matches_global_ten_update_trajectory(
+    world_size: int,
+    strategy: str,
+):
+    devices = jax.devices()
+    if len(devices) < world_size:
+        pytest.skip(f"requires at least {world_size} JAX devices")
+
+    model = _LateInteractionEncoder(key=jax.random.key(103))
+    task = LateInteractionTask(
+        temperature=0.2,
+        symmetric=True,
+        negative_scope="global",
+    )
+    optimizer = optax.adamw(learning_rate=2e-3, weight_decay=1e-2)
+    initial = init_train_state(model, optimizer)
+    batch = _late_interaction_batch()
+    execution = GradCache(
+        query_chunk_size=2,
+        document_chunk_size=2,
+        loss_row_chunk_size=2,
+    )
+    reference_step = build_train_step(
+        task,
+        optimizer,
+        max_grad_norm=0.7,
+        execution=execution,
+        donate_state=False,
+    )
+    mesh = jax.make_mesh(
+        (world_size,),
+        ("data",),
+        devices=devices[:world_size],
+    )
+    plan = (
+        ShardingPlan.ddp(initial, optimizer, mesh, axis_name="data")
+        if strategy == "ddp"
+        else ShardingPlan.fsdp(
+            initial,
+            optimizer,
+            mesh,
+            parameter_axis_name="data",
+            data_axis_name="data",
+            minimum_parameter_elements=1,
+        )
+    )
+    distributed_step = build_train_step(
+        task,
+        optimizer,
+        plan=plan,
+        max_grad_norm=0.7,
+        execution=execution,
+        donate_state=False,
+    )
+    reference = initial
+    distributed = plan.place_state(initial)
+
+    with jax.default_matmul_precision("highest"):
+        for iteration in range(10):
+            key = jax.random.fold_in(jax.random.key(104), iteration)
+            reference_result = reference_step(reference, batch, key)
+            distributed_result = distributed_step(
+                distributed,
+                plan.place_batch(batch),
+                jax.device_put(key, plan.replicated_sharding),
+            )
+            jax.block_until_ready((reference_result, distributed_result))
+            _assert_array_trees_close(
+                distributed_result.metrics,
+                reference_result.metrics,
+            )
+            reference = reference_result.state
+            distributed = distributed_result.state
+
+    _assert_array_trees_close(distributed, reference)
+    assert int(distributed.step) == 10
+
+    queries = encode_late_interaction(model, batch.query, route=Route.QUERY)
+    documents = encode_late_interaction(model, batch.document, route=Route.DOCUMENT)
+    global_terms = late_interaction_loss_terms(
+        queries,
+        documents,
+        batch.positive_mask,
+        temperature=task.temperature,
+    )
+    local_count = 8 // world_size
+    local_terms = late_interaction_loss_terms(
+        jax.tree.map(lambda value: value[:local_count], queries),
+        jax.tree.map(lambda value: value[:local_count], documents),
+        batch.positive_mask[:local_count, :local_count],
+        temperature=task.temperature,
+    )
+    assert float(global_terms.loss) > float(local_terms.loss)
+
+
+@pytest.mark.distributed
+def test_late_interaction_global_negative_lowering_contains_candidate_all_gather():
+    devices = jax.devices()
+    if len(devices) < 2:
+        pytest.skip("requires at least two JAX devices")
+
+    model = _LateInteractionEncoder(key=jax.random.key(105))
+    task = LateInteractionTask(temperature=0.2, negative_scope="global")
+    optimizer = optax.adamw(learning_rate=2e-3)
+    state = init_train_state(model, optimizer)
+    mesh = jax.make_mesh((2,), ("data",), devices=devices[:2])
+    plan = ShardingPlan.ddp(state, optimizer, mesh, axis_name="data")
+    step = build_train_step(
+        task,
+        optimizer,
+        plan=plan,
+        execution=GradCache(
+            query_chunk_size=2,
+            document_chunk_size=2,
+            loss_row_chunk_size=2,
+        ),
+    )
+    compiled = (
+        cast(Any, step)
+        .lower(
+            plan.place_state(state),
+            plan.place_batch(_late_interaction_batch()),
+            jax.device_put(jax.random.key(106), plan.replicated_sharding),
+        )
+        .compile()
+    )
+    partitioned_hlo = "\n".join(
+        module.to_string() for module in compiled.runtime_executable().hlo_modules()
+    )
+
+    assert "all-gather" in partitioned_hlo
+    assert "all-reduce" in partitioned_hlo
 
 
 @pytest.mark.distributed

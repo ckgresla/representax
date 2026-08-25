@@ -136,6 +136,16 @@ def _build_train_step_body(
     if gradient_accumulation_steps <= 0:
         raise ValueError("gradient_accumulation_steps must be positive")
     accumulation_weight = getattr(task, "accumulation_weight", None)
+    supports_gradient_accumulation = getattr(
+        task,
+        "supports_gradient_accumulation",
+        True,
+    )
+    if gradient_accumulation_steps > 1 and not supports_gradient_accumulation:
+        raise TypeError(
+            f"{type(task).__name__} objective does not support exact gradient "
+            "accumulation"
+        )
     accumulation_metric_reductions = getattr(
         task,
         "accumulation_metric_reductions",

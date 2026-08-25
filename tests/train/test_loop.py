@@ -172,6 +172,7 @@ def test_training_loop_writes_every_metric_and_closes_batches(tmp_path, capsys):
     assert run["config"]["logging"] == {
         "console_every": 2,
         "reporter_queue_size": 16,
+        "wandb": None,
     }
     assert [row["iteration"] for row in metrics] == [1, 2]
     assert metrics == [row for row in events if row["category"] == "metric"]

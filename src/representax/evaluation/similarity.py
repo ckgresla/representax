@@ -1,4 +1,4 @@
-"""Embedding-similarity evaluation compatible with Sentence Transformers."""
+"""Paired similarity evaluation compatible with Sentence Transformers."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ SIMILARITY_FUNCTIONS: tuple[SimilarityFunction, ...] = (
 )
 
 
-class EmbeddingSimilarityBatchOutput(eqx.Module):
+class SimilarityBatchOutput(eqx.Module):
     """Aligned representations and labels emitted by one compiled batch."""
 
     left: Float[Array, "pair representation"]
@@ -33,7 +33,7 @@ class EmbeddingSimilarityBatchOutput(eqx.Module):
 
 
 @dataclass(frozen=True, slots=True)
-class _EmbeddingSimilarityAccumulator:
+class _SimilarityAccumulator:
     left: tuple[np.ndarray, ...] = ()
     right: tuple[np.ndarray, ...] = ()
     labels: tuple[np.ndarray, ...] = ()
@@ -85,7 +85,7 @@ def _pairwise_scores(
     raise ValueError(f"unsupported similarity function {function!r}")
 
 
-def embedding_similarity_metrics(
+def similarity_metrics(
     left: np.ndarray,
     right: np.ndarray,
     labels: np.ndarray,
@@ -139,7 +139,7 @@ def embedding_similarity_metrics(
 
 
 @dataclass(frozen=True, slots=True)
-class EmbeddingSimilarityEvaluator:
+class SimilarityEvaluator:
     """Corpus-level correlations for aligned labeled embedding pairs."""
 
     name: str = "similarity"
@@ -187,7 +187,7 @@ class EmbeddingSimilarityEvaluator:
         batch: PairwiseBatch,
         *,
         key: PRNGKeyArray | None = None,
-    ) -> EmbeddingSimilarityBatchOutput:
+    ) -> SimilarityBatchOutput:
         if not isinstance(batch, PairwiseBatch):
             raise TypeError("embedding similarity requires a PairwiseBatch")
         if not isinstance(model, Encoder):
@@ -196,22 +196,22 @@ class EmbeddingSimilarityEvaluator:
             left_key = right_key = None
         else:
             left_key, right_key = jax.random.split(key)
-        return EmbeddingSimilarityBatchOutput(
+        return SimilarityBatchOutput(
             left=encode(model, batch.left, route=self.left_route, key=left_key),
             right=encode(model, batch.right, route=self.right_route, key=right_key),
             labels=batch.labels,
             valid=batch.valid,
         )
 
-    def initialize(self) -> _EmbeddingSimilarityAccumulator:
-        return _EmbeddingSimilarityAccumulator()
+    def initialize(self) -> _SimilarityAccumulator:
+        return _SimilarityAccumulator()
 
     def accumulate(
         self,
-        accumulator: _EmbeddingSimilarityAccumulator,
-        output: EmbeddingSimilarityBatchOutput,
-    ) -> _EmbeddingSimilarityAccumulator:
-        return _EmbeddingSimilarityAccumulator(
+        accumulator: _SimilarityAccumulator,
+        output: SimilarityBatchOutput,
+    ) -> _SimilarityAccumulator:
+        return _SimilarityAccumulator(
             left=(*accumulator.left, np.asarray(output.left)),
             right=(*accumulator.right, np.asarray(output.right)),
             labels=(*accumulator.labels, np.asarray(output.labels)),
@@ -220,12 +220,12 @@ class EmbeddingSimilarityEvaluator:
 
     def finalize(
         self,
-        accumulator: _EmbeddingSimilarityAccumulator,
+        accumulator: _SimilarityAccumulator,
     ) -> Mapping[str, float]:
         if not accumulator.left:
-            raise ValueError("embedding similarity received no batches")
+            raise ValueError("similarity evaluation received no batches")
         valid = np.concatenate(accumulator.valid)
-        metrics = embedding_similarity_metrics(
+        metrics = similarity_metrics(
             np.concatenate(accumulator.left)[valid],
             np.concatenate(accumulator.right)[valid],
             np.concatenate(accumulator.labels)[valid],
@@ -237,9 +237,9 @@ class EmbeddingSimilarityEvaluator:
 
 
 __all__ = [
-    "EmbeddingSimilarityBatchOutput",
-    "EmbeddingSimilarityEvaluator",
+    "SimilarityBatchOutput",
+    "SimilarityEvaluator",
     "SIMILARITY_FUNCTIONS",
     "SimilarityFunction",
-    "embedding_similarity_metrics",
+    "similarity_metrics",
 ]

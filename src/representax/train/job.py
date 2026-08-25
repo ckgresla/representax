@@ -14,18 +14,38 @@ import equinox as eqx
 import jax
 
 from representax.config import (
+    ClassificationEvaluatorConfig,
     ComponentConfig,
     CustomShardingConfig,
     DataConfig,
     DDPConfig,
-    EmbeddingSimilarityEvaluatorConfig,
     FSDPConfig,
+    InformationRetrievalEvaluatorConfig,
+    JEPAEvaluatorConfig,
     JobConfig,
     ModelConfig,
+    MSEEvaluatorConfig,
+    ParaphraseMiningEvaluatorConfig,
     QuantizedLoRAConfig,
+    RerankingEvaluatorConfig,
+    RewardEvaluatorConfig,
+    SimilarityEvaluatorConfig,
+    TripletEvaluatorConfig,
 )
 from representax.data import ArtifactResolver, build_data_loader
-from representax.evaluation import EmbeddingSimilarityEvaluator, LossEvaluator
+from representax.evaluation import (
+    ClassificationEvaluator,
+    InformationRetrievalEvaluator,
+    JEPAEvaluator,
+    LossEvaluator,
+    MSEEvaluator,
+    ParaphraseMiningEvaluator,
+    RerankingEvaluator,
+    RewardEvaluator,
+    SequentialEvaluator,
+    SimilarityEvaluator,
+    TripletEvaluator,
+)
 from representax.models import apply_quantized_lora, lora_parameter_filter
 from representax.models.processing import Processor
 from representax.precision import resolve_precision_policy
@@ -38,6 +58,7 @@ from .optimizer import build_optimizer
 from .sharding import ShardingPlan, parameter_specs_from_rules
 from .state import TrainState
 from .step import TrainStep, build_train_step, init_train_state
+from .wandb import WandbReporter
 
 
 def resolve_target(target: str) -> Callable[..., Any]:
@@ -333,20 +354,72 @@ def build_job_runtime(
         def build_evaluator(config: Any) -> Any:
             if config.kind == "loss":
                 return LossEvaluator(task, name=config.name)
-            if isinstance(config, EmbeddingSimilarityEvaluatorConfig):
-                return EmbeddingSimilarityEvaluator(
+            if isinstance(config, SimilarityEvaluatorConfig):
+                return SimilarityEvaluator(
                     name=config.name,
                     similarity_functions=config.similarity_functions,
                     main_similarity=config.main_similarity,
                     left_route=config.left_route,
                     right_route=config.right_route,
                 )
+            if isinstance(config, ClassificationEvaluatorConfig):
+                return ClassificationEvaluator(name=config.name, task=task)
+            if isinstance(config, MSEEvaluatorConfig):
+                return MSEEvaluator(name=config.name, route=config.route)
+            if isinstance(config, TripletEvaluatorConfig):
+                return TripletEvaluator(
+                    name=config.name,
+                    distance=config.distance,
+                    anchor_route=config.anchor_route,
+                    positive_route=config.positive_route,
+                    negative_route=config.negative_route,
+                )
+            if isinstance(config, RerankingEvaluatorConfig):
+                return RerankingEvaluator(name=config.name, at_k=config.at_k)
+            if isinstance(config, RewardEvaluatorConfig):
+                return RewardEvaluator(
+                    kind=config.mode,
+                    name=config.name,
+                    at_k=config.at_k,
+                )
+            if isinstance(config, JEPAEvaluatorConfig):
+                return JEPAEvaluator(task=task, name=config.name)
+            if isinstance(config, ParaphraseMiningEvaluatorConfig):
+                return ParaphraseMiningEvaluator(
+                    duplicate_pairs=config.duplicate_pairs,
+                    name=config.name,
+                    max_pairs=config.max_pairs,
+                    block_size=config.block_size,
+                    route=config.route,
+                )
+            if isinstance(config, InformationRetrievalEvaluatorConfig):
+                return InformationRetrievalEvaluator(
+                    relevant_documents=config.relevant_documents,
+                    name=config.name,
+                    score_functions=config.score_functions,
+                    main_score_function=config.main_score_function,
+                    accuracy_at_k=config.accuracy_at_k,
+                    precision_recall_at_k=config.precision_recall_at_k,
+                    mrr_at_k=config.mrr_at_k,
+                    ndcg_at_k=config.ndcg_at_k,
+                    map_at_k=config.map_at_k,
+                    query_route=config.query_route,
+                    document_route=config.document_route,
+                )
             raise ValueError(f"unsupported evaluator kind {config.kind!r}")
 
-        evaluation_runners = tuple(
-            EvaluationRunner(build_evaluator(config), precision=precision)
-            for config in job.evaluation.evaluators
+        evaluators = tuple(
+            build_evaluator(config) for config in job.evaluation.evaluators
         )
+        evaluator = (
+            evaluators[0]
+            if len(evaluators) == 1
+            else SequentialEvaluator(
+                evaluators,
+                primary_metric=job.evaluation.primary_metric,
+            )
+        )
+        evaluation_runners = (EvaluationRunner(evaluator, precision=precision),)
 
         def evaluation_batches() -> Any:
             if job.evaluation is None:  # pragma: no cover - closed-over invariant
@@ -381,6 +454,16 @@ def run_job(
     """Execute one validated configuration from artifacts to inference model."""
 
     runtime = build_job_runtime(job, resolvers=resolvers, mappers=mappers)
+    configured_reporters = list(reporters)
+    if job.logging.wandb is not None:
+        configured_reporters.append(
+            WandbReporter(
+                job.logging.wandb,
+                job=job,
+                run_directory=run_directory,
+                resume=resume,
+            )
+        )
     result = run_training(
         state=runtime.state,
         step=runtime.step,
@@ -388,7 +471,7 @@ def run_job(
         job=job,
         run_directory=run_directory,
         resume=resume,
-        reporters=reporters,
+        reporters=tuple(configured_reporters),
         place_batch=runtime.place_batch,
         evaluation_runners=runtime.evaluation_runners,
         evaluation_batches=runtime.evaluation_batches,

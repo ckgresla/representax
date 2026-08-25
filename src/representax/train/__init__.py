@@ -1,6 +1,11 @@
 """Generic training state and compiled update construction."""
 
-from representax.config import CheckpointConfig, LoggingConfig, MegaBatchMiningConfig
+from representax.config import (
+    CheckpointConfig,
+    LoggingConfig,
+    MegaBatchMiningConfig,
+    WandbConfig,
+)
 from representax.precision import PrecisionPolicy, resolve_precision_policy
 
 from .checkpoint import (
@@ -50,6 +55,7 @@ from .step import (
     tree_all_finite,
     tree_global_norm,
 )
+from .wandb import WandbReporter
 
 __all__ = [
     "CheckpointConfig",
@@ -81,6 +87,8 @@ __all__ = [
     "TrainStep",
     "LoggingConfig",
     "TrainingRunResult",
+    "WandbConfig",
+    "WandbReporter",
     "build_train_step",
     "build_loss_execution",
     "build_batches",

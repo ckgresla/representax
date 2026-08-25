@@ -4,24 +4,23 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, cast
+from typing import cast
 
-import equinox as eqx
 import jax
 import jax.numpy as jnp
 import numpy as np
 import optax
 import pytest
-from jaxtyping import Array, Bool, Float, PRNGKeyArray
 from PIL import Image
 
-from representax.core import LossOutput, Route
+from representax.core import Route
 from representax.models import apply_quantized_lora, lora_parameter_filter
 from representax.models.nemotron_vl import (
     LlamaNemotronVLReranker,
     load_nemotron_vl,
 )
 from representax.precision import PrecisionPolicy
+from representax.tasks.cross_encoder import PointwiseBatch, PointwiseScoringTask
 from representax.tasks.pairwise import CosineRegressionTask, pairwise_batch
 from representax.train import build_train_step, init_train_state
 
@@ -115,29 +114,6 @@ def test_real_embedder_runs_three_multimodal_adapter_updates() -> None:
     print({"mode": "embedding", "losses": losses})
 
 
-class _ScoreBatch(eqx.Module):
-    inputs: Any
-    labels: Float[Array, " batch"]
-    valid: Bool[Array, " batch"]
-
-
-class _ScoreRegressionTask(eqx.Module):
-    """Acceptance task proving the native scorer uses the generic trainer."""
-
-    def loss(
-        self,
-        model: LlamaNemotronVLReranker,
-        batch: _ScoreBatch,
-        *,
-        key: PRNGKeyArray | None = None,
-    ) -> LossOutput:
-        scores = model.encode(batch.inputs, route=Route.GENERIC, key=key).reshape(-1)
-        errors = jnp.square(scores.astype(jnp.float32) - batch.labels)
-        count = jnp.maximum(jnp.sum(batch.valid), 1)
-        loss = jnp.sum(jnp.where(batch.valid, errors, 0.0)) / count
-        return LossOutput(loss=loss, metrics={"score_mean": jnp.mean(scores)})
-
-
 def test_real_reranker_runs_three_multimodal_adapter_updates() -> None:
     if jax.default_backend() != "gpu":
         pytest.skip("real Llama Nemotron VL training acceptance requires a GPU")
@@ -168,7 +144,7 @@ def test_real_reranker_runs_three_multimodal_adapter_updates() -> None:
         ),
         route=Route.GENERIC,
     )
-    batch = _ScoreBatch(
+    batch = PointwiseBatch(
         inputs=inputs,
         labels=jnp.asarray((0.8,), dtype=jnp.float32),
         valid=jnp.ones((1,), dtype=bool),
@@ -182,7 +158,7 @@ def test_real_reranker_runs_three_multimodal_adapter_updates() -> None:
         trainable_filter=trainable,
     )
     step = build_train_step(
-        _ScoreRegressionTask(),
+        PointwiseScoringTask(objective="mse"),
         optimizer,
         max_grad_norm=1.0,
         precision=precision,

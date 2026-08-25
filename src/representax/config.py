@@ -112,10 +112,10 @@ class EvaluatorConfig(FrozenConfig):
     name: NonEmptyString = "loss"
 
 
-class EmbeddingSimilarityEvaluatorConfig(EvaluatorConfig):
+class SimilarityEvaluatorConfig(EvaluatorConfig):
     """Corpus-level correlations between labels and paired similarities."""
 
-    kind: Literal["embedding_similarity"] = "embedding_similarity"
+    kind: Literal["similarity"] = "similarity"
     name: NonEmptyString = "similarity"
     similarity_functions: tuple[
         Literal["cosine", "dot", "euclidean", "manhattan"], ...
@@ -136,6 +136,70 @@ class EmbeddingSimilarityEvaluatorConfig(EvaluatorConfig):
         ):
             raise ValueError("main_similarity must be one of similarity_functions")
         return self
+
+
+class ClassificationEvaluatorConfig(EvaluatorConfig):
+    kind: Literal["classification"] = "classification"
+    name: NonEmptyString = "classification"
+
+
+class MSEEvaluatorConfig(EvaluatorConfig):
+    kind: Literal["mse"] = "mse"
+    name: NonEmptyString = "mse"
+    route: Route = Route.GENERIC
+
+
+class TripletEvaluatorConfig(EvaluatorConfig):
+    kind: Literal["triplet"] = "triplet"
+    name: NonEmptyString = "triplet"
+    distance: Literal["cosine", "euclidean", "manhattan"] = "cosine"
+    anchor_route: Route = Route.GENERIC
+    positive_route: Route = Route.GENERIC
+    negative_route: Route = Route.GENERIC
+
+
+class RerankingEvaluatorConfig(EvaluatorConfig):
+    kind: Literal["reranking"] = "reranking"
+    name: NonEmptyString = "reranking"
+    at_k: tuple[PositiveInt, ...] = (1, 3, 5, 10)
+
+
+class RewardEvaluatorConfig(EvaluatorConfig):
+    """Metrics for one explicit reward-supervision contract."""
+
+    kind: Literal["reward"] = "reward"
+    name: NonEmptyString = "reward"
+    mode: Literal["pairwise", "listwise", "pointwise", "process"] = "pairwise"
+    at_k: tuple[PositiveInt, ...] = (1, 3, 5, 10)
+
+
+class JEPAEvaluatorConfig(EvaluatorConfig):
+    kind: Literal["jepa"] = "jepa"
+    name: NonEmptyString = "jepa"
+
+
+class ParaphraseMiningEvaluatorConfig(EvaluatorConfig):
+    kind: Literal["paraphrase_mining"] = "paraphrase_mining"
+    name: NonEmptyString = "paraphrase"
+    duplicate_pairs: frozenset[tuple[int, int]]
+    max_pairs: PositiveInt = 100_000
+    block_size: PositiveInt = 1024
+    route: Route = Route.GENERIC
+
+
+class InformationRetrievalEvaluatorConfig(EvaluatorConfig):
+    kind: Literal["information_retrieval"] = "information_retrieval"
+    name: NonEmptyString = "retrieval"
+    relevant_documents: dict[int, frozenset[int]]
+    score_functions: tuple[Literal["cosine", "dot"], ...] = ("cosine",)
+    main_score_function: Literal["cosine", "dot"] = "cosine"
+    accuracy_at_k: tuple[PositiveInt, ...] = (1, 3, 5, 10)
+    precision_recall_at_k: tuple[PositiveInt, ...] = (1, 3, 5, 10)
+    mrr_at_k: tuple[PositiveInt, ...] = (10,)
+    ndcg_at_k: tuple[PositiveInt, ...] = (10,)
+    map_at_k: tuple[PositiveInt, ...] = (100,)
+    query_route: Route = Route.QUERY
+    document_route: Route = Route.DOCUMENT
 
 
 class EvaluationConfig(FrozenConfig):
@@ -168,14 +232,22 @@ class EvaluationConfig(FrozenConfig):
             if not isinstance(evaluator, Mapping):
                 raise TypeError("each evaluator must be a config or mapping")
             kind = evaluator.get("kind", "loss")
-            if kind == "loss":
-                parsed.append(EvaluatorConfig.model_validate(evaluator))
-            elif kind == "embedding_similarity":
-                parsed.append(
-                    EmbeddingSimilarityEvaluatorConfig.model_validate(evaluator)
-                )
-            else:
+            evaluator_types = {
+                "loss": EvaluatorConfig,
+                "similarity": SimilarityEvaluatorConfig,
+                "classification": ClassificationEvaluatorConfig,
+                "mse": MSEEvaluatorConfig,
+                "triplet": TripletEvaluatorConfig,
+                "reranking": RerankingEvaluatorConfig,
+                "reward": RewardEvaluatorConfig,
+                "jepa": JEPAEvaluatorConfig,
+                "paraphrase_mining": ParaphraseMiningEvaluatorConfig,
+                "information_retrieval": InformationRetrievalEvaluatorConfig,
+            }
+            evaluator_type = evaluator_types.get(kind)
+            if evaluator_type is None:
                 raise ValueError(f"unknown evaluator kind {kind!r}")
+            parsed.append(evaluator_type.model_validate(evaluator))
         return tuple(parsed)
 
     @model_validator(mode="after")
@@ -364,6 +436,13 @@ class GradCacheConfig(FrozenConfig):
             "defaults to micro_batch_size and does not rerun either encoder."
         ),
     )
+    score_micro_batch_size: PositiveInt | None = Field(
+        default=None,
+        description=(
+            "Optional jointly encoded pair count for cross-encoder replay; "
+            "defaults to micro_batch_size."
+        ),
+    )
 
     @property
     def resolved_query_micro_batch_size(self) -> int:
@@ -376,6 +455,10 @@ class GradCacheConfig(FrozenConfig):
     @property
     def resolved_loss_row_chunk_size(self) -> int:
         return self.loss_row_chunk_size or self.micro_batch_size
+
+    @property
+    def resolved_score_micro_batch_size(self) -> int:
+        return self.score_micro_batch_size or self.micro_batch_size
 
 
 class MegaBatchMiningConfig(FrozenConfig):
@@ -537,11 +620,24 @@ class TrainingConfig(FrozenConfig):
         return self
 
 
+class WandbConfig(FrozenConfig):
+    """Optional Weights & Biases destination for canonical metric rows."""
+
+    project: NonEmptyString
+    entity: NonEmptyString | None = None
+    group: NonEmptyString | None = None
+    name: NonEmptyString | None = None
+    run_id: NonEmptyString | None = None
+    tags: tuple[NonEmptyString, ...] = ()
+    mode: Literal["online", "offline", "disabled"] = "online"
+
+
 class LoggingConfig(FrozenConfig):
     """Asynchronous local and downstream reporting mechanics."""
 
     console_every: PositiveInt = 1
     reporter_queue_size: PositiveInt = 16
+    wandb: WandbConfig | None = None
 
 
 class CheckpointConfig(FrozenConfig):
@@ -751,7 +847,7 @@ __all__ = [
     "CustomShardingConfig",
     "DataConfig",
     "DDPConfig",
-    "EmbeddingSimilarityEvaluatorConfig",
+    "SimilarityEvaluatorConfig",
     "EvaluationConfig",
     "EvaluatorConfig",
     "ExportConfig",

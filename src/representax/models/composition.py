@@ -34,9 +34,13 @@ class EncoderPair(eqx.Module):
 
         if scale is not None and (not math.isfinite(scale) or scale <= 0):
             raise ValueError("encoder-pair scale must be finite and positive")
+
+        def copy_array(value: Any) -> Any:
+            return jnp.array(value, copy=True) if eqx.is_array(value) else value
+
         return cls(
-            first=encoder,
-            second=encoder,
+            first=jax.tree.map(copy_array, encoder),
+            second=jax.tree.map(copy_array, encoder),
             logit_scale=(
                 None
                 if scale is None

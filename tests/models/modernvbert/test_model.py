@@ -88,6 +88,32 @@ def test_config_maps_nested_transformers_values():
     assert config.head_dimension == 4
 
 
+def test_config_expands_standard_modernbert_attention_cadence():
+    config = ModernVBERTTextConfig.from_hf_config(
+        {
+            "vocab_size": 17,
+            "hidden_size": 8,
+            "intermediate_size": 12,
+            "num_hidden_layers": 5,
+            "num_attention_heads": 2,
+            "global_attn_every_n_layers": 3,
+            "local_attention": 4,
+            "global_rope_theta": 10_000.0,
+            "local_rope_theta": 1_000.0,
+            "norm_eps": 1e-5,
+            "max_position_embeddings": 32,
+        }
+    )
+
+    assert config.layer_types == (
+        "full_attention",
+        "sliding_attention",
+        "sliding_attention",
+        "full_attention",
+        "sliding_attention",
+    )
+
+
 def test_native_encoder_is_jittable_differentiable_and_normalized():
     model = ModernVBERTTextEncoder.init(tiny_config(), key=jax.random.key(0))
     assert model.rematerialization == "full"

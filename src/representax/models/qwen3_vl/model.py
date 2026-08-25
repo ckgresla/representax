@@ -238,7 +238,7 @@ class Qwen3VLReranker(eqx.Module):
 
         return load_qwen3_vl_reranker(model_name_or_path, **options)
 
-    def score(
+    def logits(
         self,
         inputs: Qwen3VLBatch,
         *,
@@ -251,7 +251,17 @@ class Qwen3VLReranker(eqx.Module):
             self.model.text.token_embedding[self.true_token_id]
             - self.model.text.token_embedding[self.false_token_id]
         ).astype(jnp.float32)
-        return jax.nn.sigmoid(pooled @ direction)
+        return pooled @ direction
+
+    def score(
+        self,
+        inputs: Qwen3VLBatch,
+        *,
+        key: PRNGKeyArray | None = None,
+    ) -> Float[Array, " batch"]:
+        """Return checkpoint-configured inference probabilities."""
+
+        return jax.nn.sigmoid(self.logits(inputs, key=key))
 
 
 __all__ = [

@@ -108,7 +108,19 @@ class ModernVBERTTextConfig(FrozenConfig):
                 )
             return resolved
 
-        layer_types = tuple(attention_type(item) for item in text["layer_types"])
+        raw_layer_types = text.get("layer_types")
+        if raw_layer_types is None:
+            # Standard Transformers ModernBERT checkpoints encode the same
+            # schedule as a global-attention cadence rather than an explicit
+            # per-layer list.
+            cadence = int(text["global_attn_every_n_layers"])
+            if cadence <= 0:
+                raise ValueError("global_attn_every_n_layers must be positive")
+            raw_layer_types = tuple(
+                "full_attention" if index % cadence == 0 else "sliding_attention"
+                for index in range(int(text["num_hidden_layers"]))
+            )
+        layer_types = tuple(attention_type(item) for item in raw_layer_types)
         return cls(
             vocab_size=int(text["vocab_size"]),
             hidden_size=int(text["hidden_size"]),

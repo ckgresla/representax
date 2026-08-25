@@ -53,8 +53,8 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
-      - run: python -m pip install ".[test]"
-      - run: pytest -q -m distributed
+      - run: python -m pip install ".[test,hf]"
+      - run: pytest -q -m "distributed and not parity and not runtime and not performance"
 
   release-artifacts:
     runs-on: ubuntu-latest

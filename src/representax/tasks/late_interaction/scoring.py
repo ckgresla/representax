@@ -7,6 +7,7 @@ import jax.numpy as jnp
 from jaxtyping import Array, Float
 
 from representax.core import LateInteractionRepresentation
+from representax.core.sharding import replicate
 
 
 def _maxsim_document_block(
@@ -48,6 +49,15 @@ def maxsim_scores(
 
     if queries.values.shape[-1] != documents.values.shape[-1]:
         raise ValueError("query and document token dimensions must match")
+    # One data mesh axis cannot simultaneously shard both the query and
+    # document dimensions of the all-pairs score matrix. Keep query rows
+    # distributed and materialize the compact candidate representations once;
+    # XLA lowers this annotation to the global-negative all-gather. Symmetric
+    # loss reshards the transposed score matrix so documents become its rows.
+    documents = LateInteractionRepresentation(
+        values=replicate(documents.values),
+        valid=replicate(documents.valid),
+    )
     if document_chunk_size is None:
         return _maxsim_document_block(queries, documents)
     if document_chunk_size <= 0:

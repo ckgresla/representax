@@ -82,6 +82,28 @@ def test_classification_contrastive_tension_and_gor_compile():
     _step(GlobalOrthogonalRegularizationTask(), encoder, regularization)
 
 
+def test_encoder_pair_owns_independent_buffers_under_state_donation():
+    encoder = DenseEncoder(7, 5, key=jax.random.key(21))
+    model = EncoderPair.from_encoder(encoder)
+    first_weight = model.first.projection.weight
+    second_weight = model.second.projection.weight
+    assert first_weight is not second_weight
+    assert first_weight.unsafe_buffer_pointer() != second_weight.unsafe_buffer_pointer()
+
+    batch = contrastive_tension_batch(
+        first=jax.random.normal(jax.random.key(22), (8, 7)),
+        second=jax.random.normal(jax.random.key(23), (8, 7)),
+        labels=jnp.arange(8) % 2,
+    )
+    optimizer = optax.adamw(1e-3)
+    state = init_train_state(model, optimizer)
+    result = build_train_step(ContrastiveTensionTask(), optimizer, donate_state=True)(
+        state, batch, jax.random.key(24)
+    )
+    assert bool(result.metrics.numeric_finite)
+    assert int(result.state.step) == 1
+
+
 def test_denoising_and_bounded_mega_batch_execution_compile():
     encoder = DenseEncoder(7, 5, key=jax.random.key(5))
     damaged = jax.random.normal(jax.random.key(6), (8, 7))

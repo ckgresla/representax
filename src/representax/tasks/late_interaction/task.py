@@ -18,6 +18,7 @@ from representax.core import (
     Route,
     encode_late_interaction,
 )
+from representax.core.sharding import constrain_activation, replicate
 from representax.tasks.retrieval import RetrievalBatch
 
 from .scoring import maxsim_scores
@@ -41,6 +42,7 @@ def _direction_loss(
     candidate_valid: Bool[Array, " candidate"],
 ) -> Float[Array, ""]:
     raw_logits = logits
+    candidate_valid = replicate(candidate_valid)
     logits = jnp.where(candidate_valid[None, :], raw_logits, -jnp.inf)
     active = positive_mask & row_valid[:, None] & candidate_valid[None, :]
     weights = jnp.where(active, positive_weights, 0.0)
@@ -114,9 +116,9 @@ def late_interaction_loss_terms(
     )
     if symmetric:
         reverse_loss = _direction_loss(
-            logits.T,
-            mask.T,
-            weights.T,
+            constrain_activation(logits.T),
+            constrain_activation(mask.T),
+            constrain_activation(weights.T),
             document_valid,
             query_valid,
         )
