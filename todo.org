@@ -37,6 +37,11 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
 ** TODO Benchmark quality, throughput, feasible workload, utilization, and model coverage :research:benchmark:
 ** TODO Benchmark compile time separately from steady-state step time :research:benchmark:
 ** TODO Benchmark direct MNR and GradCache at equal scientific semantics :research:benchmark:
+   Include an explicit distributed-direct-MNR contract: either lower the full
+   global relation without constructing an invalid repeated =data= sharding, or
+   reject that execution choice at configuration time and direct users to exact
+   global-negative GradCache. Do not let a low-level =P("data", "data")= layout
+   error define the public capability boundary.
 ** TODO Benchmark text retrieval against Sentence Transformers :research:benchmark:
 ** TODO Benchmark multimodal retrieval including audio and video :research:benchmark:
    Treat text-image, audio-text, and video-text training as shared workloads
@@ -769,6 +774,12 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
       Land this after the task-specific evaluator inventory so the adapter can
       report the accepted =train/=, =valid/=, and =perf/= metric contracts without
       driving or duplicating evaluator design.
+      Accepted live on 2026-08-25 against =ckgresla/representax=: all 24 built-in
+      task kinds completed 30 finite optimizer updates, all 11 evaluator kinds
+      emitted finite =valid/= metrics, and representative 2-device DDP plus
+      4-device FSDP training and evaluation runs completed. The 39 accepted W&B
+      runs contain 780 optimizer updates and finished within a 30-minute bounded
+      campaign. See =benchmarks/results/wandb-acceptance-20260825/=.
 ***** TODO Add source-neutral offline hard-negative mining with artifact provenance
 **** TODO Prove a matched dense-retrieval training advantage over Sentence Transformers
     Use a pinned local retrieval dataset, identical raw examples, tokenizer,
@@ -1580,7 +1591,9 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   The optional W&B adapter consumes the existing bounded asynchronous reporter
   protocol, preserves canonical =train/=, =valid/=, and =perf/= metric names,
   records lifecycle completion or failure, and never enters the compiled step
-  or task/evaluator APIs. JSONL remains the dependency-free default.
+  or task/evaluator APIs. JSONL remains the dependency-free default. The live
+  registry-wide and 2-/4-device acceptance campaign is recorded in
+  =benchmarks/results/wandb-acceptance-20260825/=.
 ** TODO Measure GPU and TPU behavior where hardware is available :research:benchmark:
 
 ** TODO Use the completed trainer to train a state-of-the-art representation model :research:model:
