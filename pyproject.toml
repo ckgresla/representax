@@ -129,6 +129,7 @@ include = ["src", "tests", "examples", "scripts"]
 [[tool.ty.overrides]]
 include = [
     "tests/models/**/performance_probe.py",
+    "tests/models/**/sentence_transformers_*.py",
     "tests/models/**/transformers_*.py",
     "tests/models/upstream.py",
     "tests/tasks/late_interaction_oracle.py",

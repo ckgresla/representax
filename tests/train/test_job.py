@@ -223,7 +223,7 @@ def test_run_job_trains_evaluates_selects_and_exports_from_disk(tmp_path):
         precision=resolve_precision_policy(job.training.precision),
     )
     np.testing.assert_allclose(
-        offline.metrics["valid/loss"],
+        offline.metrics["eval/loss"],
         result.best_metrics["valid/loss"],
         rtol=1e-6,
     )

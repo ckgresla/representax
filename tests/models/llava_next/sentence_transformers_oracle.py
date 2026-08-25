@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-from typing import Any, cast
 
 import numpy as np
 
@@ -64,7 +63,7 @@ def main() -> None:
         "embedding": np.asarray(embedding),
     }
     for case, value in (("text", text), ("image", image), ("composed", sample)):
-        features = cast(Any, model[0]).preprocess([value], **encode_kwargs)
+        features = model[0].preprocess([value], **encode_kwargs)
         for name in ("input_ids", "attention_mask", "pixel_values", "image_sizes"):
             if name not in features:
                 continue

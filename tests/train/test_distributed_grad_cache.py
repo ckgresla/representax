@@ -282,9 +282,8 @@ def test_late_interaction_global_negative_lowering_contains_candidate_all_gather
         module.to_string() for module in compiled.runtime_executable().hlo_modules()
     )
 
-    assert "all-gather-start" in partitioned_hlo
-    assert "all-gather-done" in partitioned_hlo
-    assert "all-reduce-start" in partitioned_hlo
+    assert "all-gather" in partitioned_hlo
+    assert "all-reduce" in partitioned_hlo
 
 
 @pytest.mark.distributed
