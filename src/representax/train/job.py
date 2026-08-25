@@ -15,6 +15,8 @@ import jax
 
 from representax.config import (
     ClassificationEvaluatorConfig,
+    ClassificationProbeEvaluatorConfig,
+    ClusteringEvaluatorConfig,
     ComponentConfig,
     CustomShardingConfig,
     DataConfig,
@@ -22,9 +24,11 @@ from representax.config import (
     FSDPConfig,
     InformationRetrievalEvaluatorConfig,
     JEPAEvaluatorConfig,
+    JEPARepresentationEvaluatorConfig,
     JobConfig,
     ModelConfig,
     MSEEvaluatorConfig,
+    PairClassificationEvaluatorConfig,
     ParaphraseMiningEvaluatorConfig,
     QuantizedLoRAConfig,
     RerankingEvaluatorConfig,
@@ -35,10 +39,14 @@ from representax.config import (
 from representax.data import ArtifactResolver, build_data_loader
 from representax.evaluation import (
     ClassificationEvaluator,
+    ClassificationProbeEvaluator,
+    ClusteringEvaluator,
     InformationRetrievalEvaluator,
     JEPAEvaluator,
+    JEPARepresentationEvaluator,
     LossEvaluator,
     MSEEvaluator,
+    PairClassificationEvaluator,
     ParaphraseMiningEvaluator,
     RerankingEvaluator,
     RewardEvaluator,
@@ -364,6 +372,43 @@ def build_job_runtime(
                 )
             if isinstance(config, ClassificationEvaluatorConfig):
                 return ClassificationEvaluator(name=config.name, task=task)
+            if isinstance(config, PairClassificationEvaluatorConfig):
+                return PairClassificationEvaluator(
+                    name=config.name,
+                    similarity_functions=config.similarity_functions,
+                    left_route=config.left_route,
+                    right_route=config.right_route,
+                )
+            if isinstance(config, JEPARepresentationEvaluatorConfig):
+                return JEPARepresentationEvaluator(
+                    name=config.name,
+                    inverse_regularization=config.inverse_regularization,
+                    normalization=config.normalization,
+                    max_iterations=config.max_iterations,
+                    neighbors=config.neighbors,
+                    seed=config.seed,
+                    route=config.route,
+                )
+            if isinstance(config, ClassificationProbeEvaluatorConfig):
+                return ClassificationProbeEvaluator(
+                    name=config.name,
+                    inverse_regularization=config.inverse_regularization,
+                    normalization=config.normalization,
+                    max_iterations=config.max_iterations,
+                    seed=config.seed,
+                    route=config.route,
+                )
+            if isinstance(config, ClusteringEvaluatorConfig):
+                return ClusteringEvaluator(
+                    name=config.name,
+                    clusters=config.clusters,
+                    normalization=config.normalization,
+                    batch_size=config.batch_size,
+                    max_iterations=config.max_iterations,
+                    n_init=config.n_init,
+                    seed=config.seed,
+                    route=config.route,
+                )
             if isinstance(config, MSEEvaluatorConfig):
                 return MSEEvaluator(name=config.name, route=config.route)
             if isinstance(config, TripletEvaluatorConfig):

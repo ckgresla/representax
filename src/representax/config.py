@@ -143,6 +143,72 @@ class ClassificationEvaluatorConfig(EvaluatorConfig):
     name: NonEmptyString = "classification"
 
 
+class PairClassificationEvaluatorConfig(EvaluatorConfig):
+    """Threshold-selected binary decisions over paired frozen embeddings."""
+
+    kind: Literal["pair_classification"] = "pair_classification"
+    name: NonEmptyString = "pair_classification"
+    similarity_functions: tuple[
+        Literal["cosine", "dot", "euclidean", "manhattan"], ...
+    ] = ("cosine", "dot", "euclidean", "manhattan")
+    left_route: Route = Route.GENERIC
+    right_route: Route = Route.GENERIC
+
+    @model_validator(mode="after")
+    def validate_pair_classification(self) -> Self:
+        if not self.similarity_functions:
+            raise ValueError("at least one similarity function is required")
+        if len(set(self.similarity_functions)) != len(self.similarity_functions):
+            raise ValueError("similarity functions must be unique")
+        return self
+
+
+class ClassificationProbeEvaluatorConfig(EvaluatorConfig):
+    """Frozen-embedding multinomial logistic-regression probe."""
+
+    kind: Literal["classification_probe"] = "classification_probe"
+    name: NonEmptyString = "classification_probe"
+    inverse_regularization: tuple[PositiveFloat, ...] = (0.01, 0.1, 1.0, 10.0)
+    normalization: Literal["none", "l2"] = "l2"
+    max_iterations: PositiveInt = 1000
+    seed: NonNegativeInt = 0
+    route: Route = Route.GENERIC
+
+    @model_validator(mode="after")
+    def validate_probe(self) -> Self:
+        if not self.inverse_regularization:
+            raise ValueError("inverse_regularization must be non-empty")
+        return self
+
+
+class ClusteringEvaluatorConfig(EvaluatorConfig):
+    """Pinned MiniBatchKMeans geometry evaluation."""
+
+    kind: Literal["clustering"] = "clustering"
+    name: NonEmptyString = "clustering"
+    clusters: PositiveInt | None = None
+    normalization: Literal["none", "l2"] = "l2"
+    batch_size: PositiveInt = 1024
+    max_iterations: PositiveInt = 100
+    n_init: PositiveInt = 10
+    seed: NonNegativeInt = 0
+    route: Route = Route.GENERIC
+
+    @model_validator(mode="after")
+    def validate_clustering(self) -> Self:
+        if self.clusters == 1:
+            raise ValueError("clusters must exceed one or be inferred")
+        return self
+
+
+class JEPARepresentationEvaluatorConfig(ClassificationProbeEvaluatorConfig):
+    """Frozen JEPA transfer, k-NN, and collapse diagnostics."""
+
+    kind: Literal["jepa_representation"] = "jepa_representation"
+    name: NonEmptyString = "jepa_representation"
+    neighbors: PositiveInt = 20
+
+
 class MSEEvaluatorConfig(EvaluatorConfig):
     kind: Literal["mse"] = "mse"
     name: NonEmptyString = "mse"
@@ -236,6 +302,10 @@ class EvaluationConfig(FrozenConfig):
                 "loss": EvaluatorConfig,
                 "similarity": SimilarityEvaluatorConfig,
                 "classification": ClassificationEvaluatorConfig,
+                "pair_classification": PairClassificationEvaluatorConfig,
+                "classification_probe": ClassificationProbeEvaluatorConfig,
+                "clustering": ClusteringEvaluatorConfig,
+                "jepa_representation": JEPARepresentationEvaluatorConfig,
                 "mse": MSEEvaluatorConfig,
                 "triplet": TripletEvaluatorConfig,
                 "reranking": RerankingEvaluatorConfig,
@@ -843,6 +913,8 @@ class JobConfig(FrozenConfig):
 __all__ = [
     "BatchConfig",
     "CheckpointConfig",
+    "ClassificationProbeEvaluatorConfig",
+    "ClusteringEvaluatorConfig",
     "ComponentConfig",
     "CustomShardingConfig",
     "DataConfig",
@@ -855,12 +927,14 @@ __all__ = [
     "GradCacheConfig",
     "HuggingFaceExportConfig",
     "JobConfig",
+    "JEPARepresentationEvaluatorConfig",
     "LoggingConfig",
     "MegaBatchMiningConfig",
     "MeshConfig",
     "ModelConfig",
     "OptimizationConfig",
     "ParameterRole",
+    "PairClassificationEvaluatorConfig",
     "PartitionAxis",
     "PartitionRuleConfig",
     "RematerializationPolicy",

@@ -5,6 +5,7 @@ import pytest
 
 from representax.evaluation import (
     information_retrieval_metrics,
+    pair_classification_metrics,
     similarity_metrics,
 )
 
@@ -133,3 +134,64 @@ def test_information_retrieval_matches_sentence_transformers_5_6_1():
     assert actual.keys() == expected.keys()
     for name, value in expected.items():
         np.testing.assert_allclose(actual[name], value, rtol=0.0, atol=1e-12)
+
+
+@pytest.mark.parity
+def test_pair_classification_matches_sentence_transformers_5_6_1():
+    sentence_transformers = pytest.importorskip("sentence_transformers")
+    torch = pytest.importorskip("torch")
+    sklearn_metrics = pytest.importorskip("sklearn.metrics")
+    evaluation = pytest.importorskip(
+        "sentence_transformers.sentence_transformer.evaluation"
+    )
+    upstream_util = pytest.importorskip("sentence_transformers.util")
+    if sentence_transformers.__version__ != "5.6.1":
+        pytest.fail("pair-classification parity requires sentence-transformers==5.6.1")
+
+    rng = np.random.default_rng(727)
+    left = rng.normal(size=(53, 17)).astype(np.float32)
+    right = rng.normal(size=(53, 17)).astype(np.float32)
+    labels = rng.integers(0, 2, size=53, dtype=np.int32)
+    labels[:2] = (0, 1)
+    actual = pair_classification_metrics(
+        left,
+        right,
+        labels,
+        similarity_functions=("cosine", "dot"),
+    )
+
+    tensors = (torch.from_numpy(left), torch.from_numpy(right))
+    functions = {
+        "cosine": upstream_util.pairwise_cos_sim,
+        "dot": upstream_util.pairwise_dot_score,
+    }
+    for name, function in functions.items():
+        scores = function(*tensors).detach().cpu().numpy()
+        accuracy, accuracy_threshold = (
+            evaluation.BinaryClassificationEvaluator.find_best_acc_and_threshold(
+                scores, labels, True
+            )
+        )
+        f1, precision, recall, f1_threshold = (
+            evaluation.BinaryClassificationEvaluator.find_best_f1_and_threshold(
+                scores, labels, True
+            )
+        )
+        expected = {
+            "accuracy": accuracy,
+            "accuracy_threshold": accuracy_threshold,
+            "f1": f1,
+            "f1_threshold": f1_threshold,
+            "precision": precision,
+            "recall": recall,
+            "average_precision": sklearn_metrics.average_precision_score(
+                labels, scores
+            ),
+            "matthews_correlation": sklearn_metrics.matthews_corrcoef(
+                labels, scores >= f1_threshold
+            ),
+        }
+        for metric, value in expected.items():
+            np.testing.assert_allclose(
+                actual[f"{name}_{metric}"], value, rtol=1e-6, atol=1e-7
+            )

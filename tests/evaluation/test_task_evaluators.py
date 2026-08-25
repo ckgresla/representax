@@ -220,6 +220,10 @@ def test_beir_adapter_and_serializable_evaluator_inventory() -> None:
         batch_size=8,
         evaluators=(
             {"kind": "classification"},
+            {"kind": "pair_classification"},
+            {"kind": "classification_probe"},
+            {"kind": "clustering"},
+            {"kind": "jepa_representation"},
             {"kind": "mse"},
             {"kind": "triplet"},
             {"kind": "reranking"},
@@ -238,6 +242,10 @@ def test_beir_adapter_and_serializable_evaluator_inventory() -> None:
     )
     assert tuple(item.kind for item in configuration.evaluators) == (
         "classification",
+        "pair_classification",
+        "classification_probe",
+        "clustering",
+        "jepa_representation",
         "mse",
         "triplet",
         "reranking",

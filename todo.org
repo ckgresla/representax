@@ -8,7 +8,7 @@ Keep decisions and work items here; record evidence in commits, tests, and
 benchmark artifacts rather than duplicating the roadmap elsewhere.
 
 * Papers
-** Representax paper [0/16] [0%]
+** Representax paper [0/17] [0%]
   This section is the finite acceptance program for the Representax
   systems whitepaper. Establish numerical and scientific equivalence first,
   then demonstrate statistically supported systems improvements on shared
@@ -34,6 +34,28 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
    declared quality target over paired repetitions. Report compilation and
    lifecycle latency separately; allocator reservation matters only when it
    reduces feasible work or exposes avoidable materialization.
+*** TODO Complete the canonical representation evaluators :research:evaluation:
+   Finish =PairClassificationEvaluator= for embedding-distance decisions,
+   =ClassificationProbeEvaluator= for frozen-embedding linear probes,
+   =ClusteringEvaluator= for unsupervised geometry, and
+   =JEPARepresentationEvaluator= for transfer quality and collapse diagnostics.
+   Pin preprocessing, probe or clustering algorithms, selection splits,
+   hyperparameter grids, seeds, distributed reductions, and primary metrics.
+   Admit datasets to the paper panel only after the evaluator agrees with a
+   maintained reference implementation on identical embeddings and examples.
+**** DONE Implement the four native evaluator contracts
+     Pair decisions perform threshold selection over declared similarities;
+     frozen probes select logistic regularization on validation data; clustering
+     pins MiniBatchKMeans; JEPA representation evaluation combines the same
+     linear probe with k-NN and collapse diagnostics. Accelerator work ends at
+     frozen embedding extraction and deterministic host reducers own fitting.
+**** DONE Match generic reducers to maintained implementations
+     Pair decisions match Sentence Transformers 5.6.1 on identical embeddings;
+     probe and clustering reducers match their pinned scikit-learn algorithms.
+**** TODO Accept the canonical datasets through original-source adapters
+     Run Sprint Duplicate Questions, Banking77.v2, Twenty Newsgroups.v2, and the
+     selected JEPA transfer dataset without copied intermediate datasets, then
+     record identical-example reference parity and distributed reductions.
 *** TODO Freeze the experimental workload and model panel :research:models:
    Use two or three representative models per measured track where maintained
    checkpoints and oracles permit: dense text, image-text, audio/video-text,
