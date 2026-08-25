@@ -7,25 +7,25 @@ This file is the canonical Representax roadmap and shared source of truth.
 Keep decisions and work items here; record evidence in commits, tests, and
 benchmark artifacts rather than duplicating the roadmap elsewhere.
 
-* Initial paper
-  This section is the finite acceptance program for the first Representax
+* Papers
+** Representax paper
+  This section is the finite acceptance program for the Representax
   systems whitepaper. Establish numerical and scientific equivalence first,
   then demonstrate statistically supported systems improvements on shared
   workloads and capabilities enabled by native JAX execution. Sentence
   Transformers 5.4 and later support text, image, audio, and video, so those are
   shared comparisons rather than absence claims. The differentiating claims are
   JEPA-style learning, integrated evaluation/checkpoint-safe arbitrary sharding,
-  and semantics-preserving execution planning. Keep exactly one =NEXT= item.
-  Freeze the implementation surface by end of Saturday, 2026-08-22. Arbitrary
-  sharding/FSDP and mixed precision are complete. Finish unified AnyModality
-  data execution, add the paper's canonical multimodal model panel, then land
-  late-interaction, cross/reranking, reward, and LeJEPA recipes before the
-  distributed evaluation layer; sparse retrieval is deliberately deferred.
-  Run the long paired evidence campaign only
-  after that implementation freeze. Do not pull general-development work into
-  this finite paper path.
+  exact GradCache, and a broader native representation-learning task surface.
+  Semantics-preserving automatic execution planning belongs to the separate
+  Profilax paper below. Keep exactly one =NEXT= item across the repository.
+  Arbitrary sharding/FSDP, mixed precision, unified AnyModality execution, the
+  multimodal family matrix, late interaction, cross/reranking, reward, LeJEPA,
+  distributed evaluation, and W&B reporting are implemented. Sparse retrieval
+  is deliberately deferred. Freeze only the finite experimental panel, then run
+  the long paired evidence campaign; do not pull general development into it.
 
-** NEXT Define measurable monotonic-improvement gates over existing trainers :research:
+*** NEXT Define measurable monotonic-improvement gates over existing trainers :research:
    Pin the initial model, tokenizer/processor, raw examples and order, objective,
    optimizer and schedule, precision, global batch, update count, and evaluation
    contract. Require numerical parity and non-inferior held-out quality before a
@@ -34,34 +34,74 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
    declared quality target over paired repetitions. Report compilation and
    lifecycle latency separately; allocator reservation matters only when it
    reduces feasible work or exposes avoidable materialization.
-** TODO Benchmark quality, throughput, feasible workload, utilization, and model coverage :research:benchmark:
-** TODO Benchmark compile time separately from steady-state step time :research:benchmark:
-** TODO Benchmark direct MNR and GradCache at equal scientific semantics :research:benchmark:
+*** TODO Freeze the experimental workload and model panel :research:models:
+   Use two or three representative models per measured track where maintained
+   checkpoints and oracles permit: dense text, image-text, audio/video-text,
+   late interaction, reranking, reward modeling, and LeJEPA. Keep this measured
+   panel distinct from the broader 25-model compatibility table. Admit a new
+   architecture only when it fills a missing scientific control, modality, scale,
+   or important real-world workload; novelty alone is not a paper requirement.
+*** TODO Benchmark quality, throughput, feasible workload, utilization, and model coverage :research:benchmark:
+*** TODO Benchmark compile time separately from steady-state step time :research:benchmark:
+*** TODO Benchmark direct MNR and GradCache at equal scientific semantics :research:benchmark:
    Include an explicit distributed-direct-MNR contract: either lower the full
    global relation without constructing an invalid repeated =data= sharding, or
    reject that execution choice at configuration time and direct users to exact
    global-negative GradCache. Do not let a low-level =P("data", "data")= layout
    error define the public capability boundary.
-** TODO Benchmark text retrieval against Sentence Transformers :research:benchmark:
-** TODO Benchmark multimodal retrieval including audio and video :research:benchmark:
+*** TODO Benchmark text retrieval against Sentence Transformers :research:benchmark:
+*** TODO Benchmark multimodal retrieval including audio and video :research:benchmark:
    Treat text-image, audio-text, and video-text training as shared workloads
    against Sentence Transformers rather than claiming that upstream cannot train
    those modalities. Compare identical decoded examples and model-ready shapes.
-** TODO Benchmark reward modeling and JEPA workloads against their maintained systems oracles :research:benchmark:
-** TODO Benchmark bounded streaming evaluation during training and checkpoint overlap :research:benchmark:
+*** TODO Benchmark late interaction and reranking against maintained systems oracles :research:benchmark:
+*** TODO Benchmark reward modeling and JEPA workloads against their maintained systems oracles :research:benchmark:
+*** TODO Benchmark bounded streaming evaluation during training and checkpoint overlap :research:benchmark:
    Evaluate a configured validation objective and reusable semantic-similarity,
    query/corpus/qrels retrieval, reranking, and task-specific protocols both
    during training and offline. Shard examples or corpus chunks over the named
    data mesh axes, reduce metrics exactly, overlap bounded evaluation with
    asynchronous checkpointing where safe, and prove that neither path starves
    training or changes best-model selection.
-** TODO Measure single-device and single-host multi-device scaling :research:benchmark:
+*** TODO Measure single-device and single-host multi-device scaling :research:benchmark:
    Cover replicated DDP, exact global-negative GradCache, FSDP, and at least one
    hybrid data/model plan. Physical multi-host and TPU claims remain deferred
    until the corresponding hardware is available.
-** TODO Publish reproducible configs, manifests, tests, and benchmark artifacts :research:reproducibility:
-** TODO Write the first paper on the monotonic JAX representation-training system :research:paper:
-** TODO Release the systems paper as an arXiv preprint :research:paper:
+*** TODO Publish reproducible configs, manifests, tests, and benchmark artifacts :research:reproducibility:
+*** TODO Write the paper on the monotonic JAX representation-training system :research:paper:
+*** TODO Release the Representax systems paper as an arXiv preprint :research:paper:
+
+** Profilax paper: =So you like to go fast?=
+  Profilax is a separate installable JAX profiling and semantics-preserving
+  execution-planning project. Its paper must demonstrate portability beyond
+  Representax. Build and validate the independent core first; only then propose
+  focused upstream integrations to maintained systems such as MaxText rather
+  than asking those projects to absorb an unproven abstraction.
+
+*** TODO Create =profilax= as a separate installable JAX project :profilax:
+*** TODO Profile arbitrary compiled JAX programs through a small adapter :profilax:
+*** TODO Inventory devices, topology, memory, and compiler versions :profilax:
+*** TODO Search only caller-declared execution parameters under immutable scientific constraints :profilax:
+*** TODO Measure compilation separately from warmup and steady-state execution :profilax:
+*** TODO Reject plans that alter the scientific projection or violate numerical tolerances :profilax:
+*** TODO Report structured infeasibility when the workload requires more accelerators :profilax:
+*** TODO Select Pareto-optimal plans for throughput, memory, and compile cost :profilax:
+*** TODO Cache plans by program, shapes, hardware, and JAX/XLA versions :profilax:
+*** TODO Guarantee feasibility for accepted plans under a fingerprinted environment :profilax:correctness:
+   Combine analytic tensor/liveness estimates with measured compiled-program
+   profiles and a configurable safety margin. Guarantee only the admitted
+   compiled workload under that exact fingerprint; external storage, decoding,
+   drivers, and runtime faults remain outside the contract.
+*** TODO Integrate Profilax with Representax through =ExecutionPlanner= :profilax:integration:
+*** TODO Demonstrate a second independent downstream JAX integration :profilax:integration:
+*** TODO Prepare and submit focused upstream PRs after independent validation :profilax:integration:
+   Start with maintained projects whose owners accept the use case, such as
+   MaxText, and keep each PR small: profiling adapter, plan import, or telemetry
+   rather than coupling the downstream trainer to Profilax internals.
+*** TODO Benchmark Profilax across multiple downstream JAX programs :profilax:benchmark:
+*** TODO Write and release =So you like to go fast?= :profilax:research:paper:
+
+* Representax implementation roadmap
 ** DONE Make native Equinox models the supported execution path :architecture:
 ** DONE Define a model-neutral task protocol for future task families :architecture:
 ** DONE Define one route-aware =encode= API with bound-route convenience :api:
@@ -478,10 +518,15 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
 *** TODO Select and accept the paper's 25-model compatibility panel :models:paper:
    Snapshot a transparent Hugging Face popularity and relevance ranking, then
    select 25 checkpoints spanning the native families and four modalities used
-   by the paper. Implement shared architecture families rather than 25 bespoke
-   forwards. Each listed checkpoint must pass its required processor, tensor,
-   forward, gradient/update, export, and systems gates before it appears in the
-   paper support table; popularity alone never creates a support claim.
+   by the paper. The current BERT, MPNet, ModernVBERT, DistilBERT, CLIP/BGE,
+   Qwen2/2.5/3, LLaVA-NeXT, Nemotron-VL, BidirLM-Omni, Jina, and late-interaction
+   families should cover most candidates already; selecting the table is first
+   an evidence audit, not a mandate for 25 new implementations. Implement a new
+   shared architecture family only for an important uncovered candidate, never
+   25 bespoke forwards. Each listed checkpoint must pass its required processor,
+   tensor, forward, gradient/update, export, and systems gates before it appears
+   in the support table; popularity alone never creates a support claim. The
+   measured paper workloads use the smaller two-or-three-model-per-track panel.
 *** DONE Generate a semantic model-family implementation manifest :models:codegen:
    Maintain one reviewed family specification that names its pinned model
    types, modalities, reusable components, configuration mapping, input/output
@@ -981,6 +1026,11 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      finite GradCache updates with 16-token queries, 32-token documents, and an
      eight-pair global batch on both two- and four-GPU DDP meshes.
 **** TODO Add exact flat indexing and streaming retrieval evaluation
+     Turn trained token representations into an actual corpus-search system:
+     encode and index documents once, stream query MaxSim over bounded corpus
+     blocks, recover stable document IDs, and compute retrieval quality plus
+     indexing size/build time/query throughput. This unlocks end-to-end ColBERT
+     evidence rather than proving only token values, loss, and optimizer steps.
 **** TODO Benchmark pure-JAX MaxSim before considering a Pallas kernel
 **** TODO Add compressed PLAID/WARP adapters behind the indexing protocol
 *** DONE Implement cross-encoder and reranker training :tasks:cross_encoder:
@@ -1172,6 +1222,9 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   reduce padding.  Define segment IDs, reset positions, block cross-example
   attention, and preserve task loss/example boundaries before exposing a config;
   register compatibility explicitly for each data, model, and task family.
+  This is not a Representax-paper blocker unless the frozen workloads show that
+  padding waste materially limits utilization or the comparison requires the
+  same packing semantics. Keep it out of the paper campaign by default.
 ** TODO Stream text examples from source through the model forward :data:text:
 ** TODO Stream image examples from source through the model forward :data:image:
 ** TODO Decode and stream audio efficiently through the model forward :data:audio:
@@ -1381,37 +1434,8 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   Reuse the exact compiled =train_step= for every batch with the same model-ready
   ABI. Bound any finite signature set in configuration and never let raw record
   variability create an uncontrolled executable population.
-** TODO Create =profilax= as a separate installable JAX profiling and planning project :profilax:
-  Publish it independently as =pip install profilax= so any JAX trainer can
-  supply a compiled step and semantic constraints without depending on
-  Representax. Representax integrates only through its =ExecutionPlanner=
-  protocol.
-** TODO Write the Profilax paper, working title: =So you like to go fast?= :profilax:research:paper:
-  Introduce the semantics-preserving execution planner, demonstrate its
-  integration into Representax and other downstream JAX repositories, and
-  separate portable profiling/planning contributions from any one trainer.
-** TODO Profile arbitrary compiled JAX programs through a small adapter :profilax:
-** TODO Inventory devices, topology, memory, and compiler versions :profilax:
-** TODO Search only =Execution[T]= mesh, batch, GradCache, prefetch, donation, and activation-rematerialization paths :profilax:
-** TODO Measure compilation separately from warmup and steady-state execution :profilax:
-** TODO Reject plans that alter the =Scientific[T]= projection or fingerprint :profilax:
-** TODO Reject plans that violate numerical tolerances :profilax:
-** TODO Report when the experiment probably needs more accelerators :profilax:
-** TODO Select Pareto-optimal plans for throughput, memory, and compile cost :profilax:
-** TODO Cache plans by model, task, shapes, hardware, and JAX/XLA versions :profilax:
-** TODO Guarantee feasibility for accepted Profilax execution plans :profilax:correctness:
-  Combine analytic tensor/liveness estimates from model and objective shapes
-  with device topology, world size, precision, sharding, rematerialization,
-  GradCache, optimizer, and measured compiled-program profiles. Return either a
-  plan demonstrated under a configurable safety margin on the exact hardware
-  and executable fingerprint, or a structured refusal naming the limiting
-  resource. Never promise that arbitrary external storage, decoding, drivers,
-  or runtime faults cannot fail; guarantee only the admitted compiled workload
-  under the fingerprinted environment and continuously reject telemetry drift.
-** TODO Integrate Profilax through Representax's =ExecutionPlanner= protocol :profilax:integration:
+* General development [15/29] [51%]
 
-
-* General development
   This section tracks release engineering, optional integrations, exploratory
   research, deferred hardware validation, and work that is useful but is not a
   blocker for the first systems whitepaper.
