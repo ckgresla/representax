@@ -303,6 +303,7 @@ def test_parameter_roles_project_domain_config_without_parallel_trees():
         "query_micro_batch_size": None,
         "document_micro_batch_size": None,
         "loss_row_chunk_size": None,
+        "score_micro_batch_size": None,
     }
     assert "logging" not in scientific
     assert "logging" not in execution

@@ -26,6 +26,33 @@ from .contrastive_tension import (
     ContrastiveTensionPairsConfig,
     ContrastiveTensionTask,
 )
+from .cross_encoder import (
+    BinaryCrossEntropyConfig,
+    CrossEntropyConfig,
+    CrossInBatchRankingConfig,
+    CrossMNRBatch,
+    CrossMNRConfig,
+    CrossMNRTask,
+    LambdaLossConfig,
+    ListMLEConfig,
+    ListNetConfig,
+    ListwiseRankingBatch,
+    ListwiseRankingConfig,
+    ListwiseScoringTask,
+    PairwiseRankingBatch,
+    PairwiseRankingConfig,
+    PointwiseBatch,
+    PointwiseScoringConfig,
+    PointwiseScoringTask,
+    RankNetConfig,
+    ScoreMSEConfig,
+)
+from .cross_encoder import (
+    MarginMSEConfig as CrossMarginMSEConfig,
+)
+from .cross_encoder import (
+    MarginMSETask as CrossMarginMSETask,
+)
 from .distillation.batch import (
     DistributionDistillationBatch,
     EmbeddingDistillationBatch,
@@ -325,6 +352,124 @@ def _build_late_interaction_task(
         temperature=loss.temperature,
         symmetric=loss.symmetric,
         negative_scope=loss.negative_scope,
+    )
+
+
+def _require_task(task: TaskConfig, expected: type[TaskConfig]) -> None:
+    if not isinstance(task, expected):
+        raise TypeError(f"loss requires {expected.__name__}")
+
+
+def _build_cross_binary_task(
+    task: TaskConfig,
+    loss: LossConfig,
+) -> PointwiseScoringTask:
+    _require_task(task, PointwiseScoringConfig)
+    if not isinstance(loss, BinaryCrossEntropyConfig):
+        raise TypeError("cross binary BCE requires BinaryCrossEntropyConfig")
+    return PointwiseScoringTask(
+        objective="binary_cross_entropy",
+        activation=loss.activation,
+        positive_weight=loss.positive_weight,
+    )
+
+
+def _build_cross_mnr_task(
+    task: TaskConfig,
+    loss: LossConfig,
+) -> CrossMNRTask:
+    _require_task(task, CrossInBatchRankingConfig)
+    if not isinstance(loss, CrossMNRConfig):
+        raise TypeError("cross MNR requires CrossMNRConfig")
+    return CrossMNRTask(activation=loss.activation, scale=loss.scale)
+
+
+def _build_cross_entropy_task(
+    task: TaskConfig,
+    loss: LossConfig,
+) -> PointwiseScoringTask:
+    _require_task(task, PointwiseScoringConfig)
+    if not isinstance(loss, CrossEntropyConfig):
+        raise TypeError("cross entropy requires CrossEntropyConfig")
+    return PointwiseScoringTask(objective="cross_entropy")
+
+
+def _build_cross_score_mse_task(
+    task: TaskConfig,
+    loss: LossConfig,
+) -> PointwiseScoringTask:
+    _require_task(task, PointwiseScoringConfig)
+    if not isinstance(loss, ScoreMSEConfig):
+        raise TypeError("cross score MSE requires ScoreMSEConfig")
+    return PointwiseScoringTask(objective="mse", activation=loss.activation)
+
+
+def _build_cross_margin_mse_task(
+    task: TaskConfig,
+    loss: LossConfig,
+) -> CrossMarginMSETask:
+    _require_task(task, PairwiseRankingConfig)
+    if not isinstance(loss, CrossMarginMSEConfig):
+        raise TypeError("cross margin MSE requires MarginMSEConfig")
+    return CrossMarginMSETask(activation=loss.activation)
+
+
+def _build_cross_ranknet_task(
+    task: TaskConfig,
+    loss: LossConfig,
+) -> ListwiseScoringTask:
+    _require_task(task, ListwiseRankingConfig)
+    if not isinstance(loss, RankNetConfig):
+        raise TypeError("RankNet requires RankNetConfig")
+    return ListwiseScoringTask(
+        objective="ranknet",
+        activation=loss.activation,
+        sigma=loss.sigma,
+        k=loss.k,
+        reduction_log=loss.reduction_log,
+    )
+
+
+def _build_cross_lambda_task(
+    task: TaskConfig,
+    loss: LossConfig,
+) -> ListwiseScoringTask:
+    _require_task(task, ListwiseRankingConfig)
+    if not isinstance(loss, LambdaLossConfig):
+        raise TypeError("LambdaLoss requires LambdaLossConfig")
+    return ListwiseScoringTask(
+        objective="lambda",
+        activation=loss.activation,
+        weighting=loss.weighting,
+        k=loss.k,
+        sigma=loss.sigma,
+        reduction_log=loss.reduction_log,
+        mu=loss.mu,
+    )
+
+
+def _build_cross_listnet_task(
+    task: TaskConfig,
+    loss: LossConfig,
+) -> ListwiseScoringTask:
+    _require_task(task, ListwiseRankingConfig)
+    if not isinstance(loss, ListNetConfig):
+        raise TypeError("ListNet requires ListNetConfig")
+    return ListwiseScoringTask(objective="listnet", activation=loss.activation)
+
+
+def _build_cross_list_mle_task(
+    task: TaskConfig,
+    loss: LossConfig,
+) -> ListwiseScoringTask:
+    _require_task(task, ListwiseRankingConfig)
+    if not isinstance(loss, ListMLEConfig):
+        raise TypeError("ListMLE requires ListMLEConfig")
+    return ListwiseScoringTask(
+        objective="list_mle",
+        activation=loss.activation,
+        respect_input_order=loss.respect_input_order,
+        position_aware=loss.position_aware,
     )
 
 
@@ -646,6 +791,26 @@ BUILTIN_TASKS = TaskRegistry(
             batch_type=RetrievalBatch,
         ),
         TaskDefinition(
+            kind="pointwise_scoring",
+            config_type=PointwiseScoringConfig,
+            batch_type=PointwiseBatch,
+        ),
+        TaskDefinition(
+            kind="cross_in_batch_ranking",
+            config_type=CrossInBatchRankingConfig,
+            batch_type=CrossMNRBatch,
+        ),
+        TaskDefinition(
+            kind="pairwise_ranking",
+            config_type=PairwiseRankingConfig,
+            batch_type=PairwiseRankingBatch,
+        ),
+        TaskDefinition(
+            kind="listwise_ranking",
+            config_type=ListwiseRankingConfig,
+            batch_type=ListwiseRankingBatch,
+        ),
+        TaskDefinition(
             kind="pairwise",
             config_type=PairwiseConfig,
             batch_type=PairwiseBatch,
@@ -727,6 +892,75 @@ BUILTIN_LOSSES = LossRegistry(
             build=_build_late_interaction_task,
             task_kinds=frozenset({"late_interaction"}),
             training_strategies=frozenset({"direct", "grad_cache"}),
+        ),
+        LossDefinition(
+            kind="cross_binary_cross_entropy",
+            config_type=BinaryCrossEntropyConfig,
+            build=_build_cross_binary_task,
+            task_kinds=frozenset({"pointwise_scoring"}),
+            training_strategies=frozenset({"direct"}),
+            microbatch_accumulation=True,
+        ),
+        LossDefinition(
+            kind="cross_mnr",
+            config_type=CrossMNRConfig,
+            build=_build_cross_mnr_task,
+            task_kinds=frozenset({"cross_in_batch_ranking"}),
+            training_strategies=frozenset({"direct", "grad_cache"}),
+        ),
+        LossDefinition(
+            kind="cross_entropy",
+            config_type=CrossEntropyConfig,
+            build=_build_cross_entropy_task,
+            task_kinds=frozenset({"pointwise_scoring"}),
+            training_strategies=frozenset({"direct"}),
+            microbatch_accumulation=True,
+        ),
+        LossDefinition(
+            kind="cross_score_mse",
+            config_type=ScoreMSEConfig,
+            build=_build_cross_score_mse_task,
+            task_kinds=frozenset({"pointwise_scoring"}),
+            training_strategies=frozenset({"direct"}),
+            microbatch_accumulation=True,
+        ),
+        LossDefinition(
+            kind="cross_margin_mse",
+            config_type=CrossMarginMSEConfig,
+            build=_build_cross_margin_mse_task,
+            task_kinds=frozenset({"pairwise_ranking"}),
+            training_strategies=frozenset({"direct"}),
+            microbatch_accumulation=True,
+        ),
+        LossDefinition(
+            kind="cross_ranknet",
+            config_type=RankNetConfig,
+            build=_build_cross_ranknet_task,
+            task_kinds=frozenset({"listwise_ranking"}),
+            training_strategies=frozenset({"direct"}),
+        ),
+        LossDefinition(
+            kind="cross_lambda",
+            config_type=LambdaLossConfig,
+            build=_build_cross_lambda_task,
+            task_kinds=frozenset({"listwise_ranking"}),
+            training_strategies=frozenset({"direct"}),
+        ),
+        LossDefinition(
+            kind="cross_listnet",
+            config_type=ListNetConfig,
+            build=_build_cross_listnet_task,
+            task_kinds=frozenset({"listwise_ranking"}),
+            training_strategies=frozenset({"direct"}),
+            microbatch_accumulation=True,
+        ),
+        LossDefinition(
+            kind="cross_list_mle",
+            config_type=ListMLEConfig,
+            build=_build_cross_list_mle_task,
+            task_kinds=frozenset({"listwise_ranking"}),
+            training_strategies=frozenset({"direct"}),
+            microbatch_accumulation=True,
         ),
         LossDefinition(
             kind="cosine_regression",

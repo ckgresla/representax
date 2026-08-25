@@ -241,6 +241,17 @@ class LlamaNemotronVLReranker(eqx.Module):
             raise TypeError("checkpoint is not a Llama Nemotron VL reranker")
         return model, processor
 
+    def logits(
+        self,
+        inputs: LlamaNemotronVLBatch,
+        *,
+        key: PRNGKeyArray | None = None,
+    ) -> Float[Array, "batch output"]:
+        del key
+        hidden = self.model.hidden_states(inputs)
+        pooled = mean_pool(hidden.astype(jnp.float32), inputs.attention_mask)
+        return self.score(pooled) / self.model.config.temperature
+
     def encode(
         self,
         inputs: LlamaNemotronVLBatch,
@@ -248,10 +259,8 @@ class LlamaNemotronVLReranker(eqx.Module):
         route: Route,
         key: PRNGKeyArray | None = None,
     ) -> Float[Array, "batch score"]:
-        del route, key
-        hidden = self.model.hidden_states(inputs)
-        pooled = mean_pool(hidden.astype(jnp.float32), inputs.attention_mask)
-        return self.score(pooled) / self.model.config.temperature
+        del route
+        return self.logits(inputs, key=key)
 
 
 __all__ = [

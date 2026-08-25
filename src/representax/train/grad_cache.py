@@ -14,6 +14,7 @@ from representax.core import (
     Encoder,
     LossOutput,
     Route,
+    Scorer,
     Task,
     encode,
     encode_late_interaction,
@@ -23,6 +24,7 @@ from representax.core.sharding import (
     constrain_activation,
     scan_to_batch,
 )
+from representax.tasks.cross_encoder import CrossMNRBatch, CrossMNRTask
 from representax.tasks.guided import GISTBatch, GISTTask
 from representax.tasks.late_interaction import LateInteractionTask
 from representax.tasks.modifiers import MatryoshkaTask
@@ -163,6 +165,7 @@ class GradCache:
     query_chunk_size: int
     document_chunk_size: int | None = None
     loss_row_chunk_size: int | None = None
+    score_chunk_size: int | None = None
 
     def __post_init__(self) -> None:
         if self.query_chunk_size <= 0:
@@ -171,6 +174,8 @@ class GradCache:
             raise ValueError("document_chunk_size must be positive when set")
         if self.loss_row_chunk_size is not None and self.loss_row_chunk_size <= 0:
             raise ValueError("loss_row_chunk_size must be positive when set")
+        if self.score_chunk_size is not None and self.score_chunk_size <= 0:
+            raise ValueError("score_chunk_size must be positive when set")
 
     @property
     def resolved_document_chunk_size(self) -> int:
@@ -180,15 +185,22 @@ class GradCache:
     def resolved_loss_row_chunk_size(self) -> int:
         return self.loss_row_chunk_size or self.query_chunk_size
 
+    @property
+    def resolved_score_chunk_size(self) -> int:
+        return self.score_chunk_size or self.query_chunk_size
+
     def validate(self, task: Task[Any]) -> None:
         base_task = task.task if isinstance(task, MatryoshkaTask) else task
         if isinstance(task, MatryoshkaTask) and isinstance(
             base_task, LateInteractionTask
         ):
             raise TypeError("Matryoshka does not apply to token-level representations")
-        if not isinstance(base_task, (MNRTask, GISTTask, LateInteractionTask)):
+        if not isinstance(
+            base_task, (MNRTask, GISTTask, LateInteractionTask, CrossMNRTask)
+        ):
             raise TypeError(
                 "GradCache requires MNRTask, GISTTask, LateInteractionTask, "
+                "CrossMNRTask, "
                 "or a supported representation modifier"
             )
 
@@ -203,6 +215,15 @@ class GradCache:
     ) -> LossOutput:
         modifier = task if isinstance(task, MatryoshkaTask) else None
         base_task = modifier.task if modifier is not None else task
+        if isinstance(base_task, CrossMNRTask) and isinstance(batch, CrossMNRBatch):
+            if modifier is not None:
+                raise TypeError("representation modifiers do not apply to scorers")
+            return base_task.loss_with_chunk_size(
+                cast(Scorer, model),
+                batch,
+                key=key,
+                chunk_size=self.resolved_score_chunk_size,
+            )
         if modifier is None:
             representation_key = key
             modifier_key = None

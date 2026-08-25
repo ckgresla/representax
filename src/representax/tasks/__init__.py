@@ -3,6 +3,7 @@
 from . import (
     classification,
     contrastive_tension,
+    cross_encoder,
     distillation,
     guided,
     late_interaction,
@@ -44,6 +45,7 @@ __all__ = [
     "build_task",
     "classification",
     "contrastive_tension",
+    "cross_encoder",
     "distillation",
     "guided",
     "late_interaction",

@@ -364,6 +364,13 @@ class GradCacheConfig(FrozenConfig):
             "defaults to micro_batch_size and does not rerun either encoder."
         ),
     )
+    score_micro_batch_size: PositiveInt | None = Field(
+        default=None,
+        description=(
+            "Optional jointly encoded pair count for cross-encoder replay; "
+            "defaults to micro_batch_size."
+        ),
+    )
 
     @property
     def resolved_query_micro_batch_size(self) -> int:
@@ -376,6 +383,10 @@ class GradCacheConfig(FrozenConfig):
     @property
     def resolved_loss_row_chunk_size(self) -> int:
         return self.loss_row_chunk_size or self.micro_batch_size
+
+    @property
+    def resolved_score_micro_batch_size(self) -> int:
+        return self.score_micro_batch_size or self.micro_batch_size
 
 
 class MegaBatchMiningConfig(FrozenConfig):

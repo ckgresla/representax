@@ -757,6 +757,9 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
 ***** TODO Add proportional/round-robin multi-source and per-source task/loss routing
 ***** TODO Make prompts and typed routes first-class preprocessing configuration
 ***** TODO Add W&B reporting through the existing asynchronous reporter protocol
+      Land this after the task-specific evaluator inventory so the adapter can
+      report the accepted =train/=, =valid/=, and =perf/= metric contracts without
+      driving or duplicating evaluator design.
 ***** TODO Add source-neutral offline hard-negative mining with artifact provenance
 **** TODO Prove a matched dense-retrieval training advantage over Sentence Transformers
     Use a pinned local retrieval dataset, identical raw examples, tokenizer,
@@ -946,7 +949,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      real pinned GTE-ModernColBERT checkpoint additionally completes three
      finite GradCache updates with 16-token queries, 32-token documents, and an
      eight-pair global batch on both two- and four-GPU DDP meshes.
-**** NEXT Add exact flat indexing and streaming retrieval evaluation
+**** TODO Add exact flat indexing and streaming retrieval evaluation
 **** TODO Benchmark pure-JAX MaxSim before considering a Pallas kernel
 **** TODO Add compressed PLAID/WARP adapters behind the indexing protocol
 *** TODO Implement cross-encoder and reranker training :tasks:cross_encoder:
@@ -957,6 +960,28 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
    BCE, multiclass cross-entropy, MSE and MarginMSE, RankNet, LambdaLoss, ListNet,
    ListMLE/PListMLE, and cached MNR through paired tensor tests before matched
    candidate-list jobs.
+**** DONE Land the native cross-encoder and reranker execution core
+     Define the scorer output, pointwise/pairwise/listwise batch contracts, native
+     heads, losses, compiled training behavior, and one end-to-end checkpoint
+     integration before specializing the shared evaluator protocol around them.
+     Accepted with one raw-logit =Scorer= boundary; pointwise, pairwise,
+     finite-listwise, and exact cross-in-batch contracts; BCE, multiclass CE,
+     score and margin MSE, RankNet, LambdaLoss, ListNet, ListMLE/PListMLE, and
+     direct/cached cross-MNR execution.  The pinned Sentence Transformers 5.6.1
+     lane matches values and gradients in eleven paired tests; native contracts
+     additionally prove exact direct-versus-score-chunk replay and exact compiled
+     accumulation for decomposable objectives.  A real Llama Nemotron VL
+     reranker completed three finite BF16 LoRA updates through the same generic
+     train step, with loss decreasing from 32.2056 to 19.1680.
+**** TODO Add classification, correlation, and reranking evaluators
+     Reuse the existing compiled-batch/host-reducer evaluator boundary once the
+     scorer and batch contracts are accepted. Report task-standard metrics under
+     =valid/...= and expose an explicit primary metric for best-model selection.
+**** TODO Distribute evaluator execution over arbitrary data meshes
+     After the task evaluator inventory lands, shard examples and corpus work over
+     configured data axes, reduce sufficient statistics exactly, preserve bounded
+     host state, and overlap evaluation with training/checkpoint work without
+     introducing evaluator-specific distributed trainers.
 *** TODO Implement sparse encoder training and retrieval :tasks:sparse_encoder:
    Cover MLM and static sparse backbones, SPLADE and sparse-autoencoder pooling,
    sparse MNR/CoSENT/triplet/MSE/distillation losses, FLOPS regularization, CSR
@@ -965,6 +990,10 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
    oracle and SPLADE-v3 as the scientific reference. Treat the noncommercial
    SPLADE repository as an external oracle only. Measure effectiveness jointly
    with active dimensions, sparsity, index size, encoding rate, and retrieval QPS.
+**** NEXT Land the native sparse-encoder execution core
+     Define the sparse representation/scoring boundary, native pooling and FLOPS
+     regularization, task batches, direct and cached losses, and one real
+     checkpoint training gate before adding sparse-specific evaluators.
 *** DONE Validate multimodal capability across every supported encoder route :multimodal:
    Exercise text, image, audio, video, and composed multimodal examples through
    preprocessing, model forwards, losses, evaluators, batching, export, and

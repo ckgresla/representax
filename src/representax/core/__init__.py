@@ -17,6 +17,7 @@ from .model import (
     encode,
     encode_layers,
 )
+from .scoring import Scorer, score_logits
 from .task import EncodeFunction, LossOutput, RepresentationTask, Task, evaluate_loss
 
 __all__ = [
@@ -31,6 +32,7 @@ __all__ = [
     "LossOutput",
     "Modality",
     "Route",
+    "Scorer",
     "RepresentationTask",
     "Task",
     "bind",
@@ -38,4 +40,5 @@ __all__ = [
     "encode_layers",
     "encode_late_interaction",
     "evaluate_loss",
+    "score_logits",
 ]
