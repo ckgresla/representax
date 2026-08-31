@@ -241,12 +241,19 @@ class ListwiseScoringTask(eqx.Module):
     def supports_gradient_accumulation(self) -> bool:
         """Whether query microbatches preserve this objective exactly."""
 
-        return self.objective in {"listnet", "list_mle"}
+        return self.objective in {"listnet", "list_mle"} or self.k is None
 
     def accumulation_weight(self, batch: ListwiseRankingBatch) -> Array:
         """Return the number of query lists in this exact mean reduction."""
 
-        return jnp.sum(jnp.any(batch.valid, axis=-1)).astype(jnp.float32)
+        if self.objective in {"listnet", "list_mle"}:
+            return jnp.asarray(batch.labels.shape[0], dtype=jnp.float32)
+        labels = jnp.where(batch.valid, batch.labels, -jnp.inf)
+        differences = labels[:, :, None] - labels[:, None, :]
+        pairs = jnp.isfinite(differences)
+        if self.objective == "ranknet" or self.weighting != "ndcg_loss1":
+            pairs = pairs & (differences > 0)
+        return jnp.sum(pairs).astype(jnp.float32)
 
     def loss(
         self,
@@ -312,8 +319,16 @@ class ListwiseScoringTask(eqx.Module):
 class CrossMNRTask(eqx.Module):
     """Exact cross-encoder InfoNCE over every candidate in the global batch."""
 
+    accumulation_metric_reductions: ClassVar[dict[str, str]] = {
+        "accuracy": "mean",
+        "valid_queries": "sum",
+    }
+
     activation: ScoreActivation = eqx.field(static=True, default="sigmoid")
     scale: float = eqx.field(static=True, default=10.0)
+
+    def accumulation_weight(self, batch: CrossMNRBatch) -> Array:
+        return jnp.sum(jnp.any(batch.valid, axis=-1)).astype(jnp.float32)
 
     def loss_with_chunk_size(
         self,

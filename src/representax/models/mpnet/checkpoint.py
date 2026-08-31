@@ -139,29 +139,29 @@ class MPNetCheckpointAdapter:
             prefix = f"encoder.layer.{index}."
             layers.append(
                 MPNetLayer(
-                    attention=MPNetSelfAttention(
-                        query=_linear(
+                    attention=MPNetSelfAttention.from_projections(
+                        _linear(
                             state_dict,
                             prefix + "attention.attn.q",
                             input_size=hidden,
                             output_size=hidden,
                             dtype=parameter_dtype,
                         ),
-                        key=_linear(
+                        _linear(
                             state_dict,
                             prefix + "attention.attn.k",
                             input_size=hidden,
                             output_size=hidden,
                             dtype=parameter_dtype,
                         ),
-                        value=_linear(
+                        _linear(
                             state_dict,
                             prefix + "attention.attn.v",
                             input_size=hidden,
                             output_size=hidden,
                             dtype=parameter_dtype,
                         ),
-                        output=_linear(
+                        _linear(
                             state_dict,
                             prefix + "attention.attn.o",
                             input_size=hidden,
@@ -306,7 +306,7 @@ class MPNetCheckpointAdapter:
             for name, linear in linears.items():
                 if linear.bias is None:
                     raise ValueError("native MPNet tree is missing an upstream bias")
-                state[prefix + name + ".weight"] = linear.weight
+                state[prefix + name + ".weight"] = linear.output_major().weight
                 state[prefix + name + ".bias"] = linear.bias
             norms = {
                 "attention.LayerNorm": layer.attention_norm,

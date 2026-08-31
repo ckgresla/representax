@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, ClassVar, Literal
 
 import equinox as eqx
 import jax
 import jax.numpy as jnp
-from jaxtyping import PRNGKeyArray
+from jaxtyping import Array, PRNGKeyArray
 
 from representax.core import LossOutput, Route, encode
 
@@ -23,6 +23,14 @@ from .losses import (
 
 class ContrastiveTensionTask(eqx.Module):
     """Binary supervision for independently trainable encoder branches."""
+
+    accumulation_loss_reduction: ClassVar[str] = "sum"
+    accumulation_metric_reductions: ClassVar[dict[str, str]] = {
+        "valid_pairs": "sum",
+    }
+
+    def accumulation_weight(self, batch: ContrastiveTensionBatch) -> Array:
+        return jnp.sum(batch.valid).astype(jnp.float32)
 
     def loss(
         self,

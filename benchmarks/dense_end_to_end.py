@@ -20,7 +20,21 @@ from typing import Any
 DATASET_ID = "sentence-transformers/stsb"
 DATASET_REVISION = "ab7a5ac0e35aa22088bdcf23e7fd99b220e53308"
 ORACLE_VERSION = "5.6.1"
-TRANSFORMERS_VERSION = "5.3.0"
+
+
+@dataclass(frozen=True, slots=True)
+class DatasetSpec:
+    repo_id: str
+    revision: str
+
+
+DATASET_SPECS = {
+    "legacy-stsb": DatasetSpec(DATASET_ID, DATASET_REVISION),
+    "paper-stsb-v2": DatasetSpec(
+        "mteb/STSBenchmarkv2",
+        "93b628c3969a75e76727db2b7ee252e53e96268d",
+    ),
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,6 +49,7 @@ class ModelSpec:
     parameter_dtype: str = "float32"
     compute_dtype: str = "float32"
     trust_remote_code: bool = False
+    transformers_version: str = "5.3.0"
 
 
 MODEL_SPECS = {
@@ -58,6 +73,17 @@ MODEL_SPECS = {
         parameter_dtype="bfloat16",
         compute_dtype="bfloat16",
         trust_remote_code=True,
+    ),
+    "mpnet": ModelSpec(
+        name="mpnet",
+        model_id="sentence-transformers/all-mpnet-base-v2",
+        revision="e8c3b32edf5434bc2275fc9bab85f82640a19130",
+        checkpoint=None,
+        maximum_length=128,
+        batch_size=32,
+        steps=64,
+        compute_dtype="bfloat16",
+        transformers_version="5.6.0",
     ),
 }
 
@@ -165,6 +191,51 @@ def _timestamp_seconds(value: str) -> float:
     return datetime.fromisoformat(value).timestamp()
 
 
+def _native_pair_probe_batch(
+    spec: ModelSpec,
+    checkpoint: Path,
+    model: Any,
+    records: list[dict[str, Any]],
+) -> Any:
+    from transformers import AutoTokenizer
+
+    from representax.models.processing import make_text_processor
+    from representax.tasks.pairwise import PairwiseCollator
+
+    make_batch = getattr(model, "make_batch", None)
+    if not callable(make_batch):
+        raise TypeError("native sentence model does not expose make_batch")
+    tokenizer = AutoTokenizer.from_pretrained(checkpoint, local_files_only=True)
+    processor = make_text_processor(
+        tokenizer=tokenizer,
+        batch_builder=make_batch,
+        sequence_length_buckets=(spec.maximum_length,),
+    )
+    return PairwiseCollator(processor=processor)(records)
+
+
+def _native_probe_embeddings(
+    spec: ModelSpec,
+    model: Any,
+    batch: Any,
+) -> tuple[Any, Any]:
+    from representax.config import PrecisionConfig
+    from representax.core import Route, encode
+    from representax.precision import precision_context, resolve_precision_policy
+
+    precision = resolve_precision_policy(
+        PrecisionConfig(
+            parameter_dtype=spec.parameter_dtype,
+            compute_dtype=spec.compute_dtype,
+            activation_dtype=spec.compute_dtype,
+        )
+    )
+    with precision_context(precision):
+        left = encode(model, batch.left, route=Route.GENERIC)
+        right = encode(model, batch.right, route=Route.GENERIC)
+    return left, right
+
+
 def _representax_report(
     spec: ModelSpec,
     *,
@@ -190,24 +261,36 @@ def _representax_report(
         SimilarityEvaluatorConfig,
         TrainingConfig,
     )
-    from representax.core import Encoder, Route, encode
+    from representax.core import Encoder
     from representax.data import identity, mix, source
-    from representax.integrations import SentencePairCollator
     from representax.tasks.pairwise import CosineRegressionConfig, PairwiseConfig
     from representax.train import run_job
 
-    model_target = (
-        "representax.integrations.load_sentence_transformer_encoder"
-        if spec.name == "minilm"
-        else "representax.integrations.load_jina_v5_small_text_encoder"
-    )
+    if spec.name == "jina-small":
+        model_target = "representax.integrations.load_jina_v5_small_text_encoder"
+        collator_target = "representax.integrations.SentencePairCollator"
+        collator_parameters = {
+            "checkpoint": str(checkpoint),
+            "maximum_length": spec.maximum_length,
+        }
+        model_parameters: dict[str, Any] = {}
+    elif spec.name == "mpnet":
+        model_target = "representax.models:SentenceEncoder.load_from_hf"
+        collator_target = "representax.tasks.pairwise.PairwiseCollator"
+        collator_parameters = {}
+        model_parameters = {
+            "sequence_length_buckets": (16, 32, 64, spec.maximum_length),
+        }
+    else:
+        model_target = "representax.integrations.load_sentence_transformer_encoder"
+        collator_target = "representax.integrations.SentencePairCollator"
+        collator_parameters = {
+            "checkpoint": str(checkpoint),
+            "maximum_length": spec.maximum_length,
+        }
+        model_parameters = {}
     train_path = data_directory / "train.jsonl"
     validation_path = data_directory / "validation.jsonl"
-    collator_target = "representax.integrations.SentencePairCollator"
-    collator_parameters = {
-        "checkpoint": str(checkpoint),
-        "maximum_length": spec.maximum_length,
-    }
 
     def data(path: Path, *, evaluation: bool = False) -> DataConfig:
         parameters = dict(collator_parameters)
@@ -234,6 +317,7 @@ def _representax_report(
                 "local_files_only": True,
                 "parameter_dtype": spec.parameter_dtype,
                 "compute_dtype": spec.compute_dtype,
+                **model_parameters,
             },
         ),
         task=PairwiseConfig(),
@@ -305,16 +389,11 @@ def _representax_report(
     ]
 
     records = _jsonl(validation_path)[: spec.batch_size]
-    collator = SentencePairCollator(
-        checkpoint,
-        maximum_length=spec.maximum_length,
-    )
-    batch = collator(records)
     model = result.state.model
     if not isinstance(model, Encoder):
         raise TypeError("trained model does not satisfy the Encoder protocol")
-    left = encode(model, batch.left, route=Route.GENERIC)
-    right = encode(model, batch.right, route=Route.GENERIC)
+    batch = _native_pair_probe_batch(spec, checkpoint, model, records)
+    left, right = _native_probe_embeddings(spec, model, batch)
     jax.block_until_ready((left, right))
     _save_probe(probe_path, left, right)
     stats = jax.devices()[0].memory_stats() or {}
@@ -329,7 +408,9 @@ def _representax_report(
         "model": spec.name,
         "model_id": spec.model_id,
         "revision": spec.revision,
-        "dataset_revision": DATASET_REVISION,
+        "dataset_revision": json.loads((data_directory / "manifest.json").read_text())[
+            "revision"
+        ],
         "batch_size": spec.batch_size,
         "maximum_length": spec.maximum_length,
         "steps": spec.steps,
@@ -402,8 +483,8 @@ def _sentence_transformers_report(
 
     if sentence_transformers.__version__ != ORACLE_VERSION:
         raise RuntimeError(f"expected sentence-transformers=={ORACLE_VERSION}")
-    if transformers.__version__ != TRANSFORMERS_VERSION:
-        raise RuntimeError(f"expected transformers=={TRANSFORMERS_VERSION}")
+    if transformers.__version__ != spec.transformers_version:
+        raise RuntimeError(f"expected transformers=={spec.transformers_version}")
 
     load_started = time.perf_counter()
     model_kwargs = {"local_files_only": True}
@@ -563,7 +644,9 @@ def _sentence_transformers_report(
         "model": spec.name,
         "model_id": spec.model_id,
         "revision": spec.revision,
-        "dataset_revision": DATASET_REVISION,
+        "dataset_revision": json.loads((data_directory / "manifest.json").read_text())[
+            "revision"
+        ],
         "batch_size": spec.batch_size,
         "maximum_length": spec.maximum_length,
         "steps": spec.steps,
@@ -610,19 +693,18 @@ def _reload_report(
         import jax
 
         from representax import load_inference_bundle
-        from representax.core import Encoder, Route, encode
-        from representax.integrations import SentencePairCollator
+        from representax.core import Encoder
 
         model, _ = load_inference_bundle(run_directory / "final-model")
         if not isinstance(model, Encoder):
             raise TypeError("reloaded model does not satisfy the Encoder protocol")
-        collator = SentencePairCollator(
+        batch = _native_pair_probe_batch(
+            spec,
             checkpoint,
-            maximum_length=spec.maximum_length,
+            model,
+            rows[: spec.batch_size],
         )
-        batch = collator(rows[: spec.batch_size])
-        left = encode(model, batch.left, route=Route.GENERIC)
-        right = encode(model, batch.right, route=Route.GENERIC)
+        left, right = _native_probe_embeddings(spec, model, batch)
         jax.block_until_ready((left, right))
         allocator = int(
             (jax.devices()[0].memory_stats() or {}).get("peak_bytes_in_use", 0)
@@ -666,7 +748,7 @@ def _reload_report(
     }
 
 
-def _prepare_data(directory: Path) -> None:
+def _prepare_data(directory: Path, spec: DatasetSpec) -> None:
     import datasets
 
     directory.mkdir(parents=True, exist_ok=True)
@@ -674,8 +756,8 @@ def _prepare_data(directory: Path) -> None:
     counts = {}
     for split in ("train", "validation"):
         dataset = datasets.load_dataset(
-            DATASET_ID,
-            revision=DATASET_REVISION,
+            spec.repo_id,
+            revision=spec.revision,
             split=split,
             streaming=False,
         )
@@ -697,8 +779,8 @@ def _prepare_data(directory: Path) -> None:
         directory / "manifest.json",
         {
             "schema_version": "representax-dense-e2e-data-v1",
-            "dataset_id": DATASET_ID,
-            "revision": DATASET_REVISION,
+            "dataset_id": spec.repo_id,
+            "revision": spec.revision,
             "files": files,
             "counts": counts,
         },
@@ -775,6 +857,8 @@ def _run_processes(commands: list[tuple[str, int, list[str], Path]]) -> dict[str
                 ),
             }
         )
+        if name == "representax":
+            environment.setdefault("XLA_PYTHON_CLIENT_ALLOCATOR", "cuda_async")
         started = time.perf_counter()
         process = subprocess.Popen(
             command,
@@ -988,6 +1072,9 @@ def _parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
     prepare = subparsers.add_parser("prepare")
     prepare.add_argument("--data-directory", type=Path, required=True)
+    prepare.add_argument(
+        "--dataset", choices=tuple(DATASET_SPECS), default="legacy-stsb"
+    )
 
     for command in ("worker", "reload"):
         child = subparsers.add_parser(command)
@@ -1015,7 +1102,7 @@ def _parser() -> argparse.ArgumentParser:
 def main() -> None:
     arguments = _parser().parse_args()
     if arguments.command == "prepare":
-        _prepare_data(arguments.data_directory)
+        _prepare_data(arguments.data_directory, DATASET_SPECS[arguments.dataset])
     elif arguments.command == "worker":
         _worker(arguments)
     elif arguments.command == "reload":

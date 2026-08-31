@@ -437,13 +437,22 @@ class FSDPConfig(FrozenConfig):
     """Named fully-sharded data parallelism preset."""
 
     kind: Literal["fsdp"] = "fsdp"
-    data_axis: NonEmptyString = "data"
+    data_axis: NonEmptyString | None = "data"
     parameter_axis: NonEmptyString | None = None
     minimum_parameter_elements: PositiveInt = 2**18
 
+    @model_validator(mode="after")
+    def validate_parameter_axis(self) -> Self:
+        if self.data_axis is None and self.parameter_axis is None:
+            raise ValueError("FSDP requires a data or parameter axis")
+        return self
+
     @property
-    def resolved_parameter_axis(self) -> str:
-        return self.parameter_axis or self.data_axis
+    def resolved_parameter_axis(self) -> NonEmptyString:
+        axis = self.parameter_axis or self.data_axis
+        if axis is None:  # pragma: no cover - validated above
+            raise AssertionError("FSDP parameter axis is unavailable")
+        return axis
 
 
 class CustomShardingConfig(FrozenConfig):
@@ -599,10 +608,9 @@ class PrecisionConfig(FrozenConfig):
         return self.compute_dtype
 
 
-class QuantizedLoRAConfig(FrozenConfig):
-    """Four-bit frozen base weights plus trainable low-rank adapters."""
+class LoRAConfig(FrozenConfig):
+    """Frozen base weights plus trainable low-rank adapters."""
 
-    bits: Literal[4] = 4
     rank: PositiveInt
     alpha: PositiveFloat
     target_pattern: NonEmptyString = ".*"
@@ -620,6 +628,12 @@ class QuantizedLoRAConfig(FrozenConfig):
         return pattern
 
 
+class QuantizedLoRAConfig(LoRAConfig):
+    """Four-bit frozen base weights plus trainable low-rank adapters."""
+
+    bits: Literal[4] = 4
+
+
 class TrainingConfig(FrozenConfig):
     """Scientific and efficiency parameters governing the training process."""
 
@@ -631,7 +645,7 @@ class TrainingConfig(FrozenConfig):
     batch: Execution[BatchConfig]
     grad_cache: Execution[GradCacheConfig | None] = None
     mega_batch_mining: Execution[MegaBatchMiningConfig | None] = None
-    adapter: Scientific[QuantizedLoRAConfig | None] = None
+    adapter: Scientific[LoRAConfig | QuantizedLoRAConfig | None] = None
     precision: Execution[PrecisionConfig] = PrecisionConfig()
     activation_rematerialization: Execution[RematerializationPolicy] = Field(
         default="full",
@@ -656,9 +670,10 @@ class TrainingConfig(FrozenConfig):
             referenced_axes = {sharding.axis}
         elif isinstance(sharding, FSDPConfig):
             referenced_axes = {
-                sharding.data_axis,
                 sharding.resolved_parameter_axis,
             }
+            if sharding.data_axis is not None:
+                referenced_axes.add(sharding.data_axis)
         else:
             referenced_axes = set(sharding.parameter_axes)
             if sharding.data_axis is not None:
@@ -707,6 +722,8 @@ class LoggingConfig(FrozenConfig):
 
     console_every: PositiveInt = 1
     reporter_queue_size: PositiveInt = 16
+    timing: bool = False
+    accelerator: bool = False
     wandb: WandbConfig | None = None
 
 
@@ -844,18 +861,12 @@ class JobConfig(FrozenConfig):
                 f"{strategy!r}"
             )
         accumulation_steps = self.training.batch.gradient_accumulation_steps
-        if accumulation_steps > 1:
-            if strategy != "direct":
-                raise ValueError(
-                    "gradient accumulation composes only with direct execution; "
-                    "GradCache and mega-batch execution already own their logical "
-                    "batch decomposition"
-                )
-            if not definition.microbatch_accumulation:
-                raise ValueError(
-                    f"loss {self.loss.kind!r} does not decompose exactly across "
-                    "gradient-accumulation microbatches"
-                )
+        if accumulation_steps > 1 and strategy != "direct":
+            raise ValueError(
+                "gradient accumulation composes only with direct execution; "
+                "GradCache and mega-batch execution already own their logical "
+                "batch decomposition"
+            )
         modifiers = (
             None if info.context is None else info.context.get("modifier_registry")
         )
@@ -872,12 +883,29 @@ class JobConfig(FrozenConfig):
                     f"loss modifier {modifier.kind!r} does not support training "
                     f"strategy {strategy!r}"
                 )
-            if accumulation_steps > 1 and not (
-                modifier_definition.microbatch_accumulation
+        if accumulation_steps > 1:
+            runtime_task = definition.build(self.task, self.loss)
+            for modifier in self.loss_modifiers:
+                runtime_task = modifiers.build(runtime_task, modifier)
+            supports_accumulation = getattr(
+                runtime_task,
+                "supports_gradient_accumulation",
+                True,
+            )
+            accumulation_weight = getattr(runtime_task, "accumulation_weight", None)
+            metric_reductions = getattr(
+                runtime_task,
+                "accumulation_metric_reductions",
+                None,
+            )
+            if (
+                not supports_accumulation
+                or not callable(accumulation_weight)
+                or not isinstance(metric_reductions, dict)
             ):
                 raise ValueError(
-                    f"loss modifier {modifier.kind!r} does not decompose exactly "
-                    "across gradient-accumulation microbatches"
+                    f"loss {self.loss.kind!r} does not decompose exactly across "
+                    "gradient-accumulation microbatches"
                 )
         return self
 
@@ -929,6 +957,7 @@ __all__ = [
     "JobConfig",
     "JEPARepresentationEvaluatorConfig",
     "LoggingConfig",
+    "LoRAConfig",
     "MegaBatchMiningConfig",
     "MeshConfig",
     "ModelConfig",
@@ -937,6 +966,7 @@ __all__ = [
     "PairClassificationEvaluatorConfig",
     "PartitionAxis",
     "PartitionRuleConfig",
+    "QuantizedLoRAConfig",
     "RematerializationPolicy",
     "ShardingConfig",
     "TrainingConfig",

@@ -1,0 +1,138 @@
+{
+  "schema_version": "representax-paper-campaign-v1",
+  "quality_seeds": [7, 42, 773],
+  "timing": {
+    "source": "quality-training-trajectories",
+    "record_every_step": true,
+    "synchronize_for_timing": false,
+    "additional_fresh_process_repetitions": 0,
+    "primary_world_size": 4,
+    "scaling_world_sizes": [1, 2, 4],
+    "scaling_workloads": [
+      "dense-scaling",
+      "video-text-retrieval",
+      "vjepa2-1-video-representation"
+    ]
+  },
+  "hardware": {
+    "accelerator": "NVIDIA GeForce RTX 4090 24GB",
+    "primary_world_size": 4,
+    "maximum_devices": 6
+  },
+  "common_training": {
+    "parameter_dtype": "float32",
+    "compute_dtype": "bfloat16",
+    "optimizer": "adamw",
+    "adam_betas": [0.9, 0.999],
+    "adam_epsilon": 1e-8,
+    "gradient_clip_norm": 1.0,
+    "schedule": "linear-warmup-cosine-decay",
+    "warmup_ratio": 0.06,
+    "checkpoint_policy": "initial-best-final-and-evaluation-curve-metrics",
+    "paired_framework_data_order": true
+  },
+  "storage": {
+    "root": "/raid/representax/paper-campaign-v1",
+    "retain_compact_metrics_in_git": true
+  },
+  "conditional_cells": {
+    "bert-4b": {
+      "gate": "bert-1b-pilot-feasible",
+      "requirements": [
+        "one compiled update completes on four GPUs",
+        "projected quality trajectory fits the dense-scaling budget",
+        "both frameworks report a result or a structured OOM"
+      ]
+    }
+  },
+  "workloads": [
+    {
+      "name": "dense-scaling",
+      "global_batch": 2048,
+      "maximum_sequence_length": 256,
+      "models": ["bert-30m", "bert-110m", "bert-500m", "bert-1b", "bert-4b"],
+      "frameworks": ["representax", "sentence-transformers"]
+    },
+    {
+      "name": "dense-realistic",
+      "global_batch": 2048,
+      "maximum_sequence_length": 256,
+      "frameworks": ["representax", "sentence-transformers"]
+    },
+    {
+      "name": "dense-natural-questions",
+      "global_batch": 2048,
+      "maximum_sequence_length": 256,
+      "frameworks": ["representax", "sentence-transformers"]
+    },
+    {
+      "name": "dense-multilingual",
+      "global_batch": 1024,
+      "maximum_sequence_length": 256,
+      "languages": ["ar", "en", "hi", "ja"],
+      "frameworks": ["representax", "sentence-transformers"]
+    },
+    {
+      "name": "semantic-similarity",
+      "global_batch": 256,
+      "maximum_sequence_length": 128,
+      "frameworks": ["representax", "sentence-transformers"]
+    },
+    {
+      "name": "pair-classification",
+      "global_batch": 256,
+      "maximum_sequence_length": 128,
+      "frameworks": ["representax", "sentence-transformers"]
+    },
+    {
+      "name": "cross-encoder-reranking",
+      "global_batch": 128,
+      "maximum_sequence_length": 512,
+      "frameworks": ["representax", "sentence-transformers"]
+    },
+    {
+      "name": "late-interaction",
+      "global_batch": 512,
+      "maximum_query_length": 32,
+      "maximum_document_length": 256,
+      "frameworks": ["representax", "pylate"]
+    },
+    {
+      "name": "pairwise-outcome-reward",
+      "global_batch": 128,
+      "maximum_sequence_length": 1024,
+      "frameworks": ["representax", "trl"]
+    },
+    {
+      "name": "process-reward",
+      "global_batch": 64,
+      "maximum_sequence_length": 2048,
+      "frameworks": ["representax", "trl"]
+    },
+    {
+      "name": "image-text-retrieval",
+      "global_batch": 512,
+      "image_shape": [3, 224, 224],
+      "frameworks": ["representax", "sentence-transformers"]
+    },
+    {
+      "name": "audio-text-retrieval",
+      "global_batch": 256,
+      "audio_seconds": 10,
+      "frameworks": ["representax", "sentence-transformers"]
+    },
+    {
+      "name": "video-text-retrieval",
+      "global_batch": 128,
+      "video_frames": 16,
+      "frameworks": ["representax", "sentence-transformers"]
+    },
+    {
+      "name": "vjepa2-1-video-representation",
+      "global_batch": 128,
+      "video_frames": 16,
+      "image_resolution": 256,
+      "frameworks": ["representax", "facebookresearch-vjepa2"]
+    }
+  ]
+}

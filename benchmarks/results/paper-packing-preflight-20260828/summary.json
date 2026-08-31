@@ -1,0 +1,135 @@
+{
+  "schema_version": "representax-paper-packing-preflight-v1",
+  "decision": {
+    "paper_training_policy": "use-length-bucketing",
+    "sequence_packing": "do-not-implement-in-gradcache-for-this-paper",
+    "media_packing": "not-admitted-by-the-frozen-fixed-extent-media-contracts",
+    "reason": "Compile-stable MPNet packing is correct and improves over fixed 256-token padding, but ordinary length bucketing is substantially faster and uses less token capacity on the frozen MS MARCO order.",
+    "future": "Revisit evaluation-only packing and training packing only with length-aware batch construction plus a fixed ABI or an efficient ragged attention kernel."
+  },
+  "contract": {
+    "model": "sentence-transformers/all-mpnet-base-v2",
+    "revision": "e8c3b32edf5434bc2275fc9bab85f82640a19130",
+    "training_data": "sentence-transformers/msmarco-msmarco-MiniLM-L6-v3 triplet-all/train-00000-of-00039.parquet",
+    "logical_batch_size": 32,
+    "updates": 64,
+    "seed": 7,
+    "compute_dtype": "bfloat16",
+    "parameter_dtype": "float32",
+    "objective": "direct asymmetric cosine MNR scale=20",
+    "hardware": "one NVIDIA GeForce RTX 4090 24GB",
+    "allocator": "XLA_PYTHON_CLIENT_ALLOCATOR=platform",
+    "allocator_scope": "Relative comparison only; use the four-GPU BFC GradCache pilot for paper-level absolute throughput."
+  },
+  "semantic_acceptance": {
+    "real_checkpoint_embedding_parity": {
+      "ordinary_input_shape": [8, 64],
+      "packed_input_shape": [8, 16],
+      "logical_embedding_shape": [8, 768],
+      "maximum_absolute_difference": 9.685754776000977e-08,
+      "maximum_cosine_distance": 1.1920928955078125e-07
+    },
+    "mnr_loss_and_parameter_gradient_parity": "tests/models/mpnet/test_model.py::test_packed_mpnet_preserves_mnr_loss_and_parameter_gradients",
+    "isolation": "block-diagonal attention, per-segment MPNet position and relative-position reset, logical-order segment mean pooling"
+  },
+  "host_geometry": {
+    "batches": 64,
+    "logical_examples_per_batch": 32,
+    "query": {
+      "mean_tokens": 310.484375,
+      "minimum_tokens": 160,
+      "maximum_tokens": 672,
+      "ordinary_bucket_shapes": {"16": 61, "32": 3},
+      "ordinary_mean_token_capacity": 536,
+      "smallest_covering_fixed_pack": [11, 64],
+      "fixed_pack_token_capacity": 704
+    },
+    "document": {
+      "mean_tokens": 2534.203125,
+      "minimum_tokens": 1344,
+      "maximum_tokens": 6496,
+      "ordinary_bucket_shapes": {"64": 13, "128": 47, "256": 4},
+      "ordinary_mean_token_capacity": 3936,
+      "smallest_covering_fixed_pack": [31, 256],
+      "fixed_pack_token_capacity": 7936
+    }
+  },
+  "matched_direct_mnr": {
+    "steady_state_method": "Drop the first timed row for each observed metric signature, then report the median of remaining rows.",
+    "fixed_256": {
+      "training_signatures": 1,
+      "mean_tokens": 2844.6875,
+      "mean_token_capacity": 16384,
+      "mean_token_utilization": 0.17362594604492188,
+      "median_examples_per_second": 62.66789309107788,
+      "median_step_seconds": 0.5106283072382212,
+      "initial_ndcg_at_10": 0.6370839903990788,
+      "final_ndcg_at_10": 0.6535032492137546,
+      "final_loss": 3.4941020011901855,
+      "final_evaluation_examples_per_second": 1015.4391854594238
+    },
+    "bucketed_16_32_64_128_256": {
+      "training_signatures": 5,
+      "mean_tokens": 2844.6875,
+      "mean_token_capacity": 4472,
+      "mean_token_utilization": 0.6500635683146957,
+      "median_examples_per_second": 292.5204669226889,
+      "median_step_seconds": 0.10939405485987663,
+      "initial_ndcg_at_10": 0.6370839903990788,
+      "final_ndcg_at_10": 0.6408909555701618,
+      "final_loss": 3.512819528579712,
+      "final_evaluation_examples_per_second": 1016.1516792906071
+    },
+    "packed_fixed_query_11x64_document_31x256": {
+      "training_signatures": 1,
+      "packed_physical_rows": 42,
+      "logical_sequences": 64,
+      "mean_sequences_per_packed_row": 1.5238095238095237,
+      "mean_tokens": 2844.6875,
+      "mean_token_capacity": 8640,
+      "mean_token_utilization": 0.32924623842592593,
+      "median_examples_per_second": 77.68187602016516,
+      "median_step_seconds": 0.4120141910389066,
+      "initial_ndcg_at_10": 0.6370839903990788,
+      "final_ndcg_at_10": 0.6743289253991026,
+      "final_loss": 3.481171131134033,
+      "final_evaluation_examples_per_second": 1819.1072891147587
+    },
+    "comparisons": {
+      "packing_vs_fixed_training_throughput": 1.2395801452470538,
+      "bucketing_vs_fixed_training_throughput": 4.667788439888295,
+      "packing_vs_bucketing_training_throughput": 0.26556048141648814,
+      "packing_vs_bucketing_token_capacity": 1.9320214669051878,
+      "packing_vs_bucketing_final_evaluation_throughput": 1.790192671220805,
+      "packed_vs_fixed_loss_mae": 0.02816399559378624,
+      "packed_vs_fixed_loss_correlation": 0.9953778053820431
+    }
+  },
+  "four_gpu_gradcache_context": {
+    "fixed_256_mean_token_utilization": 0.1714773178100586,
+    "bucketed_mean_token_utilization": 0.3247501232005932,
+    "fixed_median_examples_per_second": 251.7972805018848,
+    "bucketed_median_examples_per_second": 323.6528620689635,
+    "bucketed_throughput_gain": 1.285368354872093
+  },
+  "adaptive_packing_discovery": {
+    "status": "stopped-after-13-updates",
+    "reason": "The broad selector produced 13 distinct training signatures in 13 updates, each requiring a new compile. Segment values may vary, but physical tensor dimensions must not.",
+    "default_bfc_dynamic_shape_result": "The direct bucketed probe OOMed when moving among shapes; the comparison trio therefore used the deallocating platform allocator."
+  },
+  "media_scope": {
+    "image_text": "The frozen campaign uses [3,224,224] images.",
+    "audio_text": "The frozen campaign normalizes audio to 10 seconds.",
+    "video_text": "The frozen campaign samples 16 frames.",
+    "vjepa2_1": "The frozen campaign uses 16 frames at 256px.",
+    "decision": "Do not add cross-example media packing to the paper path. Recheck modality-internal masks during each workload preflight."
+  },
+  "input_hashes": {
+    "fixed_report": "sha256:2b132ccda026fd4163a4397998a9bd2680e48f83b3d7930d800a49c92bb4a386",
+    "fixed_metrics": "sha256:282f68757262d40a3273dd3f73e88f0a722bf2f4888114768ef705d274c63f02",
+    "bucketed_report": "sha256:2565ed6f35bdad20c1619f141e097425569b18641c26c98826b62c6f2a5af622",
+    "bucketed_metrics": "sha256:0c020d096facbab51739b3a714486ef2d013c98070b302668d9783b7a46011b9",
+    "packed_report": "sha256:04d44d54b4d937c20c4ad7863f7ef8cd341a163597af16e8f8070e671c7ea4ba",
+    "packed_metrics": "sha256:ebd3b21e0ceee386164e5b30cc2496875424d70f063b30936231477468eac20a"
+  }
+}

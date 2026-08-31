@@ -1,5 +1,6 @@
 """Shared offline and in-training evaluation tests."""
 
+import equinox as eqx
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -8,6 +9,13 @@ from representax.evaluation import LossEvaluator
 from representax.models import DenseEncoder
 from representax.tasks.pairwise import CosineRegressionTask, pairwise_batch
 from representax.train import EvaluationRunner, evaluate
+from representax.train.evaluation import _batch_size
+
+
+class _ModelNativeBatch(eqx.Module):
+    inputs: jax.Array
+    auxiliary: jax.Array
+    valid: jax.Array
 
 
 def _batches():
@@ -51,3 +59,13 @@ def test_evaluation_runner_reuses_the_compiled_shape_signature():
     assert first.compilation_seconds > 0
     assert second.compilation_seconds == 0
     assert second.metrics == first.metrics
+
+
+def test_evaluation_batch_size_uses_the_explicit_task_example_axis():
+    batch = _ModelNativeBatch(
+        inputs=jnp.zeros((2, 4)),
+        auxiliary=jnp.zeros((7, 3)),
+        valid=jnp.ones((2,), dtype=jnp.bool_),
+    )
+
+    assert _batch_size(batch) == 2

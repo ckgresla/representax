@@ -22,6 +22,7 @@ from representax.models.components import (
     l2_normalize,
     mean_pool,
     rematerialize,
+    segment_mean_pool,
 )
 from representax.planning import RematerializationPolicy
 from representax.precision import active_compute_dtype
@@ -76,6 +77,14 @@ class MPNetBatch(eqx.Module):
     input_ids: Int[Array, "batch sequence"] | None = None
     inputs_embeds: Float[Array, "batch sequence hidden"] | None = None
     position_ids: Int[Array, "#batch sequence"] | None = None
+    segment_ids: Int[Array, "batch sequence"] | None = None
+    logical_batch_size: int | None = eqx.field(static=True, default=None)
+
+    @property
+    def batch_size(self) -> int:
+        if self.logical_batch_size is not None:
+            return self.logical_batch_size
+        return self.attention_mask.shape[0]
 
     def __post_init__(self) -> None:
         if (self.input_ids is None) == (self.inputs_embeds is None):
@@ -104,6 +113,21 @@ class MPNetBatch(eqx.Module):
                 raise ValueError("position_ids and attention_mask must align")
             if not jnp.issubdtype(self.position_ids.dtype, jnp.integer):
                 raise TypeError("position_ids must have an integer dtype")
+        if (self.segment_ids is None) != (self.logical_batch_size is None):
+            raise ValueError(
+                "segment_ids and logical_batch_size must be specified together"
+            )
+        if self.segment_ids is not None:
+            if self.segment_ids.shape != self.attention_mask.shape:
+                raise ValueError("segment_ids and attention_mask must align")
+            if not jnp.issubdtype(self.segment_ids.dtype, jnp.integer):
+                raise TypeError("segment_ids must have an integer dtype")
+            if self.position_ids is None:
+                raise ValueError("packed MPNet inputs require explicit position_ids")
+            if self.position_ids.shape[0] != self.attention_mask.shape[0]:
+                raise ValueError("packed position_ids batch must match inputs")
+            if self.logical_batch_size is None or self.logical_batch_size <= 0:
+                raise ValueError("logical_batch_size must be positive")
 
 
 class MPNetEmbeddings(eqx.Module):
@@ -185,10 +209,84 @@ class MPNetEmbeddings(eqx.Module):
 
 
 class MPNetSelfAttention(eqx.Module):
-    query: Linear
-    key: Linear
-    value: Linear
+    qkv: Linear
     output: Linear
+
+    def projection(self, index: int) -> Linear:
+        """Expose one Hugging Face Q/K/V projection without changing storage."""
+
+        if index not in (0, 1, 2):
+            raise IndexError(index)
+        output_size = (
+            self.qkv.bias.shape[0] // 3
+            if self.qkv.bias is not None
+            else (
+                self.qkv.weight.shape[-1] // 3
+                if self.qkv.weight_layout == "input_output"
+                else self.qkv.weight.shape[0] // 3
+            )
+        )
+        start = index * output_size
+        stop = start + output_size
+        weight = (
+            self.qkv.weight[:, start:stop]
+            if self.qkv.weight_layout == "input_output"
+            else self.qkv.weight[start:stop]
+        )
+        bias = None if self.qkv.bias is None else self.qkv.bias[start:stop]
+        return Linear(
+            weight=weight,
+            bias=bias,
+            weight_layout=self.qkv.weight_layout,
+        )
+
+    @property
+    def query(self) -> Linear:
+        return self.projection(0)
+
+    @property
+    def key(self) -> Linear:
+        return self.projection(1)
+
+    @property
+    def value(self) -> Linear:
+        return self.projection(2)
+
+    @classmethod
+    def from_projections(
+        cls,
+        query: Linear,
+        key: Linear,
+        value: Linear,
+        output: Linear,
+    ) -> MPNetSelfAttention:
+        """Fuse canonical Q/K/V tensors into one compute projection."""
+
+        projections = (query, key, value)
+        layouts = {projection.weight_layout for projection in projections}
+        if len(layouts) != 1:
+            raise ValueError("MPNet Q/K/V projections must use one weight layout")
+        if any(projection.bias is None for projection in projections):
+            raise ValueError("MPNet Q/K/V projections require biases")
+        layout = query.weight_layout
+        weight_axis = 1 if layout == "input_output" else 0
+        return cls(
+            qkv=Linear(
+                weight=jnp.concatenate(
+                    tuple(projection.weight for projection in projections),
+                    axis=weight_axis,
+                ),
+                bias=jnp.concatenate(
+                    tuple(
+                        projection.bias
+                        for projection in projections
+                        if projection.bias is not None
+                    )
+                ),
+                weight_layout=layout,
+            ),
+            output=output,
+        )
 
     @classmethod
     def init(
@@ -206,18 +304,21 @@ class MPNetSelfAttention(eqx.Module):
             "dtype": dtype,
             "bias": True,
         }
-        return cls(
-            query=Linear.init(key=keys[0], **arguments),
-            key=Linear.init(key=keys[1], **arguments),
-            value=Linear.init(key=keys[2], **arguments),
-            output=Linear.init(key=keys[3], **arguments),
+        return cls.from_projections(
+            Linear.init(key=keys[0], **arguments),
+            Linear.init(key=keys[1], **arguments),
+            Linear.init(key=keys[2], **arguments),
+            Linear.init(key=keys[3], **arguments),
         )
 
     def __call__(
         self,
         hidden: Float[Array, "batch sequence hidden"],
-        attention_mask: Bool[Array, "batch sequence"],
-        position_bias: Float[Array, "1 heads sequence sequence"],
+        attention_mask: (
+            Bool[Array, "batch sequence"]
+            | Bool[Array, "batch target_sequence source_sequence"]
+        ),
+        position_bias: Float[Array, "#batch heads sequence sequence"],
         *,
         config: MPNetConfig,
         probability_key: PRNGKeyArray | None,
@@ -225,22 +326,26 @@ class MPNetSelfAttention(eqx.Module):
     ) -> Float[Array, "batch sequence hidden"]:
         batch, sequence, _ = hidden.shape
 
-        def project(
-            projection: Linear,
-        ) -> Float[Array, "batch sequence heads head"]:
-            return projection(hidden).reshape(
-                batch,
-                sequence,
-                config.num_attention_heads,
-                config.head_dimension,
-            )
+        qkv = self.qkv(hidden).reshape(
+            batch,
+            sequence,
+            3,
+            config.num_attention_heads,
+            config.head_dimension,
+        )
+        query, key, value = (qkv[:, :, index] for index in range(3))
 
+        expanded_mask = (
+            attention_mask[:, None, None, :]
+            if attention_mask.ndim == 2
+            else attention_mask[:, None, :, :]
+        )
         attended = dot_product_attention(
-            project(self.query),
-            project(self.key),
-            project(self.value),
+            query,
+            key,
+            value,
             attention_bias=position_bias,
-            attention_mask=attention_mask[:, None, None, :],
+            attention_mask=expanded_mask,
             dropout_probability=config.attention_dropout_probability,
             dropout_key=probability_key,
             implementation=implementation,
@@ -324,8 +429,11 @@ class MPNetLayer(eqx.Module):
     def __call__(
         self,
         hidden: Float[Array, "batch sequence hidden"],
-        attention_mask: Bool[Array, "batch sequence"],
-        position_bias: Float[Array, "1 heads sequence sequence"],
+        attention_mask: (
+            Bool[Array, "batch sequence"]
+            | Bool[Array, "batch target_sequence source_sequence"]
+        ),
+        position_bias: Float[Array, "#batch heads sequence sequence"],
         *,
         config: MPNetConfig,
         key: PRNGKeyArray | None,
@@ -369,7 +477,17 @@ class MPNetLayerStack(eqx.Module):
     def from_layers(cls, layers: tuple[MPNetLayer, ...]) -> MPNetLayerStack:
         if not layers:
             return cls(blocks=None, depth=0)
-        blocks = jax.tree.map(lambda *values: jnp.stack(values), *layers)
+        compute_layers = tuple(
+            jax.tree.map(
+                lambda value: (
+                    value.input_major() if isinstance(value, Linear) else value
+                ),
+                layer,
+                is_leaf=lambda value: isinstance(value, Linear),
+            )
+            for layer in layers
+        )
+        blocks = jax.tree.map(lambda *values: jnp.stack(values), *compute_layers)
         return cls(blocks=blocks, depth=len(layers))
 
     def layer(self, index: int) -> MPNetLayer:
@@ -423,15 +541,23 @@ class MPNetTower(eqx.Module):
         sequence: int,
         *,
         dtype: jnp.dtype,
-    ) -> Float[Array, "1 heads sequence sequence"]:
-        positions = jnp.arange(sequence, dtype=jnp.int32)
-        relative = positions[None, :] - positions[:, None]
+        position_ids: Int[Array, "batch sequence"] | None = None,
+    ) -> Float[Array, "#batch heads sequence sequence"]:
+        if position_ids is None:
+            positions = jnp.arange(sequence, dtype=jnp.int32)
+            relative = positions[None, :] - positions[:, None]
+        else:
+            if position_ids.shape[1] != sequence:
+                raise ValueError("position_ids must match the sequence length")
+            relative = position_ids[:, None, :] - position_ids[:, :, None]
         buckets = mpnet_relative_position_bucket(
             relative,
             num_buckets=self.config.relative_attention_num_buckets,
         )
         values = embedding_lookup(self.relative_attention_bias, buckets)
-        return jnp.transpose(values, (2, 0, 1))[None].astype(dtype)
+        if position_ids is None:
+            return jnp.transpose(values, (2, 0, 1))[None].astype(dtype)
+        return jnp.transpose(values, (0, 3, 1, 2)).astype(dtype)
 
     def __call__(
         self,
@@ -442,13 +568,83 @@ class MPNetTower(eqx.Module):
         attention_implementation: AttentionImplementation,
         rematerialization: RematerializationPolicy,
     ) -> Float[Array, "batch sequence hidden"]:
-        return self.all_hidden_states(
+        (
+            hidden,
+            attention_mask,
+            position_bias,
+            layer_keys,
+            training,
+        ) = self._execution_inputs(
             batch,
             key=key,
             compute_dtype=compute_dtype,
-            attention_implementation=attention_implementation,
-            rematerialization=rematerialization,
-        )[-1]
+        )
+        if self.layers.blocks is None:
+            return hidden
+
+        def apply_layer(
+            carry: Float[Array, "batch sequence hidden"],
+            values: tuple[MPNetLayer, PRNGKeyArray],
+        ) -> tuple[Float[Array, "batch sequence hidden"], None]:
+            layer, layer_key = values
+            output = layer(
+                carry,
+                attention_mask,
+                position_bias,
+                config=self.config,
+                key=layer_key if training else None,
+                implementation=attention_implementation,
+            )
+            return output, None
+
+        hidden, _ = jax.lax.scan(
+            rematerialize(apply_layer, rematerialization),
+            hidden,
+            (self.layers.blocks, layer_keys),
+            unroll=self.layers.depth,
+        )
+        return hidden
+
+    def _execution_inputs(
+        self,
+        batch: MPNetBatch,
+        *,
+        key: PRNGKeyArray | None,
+        compute_dtype: jnp.dtype,
+    ) -> tuple[
+        Float[Array, "batch sequence hidden"],
+        Bool[Array, "batch sequence"]
+        | Bool[Array, "batch target_sequence source_sequence"],
+        Float[Array, "#batch heads sequence sequence"],
+        PRNGKeyArray,
+        bool,
+    ]:
+        if key is None:
+            embedding_key = None
+            layer_keys = jax.random.split(jax.random.key(0), self.layers.depth)
+        else:
+            embedding_key, layer_key = jax.random.split(key)
+            layer_keys = jax.random.split(layer_key, self.layers.depth)
+        hidden = self.embeddings(batch, config=self.config, key=embedding_key)
+        hidden = hidden.astype(compute_dtype)
+        token_mask = batch.attention_mask.astype(bool)
+        if batch.segment_ids is None:
+            attention_mask = token_mask
+            packed_position_ids = None
+        else:
+            segments = batch.segment_ids
+            attention_mask = (
+                token_mask[:, :, None]
+                & token_mask[:, None, :]
+                & (segments[:, :, None] == segments[:, None, :])
+            )
+            packed_position_ids = batch.position_ids
+        position_bias = self.position_bias(
+            hidden.shape[1],
+            dtype=compute_dtype,
+            position_ids=packed_position_ids,
+        )
+        return hidden, attention_mask, position_bias, layer_keys, key is not None
 
     def all_hidden_states(
         self,
@@ -461,20 +657,19 @@ class MPNetTower(eqx.Module):
     ) -> Float[Array, "layer batch sequence hidden"]:
         """Return embedding output followed by every encoder-layer output."""
 
-        if key is None:
-            embedding_key = None
-            layer_keys = jax.random.split(jax.random.key(0), self.layers.depth)
-        else:
-            embedding_key, layer_key = jax.random.split(key)
-            layer_keys = jax.random.split(layer_key, self.layers.depth)
-        hidden = self.embeddings(batch, config=self.config, key=embedding_key)
-        hidden = hidden.astype(compute_dtype)
-        attention_mask = batch.attention_mask.astype(bool)
-        position_bias = self.position_bias(hidden.shape[1], dtype=compute_dtype)
+        (
+            hidden,
+            attention_mask,
+            position_bias,
+            layer_keys,
+            training,
+        ) = self._execution_inputs(
+            batch,
+            key=key,
+            compute_dtype=compute_dtype,
+        )
         if self.layers.blocks is None:
             return hidden[None, ...]
-
-        training = key is not None
 
         def apply_layer(
             carry: Float[Array, "batch sequence hidden"],
@@ -494,11 +689,11 @@ class MPNetTower(eqx.Module):
             )
             return output, output
 
-        executed_layer = rematerialize(apply_layer, rematerialization)
         _, layer_outputs = jax.lax.scan(
-            executed_layer,
+            rematerialize(apply_layer, rematerialization),
             hidden,
             (self.layers.blocks, layer_keys),
+            unroll=self.layers.depth,
         )
         return jnp.concatenate((hidden[None, ...], layer_outputs), axis=0)
 
@@ -598,6 +793,8 @@ class MPNetEncoder(eqx.Module):
         *,
         key: PRNGKeyArray | None = None,
     ) -> Float[Array, "batch hidden"]:
+        if inputs.segment_ids is not None:
+            raise TypeError("MPNet pooler_output does not support packed inputs")
         return self.tower.pool(self.hidden_states(inputs, key=key))
 
     def encode(
@@ -609,7 +806,17 @@ class MPNetEncoder(eqx.Module):
     ) -> Float[Array, "batch representation"]:
         del route
         hidden = self.hidden_states(inputs, key=key)
-        return l2_normalize(mean_pool(hidden, inputs.attention_mask))
+        if inputs.segment_ids is None:
+            pooled = mean_pool(hidden, inputs.attention_mask)
+        else:
+            assert inputs.logical_batch_size is not None
+            pooled = segment_mean_pool(
+                hidden,
+                inputs.attention_mask,
+                inputs.segment_ids,
+                num_segments=inputs.logical_batch_size,
+            )
+        return l2_normalize(pooled)
 
     def encode_layers(
         self,
@@ -622,7 +829,23 @@ class MPNetEncoder(eqx.Module):
 
         del route
         hidden = self.hidden_states_by_layer(inputs, key=key)
-        pooled = jax.vmap(lambda value: mean_pool(value, inputs.attention_mask))(hidden)
+        if inputs.segment_ids is None:
+            pooled = jax.vmap(lambda value: mean_pool(value, inputs.attention_mask))(
+                hidden
+            )
+        else:
+            segment_ids = inputs.segment_ids
+            logical_batch_size = inputs.logical_batch_size
+            assert segment_ids is not None
+            assert logical_batch_size is not None
+            pooled = jax.vmap(
+                lambda value: segment_mean_pool(
+                    value,
+                    inputs.attention_mask,
+                    segment_ids,
+                    num_segments=logical_batch_size,
+                )
+            )(hidden)
         return l2_normalize(pooled)
 
 

@@ -18,10 +18,12 @@ from representax.models.qwen3_vl import (
     Qwen3VLVisionConfig,
     batch_from_processor_output,
     last_valid_token_indices,
+    make_qwen3_vl_processor,
     multimodal_position_ids,
     qwen3_vl_weight_names,
     vision_layout,
 )
+from representax.models.qwen3_vl.processing import _reranking_conversation
 
 
 def tiny_config() -> Qwen3VLConfig:
@@ -238,6 +240,66 @@ def test_processor_output_becomes_one_padded_finite_shape_batch():
     np.testing.assert_array_equal(batch.visual_token_valid, [True, False])
     assert batch.visual_token_indices is not None
     np.testing.assert_array_equal(batch.visual_token_indices, [2, 0])
+
+
+def test_reranking_conversation_accepts_generic_query_document_pairs():
+    conversation = _reranking_conversation(
+        ("which harbor?", "a quiet harbor"),
+        default_instruction="retrieve relevant passages",
+    )
+
+    content = conversation[1]["content"]
+    assert [part["text"] for part in content if part["type"] == "text"] == [
+        "<Instruct>: retrieve relevant passages",
+        "<Query>:",
+        "which harbor?",
+        "\n<Document>:",
+        "a quiet harbor",
+    ]
+
+
+def test_reranking_processor_accepts_pointwise_collator_pairs(monkeypatch):
+    from representax.models.qwen3_vl import processing
+
+    class FakeProcessor:
+        @classmethod
+        def from_pretrained(cls, checkpoint, **options):
+            del checkpoint, options
+            return cls()
+
+        def apply_chat_template(self, conversations, **options):
+            del options
+            assert len(conversations) == 1
+            return ["rendered pair"]
+
+        def __call__(self, **options):
+            assert options["images"] is None
+            assert options["videos"] is None
+            return {
+                "input_ids": np.asarray([[1, 2, 3]], dtype=np.int32),
+                "attention_mask": np.ones((1, 3), dtype=np.int32),
+            }
+
+    monkeypatch.setattr(
+        processing,
+        "import_module",
+        lambda name: type("Transformers", (), {"Qwen3VLProcessor": FakeProcessor}),
+    )
+    processor = make_qwen3_vl_processor(
+        "fixture",
+        tiny_config(),
+        mode="reranking",
+        sequence_length_buckets=(8,),
+        patch_count_buckets=(8,),
+    )
+
+    batch = processor(
+        (("which harbor?", "a quiet harbor"),),
+        route=Route.GENERIC,
+    )
+
+    assert batch.input_ids.shape == (1, 8)
+    assert int(batch.attention_mask.sum()) == 3
 
 
 def test_vision_layout_uses_qwen_merge_major_patch_order():

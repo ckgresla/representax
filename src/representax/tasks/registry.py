@@ -72,7 +72,16 @@ from .distillation.task import (
     MarginDistillationTask,
 )
 from .guided import GISTBatch, GISTConfig, GISTTask, GuidedRetrievalConfig
-from .jepa import JEPABatch, JEPAConfig, LeJEPAConfig, LeJEPATask
+from .jepa import (
+    JEPABatch,
+    JEPAConfig,
+    LeJEPAConfig,
+    LeJEPATask,
+    VJEPA2_1Batch,
+    VJEPA2_1DenseConfig,
+    VJEPA2_1Task,
+    VJEPA2_1TaskConfig,
+)
 from .late_interaction import (
     LateInteractionConfig,
     LateInteractionContrastiveConfig,
@@ -238,7 +247,6 @@ class LossDefinition:
     build: Callable[[TaskConfig, LossConfig], Any]
     task_kinds: frozenset[str]
     training_strategies: frozenset[str]
-    microbatch_accumulation: bool = False
 
     def __post_init__(self) -> None:
         if not self.kind:
@@ -297,7 +305,6 @@ class LossModifierDefinition:
     config_type: type[LossModifierConfig]
     build: Callable[[Any, LossModifierConfig], Any]
     training_strategies: frozenset[str]
-    microbatch_accumulation: bool = False
 
     def __post_init__(self) -> None:
         if not self.kind:
@@ -533,6 +540,19 @@ def _build_lejepa_task(task: TaskConfig, loss: LossConfig) -> LeJEPATask:
         knots=loss.knots,
         slices=loss.slices,
         max_frequency=loss.max_frequency,
+    )
+
+
+def _build_vjepa2_1_task(task: TaskConfig, loss: LossConfig) -> VJEPA2_1Task:
+    _require_task(task, VJEPA2_1TaskConfig)
+    if not isinstance(loss, VJEPA2_1DenseConfig):
+        raise TypeError("V-JEPA 2.1 requires VJEPA2_1DenseConfig")
+    return VJEPA2_1Task(
+        context_weight=loss.context_weight,
+        ema_start=loss.ema_start,
+        ema_end=loss.ema_end,
+        ema_steps=loss.ema_steps,
+        offset_context_loss=loss.offset_context_loss,
     )
 
 
@@ -904,6 +924,11 @@ BUILTIN_TASKS = TaskRegistry(
             batch_type=JEPABatch,
         ),
         TaskDefinition(
+            kind="vjepa2_1",
+            config_type=VJEPA2_1TaskConfig,
+            batch_type=VJEPA2_1Batch,
+        ),
+        TaskDefinition(
             kind="explicit_triplet",
             config_type=ExplicitTripletConfig,
             batch_type=ExplicitTripletBatch,
@@ -987,7 +1012,6 @@ BUILTIN_LOSSES = LossRegistry(
             build=_build_cross_binary_task,
             task_kinds=frozenset({"pointwise_scoring"}),
             training_strategies=frozenset({"direct"}),
-            microbatch_accumulation=True,
         ),
         LossDefinition(
             kind="cross_mnr",
@@ -1002,7 +1026,6 @@ BUILTIN_LOSSES = LossRegistry(
             build=_build_cross_entropy_task,
             task_kinds=frozenset({"pointwise_scoring"}),
             training_strategies=frozenset({"direct"}),
-            microbatch_accumulation=True,
         ),
         LossDefinition(
             kind="cross_score_mse",
@@ -1010,7 +1033,6 @@ BUILTIN_LOSSES = LossRegistry(
             build=_build_cross_score_mse_task,
             task_kinds=frozenset({"pointwise_scoring"}),
             training_strategies=frozenset({"direct"}),
-            microbatch_accumulation=True,
         ),
         LossDefinition(
             kind="cross_margin_mse",
@@ -1018,7 +1040,6 @@ BUILTIN_LOSSES = LossRegistry(
             build=_build_cross_margin_mse_task,
             task_kinds=frozenset({"pairwise_ranking"}),
             training_strategies=frozenset({"direct"}),
-            microbatch_accumulation=True,
         ),
         LossDefinition(
             kind="cross_ranknet",
@@ -1040,7 +1061,6 @@ BUILTIN_LOSSES = LossRegistry(
             build=_build_cross_listnet_task,
             task_kinds=frozenset({"listwise_ranking"}),
             training_strategies=frozenset({"direct"}),
-            microbatch_accumulation=True,
         ),
         LossDefinition(
             kind="cross_list_mle",
@@ -1048,7 +1068,6 @@ BUILTIN_LOSSES = LossRegistry(
             build=_build_cross_list_mle_task,
             task_kinds=frozenset({"listwise_ranking"}),
             training_strategies=frozenset({"direct"}),
-            microbatch_accumulation=True,
         ),
         LossDefinition(
             kind="bradley_terry",
@@ -1056,7 +1075,6 @@ BUILTIN_LOSSES = LossRegistry(
             build=_build_bradley_terry_task,
             task_kinds=frozenset({"pairwise_reward"}),
             training_strategies=frozenset({"direct"}),
-            microbatch_accumulation=True,
         ),
         LossDefinition(
             kind="plackett_luce",
@@ -1064,7 +1082,6 @@ BUILTIN_LOSSES = LossRegistry(
             build=_build_plackett_luce_task,
             task_kinds=frozenset({"listwise_reward"}),
             training_strategies=frozenset({"direct"}),
-            microbatch_accumulation=True,
         ),
         LossDefinition(
             kind="pointwise_reward",
@@ -1072,7 +1089,6 @@ BUILTIN_LOSSES = LossRegistry(
             build=_build_pointwise_reward_task,
             task_kinds=frozenset({"pointwise_reward"}),
             training_strategies=frozenset({"direct"}),
-            microbatch_accumulation=True,
         ),
         LossDefinition(
             kind="process_reward",
@@ -1080,7 +1096,6 @@ BUILTIN_LOSSES = LossRegistry(
             build=_build_process_reward_task,
             task_kinds=frozenset({"process_reward"}),
             training_strategies=frozenset({"direct"}),
-            microbatch_accumulation=True,
         ),
         LossDefinition(
             kind="lejepa",
@@ -1090,12 +1105,18 @@ BUILTIN_LOSSES = LossRegistry(
             training_strategies=frozenset({"direct"}),
         ),
         LossDefinition(
+            kind="vjepa2_1_dense",
+            config_type=VJEPA2_1DenseConfig,
+            build=_build_vjepa2_1_task,
+            task_kinds=frozenset({"vjepa2_1"}),
+            training_strategies=frozenset({"direct"}),
+        ),
+        LossDefinition(
             kind="cosine_regression",
             config_type=CosineRegressionConfig,
             build=_build_cosine_regression_task,
             task_kinds=frozenset({"pairwise"}),
             training_strategies=frozenset({"direct"}),
-            microbatch_accumulation=True,
         ),
         LossDefinition(
             kind="contrastive",

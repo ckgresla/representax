@@ -21,6 +21,7 @@ from representax.config import (
     EvaluatorConfig,
     ExportConfig,
     JobConfig,
+    LoggingConfig,
     ModelConfig,
     OptimizationConfig,
     PrecisionConfig,
@@ -82,9 +83,9 @@ def identity(record):
 
 def collate_pairwise_records(examples: Sequence[dict]):
     return pairwise_batch(
-        left=jnp.asarray([example["left"] for example in examples]),
-        right=jnp.asarray([example["right"] for example in examples]),
-        labels=jnp.asarray([example["label"] for example in examples]),
+        left=np.asarray([example["left"] for example in examples]),
+        right=np.asarray([example["right"] for example in examples]),
+        labels=np.asarray([example["label"] for example in examples]),
     )
 
 
@@ -178,6 +179,7 @@ def test_run_job_trains_evaluates_selects_and_exports_from_disk(tmp_path):
             precision=PrecisionConfig.bfloat16_mixed(),
         ),
         checkpointing=CheckpointConfig(every=1, keep=2, asynchronous=True),
+        logging=LoggingConfig(timing=True),
         evaluation=EvaluationConfig(
             data=_data(valid_path),
             batch_size=4,
@@ -204,6 +206,13 @@ def test_run_job_trains_evaluates_selects_and_exports_from_disk(tmp_path):
     assert "valid/loss" in result.best_metrics
     assert "valid/similarity/spearman_cosine" in result.best_metrics
     assert result.inference_bundle == run_directory / "final-model"
+    metric_rows = [
+        json.loads(line)
+        for line in (run_directory / "metrics.jsonl").read_text().splitlines()
+    ]
+    assert [row for row in metric_rows if row["event"] == "startup"]
+    export_rows = [row for row in metric_rows if row["event"] == "export"]
+    assert export_rows[0]["metrics"]["perf/export_seconds"] > 0
     assert (run_directory / "checkpoints" / "best").is_file()
     model, restored_job = load_inference_bundle(run_directory / "final-model")
     assert restored_job == job

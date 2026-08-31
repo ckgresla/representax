@@ -1,5 +1,7 @@
 """Native embedding, margin, and distribution distillation contracts."""
 
+from typing import cast
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -223,3 +225,54 @@ def test_distillation_tasks_run_through_the_generic_compiled_train_step(task_kin
     assert result.state.step == 1
     assert result.metrics.numeric_finite
     assert not result.metrics.skipped_update
+
+
+@pytest.mark.parametrize("task_kind", ("embedding", "margin", "distribution"))
+def test_distillation_accumulation_matches_the_full_batch(task_kind) -> None:
+    examples = _examples()[:4]
+    model = DenseEncoder(4, 4, key=jax.random.key(17), normalize=False)
+    optimizer = optax.sgd(1e-2)
+    state = init_train_state(model, optimizer)
+    if task_kind == "embedding":
+        task = EmbeddingDistillationTask(distance="mse")
+        batch = embedding_distillation_batch(
+            inputs=(examples,),
+            teacher_embeddings=np.asarray(examples + 0.2),
+        )
+    elif task_kind == "margin":
+        task = MarginDistillationTask()
+        batch = margin_distillation_batch(
+            query=examples,
+            positive=examples + 0.1,
+            negatives=(examples - 0.2, examples[::-1]),
+            teacher_margins=jnp.zeros((4, 2)),
+        )
+    else:
+        task = DistributionDistillationTask(temperature=2.0)
+        batch = distribution_distillation_batch(
+            query=examples,
+            candidates=(examples + 0.1, examples - 0.2),
+            teacher_scores=jnp.zeros((4, 2)),
+        )
+
+    direct = build_train_step(task, optimizer, max_grad_norm=None)(state, batch, None)
+    accumulated = build_train_step(
+        task,
+        optimizer,
+        max_grad_norm=None,
+        gradient_accumulation_steps=2,
+    )(state, batch, None)
+
+    np.testing.assert_allclose(accumulated.metrics.loss, direct.metrics.loss, rtol=1e-6)
+    for actual, expected in zip(
+        jax.tree.leaves(accumulated.metrics.task),
+        jax.tree.leaves(direct.metrics.task),
+        strict=True,
+    ):
+        np.testing.assert_allclose(actual, expected, rtol=1e-6, atol=1e-7)
+    np.testing.assert_allclose(
+        cast(DenseEncoder, accumulated.state.model).projection.weight,
+        cast(DenseEncoder, direct.state.model).projection.weight,
+        rtol=2e-5,
+        atol=2e-6,
+    )

@@ -8,7 +8,7 @@ Keep decisions and work items here; record evidence in commits, tests, and
 benchmark artifacts rather than duplicating the roadmap elsewhere.
 
 * Papers
-** Representax paper [0/17] [0%]
+** Representax paper [6/18] [33%]
   This section is the finite acceptance program for the Representax
   systems whitepaper. Establish numerical and scientific equivalence first,
   then demonstrate statistically supported systems improvements on shared
@@ -21,20 +21,155 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   Profilax paper below. Keep exactly one =NEXT= item across the repository.
   Arbitrary sharding/FSDP, mixed precision, unified AnyModality execution, the
   multimodal family matrix, late interaction, cross/reranking, reward, LeJEPA,
-  distributed evaluation, and W&B reporting are implemented. Sparse retrieval
-  is deliberately deferred. Freeze only the finite experimental panel, then run
-  the long paired evidence campaign; do not pull general development into it.
+  distributed evaluation, W&B reporting, and V-JEPA 2.1 are implemented. V-JEPA
+  2.1 remains a distinct paper comparison; sparse retrieval is deliberately
+  deferred. Freeze only the finite experimental panel, then run the long paired
+  evidence campaign; do not pull general development into it.
 
-*** NEXT Define measurable monotonic-improvement gates over existing trainers :research:
-   Pin the initial model, tokenizer/processor, raw examples and order, objective,
-   optimizer and schedule, precision, global batch, update count, and evaluation
-   contract. Require numerical parity and non-inferior held-out quality before a
-   systems claim. Then report synchronized sustained throughput, accelerator
-   utilization and starvation, the feasible-workload frontier, and time to a
-   declared quality target over paired repetitions. Report compilation and
-   lifecycle latency separately; allocator reservation matters only when it
-   reduces feasible work or exposes avoidable materialization.
-*** TODO Complete the canonical representation evaluators :research:evaluation:
+*** DONE Define measurable monotonic-improvement gates over existing trainers :research:
+   This is a paper-protocol decision, not an implementation backlog. Freeze a
+   small set of shared training workloads that execute in Representax and a
+   maintained incumbent such as Sentence Transformers or PyLate. Give each
+   workload its own experiment section and show that Representax preserves the
+   intended learning problem and held-out quality while improving the systems
+   frontier. Do not combine unrelated tasks into one opaque average.
+
+**** Intended claim
+     For a declared shared workload, Representax is a monotonic systems
+     improvement when it performs the same scientific training job, preserves
+     held-out quality, and then demonstrates one or more of:
+     higher sustained training throughput, lower steady-state latency, a larger
+     feasible scientific workload, or better accelerator feeding/utilization on
+     the same hardware. A capacity improvement means using less live memory for
+     the same work or enabling larger models, batches or inputs; efficient FSDP
+     and arbitrary sharding are first-class capacity evidence. Compilation is
+     disclosed separately and excluded from the primary systems verdict. The
+     eight shared sections compare against the relevant maintained incumbent:
+     Sentence Transformers where it implements the workload, PyLate for late
+     interaction, and task-specific maintained references for reward modeling
+     and V-JEPA rather than forcing every claim through one framework.
+
+**** Fair comparison contract
+     For each task, use the same initial model, training and evaluation data,
+     objective, declared optimization recipe and hyperparameters, precision,
+     global batch, update count, evaluation cadence, seeds and hardware in both
+     frameworks. The JAX and PyTorch optimizer implementations, sharding,
+     rematerialization, prefetching, compilation and kernels may differ because
+     those are the systems being compared. Report every seed's loss trajectory,
+     held-out quality, training throughput, step time, memory and time to any
+     quality target. Compilation, evaluation and checkpoint overhead remain
+     separately visible. No separate numerical-parity or dry-run certification
+     is required for the paper comparison.
+
+**** Evidence policy
+     Use the three paired full-training runs as the independent systems timing
+     processes. Record host timings for every step without adding a device
+     synchronization to the critical path; use synchronization already required
+     by evaluation, checkpointing and run completion to bound completed work.
+     Use =perf/tokens_per_second= for non-padding training tokens; keep
+     validation quality under =valid/*=.
+     Derive warmup exclusions and summaries after collecting the raw trajectory.
+     Do not launch duplicate timing-only processes for the primary comparison.
+     Short timing-only runs are reserved for 1/2/4-device scaling and capacity
+     boundaries that do not warrant full quality trajectories. Retain raw per-run
+     values, confidence intervals, negative results, OOMs and no-crossing
+     trajectories. Large traces
+     and checkpoints live on =/raid=; Git tracks the immutable config, environment
+     and device inventory, compact raw metrics, summary, reproduction command and
+     scoped verdict. Throughput measured on different hardware or under a
+     different scientific objective is contextual evidence, not a paired claim.
+
+**** Shared experiment sections
+     - Dense bi-encoder retrieval: MNR and exact GradCache against Sentence
+       Transformers, with held-out information retrieval.
+     - Semantic similarity training: a shared pairwise similarity/regression or
+       ranking objective, with STSBenchmark.v2 and SICK-R evaluation.
+     - Pair classification training: shared positive/negative pair supervision,
+       with duplicate/paraphrase classification evaluation.
+     - Cross-encoder reranking: shared candidate scoring and ranking loss, with
+       held-out reranking metrics.
+     - Any-way multimodal retrieval: one larger section with independently
+       reported image-text, audio-text and video-text subsections.
+     - Late interaction: the same contract against PyLate rather than Sentence
+       Transformers when PyLate is the maintained task-specific incumbent.
+     - Reward modeling: matched pointwise, pairwise, listwise and process-reward
+       workloads against maintained reward-modeling references.
+     - V-JEPA: matched video representation learning against the maintained Meta
+       reference, with representation quality and collapse diagnostics alongside
+       systems evidence.
+
+**** Maintained systems comparables
+     Freeze each oracle in an isolated repository-only environment and record its
+     release plus exact commit in every benchmark manifest.
+     - Sentence Transformers: [[https://github.com/huggingface/sentence-transformers][huggingface/sentence-transformers]], the dense,
+       similarity, pair-classification, cross-encoder and multimodal reference.
+       The current Representax oracle is =5.6.1=; evaluate the released =6.0.0=
+       before freezing the paper environment rather than silently mixing both.
+     - PyLate: [[https://github.com/lightonai/pylate][lightonai/pylate]] =1.6.0=, the maintained ColBERT-style
+       late-interaction training, MaxSim and retrieval reference.
+     - TRL: [[https://github.com/huggingface/trl][huggingface/trl]] =1.10.0=, the maintained pairwise
+       =RewardTrainer= reference. Add separate task-specific references only for
+       listwise, pointwise or process objectives that TRL does not implement.
+     - V-JEPA 2: [[https://github.com/facebookresearch/vjepa2][facebookresearch/vjepa2]] at commit
+       =204698b45b3712590f06245fbfba32d3be539812=, the official PyTorch code for
+       V-JEPA 2, V-JEPA 2-AC and V-JEPA 2.1. Pin a released commit if the project
+       cuts a version before the campaign.
+
+**** Dense-retrieval data settings
+     Do not reduce dense retrieval to one MS MARCO recipe. Freeze this compact
+     canonical panel with immutable source revisions and original qrels:
+     - MS MARCO Passage train/dev: primary web-search training workload and the
+       four-size scaling analysis; report MRR@10 and Recall@k in-domain.
+     - Natural Questions train/test: train MPNet on the pinned Sentence Transformers
+       question/answer pairs and evaluate against the pinned MTEB NQ corpus, queries
+       and qrels; report Recall@10 and Recall@100.
+     - MIRACL train/dev: train the multilingual Jina v5 Small text path on the
+       pinned Arabic, English, Hindi and Japanese corpora/topics/qrels; publish
+       nDCG@10 and Recall@100 for every language rather than only a macro average.
+     - BEIR SciFact, NFCorpus, FiQA, ArguAna and HotpotQA test: transfer-only
+       evaluation spanning scientific evidence, biomedical, financial, argument
+       and multi-hop retrieval; report nDCG@10 plus Recall@k where meaningful.
+     Quora or CQADupStack belongs to the pair-classification section rather than
+     expanding the dense systems matrix. No transfer dataset may enter training,
+     hard-negative mining or model selection, and any inherited base-checkpoint
+     exposure must be disclosed rather than called zero-shot.
+
+**** Model evidence strategy
+     Use selected interesting public base checkpoints for realistic fine-tuning
+     case studies. Separately train one controlled five-size BERT encoder family
+     at approximately 30M, 110M, 500M, 1B and 4B parameters under matched recipes
+     to demonstrate that the systems advantage persists with scale rather than
+     depending on one architecture or parameter count. The original canonical
+     BERT sizes are approximately 110M (Base) and 340M (Large); 30M, 500M, 1B and
+     4B are controlled study configurations, not claims of canonical released
+     checkpoints. Gate the 4B campaign on a 1B pilot establishing useful training
+     coverage and feasible throughput on available hardware. Apply the full size
+     ladder to dense retrieval, where training embedding models from scratch and
+     fitting larger scientific batches are material use cases. Reranking,
+     classification and the other sections use representative architectures
+     unless their own result motivates a separate scale study.
+
+**** JEPA task-family decision
+     Representax exposes LeJEPA and V-JEPA 2.1 as two explicit selectable tasks
+     under one JEPA family, not as modes hidden inside one nominal loss.
+     - LeJEPA is the generic lean recipe: predictive agreement plus SIGReg, no
+       stop-gradient teacher, no EMA target state and no teacher scheduler. It is
+       the simple distributed-friendly representation-learning objective already
+       implemented in Representax.
+     - V-JEPA 2.1 is the canonical video recipe: spatiotemporal tubelet masking,
+       a context encoder and masked-token predictor, stop-gradient targets from
+       an EMA encoder, dense prediction and intermediate-layer supervision. It
+       receives a direct paired comparison against the official Meta code.
+     The tasks share ordinary model execution, mixed precision, sharding,
+     checkpointing, reporting and JEPA representation evaluators. Reusable
+     V-JEPA mechanisms should be general components where their semantics permit:
+     masked-view planning, context/target prediction, EMA state, intermediate
+     feature losses and modality tokenizers. They remain composition points, not
+     claims that applying every V-JEPA mechanism preserves the LeJEPA objective.
+     A later SIGReg-plus-video-prediction composition is a new experimental task,
+     not reference-equivalent LeJEPA or V-JEPA 2.1.
+
+*** DONE Complete the canonical representation evaluators :research:evaluation:
    Finish =PairClassificationEvaluator= for embedding-distance decisions,
    =ClassificationProbeEvaluator= for frozen-embedding linear probes,
    =ClusteringEvaluator= for unsupervised geometry, and
@@ -52,28 +187,274 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
 **** DONE Match generic reducers to maintained implementations
      Pair decisions match Sentence Transformers 5.6.1 on identical embeddings;
      probe and clustering reducers match their pinned scikit-learn algorithms.
-**** TODO Accept the canonical datasets through original-source adapters
+**** DONE Accept the canonical datasets through original-source adapters
      Run Sprint Duplicate Questions, Banking77.v2, Twenty Newsgroups.v2, and the
      selected JEPA transfer dataset without copied intermediate datasets, then
      record identical-example reference parity and distributed reductions.
-*** TODO Freeze the experimental workload and model panel :research:models:
-   Use two or three representative models per measured track where maintained
-   checkpoints and oracles permit: dense text, image-text, audio/video-text,
-   late interaction, reranking, reward modeling, and LeJEPA. Keep this measured
-   panel distinct from the broader 25-model compatibility table. Admit a new
-   architecture only when it fills a missing scientific control, modality, scale,
-   or important real-world workload; novelty alone is not a paper requirement.
-*** TODO Publish the verified 25-model compatibility table :research:models:
+***** DONE Add immutable original-source recipes and task-native batch adapters
+***** DONE Accept Sprint Duplicate Questions against Sentence Transformers
+***** DONE Accept Banking77.v2 and Twenty Newsgroups.v2 against scikit-learn
+***** DONE Select and accept one canonical JEPA transfer dataset
+***** DONE Prove identical metrics over one-, two-, and four-device data meshes
+***** DONE Record source revisions, example fingerprints, configs, and evidence
+     Compact evidence lives in
+     =benchmarks/results/canonical-evaluator-acceptance-20260825/=. Frozen
+     reducer parity remains in the repository parity suite; the acceptance
+     artifact deliberately uses deterministic test features and makes no model
+     quality claim.
+*** DONE Implement and accept native V-JEPA 2.1 :research:jepa:models:video:
+   Implement the method defined by [[https://arxiv.org/abs/2603.14482][V-JEPA 2.1: Unlocking Dense Features in Video
+   Self-Supervised Learning]] and match the official
+   [[https://github.com/facebookresearch/vjepa2][facebookresearch/vjepa2]] repository at the paper-frozen commit. Preserve
+   the exact scientific program: dense prediction over visible and masked
+   tokens, deep self-supervision from declared intermediate encoder layers,
+   image/video tokenizers, context encoder, predictor, stop-gradient EMA target
+   encoder, masking and loss reductions. Reuse the ordinary Representax model,
+   sharding, mixed-precision, checkpoint, reporting, and evaluator seams.
+**** DONE Freeze the paper equations, official code paths, configs, and checkpoint
+     See =docs/vjepa2-1-reference.md= for the equation-to-code map and frozen
+     Meta commit =204698b45b3712590f06245fbfba32d3be539812=.
+**** DONE Implement deterministic image/video views, tubelets, masks, and collation
+**** DONE Implement encoder, predictor, intermediate features, and EMA target state
+**** DONE Implement dense and deep predictive losses with exact valid-token weights
+**** DONE Integrate task construction, training, sharding, checkpoint/resume, and export
+**** DONE Match official preprocessing, forward tensors, losses, gradients, and EMA updates
+**** DONE Verify inference, a multi-step training trajectory, and clean export/reload
+**** DONE Accept single-device plus two- and four-device DDP/FSDP execution
+**** DONE Accept V-JEPA representation evaluation and record compact reference evidence
+     Compact semantic evidence lives in
+     =benchmarks/results/vjepa2-1-acceptance-20260825/=. It records official
+     image/video tensor parity, a disk-to-model lifecycle, evaluator execution,
+     and physical two-/four-device DDP/FSDP trajectory equivalence. Large-model
+     quality and systems measurements remain paper-campaign work.
+*** DONE Freeze the remaining experiment manifests [8/8] [100%] :research:models:
+   The sections, maintained references, semantic evaluation panel and dense data
+   panel above are already frozen. Finish only the unresolved manifest cells in
+   this dependency order; do not reopen the scientific matrix while implementing
+   the runner.
+**** DONE Pin every model, processor, dataset and reference revision
+     Record immutable Hub or repository revisions, licenses, preprocessing and
+     split fingerprints for every row below. Resolve the exact multimodal and
+     V-JEPA training slices before any measured campaign begins.
+     The checkpoint revisions pin their processor assets. Dataset licenses are
+     disclosed explicitly, including unknown, gated and upstream-term cases,
+     rather than inferred from mirrors.
+**** DONE Materialize the controlled BERT scaling family
+     Use approximately 30M, 110M, 500M, 1B and 4B encoder-only configurations
+     with one tokenizer, sequence length, objective, optimizer policy and data
+     order. Run the full ladder only on MS MARCO dense retrieval, confirm the
+     systems result on Natural Questions, and report the frozen BEIR transfer
+     panel. The 4B run is admitted only after the 1B pilot is scientifically
+     useful and operationally feasible.
+     The exact architecture records and analytical parameter-count acceptance
+     live in =benchmarks/configs/bert-scaling-v1.json= and are checked without
+     allocating the multi-billion-parameter models by
+     =scripts/validate_bert_scaling.py=.
+**** DONE Freeze realistic text workloads
+     - Dense retrieval: =sentence-transformers/all-mpnet-base-v2= as the public
+       checkpoint case study against Sentence Transformers.
+     - Semantic similarity and pair classification: MPNet as the primary public
+       checkpoint, with canonical BERT Base as one architecture control, on the
+       already frozen STS, SICK-R and duplicate/paraphrase evaluators.
+     - Cross-encoder reranking: the MiniLM/BERT MS MARCO cross-encoder recipe on
+       MS MARCO with held-out TREC DL evaluation.
+     - Late interaction: GTE-ModernColBERT on MS MARCO against PyLate, followed by
+       the frozen transfer evaluation.
+     Immutable model, dataset and reference identities live in
+     =benchmarks/configs/paper-text-reward-v1.json=.
+**** DONE Freeze reward-modeling workloads
+     Make pairwise outcome reward modeling the primary paper comparison: a
+     Qwen3-0.6B sequence-classification model with one scalar score, chosen and
+     rejected UltraFeedback examples, and the Bradley-Terry log-sigmoid objective
+     against TRL =RewardTrainer=. Keep pointwise and listwise objectives as
+     contract coverage. Use a small Qwen step scorer on Math-Shepherd against TRL
+     =PRMTrainer= for the secondary process-reward comparison.
+     The frozen manifest uses vanilla =Qwen/Qwen3-0.6B= plus an independently
+     initialized scalar sequence-classification head, not the existing
+     vocabulary-logit reranker head. Implement and accept that loader before the
+     reward comparison.
+**** DONE Freeze multimodal retrieval workloads
+     Use CLIP ViT-B/32 for the image-text comparison and the existing
+     NVOmniEmbed/Qwen2.5-Omni family for audio-text and video-text. Select one
+     immutable training corpus and one held-out retrieval corpus per modality.
+     The exact COCO/Flickr30k, AudioCaps and MSR-VTT records live in
+     =benchmarks/configs/paper-multimodal-jepa-v1.json=.
+**** DONE Freeze the V-JEPA 2.1 workload
+     Pin one official configuration, checkpoint initialization policy, video
+     training slice and representation evaluation protocol against the existing
+     Meta commit. Preserve collapse diagnostics and matched EMA/update semantics.
+     Use the official V-JEPA 2.1 ViT-B/16 256px/16-frame configuration with
+     random initialization on Something-Something v2 and the official frozen
+     representation protocol, including gated ImageNet-1K linear probing. This
+     is a matched systems campaign, not a claim to reproduce full upstream
+     pretraining quality.
+**** DONE Freeze fair comparison contracts for every workload
+     For each row, pin the same model initialization, training dataset and order,
+     task, optimizer, schedule, global batch, update count, evaluation data and
+     primary metric in Representax and the maintained reference. Runtime
+     implementation details may differ. Compare held-out quality and systems
+     measurements from the full paired runs; do not maintain a separate
+     acceptance-status inventory.
+**** DONE Freeze the campaign matrix
+     Expand the frozen workload contracts into the final seed, hardware and
+     repetition matrix and lock manifests before launching long runs. Keep this
+     measured panel distinct from the broader 25-model compatibility table.
+     The locked campaign is =benchmarks/configs/paper-campaign-v1.json=: paired
+     seeds 7/42/773, timing extracted from the full training trajectories, selected
+     1/2/4-GPU scaling probes, a conditional 4B cell, and run artifacts under
+     =/raid=. Derive runtime and storage estimates from measured pilots.
+*** DONE Publish the verified 25-model compatibility table :research:models:
    Select 25 relevant checkpoints across the native families and four
    modalities. Treat this as an evidence audit, not 25 bespoke implementations:
    every listed checkpoint must pass processor, forward, update, export, and
    systems gates before it appears in the table.
-*** TODO Measure padding waste before deciding on packing :research:benchmark:data:
-   On the frozen pilot workloads, record valid versus padded tokens or media
-   elements, bucket occupancy, data-wait time, and accelerator utilization.
-   Implement packing for the paper only if padding materially constrains
-   throughput and packing preserves identical attention and loss semantics.
+   The identity-only panel lives in
+   =benchmarks/configs/paper-compatibility-v1.json=. The single executable flow
+   is =experiments/paper/compatibility.py=: it performs checkpoint load, update,
+   resumable checkpoint restore, configured evaluation, native inference export,
+   and reload through =run_job=. The initial discovery evidence is under
+   =/raid/representax/paper-compatibility-v1-20260828-v3/=. All 25 pinned rows
+   now pass load, update, resumable checkpoint restore, evaluation, native
+   inference export, and inference reload. Continuation and repaired-row evidence
+   lives under =/raid/representax/paper-compatibility-*-20260828-v[4-7]/=.
+   The compact published table is
+   =benchmarks/results/paper-compatibility-v1-20260828/README.org=. It is rendered
+   from the pinned manifest and points every row to its passing durable evidence.
+*** DONE Measure padding waste before deciding on packing :research:benchmark:data:
+   Use ordinary length bucketing for paper training; do not implement GradCache
+   sequence packing on the paper critical path. On the four-GPU MPNet/MS MARCO
+   pilot, bucketing raised mean token utilization from 17.1% to 32.5% and median
+   throughput from 251.80 to 323.65 examples/s (1.285x).
+
+   The matched one-GPU direct-MNR diagnostic proves that packing is scientifically
+   valid: real-checkpoint embeddings agree within 9.69e-8, and complete MNR loss
+   and parameter gradients match with dropout disabled. A compile-stable fixed
+   pack improves fixed-256 throughput 1.240x, but ordinary bucketing improves it
+   4.668x and is 3.766x faster than packing. Bucketing uses 4,472 mean token slots
+   per update versus 8,640 for the smallest fixed packed ABI covering all 64
+   batches. A broad adaptive selector was rejected after causing 13 signatures in
+   13 updates.
+
+   Packed repeated evaluation is promising (1.790x final evaluator throughput),
+   but it is not needed for the first paper. Frozen image, audio, and video
+   workloads already normalize to fixed extents; measure modality-internal mask
+   waste in their own preflights before revisiting media packing. Large evidence
+   lives under
+   =/raid/representax/paper-campaign-v1/preflight/packing/20260828/= and compact
+   evidence under =benchmarks/results/paper-packing-preflight-20260828/=.
 *** TODO Benchmark quality, throughput, feasible workload, utilization, and model coverage :research:benchmark:
+**** DONE Run the paired dense-retrieval campaign preflight
+     Run 64 updates of the frozen MPNet/MS MARCO exact-GradCache workload at
+     global batch 2048 and length 256 in Representax and Sentence Transformers
+     on the same four RTX 4090s with seed 7. Evaluate before and after training;
+     checkpoint and resume at update 32; export and reload the final Representax
+     model. Record canonical timing and accelerator metrics under
+     =/raid/representax/paper-campaign-v1/preflight/dense-realistic/seed-7/=,
+     then derive campaign runtime and storage estimates from those measurements.
+     Compact evidence lives in
+     =benchmarks/results/paper-dense-preflight-20260827/=. The lifecycle passes
+     end to end and short-run quality is comparable. The original systems result
+     was invalidated because DDP omitted GradCache's data-axis activation
+     annotations. The complete corrected paired trajectory reaches 243.26
+     examples/s versus 152.80 examples/s for Sentence Transformers, a 1.592x
+     throughput advantage. Select the full update count from measured learning
+     curves and the campaign compute budget; measure allocator-live JAX memory
+     before making a memory claim.
+**** DONE Add opt-in timing and accelerator telemetry to the canonical job log
+     =logging.timing= records startup, every completed training step, non-padding
+     text-token and example throughput, evaluation phases, and export through the
+     existing JSONL and downstream reporters. =logging.accelerator= samples every
+     visible NVIDIA device in a background thread into the same metric stream.
+     Neither option changes the scientific configuration fingerprint, and timing
+     does not synchronize the training thread beyond existing lifecycle barriers.
+**** DONE Preflight direct MNR against Sentence Transformers
+     The fixed-256 allocator regression was =cudaMallocAsync=, not the MNR
+     implementation: BFC with a 90% preallocated pool restores Representax from
+     48.6 to 148.2 examples/s at the same fixed shape. Converting MPNet's scanned
+     layer weights to the established compute-native layout first raised the
+     matched fixed-256 result to 151.8 examples/s. Fully unrolling the twelve
+     native layers at compile time and storing Q/K/V as one compute projection
+     resolves that remaining lowering gap: the corrected trailing-half result is
+     223.13 examples/s versus 175.76 for Sentence Transformers, a 1.269x warmed
+     speedup. Final losses are 2.88076 and 2.88216. The larger exposed graph
+     compiles in 129.94 seconds and crosses the reference's lower cold-start cost
+     after approximately 3,362 updates; report that cost separately and use the
+     persistent compilation cache for repeated shapes. An exact fresh-process
+     cache replay compiled and first-used the step in 6.76 seconds while sustaining
+     211.97 examples/s, versus 175.03 examples/s for the freshly rerun reference
+     (1.211x). The expensive first compile remains a separately reported cost.
+
+     Pinned Transformers parity passes forward, input-gradient, parameter-gradient,
+     AdamW-update, and Hugging Face export/reload gates. The manifest lifecycle
+     also passes update, pause, checkpoint resume, configured evaluation, native
+     inference export, and inference reload. The diagnostic pre-layout-fix warm
+     trace spends 45.8% of GPU time in GEMM/dot and 13.2% in conversions, versus
+     63.5% GEMM/dot for the reference, with many smaller kernels around the
+     scanned stack and manual dropout-attention path.
+     Length bucketing preserves
+     the scientific examples and objective while reducing padding, reaching
+     495.4 examples/s, or 2.823x the isolated reference. Five cold bucket
+     compilations cost 72.1 seconds and amortize after approximately 612
+     updates under the earlier scanned implementation. Corrected fixed-shape
+     evidence lives under
+     =/raid/representax/paper-campaign-v1/preflight/direct-mnr/seed-7-fixed256-optimized-v4/=;
+     optimized lifecycle evidence lives under
+     =/raid/representax/paper-campaign-v1/preflight/direct-mnr/mpnet-optimized-lifecycle-20260828/=.
+**** DONE Preflight semantic similarity and pair classification
+     Both frozen MPNet workloads now use global batch 256 as eight exact
+     batch-32 gradient-accumulation microbatches. Semantic similarity passes
+     train, midpoint resume, STS-B/SICK-R evaluation, export, and reload at
+     339.1 examples/s; Sentence Transformers reports 206.0 examples/s. Measured
+     update 0/4/8 curves stay within 0.0019 Spearman correlation. Pair
+     classification passes the same lifecycle at 337.3 examples/s with final
+     AP 0.986000, versus reference AP 0.985927. Evidence lives under
+     =/raid/representax/paper-campaign-v1/preflight/semantic-pair/semantic-seed-7-v4/=
+     and =/raid/representax/paper-campaign-v1/preflight/semantic-pair/pair-seed-7-v3/=.
+**** DONE Preflight cross-encoder reranking
+     The corrected MiniLM run uses 1,024 balanced MS MARCO query/passage rows,
+     eight updates at global batch 128, and deterministic TREC DL 2019
+     reranking. Initial nDCG@10 is identical at 0.607210; final nDCG@10 is
+     0.605410 for Representax and 0.606599 for Sentence Transformers. Forward
+     loss and logits also match in FP32 within 4.77e-7 and 4.77e-6. Checkpoint
+     resume, native reload, Hugging Face export/reload, and reference reload all
+     pass. The first canary reversed query/document columns in the reference;
+     the corrected runner and regression test fix that ordering. The short-run
+     timing boundaries differ, so retain the measurements as feasibility
+     evidence rather than a paper speedup. Canonical evidence lives under
+     =/raid/representax/paper-campaign-v1/preflight/cross-encoder/seed-7-v2/=
+     with compact evidence in
+     =benchmarks/results/paper-cross-encoder-preflight-20260828/=.
+**** DONE Preflight image-text retrieval
+     The CLIP ViT-B/32 run uses 512 COCO image/caption pairs, four cached-MNR
+     updates at global batch 512, and the full Flickr30k test panel. Final loss
+     is 1.677548 for Representax and 1.678729 for Sentence Transformers;
+     Flickr30k nDCG@10 moves from 0.737348 to 0.785947 and from 0.736074 to
+     0.785997, respectively. Midpoint checkpoint resume, native reload, Hugging
+     Face export/reload, and reference checkpoint/export reload all pass exactly.
+     The short-run timing boundaries differ, so use them only to establish
+     feasibility. Canonical evidence lives under
+     =/raid/representax/paper-campaign-v1/preflight/image-text/seed-7-v4/= with
+     compact evidence in
+     =benchmarks/results/paper-image-text-preflight-20260828/=.
+**** DONE Preflight audio-text retrieval
+     Single-GPU paired quality, lifecycle, and throughput acceptance passes.
+     Matched DDP weak scaling preserves local batch 32 while increasing global
+     batch 32 to 64: warmed throughput rises from 2.7334 to 5.2413 examples/s,
+     a 1.917x increase and 95.9% efficiency. The audio tower now keeps chunks as
+     an independent batch instead of flattening them into one block-masked
+     sequence; pinned Hugging Face forward/gradient parity passes. The earlier
+     two-GPU FSDP run kept global batch 8 and remains capacity evidence, not a
+     scaling measurement. Large evidence is under
+     =/raid/representax/paper-audio-text-preflight-b8-20260829/= and
+     =/raid/representax/paper-audio-text-scaling-20260831/=; compact evidence is in
+     =benchmarks/results/paper-audio-text-preflight-20260829/=.
+**** TODO Preflight video-text retrieval
+**** TODO Preflight late interaction against PyLate
+**** TODO Preflight outcome reward modeling against TRL
+**** TODO Preflight process reward modeling against TRL
+**** TODO Preflight V-JEPA against the official Meta implementation
+**** TODO Run one unpaired LeJEPA quality trajectory
+**** TODO Probe scaling, memory boundaries, and evaluation/checkpoint overhead
 *** TODO Benchmark compile time separately from steady-state step time :research:benchmark:
 *** TODO Benchmark direct MNR and GradCache at equal scientific semantics :research:benchmark:
    Include an explicit distributed-direct-MNR contract: either lower the full
@@ -85,7 +466,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
 *** TODO Benchmark multimodal retrieval including audio and video :research:benchmark:
    Treat text-image, audio-text, and video-text training as shared workloads
    against Sentence Transformers rather than claiming that upstream cannot train
-   those modalities. Compare identical decoded examples and model-ready shapes.
+   those modalities. Use the frozen model, data and training contract.
 *** TODO Benchmark late interaction and reranking against maintained systems oracles :research:benchmark:
    Include exact flat indexing and bounded streaming retrieval with stable
    document IDs. Report retrieval quality, index build time and size, query
@@ -107,7 +488,6 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
 *** TODO Publish reproducible configs, manifests, tests, and benchmark artifacts :research:reproducibility:
 *** TODO Write the paper on the monotonic JAX representation-training system :research:paper:
 *** TODO Release the Representax systems paper as an arXiv preprint :research:paper:
-
 ** Profilax paper: =So you like to go fast?= [0/15] [0%]
   Profilax is a separate installable JAX profiling and semantics-preserving
   execution-planning project. Its paper must demonstrate portability beyond
@@ -129,7 +509,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
    profiles and a configurable safety margin. Guarantee only the admitted
    compiled workload under that exact fingerprint; external storage, decoding,
    drivers, and runtime faults remain outside the contract.
-*** TODO Integrate Profilax with Representax through =ExecutionPlanner= :profilax:integration:
+*** TODO Integrate Profilax with Representax :profilax:integration:
 *** TODO Demonstrate a second independent downstream JAX integration :profilax:integration:
 *** TODO Prepare and submit focused upstream PRs after independent validation :profilax:integration:
    Start with maintained projects whose owners accept the use case, such as
@@ -165,6 +545,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
 *** TODO Port audio and speech representation families :models:audio:
 *** TODO Port video representation families :models:video:
 *** TODO Port multimodal and composite families :models:multimodal:
+**** TODO Add Qwen3-Omni checkpoint, export, and training support :models:multimodal:future:
 *** TODO Port remaining time-series, graph, table, and specialist families :models:
 ** TODO Unify native and Hugging Face loading without duplicate weights :models:hf:export:
   Expose one public model loader that detects a Representax bundle, local Hugging
@@ -279,7 +660,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   Reuse the exact compiled =train_step= for every batch with the same model-ready
   ABI. Bound any finite signature set in configuration and never let raw record
   variability create an uncontrolled executable population.
-* General development [0/17] [0%]
+* General development [0/18] [0%]
 
   This section tracks release engineering, optional integrations, exploratory
   research, deferred hardware validation, and work that is useful but is not a
@@ -291,9 +672,13 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   batches, cached losses, retrieval metrics, and one real checkpoint training
   gate. Sparse retrieval is intentionally outside the first paper.
 ** TODO Add sequence and multimodal packing where scientifically valid :data:performance:
-  Proceed only when the paper diagnostic finds material padding waste. Preserve
-  segment IDs, reset positions, cross-example attention boundaries, and task
-  loss/example semantics; register compatibility per model and task family.
+  The paper diagnostic found that MPNet packing preserves embeddings, MNR loss,
+  and gradients, but ordinary bucketing dominates compile-stable training
+  packing. Revisit after the first paper only with length-aware batch formation
+  plus a fixed ABI or an efficient ragged attention kernel, and integrate logical
+  segment replay explicitly with GradCache. Evaluation-only packing remains the
+  most promising first use. Preserve segment IDs, reset positions, cross-example
+  attention boundaries, and task loss/example semantics.
 
 ** TODO Cut the next release after dense-system acceptance :release:
   Choose and set the next version only after the dense trainer, evaluator, and
@@ -341,6 +726,20 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   monotonic improvement without weakening checkpoint or model ergonomics.
 ** TODO Evaluate Pallas for performance-critical fused kernels :runtime:performance:research:
 ** TODO Measure GPU and TPU behavior where hardware is available :research:benchmark:
+** TODO Add and validate TPU accelerator telemetry :runtime:hardware:tpu:
+  Implement the =logging.accelerator= backend for TPU, verify its available
+  utilization and memory signals on real hardware, and preserve the existing
+  metric names where the device semantics match NVIDIA telemetry.
+
+** TODO Study JEPA-guided representation refinement for generative language models :research:jepa:language_model:
+  First characterize the representation geometry already present in pretrained
+  causal language models through JEPA-style invariance, prediction, transfer,
+  and collapse diagnostics over grouped or labeled text sequences.  Then test a
+  distinct representation-refinement phase that adds a JEPA objective before
+  or alongside generative fine-tuning.  Measure whether it improves internal
+  geometry, sample efficiency, controllability, and downstream generation while
+  preserving language-model likelihood and generation quality; compare against
+  continued pretraining, supervised fine-tuning, and contrastive controls.
 
 ** TODO Use the completed trainer to train a state-of-the-art representation model :research:model:
 ** TODO Write the subsequent model paper from that training program :research:paper:

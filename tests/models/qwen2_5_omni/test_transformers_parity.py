@@ -118,7 +118,9 @@ def test_forward_and_media_gradient_parity(oracle_checkpoint):
         revision="transformers-5.6.0",
     )
     batch = _batch(reference, model)
-    np.testing.assert_array_equal(batch.position_ids, reference["position_ids"])
+    np.testing.assert_array_equal(
+        np.swapaxes(batch.position_ids, 0, 1), reference["position_ids"]
+    )
     assert batch.pixel_values is not None
     assert batch.input_features is not None
     vector = jnp.linspace(-0.5, 0.5, model.config.text.hidden_size)
@@ -145,7 +147,7 @@ def test_forward_and_media_gradient_parity(oracle_checkpoint):
     for name, actual in (
         ("hidden", hidden),
         ("pixel_gradient", pixel_gradient),
-        ("audio_gradient", audio_gradient),
+        ("audio_gradient", audio_gradient[0]),
     ):
         result = assert_numerically_equivalent(
             np.asarray(actual), reference[name], tolerance
@@ -191,11 +193,11 @@ def test_native_tower_parity(oracle_checkpoint):
             rematerialization="full",
         )
         audio_embeddings = model.audio(
-            batch.input_features,
-            batch.audio_feature_valid,
-            batch.audio_after_cnn_valid,
-            batch.audio_pool_indices,
-            batch.audio_token_valid,
+            batch.input_features[0],
+            batch.audio_feature_valid[0],
+            batch.audio_after_cnn_valid[0],
+            batch.audio_pool_indices[0],
+            batch.audio_token_valid[0],
             compute_dtype=jnp.float32,
             attention_implementation="xla",
             rematerialization="full",
@@ -381,7 +383,7 @@ def test_nvidia_sentence_transformers_embedding_and_updates_match_upstream(
         (hidden, reference["hidden"]),
         (embedding, reference["embedding"]),
         (pixel_gradient, reference["pixel_gradient"]),
-        (audio_gradient, reference["audio_gradient"]),
+        (audio_gradient[0], reference["audio_gradient"]),
     ):
         assert_numerically_equivalent(np.asarray(actual), expected, tolerance)
     np.testing.assert_allclose(
@@ -436,7 +438,7 @@ def test_nvidia_published_bidirectional_contract_matches_upstream_layers(
     batch = Qwen2_5OmniBatch(
         input_ids=jnp.asarray(input_ids),
         attention_mask=jnp.asarray(attention_mask),
-        position_ids=jnp.asarray(position_ids),
+        position_ids=jnp.asarray(np.swapaxes(position_ids, 0, 1)),
     )
     with jax.default_matmul_precision("highest"):
         hidden = model.hidden_states(batch)
@@ -554,8 +556,8 @@ def test_real_multimodal_preprocessing_matches_transformers(tmp_path):
 
     assert batch.input_features is not None
     assert batch.audio_feature_valid is not None
-    chunks = np.asarray(batch.input_features)
-    valid = np.asarray(batch.audio_feature_valid)
+    chunks = np.asarray(batch.input_features)[0]
+    valid = np.asarray(batch.audio_feature_valid)[0]
     packed_audio = np.concatenate(
         [
             chunks[index, :, : int(mask.sum())]

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from typing import Literal
+from typing import ClassVar, Literal
 
 import equinox as eqx
 import jax
@@ -38,6 +38,12 @@ def _valid_mean(
 class ExplicitTripletTask(eqx.Module):
     """Margin triplet supervision over supplied aligned rows."""
 
+    accumulation_metric_reductions: ClassVar[dict[str, str]] = {
+        "positive_distance_mean": "mean",
+        "negative_distance_mean": "mean",
+        "valid_triplets": "sum",
+    }
+
     distance: ExplicitTripletDistance = eqx.field(static=True, default="euclidean")
     margin: float = eqx.field(static=True, default=5.0)
     anchor_route: Route = eqx.field(static=True, default=Route.GENERIC)
@@ -49,6 +55,9 @@ class ExplicitTripletTask(eqx.Module):
             raise ValueError(f"unsupported triplet distance {self.distance!r}")
         if not math.isfinite(self.margin) or self.margin <= 0:
             raise ValueError("triplet margin must be finite and positive")
+
+    def accumulation_weight(self, batch: ExplicitTripletBatch) -> Array:
+        return jnp.sum(batch.valid).astype(jnp.float32)
 
     def loss(
         self,

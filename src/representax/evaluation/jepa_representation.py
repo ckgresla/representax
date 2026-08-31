@@ -54,23 +54,28 @@ def knn_accuracy(
     splits: np.ndarray,
     *,
     neighbors: int,
+    query_batch_size: int = 1024,
 ) -> float:
-    """Evaluate cosine k-NN from train/validation references onto test examples."""
+    """Evaluate exact cosine k-NN with bounded test-query materialization."""
 
-    if neighbors <= 0:
-        raise ValueError("neighbors must be positive")
+    if neighbors <= 0 or query_batch_size <= 0:
+        raise ValueError("neighbors and query_batch_size must be positive")
     values = normalize_embeddings(embeddings, "l2")
     reference = splits != int(EvaluationSplit.TEST)
     test = splits == int(EvaluationSplit.TEST)
     if not np.any(reference) or not np.any(test) or neighbors > int(np.sum(reference)):
         raise ValueError("k-NN requires reference/test rows and enough neighbors")
-    similarities = values[test] @ values[reference].T
-    nearest = np.argsort(-similarities, axis=1, kind="stable")[:, :neighbors]
     reference_labels = labels[reference]
     predictions = []
-    for row in nearest:
-        values_for_row, counts = np.unique(reference_labels[row], return_counts=True)
-        predictions.append(values_for_row[np.argmax(counts)])
+    queries = values[test]
+    for start in range(0, len(queries), query_batch_size):
+        similarities = queries[start : start + query_batch_size] @ values[reference].T
+        nearest = np.argsort(-similarities, axis=1, kind="stable")[:, :neighbors]
+        for row in nearest:
+            values_for_row, counts = np.unique(
+                reference_labels[row], return_counts=True
+            )
+            predictions.append(values_for_row[np.argmax(counts)])
     return float(np.mean(np.asarray(predictions) == labels[test]))
 
 
@@ -83,6 +88,7 @@ class JEPARepresentationEvaluator:
     normalization: Literal["none", "l2"] = "l2"
     max_iterations: int = 1000
     neighbors: int = 20
+    query_batch_size: int = 1024
     seed: int = 0
     route: Route = Route.GENERIC
 
@@ -93,8 +99,10 @@ class JEPARepresentationEvaluator:
             value <= 0 for value in self.inverse_regularization
         ):
             raise ValueError("inverse_regularization must contain positive values")
-        if self.max_iterations <= 0 or self.neighbors <= 0:
-            raise ValueError("probe iterations and neighbors must be positive")
+        if min(self.max_iterations, self.neighbors, self.query_batch_size) <= 0:
+            raise ValueError(
+                "probe iterations, neighbors, and query_batch_size must be positive"
+            )
         if self.seed < 0:
             raise ValueError("seed must be non-negative")
 
@@ -140,7 +148,11 @@ class JEPARepresentationEvaluator:
                 "selected_inverse_regularization"
             ],
             "knn_accuracy": knn_accuracy(
-                embeddings, labels, splits, neighbors=self.neighbors
+                embeddings,
+                labels,
+                splits,
+                neighbors=self.neighbors,
+                query_batch_size=self.query_batch_size,
             ),
             **representation_geometry_metrics(embeddings),
         }

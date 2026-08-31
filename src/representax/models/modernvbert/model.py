@@ -348,6 +348,7 @@ class _ModernVBERTTextScanBlock(eqx.Module):
 class ModernVBERTTextLayerStack(eqx.Module):
     """A depth-major PyTree of homogeneous ModernVBERT text blocks."""
 
+    first_block: _ModernVBERTTextScanBlock | None
     blocks: _ModernVBERTTextScanBlock | None
     attention_norms: LayerNorm | None
     depth: int = eqx.field(static=True)
@@ -358,7 +359,12 @@ class ModernVBERTTextLayerStack(eqx.Module):
         blocks: tuple[ModernVBERTTextBlock, ...],
     ) -> ModernVBERTTextLayerStack:
         if not blocks:
-            return cls(blocks=None, attention_norms=None, depth=0)
+            return cls(
+                first_block=None,
+                blocks=None,
+                attention_norms=None,
+                depth=0,
+            )
         if blocks[0].attention_norm is not None:
             raise ValueError("ModernVBERT layer zero must omit attention_norm")
         if any(block.attention_norm is None for block in blocks[1:]):
@@ -372,7 +378,13 @@ class ModernVBERTTextLayerStack(eqx.Module):
             )
             for block in blocks
         )
-        stacked = jax.tree.map(lambda *leaves: jnp.stack(leaves), *scan_blocks)
+        first_block = scan_blocks[0]
+        remaining_blocks = scan_blocks[1:]
+        stacked = (
+            None
+            if not remaining_blocks
+            else jax.tree.map(lambda *leaves: jnp.stack(leaves), *remaining_blocks)
+        )
         norms = tuple(block.attention_norm for block in blocks[1:])
         stacked_norms = (
             None
@@ -380,6 +392,7 @@ class ModernVBERTTextLayerStack(eqx.Module):
             else jax.tree.map(lambda *leaves: jnp.stack(leaves), *norms)
         )
         return cls(
+            first_block=first_block,
             blocks=stacked,
             attention_norms=stacked_norms,
             depth=len(blocks),
@@ -403,14 +416,17 @@ class ModernVBERTTextLayerStack(eqx.Module):
             return tuple(self[position] for position in positions)
         if not 0 <= index < self.depth:
             raise IndexError(index)
-        if self.blocks is None:
+        if self.first_block is None:
             raise IndexError(index)
-        block = jax.tree.map(lambda leaf: leaf[index], self.blocks)
         if index == 0:
+            block = self.first_block
             attention_norm = None
         else:
-            if self.attention_norms is None:  # pragma: no cover - invalid tree
+            if (  # pragma: no cover - invalid tree
+                self.blocks is None or self.attention_norms is None
+            ):
                 raise AssertionError("post-zero layers require attention norms")
+            block = jax.tree.map(lambda leaf: leaf[index - 1], self.blocks)
             attention_norm = jax.tree.map(
                 lambda leaf: leaf[index - 1], self.attention_norms
             )
@@ -528,34 +544,13 @@ class ModernVBERTTextTower(eqx.Module):
             position_ids = batch.position_ids
         hidden = self.embedding_norm(hidden)
         initial_hidden = hidden
-        if self.layers.blocks is not None:
+        if self.layers.first_block is not None:
 
-            def apply_layer(
+            def apply_block(
                 carry: Float[Array, "batch sequence hidden"],
-                values: tuple[Array, _ModernVBERTTextScanBlock],
-            ) -> tuple[
-                Float[Array, "batch sequence hidden"],
-                Float[Array, "batch sequence hidden"],
-            ]:
-                index, layer = values
-                if self.layers.attention_norms is None:
-                    attention_input = carry
-                else:
-                    norm_index = jnp.maximum(index - 1, 0)
-                    attention_norm = jax.tree.map(
-                        lambda leaf: jax.lax.dynamic_index_in_dim(
-                            leaf,
-                            norm_index,
-                            keepdims=False,
-                        ),
-                        self.layers.attention_norms,
-                    )
-                    attention_input = jax.lax.cond(
-                        index == 0,
-                        lambda value: value,
-                        lambda value: attention_norm(value),
-                        carry,
-                    )
+                layer: _ModernVBERTTextScanBlock,
+                attention_input: Float[Array, "batch sequence hidden"],
+            ) -> Float[Array, "batch sequence hidden"]:
                 output = carry + layer.attention(
                     attention_input,
                     config=self.config,
@@ -564,16 +559,50 @@ class ModernVBERTTextTower(eqx.Module):
                     sliding_attention=layer.sliding_attention,
                     implementation=attention_implementation,
                 )
-                output = output + layer.mlp(layer.mlp_norm(output))
+                return output + layer.mlp(layer.mlp_norm(output))
+
+            def apply_first_layer(
+                carry: Float[Array, "batch sequence hidden"],
+                layer: _ModernVBERTTextScanBlock,
+            ) -> Float[Array, "batch sequence hidden"]:
+                return apply_block(carry, layer, carry)
+
+            first_output = rematerialize(
+                apply_first_layer,
+                rematerialization,
+            )(hidden, self.layers.first_block)
+
+            def apply_layer(
+                carry: Float[Array, "batch sequence hidden"],
+                values: tuple[_ModernVBERTTextScanBlock, LayerNorm],
+            ) -> tuple[
+                Float[Array, "batch sequence hidden"],
+                Float[Array, "batch sequence hidden"],
+            ]:
+                layer, attention_norm = values
+                output = apply_block(carry, layer, attention_norm(carry))
                 return output, output
 
-            executed_layer = rematerialize(apply_layer, rematerialization)
-            _, layer_outputs = jax.lax.scan(
-                executed_layer,
-                hidden,
-                (jnp.arange(self.layers.depth), self.layers.blocks),
+            if self.layers.blocks is None:
+                layer_outputs = first_output[None, ...]
+            else:
+                if self.layers.attention_norms is None:  # pragma: no cover
+                    raise AssertionError("post-zero layers require attention norms")
+                executed_layer = rematerialize(apply_layer, rematerialization)
+                _, remaining_outputs = jax.lax.scan(
+                    executed_layer,
+                    first_output,
+                    (self.layers.blocks, self.layers.attention_norms),
+                )
+                layer_outputs = jnp.concatenate(
+                    (first_output[None, ...], remaining_outputs),
+                    axis=0,
+                )
+            final_output = self.final_norm(layer_outputs[-1])
+            layer_outputs = jnp.concatenate(
+                (layer_outputs[:-1], final_output[None, ...]),
+                axis=0,
             )
-            layer_outputs = layer_outputs.at[-1].set(self.final_norm(layer_outputs[-1]))
             return jnp.concatenate((initial_hidden[None, ...], layer_outputs), axis=0)
         return self.final_norm(initial_hidden)[None, ...]
 

@@ -1,0 +1,255 @@
+{
+  "schema_version": "representax-paper-compatibility-v1",
+  "models": [
+    {
+      "name": "qwen3-vl-embedding-2b",
+      "repo_id": "Qwen/Qwen3-VL-Embedding-2B",
+      "revision": "9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda",
+      "family": "qwen3_vl",
+      "modalities": [
+        "text",
+        "image",
+        "video"
+      ]
+    },
+    {
+      "name": "qwen3-vl-reranker-2b",
+      "repo_id": "Qwen/Qwen3-VL-Reranker-2B",
+      "revision": "4bd860ac4f15ad1897a214615cccc700f8f71818",
+      "family": "qwen3_vl",
+      "modalities": [
+        "text",
+        "image",
+        "video"
+      ]
+    },
+    {
+      "name": "eager-embed-v1",
+      "repo_id": "eagerworks/eager-embed-v1",
+      "revision": "51dfdee0d1d1067afe00d816dca2cd72a02f6bec",
+      "family": "qwen3_vl",
+      "modalities": [
+        "text",
+        "image",
+        "video"
+      ]
+    },
+    {
+      "name": "lco-embedding-omni-3b",
+      "repo_id": "LCO-Embedding/LCO-Embedding-Omni-3B-2605",
+      "revision": "5f6b5329da5141367da30e06a9826d1322d6c9b2",
+      "family": "qwen2_5_omni",
+      "modalities": [
+        "text",
+        "image",
+        "audio",
+        "video"
+      ]
+    },
+    {
+      "name": "omni-embed-nemotron-3b",
+      "repo_id": "nvidia/omni-embed-nemotron-3b",
+      "revision": "865db1bb57e369a85357cf114cbd6b3c5322d19d",
+      "family": "qwen2_5_omni",
+      "modalities": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "name": "bge-vl-base",
+      "repo_id": "BAAI/BGE-VL-base",
+      "revision": "cc4c733ed997dbee4ac70ccffb911e70c9c24b93",
+      "family": "clip",
+      "modalities": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "name": "clip-vit-b-32",
+      "repo_id": "sentence-transformers/clip-ViT-B-32",
+      "revision": "327ab6726d33c0e22f920c83f2ff9e4bd38ca37f",
+      "family": "clip",
+      "modalities": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "name": "clip-vit-b-32-multilingual-v1",
+      "repo_id": "sentence-transformers/clip-ViT-B-32-multilingual-v1",
+      "revision": "58edf8cada9e398793dca955574a48cbb7f18be2",
+      "family": "distilbert",
+      "modalities": [
+        "text"
+      ]
+    },
+    {
+      "name": "bge-vl-screenshot",
+      "repo_id": "BAAI/BGE-VL-Screenshot",
+      "revision": "2b0f1cd3e4acf66be759d840954e0c9f1c9a42cf",
+      "family": "qwen2_vl",
+      "modalities": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "name": "nomic-embed-multimodal-3b",
+      "repo_id": "nomic-ai/nomic-embed-multimodal-3b",
+      "revision": "29259db79bc6ee5fcc9e6abc8a8e16d8491e5116",
+      "family": "qwen2_vl",
+      "modalities": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "name": "nomic-embed-multimodal-7b",
+      "repo_id": "nomic-ai/nomic-embed-multimodal-7b",
+      "revision": "234bc2738e2d5ae77beca8f94e1577a7a48fc609",
+      "family": "qwen2_vl",
+      "modalities": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "name": "jina-reranker-m0",
+      "repo_id": "jinaai/jina-reranker-m0",
+      "revision": "94bfe0aeb2d4dd7978362699cddd5893d4e0adc8",
+      "family": "qwen2_vl",
+      "modalities": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "name": "bge-vl-mllm-s1",
+      "repo_id": "BAAI/BGE-VL-MLLM-S1",
+      "revision": "455ac20c111813fbb263dd0f22d47d173a971582",
+      "family": "llava_next",
+      "modalities": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "name": "bge-vl-mllm-s2",
+      "repo_id": "BAAI/BGE-VL-MLLM-S2",
+      "revision": "20137e245f277e7eca277bbb436ce7d632a16406",
+      "family": "llava_next",
+      "modalities": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "name": "bge-vl-v1.5-zs",
+      "repo_id": "BAAI/BGE-VL-v1.5-zs",
+      "revision": "a7ca46102a1a8be517e85cc1f03d1df39498e56c",
+      "family": "llava_next",
+      "modalities": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "name": "bge-vl-v1.5-mmeb",
+      "repo_id": "BAAI/BGE-VL-v1.5-mmeb",
+      "revision": "59f60b95765b32014df235059c4d8c60e8204be5",
+      "family": "llava_next",
+      "modalities": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "name": "e5-v",
+      "repo_id": "royokong/e5-v",
+      "revision": "684c4c91ebabce3806d4fd8ac52c9c543043f962",
+      "family": "llava_next",
+      "modalities": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "name": "llama-nemotron-embed-vl-1b-v2",
+      "repo_id": "nvidia/llama-nemotron-embed-vl-1b-v2",
+      "revision": "582e3bf72aee355e3c59ed89de53543c5b0657ee",
+      "family": "nemotron_vl",
+      "modalities": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "name": "llama-nemotron-rerank-vl-1b-v2",
+      "repo_id": "nvidia/llama-nemotron-rerank-vl-1b-v2",
+      "revision": "9e95da054312436dfc703319dd2b793a3bee2465",
+      "family": "nemotron_vl",
+      "modalities": [
+        "text",
+        "image"
+      ]
+    },
+    {
+      "name": "bidirlm-omni-2.5b-embedding",
+      "repo_id": "BidirLM/BidirLM-Omni-2.5B-Embedding",
+      "revision": "447a6e31be61b84443144afda21374339ce408e6",
+      "family": "bidirlm_omni",
+      "modalities": [
+        "text",
+        "image",
+        "audio"
+      ]
+    },
+    {
+      "name": "qwen3-reranker-0.6b",
+      "repo_id": "Qwen/Qwen3-Reranker-0.6B",
+      "revision": "e61197ed45024b0ed8a2d74b80b4d909f1255473",
+      "family": "qwen_reranker",
+      "modalities": [
+        "text"
+      ]
+    },
+    {
+      "name": "mxbai-rerank-base-v2",
+      "repo_id": "mixedbread-ai/mxbai-rerank-base-v2",
+      "revision": "3ea9d4dffa7d12a4f366be8e275c349de9fc9865",
+      "family": "qwen_reranker",
+      "modalities": [
+        "text"
+      ]
+    },
+    {
+      "name": "ctxl-rerank-v2-multilingual-1b",
+      "repo_id": "ContextualAI/ctxl-rerank-v2-instruct-multilingual-1b",
+      "revision": "8fd1edf6a98564cb712064f884b8ef7df5c1b876",
+      "family": "qwen_reranker",
+      "modalities": [
+        "text"
+      ]
+    },
+    {
+      "name": "all-minilm-l6-v2",
+      "repo_id": "sentence-transformers/all-MiniLM-L6-v2",
+      "revision": "1110a243fdf4706b3f48f1d95db1a4f5529b4d41",
+      "family": "bert",
+      "modalities": [
+        "text"
+      ]
+    },
+    {
+      "name": "all-mpnet-base-v2",
+      "repo_id": "sentence-transformers/all-mpnet-base-v2",
+      "revision": "e8c3b32edf5434bc2275fc9bab85f82640a19130",
+      "family": "mpnet",
+      "modalities": [
+        "text"
+      ]
+    }
+  ]
+}

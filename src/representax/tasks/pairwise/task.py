@@ -128,6 +128,12 @@ class CosineRegressionTask(eqx.Module):
 class ContrastiveTask(eqx.Module):
     """Contrastive distance objective with an explicit mining policy."""
 
+    accumulation_metric_reductions: ClassVar[dict[str, str]] = {
+        "pair_distance_mean": "mean",
+        "selected_pairs": "sum",
+        "valid_pairs": "sum",
+    }
+
     distance: PairDistance = eqx.field(static=True, default="cosine")
     margin: float = eqx.field(static=True, default=0.5)
     online: bool = eqx.field(static=True, default=False)
@@ -139,6 +145,15 @@ class ContrastiveTask(eqx.Module):
             raise ValueError(f"unsupported contrastive distance {self.distance!r}")
         if not math.isfinite(self.margin) or self.margin <= 0:
             raise ValueError("contrastive margin must be finite and positive")
+
+    @property
+    def supports_gradient_accumulation(self) -> bool:
+        """Ordinary pair losses decompose; online mining uses the whole batch."""
+
+        return not self.online
+
+    def accumulation_weight(self, batch: PairwiseBatch) -> Array:
+        return jnp.sum(batch.valid).astype(jnp.float32)
 
     def loss(
         self,

@@ -1,0 +1,391 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Representax — Canonical First-Paper Evaluation Panel</title>
+  <style>
+    :root {
+      --bg: #f7f8fa;
+      --surface: #ffffff;
+      --surface-2: #eef2f6;
+      --ink: #20242a;
+      --muted: #68717c;
+      --line: #d9dee5;
+      --sky: #3f78b5;
+      --sky-soft: #dceeff;
+      --mint: #4f8a67;
+      --mint-soft: #e0f3e5;
+      --rose: #c85f65;
+      --rose-soft: #f9e3e5;
+      --apricot: #cc7a3a;
+      --apricot-soft: #fbe8d7;
+      --periwinkle: #8278b8;
+      --periwinkle-soft: #e9e7f7;
+      --shadow: 0 10px 35px rgba(29, 42, 56, 0.08);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #11151a;
+        --surface: #181e25;
+        --surface-2: #202832;
+        --ink: #edf1f5;
+        --muted: #b7bdc5;
+        --line: #35404c;
+        --sky: #96cdfb;
+        --sky-soft: #1d3448;
+        --mint: #95d7a7;
+        --mint-soft: #1c3828;
+        --rose: #f28fad;
+        --rose-soft: #46242e;
+        --apricot: #f2b27f;
+        --apricot-soft: #422d1d;
+        --periwinkle: #c9cbff;
+        --periwinkle-soft: #2e2d4b;
+        --shadow: 0 10px 35px rgba(0, 0, 0, 0.25);
+      }
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+        "Segoe UI", sans-serif;
+      line-height: 1.6;
+    }
+    a { color: var(--sky); text-underline-offset: 0.18em; }
+    code {
+      padding: 0.1rem 0.34rem;
+      border-radius: 0.35rem;
+      background: var(--surface-2);
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-size: 0.91em;
+    }
+    .page { width: min(1180px, calc(100% - 2rem)); margin: 0 auto; }
+    header {
+      padding: 4.8rem 0 3.5rem;
+      border-bottom: 1px solid var(--line);
+      background:
+        radial-gradient(circle at 12% 10%, var(--sky-soft), transparent 32%),
+        radial-gradient(circle at 88% 20%, var(--mint-soft), transparent 28%);
+    }
+    .eyebrow {
+      color: var(--sky);
+      font-size: 0.78rem;
+      font-weight: 800;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
+    h1 { margin: 0.35rem 0 0.65rem; font-size: clamp(2.25rem, 6vw, 4.7rem); line-height: 1.02; }
+    .lede { max-width: 820px; margin: 0; color: var(--muted); font-size: 1.16rem; }
+    .status {
+      display: inline-flex;
+      gap: 0.45rem;
+      align-items: center;
+      margin-top: 1.35rem;
+      padding: 0.42rem 0.72rem;
+      border: 1px solid color-mix(in srgb, var(--mint) 45%, var(--line));
+      border-radius: 999px;
+      background: var(--mint-soft);
+      color: var(--mint);
+      font-weight: 750;
+      font-size: 0.82rem;
+    }
+    .status::before { content: ""; width: 0.55rem; height: 0.55rem; border-radius: 50%; background: currentColor; }
+    main { padding: 2.5rem 0 5rem; }
+    nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.55rem;
+      margin-bottom: 2.4rem;
+    }
+    nav a {
+      padding: 0.45rem 0.75rem;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--surface);
+      color: var(--ink);
+      text-decoration: none;
+      font-size: 0.86rem;
+      font-weight: 650;
+    }
+    nav a:hover { border-color: var(--sky); color: var(--sky); }
+    section { scroll-margin-top: 1rem; margin-top: 3.4rem; }
+    h2 { margin: 0 0 0.9rem; font-size: clamp(1.55rem, 3vw, 2.25rem); line-height: 1.2; }
+    h3 { margin: 0; font-size: 1.12rem; }
+    .section-intro { max-width: 850px; color: var(--muted); }
+    .callout {
+      padding: 1rem 1.15rem;
+      border-left: 0.3rem solid var(--sky);
+      border-radius: 0 0.7rem 0.7rem 0;
+      background: var(--sky-soft);
+    }
+    .table-wrap {
+      overflow-x: auto;
+      margin-top: 1.25rem;
+      border: 1px solid var(--line);
+      border-radius: 0.85rem;
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+    table { width: 100%; border-collapse: collapse; min-width: 820px; }
+    th, td { padding: 0.85rem 0.95rem; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { background: var(--surface-2); color: var(--muted); font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; }
+    tr:last-child td { border-bottom: 0; }
+    .legend { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.8rem; margin: 1.25rem 0; }
+    .legend > div { padding: 0.9rem; border-radius: 0.75rem; background: var(--surface); border: 1px solid var(--line); }
+    .legend strong { display: block; color: var(--sky); }
+    .dataset-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+    .card {
+      padding: 1.15rem;
+      border: 1px solid var(--line);
+      border-radius: 0.9rem;
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+    .card header { padding: 0; border: 0; background: none; }
+    .card p { margin: 0.55rem 0; }
+    .meta { color: var(--muted); font-size: 0.88rem; }
+    .tags { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.65rem; }
+    .tag { padding: 0.18rem 0.5rem; border-radius: 999px; background: var(--periwinkle-soft); color: var(--periwinkle); font-size: 0.73rem; font-weight: 750; }
+    .samples { margin: 0.75rem 0 0; padding-left: 1.25rem; }
+    .samples li + li { margin-top: 0.42rem; }
+    .warning { background: var(--apricot-soft); border-left-color: var(--apricot); }
+    .split {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+    .split article { padding: 1.2rem; border-radius: 0.8rem; border: 1px solid var(--line); background: var(--surface); }
+    .split article:first-child { border-top: 0.25rem solid var(--mint); }
+    .split article:last-child { border-top: 0.25rem solid var(--rose); }
+    .refs { columns: 2; column-gap: 2rem; padding-left: 1.25rem; }
+    .refs li { break-inside: avoid; margin-bottom: 0.45rem; }
+    footer { padding: 1.5rem 0 3rem; color: var(--muted); border-top: 1px solid var(--line); font-size: 0.86rem; }
+    @media (max-width: 780px) {
+      header { padding-top: 3rem; }
+      .dataset-grid, .split, .legend { grid-template-columns: 1fr; }
+      .refs { columns: 1; }
+    }
+    @media print {
+      :root { --bg: #fff; --surface: #fff; --surface-2: #f2f4f7; --ink: #111; --muted: #444; --line: #bbb; }
+      nav { display: none; }
+      header { padding: 2rem 0; }
+      main { padding-top: 1rem; }
+      .card, .table-wrap { box-shadow: none; break-inside: avoid; }
+      a { color: inherit; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="page">
+      <div class="eyebrow">Representax research artifact</div>
+      <h1>Canonical evaluation panel</h1>
+      <p class="lede">A compact, source-pinned set of quality signals for the first Representax systems paper—covering similarity, pair decisions, frozen probes, clustering, retrieval, multilingual alignment, multimodal retrieval, and JEPA transfer.</p>
+      <div class="status">Candidate panel · not yet frozen</div>
+    </div>
+  </header>
+
+  <main class="page">
+    <nav aria-label="Document sections">
+      <a href="#principle">Principle</a>
+      <a href="#panel">Panel</a>
+      <a href="#probe">Frozen probe</a>
+      <a href="#previews">Dataset previews</a>
+      <a href="#interpretation">Interpretation</a>
+      <a href="#references">References</a>
+    </nav>
+
+    <section id="principle">
+      <h2>One panel, two contracts</h2>
+      <p class="section-intro">This is a research-orientation artifact, not a redistribution of third-party datasets. Dataset adapters should pin source revisions, preserve upstream splits, and stream or cache original artifacts according to their licenses.</p>
+      <div class="split">
+        <article>
+          <h3>Scientific quality</h3>
+          <p>Canonical datasets establish numerical parity, non-inferior held-out quality, and coverage of the major representation geometries.</p>
+        </article>
+        <article>
+          <h3>Systems performance</h3>
+          <p>Paired jobs on identical hardware establish throughput, utilization, capacity, compilation, and time-to-quality claims.</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="panel">
+      <h2>Proposed compact panel</h2>
+      <p class="section-intro">The goal is to measure the main signals, not reproduce every MTEB task. Each geometry receives a named evaluator and an explicit primary metric.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Signal</th><th>Evaluator</th><th>Initial datasets</th><th>Primary metric</th></tr></thead>
+          <tbody>
+            <tr><td>Graded symmetric similarity</td><td><code>SimilarityEvaluator</code></td><td>STSBenchmark.v2, SICK-R</td><td>Cosine Spearman</td></tr>
+            <tr><td>Pair decisions</td><td><code>PairClassificationEvaluator</code></td><td>Sprint Duplicate Questions</td><td>Maximum AP across declared similarities</td></tr>
+            <tr><td>Frozen linear separability</td><td><code>ClassificationProbeEvaluator</code></td><td>Banking77.v2</td><td>Accuracy; macro F1 secondary</td></tr>
+            <tr><td>Unsupervised global geometry</td><td><code>ClusteringEvaluator</code></td><td>Twenty Newsgroups.v2</td><td>V-measure</td></tr>
+            <tr><td>Text retrieval</td><td><code>InformationRetrievalEvaluator</code></td><td>SciFact, NFCorpus, ArguAna</td><td>nDCG@10; MRR/MAP/recall secondary</td></tr>
+            <tr><td>Multilingual retrieval</td><td><code>InformationRetrievalEvaluator</code></td><td>MIRACL</td><td>Macro-language and per-language nDCG@10</td></tr>
+            <tr><td>Cross-lingual alignment</td><td>Ordinary IR/qrels adapter</td><td>FLORES-200</td><td>F1 or retrieval accuracy</td></tr>
+            <tr><td>Image ↔ text</td><td><code>InformationRetrievalEvaluator</code></td><td>Flickr30k</td><td>Recall@1/5/10 and nDCG@10</td></tr>
+            <tr><td>Audio ↔ text</td><td><code>InformationRetrievalEvaluator</code></td><td>AudioCaps</td><td>Hit-rate@5 and recall@1/5/10</td></tr>
+            <tr><td>Video ↔ text</td><td><code>InformationRetrievalEvaluator</code></td><td>MSR-VTT</td><td>Recall@1/5/10 and nDCG@10</td></tr>
+            <tr><td>JEPA transfer</td><td><code>JEPARepresentationEvaluator</code> + frozen probe</td><td>ImageNet-1K</td><td>Linear-probe top-1; k-NN/collapse secondary</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="callout">SICK-R complements STS-B with controlled compositional examples. MIRACL and FLORES make multilingual behavior a first-class requirement. FLORES uses the ordinary query/corpus/qrels geometry—there is no special “translation evaluator.”</p>
+    </section>
+
+    <section id="probe">
+      <h2>Frozen-embedding classification</h2>
+      <p>The encoder is frozen. Representax embeds train, validation, and test examples once; fits only a lightweight linear classifier on train embeddings; selects probe hyperparameters on validation data; and reports held-out labels. This measures how linearly accessible task information is, not how well the encoder can be fine-tuned.</p>
+      <div class="legend">
+        <div><strong>Freeze</strong>No encoder updates.</div>
+        <div><strong>Extract</strong>Cache declared embeddings once.</div>
+        <div><strong>Fit</strong>Train only the pinned linear probe.</div>
+        <div><strong>Evaluate</strong>Report held-out accuracy and macro F1.</div>
+      </div>
+      <p class="callout">Pin normalization, classifier family, regularization grid, class weighting, solver tolerance, maximum iterations, seed, and selection split. Identical embeddings must reproduce the maintained reference evaluator.</p>
+    </section>
+
+    <section id="previews">
+      <h2>Dataset previews</h2>
+      <p class="section-intro">Short excerpts show each data geometry and label meaning. The linked, revision-pinned upstream artifact remains authoritative; these excerpts must not become packaged fixtures.</p>
+      <div class="dataset-grid">
+        <article class="card">
+          <header><h3>STSBenchmark.v2</h3><div class="tags"><span class="tag">similarity</span><span class="tag">text</span></div></header>
+          <p class="meta"><a href="https://huggingface.co/datasets/mteb/STSBenchmarkv2">mteb/STSBenchmarkv2</a> · <code>93b628c…</code></p>
+          <p>5,749 train · 1,485 validation · 1,362 test after duplicate removal.</p>
+          <ul class="samples"><li>“A girl is styling...” / “A girl is brushing...” → 2.5</li><li>“Men play soccer...” / “Boys are playing...” → 3.6</li><li>“Woman measuring an ankle.” / “Woman measures an ankle.” → 5.0</li></ul>
+          <p class="meta">Original STS-B: 8,628 pairs—4,299 news, 3,250 captions, 1,079 forum. V2 removes 32 duplicate evaluation pairs.</p>
+        </article>
+
+        <article class="card">
+          <header><h3>SICK-R</h3><div class="tags"><span class="tag">similarity</span><span class="tag">composition</span></div></header>
+          <p class="meta"><a href="https://huggingface.co/datasets/mteb/sickr-sts">mteb/sickr-sts</a> · <code>20a6d6f…</code> · CC BY-NC-SA 3.0</p>
+          <p>9,927 test pairs.</p>
+          <ul class="samples"><li>Kids in a yard / boys in a yard → 4.5</li><li>Children inside / kids in a yard → 3.2</li><li>Boys outdoors / kids near a man → 4.7</li></ul>
+        </article>
+
+        <article class="card">
+          <header><h3>Sprint Duplicate Questions</h3><div class="tags"><span class="tag">pair classification</span></div></header>
+          <p class="meta"><a href="https://huggingface.co/datasets/mteb/sprintduplicatequestions-pairclassification">MTEB dataset</a> · <code>d66bd1f…</code> · license unspecified</p>
+          <p>101,000 test pairs; 1,000 positives.</p>
+          <ul class="samples"><li>USB modem strength / weak modem signal → duplicate</li><li>DuraMax GPS on/off / turn GPS on or off → duplicate</li><li>USB signal / Nexus software update → not duplicate</li></ul>
+        </article>
+
+        <article class="card">
+          <header><h3>Banking77.v2</h3><div class="tags"><span class="tag">linear probe</span><span class="tag">77 intents</span></div></header>
+          <p class="meta"><a href="https://huggingface.co/datasets/mteb/banking77">mteb/banking77</a> · <code>18072d2…</code> · MIT</p>
+          <p>9,993 train · 3,076 test.</p>
+          <ul class="samples"><li>“How do I locate my card?” → card_arrival</li><li>“My new card has not arrived.” → card_arrival</li><li>“I ordered a card; help.” → card_arrival</li></ul>
+        </article>
+
+        <article class="card">
+          <header><h3>Twenty Newsgroups.v2</h3><div class="tags"><span class="tag">clustering</span><span class="tag">20 topics</span></div></header>
+          <p class="meta"><a href="https://huggingface.co/datasets/mteb/twentynewsgroups-clustering">MTEB dataset</a> · <code>6125ec4…</code> · license unspecified</p>
+          <p>Ten deterministic 1,000-document clustering samples.</p>
+          <ul class="samples"><li>“Motorola MC143150...” → sci.electronics</li><li>“Windows 3.1 for sale” → misc.forsale</li><li>“Gospel Dating” → alt.atheism</li></ul>
+        </article>
+
+        <article class="card">
+          <header><h3>SciFact</h3><div class="tags"><span class="tag">retrieval</span><span class="tag">scientific</span></div></header>
+          <p class="meta"><a href="https://huggingface.co/datasets/mteb/scifact">mteb/scifact</a> · <code>d56462d…</code> · CC BY-NC 4.0</p>
+          <p>1,109 queries · 5,183 abstracts · 339 test qrels.</p>
+          <ul class="samples"><li>0-D biomaterials claim → stem-cell nanotechnology abstract</li><li>1,000 Genomes claim → rare-variant abstract</li><li>Abnormal PrP claim → prion survey</li></ul>
+        </article>
+
+        <article class="card">
+          <header><h3>NFCorpus</h3><div class="tags"><span class="tag">graded retrieval</span><span class="tag">biomedical</span></div></header>
+          <p class="meta"><a href="https://huggingface.co/datasets/mteb/nfcorpus">mteb/nfcorpus</a> · <code>ec0fa4f…</code> · license unspecified</p>
+          <p>3,237 queries · 3,633 documents · 12,334 test qrels.</p>
+          <ul class="samples"><li>Statins and breast cancer → cholesterol-raft paper</li><li>Autophagy and longevity → caloric-restriction paper</li><li>Dietary alkylphenols → nonylphenol paper</li></ul>
+        </article>
+
+        <article class="card">
+          <header><h3>ArguAna</h3><div class="tags"><span class="tag">counterargument retrieval</span></div></header>
+          <p class="meta"><a href="https://huggingface.co/datasets/mteb/arguana">mteb/arguana</a> · <code>c22ab2a…</code> · CC BY-SA 4.0</p>
+          <p>1,406 queries · 8,674 candidate arguments.</p>
+          <ul class="samples"><li>Vegetarianism helps the environment → opposing local-food argument</li><li>Killing animals is immoral → opposing human-rights argument</li><li>Vegetarianism is healthier → opposing balanced-diet argument</li></ul>
+        </article>
+
+        <article class="card">
+          <header><h3>MIRACL</h3><div class="tags"><span class="tag">multilingual retrieval</span><span class="tag">18 languages</span></div></header>
+          <p class="meta"><a href="https://huggingface.co/datasets/mteb/MIRACLRetrieval">MTEB MIRACL</a> · <code>9c09abc…</code> · CC BY-SA 4.0</p>
+          <ul class="samples"><li>“Wo ist das Gebiet der Irokesen-Indianer in Kanada?”</li><li>“Wie viele Arten von Jellyfish?”</li><li>“Wie groß ist der größte Python?”</li></ul>
+          <p class="meta">Report declared macro aggregation and every language separately.</p>
+        </article>
+
+        <article class="card">
+          <header><h3>FLORES-200</h3><div class="tags"><span class="tag">cross-lingual alignment</span><span class="tag">200 languages</span></div></header>
+          <p class="meta"><a href="https://huggingface.co/datasets/mteb/FloresBitextMining">MTEB FLORES</a> · <code>2144d16…</code> · CC BY-SA 4.0</p>
+          <p>997 development · 1,012 devtest aligned records.</p>
+          <ul class="samples"><li>Four-month-old mice... ↔ German equivalent</li><li>Dr. Ehud Ur, professor... ↔ Spanish equivalent</li><li>Other experts are skeptical... ↔ German equivalent</li></ul>
+        </article>
+
+        <article class="card">
+          <header><h3>Flickr30k</h3><div class="tags"><span class="tag">image ↔ text</span></div></header>
+          <p class="meta"><a href="https://huggingface.co/datasets/mteb/flickr30kt2i">MTEB Flickr30k</a> · <code>e819702…</code> · CC BY-SA 4.0</p>
+          <p>1,000 images · 5,000 captions · 5,000 qrels.</p>
+          <ul class="samples"><li>Man with pierced ears...</li><li>Beer-can crocheted hat</li><li>Man with gauges and glasses...</li></ul>
+        </article>
+
+        <article class="card">
+          <header><h3>AudioCaps</h3><div class="tags"><span class="tag">audio ↔ text</span></div></header>
+          <p class="meta"><a href="https://huggingface.co/datasets/mteb/audiocaps_a2t">MTEB AudioCaps</a> · <code>acfbf82…</code> · MIT</p>
+          <p>883 audio queries · 4,411 captions · 4,411 qrels.</p>
+          <ul class="samples"><li>Rattling noise and sharp vibrations</li><li>Rocket, explosion, and fire</li><li>Humming, speech, and laughter</li></ul>
+        </article>
+
+        <article class="card">
+          <header><h3>MSR-VTT</h3><div class="tags"><span class="tag">video/audio ↔ text</span></div></header>
+          <p class="meta"><a href="https://huggingface.co/datasets/mteb/MSR-VTT">MTEB MSR-VTT</a> · <code>4661603…</code> · license unspecified</p>
+          <p>879 test videos with audio and captions.</p>
+          <ul class="samples"><li>A person connects something to a system</li><li>A woman creates a fondant baby and flower</li><li>A boy plays Grand Theft Auto 5</li></ul>
+        </article>
+
+        <article class="card">
+          <header><h3>ImageNet-1K</h3><div class="tags"><span class="tag">JEPA</span><span class="tag">frozen transfer</span></div></header>
+          <p class="meta">Gated dataset · samples are not copied into this repository.</p>
+          <p>Freeze the backbone, extract the declared representation, fit a pinned linear probe on train, and report validation top-1.</p>
+          <ul class="samples"><li>Primary: frozen linear-probe top-1</li><li>Secondary: k-NN accuracy</li><li>Diagnostics: variance, effective rank, covariance condition, SIGReg terms</li></ul>
+        </article>
+      </div>
+      <p class="callout warning">Licenses marked non-commercial or unspecified require review before examples become durable public fixtures. The evaluator tests should use synthetic/checkpointed oracle values unless redistribution is clearly permitted.</p>
+    </section>
+
+    <section id="interpretation">
+      <h2>How to interpret the evidence</h2>
+      <p><strong>STS-B remains relevant in 2026</strong> for historical continuity and as a fast test of graded symmetric similarity. Sentence-BERT and SimCSE reported it directly; current model papers increasingly emphasize MTEB/MMTEB category and aggregate scores. It cannot stand in for retrieval, clustering, multilingual, or multimodal quality.</p>
+      <p><strong>Sentence Transformers does not define universal systems numbers.</strong> It supplies maintained implementations, evaluator semantics, and useful recipes. Representax must publish the exact matched jobs and rerun both systems on identical hardware, software, examples, ordering, shapes, precision, optimizer, schedule, batch, and update count.</p>
+      <p class="callout">Published model-card scores can validate quality plumbing. Published throughput from different hardware cannot establish a systems claim.</p>
+    </section>
+
+    <section id="references">
+      <h2>Canonical references</h2>
+      <ul class="refs">
+        <li><a href="https://aclanthology.org/S17-2001/">STS Benchmark / SemEval 2017</a></li>
+        <li><a href="https://aclanthology.org/D19-1410/">Sentence-BERT</a></li>
+        <li><a href="https://arxiv.org/abs/2104.08821">SimCSE</a></li>
+        <li><a href="https://arxiv.org/abs/2210.07316">MTEB</a></li>
+        <li><a href="https://arxiv.org/abs/2502.13595">MMTEB</a></li>
+        <li><a href="https://arxiv.org/abs/2401.00368">Improving Text Embeddings with LLMs</a></li>
+        <li><a href="https://arxiv.org/abs/2506.05176">Qwen3 Embedding</a></li>
+        <li><a href="https://arxiv.org/abs/2602.15547">jina-embeddings-v5-text</a></li>
+        <li><a href="https://arxiv.org/abs/2511.08544">LeJEPA</a></li>
+        <li><a href="https://docs.mteb.org/contributing/adding_a_dataset/">MTEB evaluator contracts</a></li>
+      </ul>
+    </section>
+  </main>
+
+  <footer>
+    <div class="page">Representax · canonical evaluation candidate · generated as one dependency-free HTML file.</div>
+  </footer>
+</body>
+</html>

@@ -20,6 +20,12 @@ from representax.models.mpnet import (
     mpnet_relative_position_bucket,
     mpnet_weight_names,
 )
+from representax.models.sentence import (
+    SentenceEncoder,
+    SentenceNormalize,
+    SentencePooling,
+)
+from representax.tasks.retrieval import MNRTask, retrieval_batch
 
 
 def tiny_config() -> MPNetConfig:
@@ -90,7 +96,7 @@ def test_position_ids_and_relative_buckets_match_pinned_transformers():
     )
 
 
-def test_native_mpnet_is_scanned_jittable_and_dropout_is_keyed():
+def test_native_mpnet_is_statically_unrolled_jittable_and_dropout_is_keyed():
     model = MPNetEncoder.init(tiny_config(), key=jax.random.key(0))
     batch = tiny_batch()
 
@@ -136,15 +142,21 @@ def test_native_mpnet_is_scanned_jittable_and_dropout_is_keyed():
         return candidate.hidden_states(inputs)
 
     lowered = cast(Any, hidden_only).lower(model, batch).as_text()
-    assert lowered.count("stablehlo.while") == 1
+    assert "stablehlo.while" not in lowered
 
 
 def test_checkpoint_mapping_round_trips_the_depth_major_tree():
     config = tiny_config()
     model = MPNetEncoder.init(config, key=jax.random.key(3))
     adapter = MPNetCheckpointAdapter(rematerialization="none")
+    first_layer = model.tower.layers.layer(0)
+    assert first_layer.attention.query.weight_layout == "input_output"
     state = adapter.state_dict(model)
     assert set(state) == mpnet_weight_names(config)
+    np.testing.assert_array_equal(
+        state["encoder.layer.0.attention.attn.q.weight"],
+        first_layer.attention.query.output_major().weight,
+    )
 
     restored = adapter.from_state_dict(config, state)
     expected = jax.tree.leaves(eqx.filter(model, eqx.is_array))
@@ -174,3 +186,81 @@ def test_native_mpnet_accepts_input_embeddings_and_differentiates_them():
     gradient = jax.grad(objective)(embeddings)
     assert gradient.shape == embeddings.shape
     assert bool(jnp.all(jnp.isfinite(gradient)))
+
+
+def test_packed_mpnet_sentence_embeddings_match_independent_rows():
+    backbone = MPNetEncoder.init(tiny_config(), key=jax.random.key(6))
+    model = SentenceEncoder(
+        backbone=backbone,
+        pooling=SentencePooling(input_dimension=12, modes=("mean",)),
+        postprocessors=(SentenceNormalize(),),
+        metadata=backbone.metadata,
+    )
+    packed = MPNetBatch(
+        input_ids=jnp.asarray([[0, 4, 5, 2, 0, 6, 2, 1]]),
+        attention_mask=jnp.asarray([[1, 1, 1, 1, 1, 1, 1, 0]]),
+        position_ids=jnp.asarray([[2, 3, 4, 5, 2, 3, 4, 1]]),
+        segment_ids=jnp.asarray([[0, 0, 0, 0, 1, 1, 1, -1]]),
+        logical_batch_size=2,
+    )
+
+    expected = model.encode(tiny_batch(), route=Route.QUERY)
+    actual = model.encode(packed, route=Route.QUERY)
+    np.testing.assert_allclose(actual, expected, rtol=2e-6, atol=3e-7)
+
+    changed = eqx.tree_at(
+        lambda batch: batch.input_ids,
+        packed,
+        jnp.asarray([[0, 4, 5, 2, 0, 7, 2, 1]]),
+    )
+    changed_output = model.encode(changed, route=Route.QUERY)
+    np.testing.assert_allclose(changed_output[0], actual[0], rtol=2e-6, atol=3e-7)
+    assert not np.allclose(changed_output[1], actual[1])
+
+
+def test_packed_mpnet_preserves_mnr_loss_and_parameter_gradients():
+    values = tiny_config().model_dump()
+    values.update(
+        hidden_dropout_probability=0.0,
+        attention_dropout_probability=0.0,
+    )
+    backbone = MPNetEncoder.init(MPNetConfig(**values), key=jax.random.key(7))
+    model = SentenceEncoder(
+        backbone=backbone,
+        pooling=SentencePooling(input_dimension=12, modes=("mean",)),
+        postprocessors=(SentenceNormalize(),),
+        metadata=backbone.metadata,
+    )
+    packed = MPNetBatch(
+        input_ids=jnp.asarray([[0, 4, 5, 2, 0, 6, 2, 1]]),
+        attention_mask=jnp.asarray([[1, 1, 1, 1, 1, 1, 1, 0]]),
+        position_ids=jnp.asarray([[2, 3, 4, 5, 2, 3, 4, 1]]),
+        segment_ids=jnp.asarray([[0, 0, 0, 0, 1, 1, 1, -1]]),
+        logical_batch_size=2,
+    )
+    positives = jnp.eye(2, dtype=jnp.bool_)
+    independent_batch = retrieval_batch(
+        query=tiny_batch(),
+        document=tiny_batch(),
+        positive_mask=positives,
+    )
+    packed_batch = retrieval_batch(
+        query=packed,
+        document=packed,
+        positive_mask=positives,
+    )
+    task = MNRTask()
+
+    @eqx.filter_value_and_grad
+    def objective(candidate, batch):
+        return task.loss(candidate, batch).loss
+
+    expected_loss, expected_gradient = objective(model, independent_batch)
+    actual_loss, actual_gradient = objective(model, packed_batch)
+    np.testing.assert_allclose(actual_loss, expected_loss, rtol=2e-6, atol=2e-7)
+    expected_leaves = jax.tree.leaves(
+        eqx.filter(expected_gradient, eqx.is_inexact_array)
+    )
+    actual_leaves = jax.tree.leaves(eqx.filter(actual_gradient, eqx.is_inexact_array))
+    for actual, expected in zip(actual_leaves, expected_leaves, strict=True):
+        np.testing.assert_allclose(actual, expected, rtol=2e-5, atol=2e-6)

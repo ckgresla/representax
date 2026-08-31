@@ -5,47 +5,21 @@ its model runtime. Native Equinox modules remain the trainable source of truth.
 PyTorch and upstream Transformers implementations are confined to optional
 parity tooling.
 
-## Versioned architecture catalog
+## Native model support
 
-The v0 catalog freezes every configuration model type and task-neutral
-`AutoModel` mapping exposed by Transformers 5.3.0. The generated catalog is
-Torch-free and lets configuration dispatch fail deterministically instead of
-changing when an ambient Transformers installation changes.
+A native model package, its checkpoint adapter, and its tests are the source of
+truth for support. Representax does not maintain a second architecture catalog
+or manually assigned implementation status. Unknown or unsupported checkpoint
+configurations fail in the relevant adapter.
 
-Catalog coverage is not a native-support claim. Each definition has an explicit
-support state:
-
-- `catalogued`: the upstream architecture identity is known;
-- `native`: a native Equinox definition exists but has not completed acceptance;
-- `verified`: the native definition passes the required numerical and systems
-  gates.
-
-ModernVBERT is the first `verified` architecture. New model types are added by
-updating the pinned Transformers reference and regenerating the catalog; native
-forwards are implemented once per reusable architecture family.
-
-The separate semantic family manifest is reviewed Python data. Each entry owns
-one or more pinned model types and names its modalities, reusable numerical
-components, configuration adapter, accepted input and output contracts,
-checkpoint layout, implementation module, and completed acceptance gates. The
-generator rejects stale catalogue fingerprints, unknown or multiply owned model
-types, and unearned support claims, then emits the immutable Torch-free runtime
-index. It does not inspect or translate upstream forward source.
-
-This makes generation useful without pretending architecture ports are
-mechanical: codegen owns dispatch and acceptance scaffolding, while humans own
-the semantic decomposition and native Equinox implementation.
-
-BERT is the second native family and the first proof that the component layer
-extends beyond ModernVBERT. Its standard bidirectional encoder, absolute and
+BERT's standard bidirectional encoder, absolute and
 token-type embeddings, post-norm attention/MLP stack, pooler, dropout semantics,
 and checkpoint round trip are native. A generated Transformers 5.3.0 fixture
 passes full-forward, pooler, input-embedding, input-gradient, complete parameter-
 gradient, one-step AdamW, and native-export/upstream-reload parity. Its matched
 BERT-base GPU probe is also faster than Transformers while recording a higher
 allocator peak as a warning. Decoder cache and cross-attention configurations
-remain explicit family constraints, so BERT remains `native` rather than
-`verified` until those architecture modes are implemented and accepted.
+remain explicit adapter constraints.
 
 Each model family owns one bidirectional checkpoint adapter with three explicit
 parts:

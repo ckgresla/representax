@@ -5,9 +5,9 @@ explicit:
 
 1. `build_train_step` closes over a task and Optax transformation and returns
    one compiled, model-neutral Equinox update;
-2. `run_training` owns Grain iteration, device-placement dispatch, reporting,
-   checkpointing, and failure cleanup on the host.
-3. `run_job` is the canonical configured entry point and builds both layers,
+2. the internal host loop owns Grain iteration, device-placement dispatch,
+   reporting, checkpointing, and failure cleanup;
+3. `run_job` is the sole public end-to-end entry point and builds both layers,
    validation, model selection, and inference export from one `JobConfig`.
 
 This is the ordinary JAX boundary. Python is useful for I/O and lifecycle work;

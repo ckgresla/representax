@@ -19,6 +19,7 @@ from urllib.parse import urlparse
 
 import grain
 import jax
+import numpy as np
 from pydantic import model_validator
 
 from representax._config import FrozenConfig
@@ -207,6 +208,10 @@ class BatchTelemetry:
     data_wait_seconds: float
     preprocess_seconds: float | None
     host_batch_bytes: int
+    training_tokens: int | None
+    training_token_capacity: int | None
+    packed_physical_rows: int | None
+    packed_logical_sequences: int | None
     prefetch_ready_batches: int | None
     prefetch_capacity: int | None
 
@@ -216,6 +221,10 @@ class _BatchEnvelope:
     payload: Any
     preprocess_seconds: float | None
     host_batch_bytes: int
+    training_tokens: int | None
+    training_token_capacity: int | None
+    packed_physical_rows: int | None
+    packed_logical_sequences: int | None
 
 
 def _prefetch_state(iterator: Any) -> tuple[int | None, int | None]:
@@ -265,6 +274,10 @@ class DataIterator:
             data_wait_seconds=waited,
             preprocess_seconds=envelope.preprocess_seconds,
             host_batch_bytes=envelope.host_batch_bytes,
+            training_tokens=envelope.training_tokens,
+            training_token_capacity=envelope.training_token_capacity,
+            packed_physical_rows=envelope.packed_physical_rows,
+            packed_logical_sequences=envelope.packed_logical_sequences,
             prefetch_ready_batches=ready,
             prefetch_capacity=capacity,
         )
@@ -305,12 +318,26 @@ class DataLoader:
         return _json_fingerprint(self.data_contract)
 
 
-def _host_batch_nbytes(batch: Any) -> int:
-    """Conservatively count host leaves and reject premature device placement."""
+def _host_batch_measurements(
+    batch: Any,
+    *,
+    measure_training_tokens: bool,
+) -> tuple[int, int | None, int | None, int | None, int | None]:
+    """Measure host bytes and text tokens while validating host placement."""
 
     total = 0
+    tokens = 0
+    token_capacity = 0
+    packed_physical_rows = 0
+    packed_logical_sequences = 0
+    found_attention_mask = False
+    found_segment_ids = False
     seen: set[int] = set()
-    for leaf in jax.tree.leaves(batch, is_leaf=lambda value: value is None):
+    leaves_with_paths, _ = jax.tree.flatten_with_path(
+        batch,
+        is_leaf=lambda value: value is None,
+    )
+    for path, leaf in leaves_with_paths:
         if leaf is None:
             continue
         if isinstance(leaf, jax.Array):
@@ -334,14 +361,43 @@ def _host_batch_nbytes(batch: Any) -> int:
         nbytes = getattr(leaf, "nbytes", None)
         if nbytes is not None:
             total += int(nbytes)
-            continue
-        total += sys.getsizeof(leaf)
-    return total
+        else:
+            total += sys.getsizeof(leaf)
+        if (
+            measure_training_tokens
+            and path
+            and getattr(path[-1], "name", None) == "attention_mask"
+            and getattr(leaf, "ndim", None) == 2
+        ):
+            found_attention_mask = True
+            mask = np.asarray(leaf)
+            tokens += int(mask.sum())
+            token_capacity += int(mask.size)
+        if (
+            measure_training_tokens
+            and path
+            and getattr(path[-1], "name", None) == "segment_ids"
+            and getattr(leaf, "ndim", None) == 2
+        ):
+            found_segment_ids = True
+            segments = np.asarray(leaf)
+            packed_physical_rows += int(segments.shape[0])
+            packed_logical_sequences += int(np.unique(segments[segments >= 0]).size)
+    if not found_attention_mask:
+        return total, None, None, None, None
+    return (
+        total,
+        tokens,
+        token_capacity,
+        packed_physical_rows if found_segment_ids else None,
+        packed_logical_sequences if found_segment_ids else None,
+    )
 
 
 @dataclass(frozen=True, slots=True)
 class _BatchMonitor:
     maximum_bytes: int | None
+    measure_training_tokens: bool = False
 
     def __call__(
         self,
@@ -349,7 +405,12 @@ class _BatchMonitor:
         *,
         preprocess_seconds: float | None = None,
     ) -> _BatchEnvelope:
-        size = _host_batch_nbytes(batch)
+        size, tokens, token_capacity, physical_rows, logical_sequences = (
+            _host_batch_measurements(
+                batch,
+                measure_training_tokens=self.measure_training_tokens,
+            )
+        )
         if self.maximum_bytes is not None and size > self.maximum_bytes:
             raise MemoryError(
                 f"model-ready host batch uses {size} bytes; configured per-slot "
@@ -359,6 +420,10 @@ class _BatchMonitor:
             payload=batch,
             preprocess_seconds=preprocess_seconds,
             host_batch_bytes=size,
+            training_tokens=tokens,
+            training_token_capacity=token_capacity,
+            packed_physical_rows=physical_rows,
+            packed_logical_sequences=logical_sequences,
         )
 
 
@@ -369,7 +434,8 @@ class _TimedBatchFn:
 
     def __call__(self, values: Sequence[Any]) -> _BatchEnvelope:
         started = time.perf_counter()
-        batch = self.batch_fn(values)
+        with jax.default_device(jax.devices("cpu")[0]):
+            batch = self.batch_fn(values)
         duration = time.perf_counter() - started
         return self.monitor(batch, preprocess_seconds=duration)
 
@@ -417,18 +483,17 @@ def _implementation_contract(function: Callable[..., Any]) -> dict[str, str]:
     qualname = getattr(callable_value, "__qualname__", "")
     if not module or not qualname:
         raise ValueError("data callables must expose a stable module and qualname")
-    source_path = inspect.getsourcefile(callable_value)
-    if source_path is not None:
-        implementation = Path(source_path).read_bytes()
-        digest_kind = "module_file_sha256"
-    else:
-        try:
-            implementation = inspect.getsource(callable_value).encode()
-        except (OSError, TypeError) as error:
+    try:
+        implementation = inspect.getsource(callable_value).encode()
+        digest_kind = "callable_source_sha256"
+    except (OSError, TypeError):
+        source_path = inspect.getsourcefile(callable_value)
+        if source_path is None:
             raise ValueError(
                 f"cannot fingerprint data callable {module}.{qualname}"
-            ) from error
-        digest_kind = "callable_source_sha256"
+            ) from None
+        implementation = Path(source_path).read_bytes()
+        digest_kind = "module_file_sha256"
     contract = {
         "callable": f"{module}.{qualname}",
         digest_kind: hashlib.sha256(implementation).hexdigest(),
@@ -686,6 +751,7 @@ def build_data_loader(
     num_threads: int = 16,
     prefetch_buffer_size: int = 2,
     host_memory_budget_bytes: int | None = None,
+    measure_training_tokens: bool = False,
     resolvers: Mapping[str, ArtifactResolver] | None = None,
     mappers: Mapping[str, Callable[[Any], Any]] | None = None,
     data_contract: Mapping[str, Any] | None = None,
@@ -724,7 +790,7 @@ def build_data_loader(
                 "host_memory_budget_bytes is smaller than the configured "
                 f"{slots} model-ready batch slots"
             )
-        return _BatchMonitor(maximum)
+        return _BatchMonitor(maximum, measure_training_tokens)
 
     def batch_dataset(dataset: Any, *, prefetched: bool) -> Any:
         monitor = monitor_for(prefetched=prefetched)

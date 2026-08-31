@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 import os
 import shutil
@@ -81,42 +82,59 @@ def _export_huggingface(
     adapter = build_component(config.adapter)
     from representax.models import merge_quantized_lora
 
-    model = merge_quantized_lora(model)
-    source = _resolve_huggingface_source(config.source_checkpoint)
-    shutil.copytree(source, target)
-    for pattern in ("*.safetensors", "*.safetensors.index.json", "pytorch_model*.bin"):
-        for stale in target.glob(pattern):
-            stale.unlink()
-    save = getattr(adapter, "save", None)
-    if callable(save):
-        save(model, target)
-    else:
-        from safetensors.numpy import save_file
-
-        save_file(
-            {
-                name: np.asarray(jax.device_get(value))
-                for name, value in _state_dict(adapter, model).items()
-            },
-            target / "model.safetensors",
+    cpu = jax.devices("cpu")[0]
+    with jax.default_device(cpu):
+        model = jax.tree.map(
+            lambda value: jax.device_put(value, cpu) if eqx.is_array(value) else value,
+            model,
         )
-    if config.verify_reload:
-        load = getattr(adapter, "load", None)
-        if not callable(load):
-            raise TypeError("verified Hugging Face export requires adapter.load()")
-        restored = load(target)
-        expected = _state_dict(adapter, model)
-        actual = _state_dict(adapter, restored)
-        if set(actual) != set(expected):
-            raise ValueError("Hugging Face export changed checkpoint tensor names")
-        for name in sorted(expected):
-            if not np.array_equal(
-                np.asarray(jax.device_get(actual[name])),
-                np.asarray(jax.device_get(expected[name])),
-            ):
-                raise ValueError(
-                    f"Hugging Face export failed exact reload verification: {name}"
-                )
+        model = merge_quantized_lora(model)
+        jax.block_until_ready(model)
+        source = _resolve_huggingface_source(config.source_checkpoint)
+        shutil.copytree(source, target)
+        for pattern in (
+            "*.safetensors",
+            "*.safetensors.index.json",
+            "pytorch_model*.bin",
+        ):
+            for stale in target.glob(pattern):
+                stale.unlink()
+        save = getattr(adapter, "save", None)
+        if callable(save):
+            save(model, target)
+        else:
+            from safetensors.numpy import save_file
+
+            save_file(
+                {
+                    name: np.asarray(jax.device_get(value))
+                    for name, value in _state_dict(adapter, model).items()
+                },
+                target / "model.safetensors",
+            )
+        if config.verify_reload:
+            load = getattr(adapter, "load", None)
+            if not callable(load):
+                raise TypeError("verified Hugging Face export requires adapter.load()")
+            parameters = inspect.signature(load).parameters
+            load_options = {
+                name: jax.numpy.float32
+                for name in ("parameter_dtype", "compute_dtype")
+                if name in parameters
+            }
+            restored = load(target, **load_options)
+            expected = _state_dict(adapter, model)
+            actual = _state_dict(adapter, restored)
+            if set(actual) != set(expected):
+                raise ValueError("Hugging Face export changed checkpoint tensor names")
+            for name in sorted(expected):
+                if not np.array_equal(
+                    np.asarray(jax.device_get(actual[name])),
+                    np.asarray(jax.device_get(expected[name])),
+                ):
+                    raise ValueError(
+                        f"Hugging Face export failed exact reload verification: {name}"
+                    )
 
 
 def export_inference_bundle(

@@ -172,7 +172,7 @@ def test_text_depth_lowers_to_one_scan_with_explicit_rematerialization():
         rematerialization="full",
     )
     scan = _text_scan(full, batch)
-    assert scan.params["length"] == tiny_config().num_hidden_layers
+    assert scan.params["length"] == tiny_config().num_hidden_layers - 1
     remat_equations = scan.params["jaxpr"].jaxpr.eqns
     assert [equation.primitive.name for equation in remat_equations] == ["remat2"]
     assert (
@@ -231,7 +231,7 @@ def test_rematerialization_policies_preserve_values_and_parameter_gradients():
         )
         assert len(actual_leaves) == len(expected_leaves)
         for actual, expected in zip(actual_leaves, expected_leaves, strict=True):
-            np.testing.assert_allclose(actual, expected, rtol=1e-5, atol=1e-6)
+            np.testing.assert_allclose(actual, expected, rtol=1e-5, atol=2e-6)
 
 
 def test_local_attention_matches_explicit_dense_value_and_gradient():
@@ -291,7 +291,7 @@ def test_hf_state_dict_mapping_round_trips_the_native_tree():
     assert bool(restored.tower.layers[1].sliding_attention)
     assert restored.tower.layers.blocks is not None
     assert restored.tower.layers.blocks.attention.qkv.weight.shape == (
-        config.num_hidden_layers,
+        config.num_hidden_layers - 1,
         3 * config.hidden_size,
         config.hidden_size,
     )

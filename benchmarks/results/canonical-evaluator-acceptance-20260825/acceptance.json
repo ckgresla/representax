@@ -1,0 +1,169 @@
+{
+  "devices": [
+    "cpu:0"
+  ],
+  "elapsed_seconds": 165.62744386307895,
+  "jax": "0.10.1",
+  "metrics": {
+    "banking77": {
+      "valid/classification_probe/accuracy": 0.01495448634590377,
+      "valid/classification_probe/f1_macro": 0.0068672111480893964,
+      "valid/classification_probe/selected_inverse_regularization": 0.1,
+      "valid/classification_probe/validation_accuracy": 0.022
+    },
+    "cifar100_jepa_transfer": {
+      "valid/jepa_representation/condition_number": 2214781.117593957,
+      "valid/jepa_representation/effective_rank": 27.60968993999576,
+      "valid/jepa_representation/feature_std_mean": 0.1756964940573713,
+      "valid/jepa_representation/feature_std_min": 0.0,
+      "valid/jepa_representation/knn_accuracy": 0.1781,
+      "valid/jepa_representation/linear_probe_accuracy": 0.1667,
+      "valid/jepa_representation/linear_probe_f1_macro": 0.14128853184477275,
+      "valid/jepa_representation/linear_probe_selected_inverse_regularization": 10.0,
+      "valid/jepa_representation/linear_probe_validation_accuracy": 0.1728
+    },
+    "sprint_duplicate_questions": {
+      "valid/pair_classification/accuracy_max": 0.9901089108910891,
+      "valid/pair_classification/average_precision_max": 0.01143949492686273,
+      "valid/pair_classification/cosine_accuracy": 0.9901089108910891,
+      "valid/pair_classification/cosine_accuracy_threshold": 0.7534703016281128,
+      "valid/pair_classification/cosine_average_precision": 0.01143949492686273,
+      "valid/pair_classification/cosine_f1": 0.021215617672237317,
+      "valid/pair_classification/cosine_f1_threshold": 0.08269403129816055,
+      "valid/pair_classification/cosine_matthews_correlation": 0.006619068733698806,
+      "valid/pair_classification/cosine_precision": 0.011017899253875594,
+      "valid/pair_classification/cosine_recall": 0.285,
+      "valid/pair_classification/f1_max": 0.021215617672237317
+    },
+    "twenty_newsgroups": [
+      {
+        "valid/clustering/sample_00/adjusted_rand": 0.008125740783418565,
+        "valid/clustering/sample_00/completeness": 0.09647827864151007,
+        "valid/clustering/sample_00/homogeneity": 0.09541311231139225,
+        "valid/clustering/sample_00/normalized_mutual_info": 0.0959427391705294,
+        "valid/clustering/sample_00/v_measure": 0.0959427391705294
+      },
+      {
+        "valid/clustering/sample_01/adjusted_rand": 0.00981468857951961,
+        "valid/clustering/sample_01/completeness": 0.06304490813706232,
+        "valid/clustering/sample_01/homogeneity": 0.0631188170704634,
+        "valid/clustering/sample_01/normalized_mutual_info": 0.06308184095518507,
+        "valid/clustering/sample_01/v_measure": 0.06308184095518508
+      },
+      {
+        "valid/clustering/sample_02/adjusted_rand": 0.008355075232328668,
+        "valid/clustering/sample_02/completeness": 0.04858023595304803,
+        "valid/clustering/sample_02/homogeneity": 0.04830352440912675,
+        "valid/clustering/sample_02/normalized_mutual_info": 0.048441485020545245,
+        "valid/clustering/sample_02/v_measure": 0.04844148502054524
+      },
+      {
+        "valid/clustering/sample_03/adjusted_rand": 0.011083058541192747,
+        "valid/clustering/sample_03/completeness": 0.046714110154222575,
+        "valid/clustering/sample_03/homogeneity": 0.04662984797941063,
+        "valid/clustering/sample_03/normalized_mutual_info": 0.0466719410348205,
+        "valid/clustering/sample_03/v_measure": 0.046671941034820495
+      },
+      {
+        "valid/clustering/sample_04/adjusted_rand": 0.009965094945195367,
+        "valid/clustering/sample_04/completeness": 0.045109257240896865,
+        "valid/clustering/sample_04/homogeneity": 0.04440044514029673,
+        "valid/clustering/sample_04/normalized_mutual_info": 0.044752044709396484,
+        "valid/clustering/sample_04/v_measure": 0.04475204470939648
+      },
+      {
+        "valid/clustering/sample_05/adjusted_rand": 0.00889092797122848,
+        "valid/clustering/sample_05/completeness": 0.03842079036314441,
+        "valid/clustering/sample_05/homogeneity": 0.038120987160469605,
+        "valid/clustering/sample_05/normalized_mutual_info": 0.038270301618659554,
+        "valid/clustering/sample_05/v_measure": 0.03827030161865955
+      },
+      {
+        "valid/clustering/sample_06/adjusted_rand": 0.008991738472781563,
+        "valid/clustering/sample_06/completeness": 0.0398884866283067,
+        "valid/clustering/sample_06/homogeneity": 0.03936612996732638,
+        "valid/clustering/sample_06/normalized_mutual_info": 0.03962558690609836,
+        "valid/clustering/sample_06/v_measure": 0.03962558690609836
+      },
+      {
+        "valid/clustering/sample_07/adjusted_rand": 0.009787613554496963,
+        "valid/clustering/sample_07/completeness": 0.036904854437314526,
+        "valid/clustering/sample_07/homogeneity": 0.036729074678525785,
+        "valid/clustering/sample_07/normalized_mutual_info": 0.036816754746193614,
+        "valid/clustering/sample_07/v_measure": 0.036816754746193614
+      },
+      {
+        "valid/clustering/sample_08/adjusted_rand": 0.009999880667385184,
+        "valid/clustering/sample_08/completeness": 0.04104648124790236,
+        "valid/clustering/sample_08/homogeneity": 0.04047681025988343,
+        "valid/clustering/sample_08/normalized_mutual_info": 0.04075965537158258,
+        "valid/clustering/sample_08/v_measure": 0.04075965537158259
+      },
+      {
+        "valid/clustering/sample_09/adjusted_rand": 0.010019237435899645,
+        "valid/clustering/sample_09/completeness": 0.03850478858216222,
+        "valid/clustering/sample_09/homogeneity": 0.03818309366426357,
+        "valid/clustering/sample_09/normalized_mutual_info": 0.03834326639066604,
+        "valid/clustering/sample_09/v_measure": 0.03834326639066605
+      }
+    ]
+  },
+  "purpose": "Adapter and evaluator acceptance only; deterministic frozen features are not a model-quality result.",
+  "schema_version": "representax-canonical-evaluator-acceptance-v1",
+  "sources": [
+    {
+      "expected_rows": 101000,
+      "name": "sprint_duplicate_questions",
+      "revision": "d66bd1f72af766a5cc4b0ca5e00c162f89e8cc46",
+      "rows": 101000,
+      "sha256": "217ca4c496869b2312dacc6db9bd70963ff7f41a1dfc78c89cc59a15b4cf5f87",
+      "split": "test",
+      "uri": "hf://mteb/sprintduplicatequestions-pairclassification"
+    },
+    {
+      "expected_rows": 9993,
+      "name": "banking77_train",
+      "revision": "18072d2685ea682290f7b8924d94c62acc19c0b2",
+      "rows": 9993,
+      "sha256": "514f4bb1aa16fb8384738675120145cc676223724a04172364864f3a94836b89",
+      "split": "train",
+      "uri": "hf://mteb/banking77"
+    },
+    {
+      "expected_rows": 3076,
+      "name": "banking77_test",
+      "revision": "18072d2685ea682290f7b8924d94c62acc19c0b2",
+      "rows": 3076,
+      "sha256": "f301c3405b3d42f3ffd1937238f281f781aa80d1a647e73f633a4601fa447181",
+      "split": "test",
+      "uri": "hf://mteb/banking77"
+    },
+    {
+      "expected_rows": 10,
+      "name": "twenty_newsgroups",
+      "revision": "6125ec4e24fa026cec8a478383ee943acfbd5449",
+      "rows": 10,
+      "sha256": "2cd18d996bec0d514b52d249b1602bb172b0112a3bd33992f1ef27a976eb30a4",
+      "split": "test",
+      "uri": "hf://mteb/twentynewsgroups-clustering"
+    },
+    {
+      "expected_rows": 50000,
+      "name": "cifar100_train",
+      "revision": "aadb3af77e9048adbea6b47c21a81e47dd092ae5",
+      "rows": 50000,
+      "sha256": "a313a9b12a5b21d23cb3c29fc0129bcb82ed1339e3da4c40c29877f4e4d47b63",
+      "split": "train",
+      "uri": "hf://uoft-cs/cifar100"
+    },
+    {
+      "expected_rows": 10000,
+      "name": "cifar100_test",
+      "revision": "aadb3af77e9048adbea6b47c21a81e47dd092ae5",
+      "rows": 10000,
+      "sha256": "145ac18e6848b32f6ce7abaa54180ed1848ef37fc94f19b009cb3fe754d8b087",
+      "split": "test",
+      "uri": "hf://uoft-cs/cifar100"
+    }
+  ]
+}

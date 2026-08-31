@@ -1,5 +1,7 @@
 """Native labeled-pair loss and task contracts."""
 
+from typing import cast
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -171,3 +173,41 @@ def test_pairwise_task_runs_through_the_generic_compiled_train_step():
     assert result.state.step == 1
     assert result.metrics.numeric_finite
     assert not result.metrics.skipped_update
+
+
+def test_standard_contrastive_accumulation_matches_the_full_batch() -> None:
+    model = DenseEncoder(3, 4, key=jax.random.key(13))
+    optimizer = optax.sgd(1e-2)
+    state = init_train_state(model, optimizer)
+    left, right = _embeddings()
+    batch = pairwise_batch(
+        left=left,
+        right=right,
+        labels=jnp.asarray([1.0, 0.0, 1.0, 0.0]),
+    )
+    task = ContrastiveTask()
+
+    direct = build_train_step(task, optimizer, max_grad_norm=None)(state, batch, None)
+    accumulated = build_train_step(
+        task,
+        optimizer,
+        max_grad_norm=None,
+        gradient_accumulation_steps=2,
+    )(state, batch, None)
+
+    np.testing.assert_allclose(accumulated.metrics.loss, direct.metrics.loss, rtol=1e-6)
+    np.testing.assert_allclose(
+        cast(DenseEncoder, accumulated.state.model).projection.weight,
+        cast(DenseEncoder, direct.state.model).projection.weight,
+        rtol=2e-5,
+        atol=2e-6,
+    )
+
+
+def test_online_contrastive_rejects_inexact_accumulation() -> None:
+    with pytest.raises(TypeError, match="does not support exact"):
+        build_train_step(
+            ContrastiveTask(online=True),
+            optax.sgd(1e-3),
+            gradient_accumulation_steps=2,
+        )

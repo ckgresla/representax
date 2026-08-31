@@ -13,7 +13,7 @@ from jax.sharding import NamedSharding
 from jaxtyping import Array, ArrayLike, Bool, Float
 
 from representax.core import Route
-from representax.tasks._batch import asarray, ones
+from representax.tasks._batch import asarray, ones, payload_row_count
 
 if TYPE_CHECKING:
     from representax.models.processing import Processor
@@ -84,14 +84,10 @@ class RetrievalBatch(eqx.Module):
             raise TypeError("query_valid must be boolean")
         if self.document_valid.dtype != jnp.bool_:
             raise TypeError("document_valid must be boolean")
-        query_leaves = [x for x in jax.tree.leaves(self.query) if eqx.is_array(x)]
-        document_leaves = [x for x in jax.tree.leaves(self.document) if eqx.is_array(x)]
-        if not query_leaves or not document_leaves:
-            raise ValueError("query and document payloads must contain arrays")
-        if any(x.ndim == 0 or x.shape[0] != query_count for x in query_leaves):
-            raise ValueError("query payloads must be row-major")
-        if any(x.ndim == 0 or x.shape[0] != document_count for x in document_leaves):
-            raise ValueError("document payloads must be row-major")
+        if payload_row_count(self.query, name="query") != query_count:
+            raise ValueError("query payload must match the query dimension")
+        if payload_row_count(self.document, name="document") != document_count:
+            raise ValueError("document payload must match the document dimension")
 
 
 class ProcessLocalRetrievalBatch(eqx.Module):

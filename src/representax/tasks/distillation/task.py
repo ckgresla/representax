@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from typing import ClassVar
 
 import equinox as eqx
 import jax
@@ -45,6 +46,11 @@ def _resolved_routes(routes: tuple[Route, ...], count: int) -> tuple[Route, ...]
 class EmbeddingDistillationTask(eqx.Module):
     """Match one or more student representation columns to teacher embeddings."""
 
+    accumulation_metric_reductions: ClassVar[dict[str, str]] = {
+        "distilled_columns": "mean",
+        "valid_examples": "sum",
+    }
+
     distance: EmbeddingDistillationDistance = eqx.field(static=True, default="cosine")
     routes: tuple[Route, ...] = eqx.field(static=True, default=(Route.GENERIC,))
 
@@ -55,6 +61,35 @@ class EmbeddingDistillationTask(eqx.Module):
             )
         if not self.routes:
             raise ValueError("embedding distillation requires at least one route")
+
+    def accumulation_weight(self, batch: EmbeddingDistillationBatch) -> Array:
+        return jnp.sum(batch.valid).astype(jnp.float32)
+
+    def accumulation_batch_size(self, batch: EmbeddingDistillationBatch) -> int:
+        return batch.valid.shape[0]
+
+    def accumulation_microbatch(
+        self,
+        batch: EmbeddingDistillationBatch,
+        index: Array,
+        steps: int,
+    ) -> EmbeddingDistillationBatch:
+        size = batch.valid.shape[0] // steps
+        start = index * size
+
+        def rows(value: Array) -> Array:
+            return jax.lax.dynamic_slice_in_dim(value, start, size, axis=0)
+
+        return EmbeddingDistillationBatch(
+            inputs=tuple(jax.tree.map(rows, payload) for payload in batch.inputs),
+            teacher_embeddings=jax.lax.dynamic_slice_in_dim(
+                batch.teacher_embeddings,
+                start,
+                size,
+                axis=1,
+            ),
+            valid=rows(batch.valid),
+        )
 
     def loss(
         self,
@@ -134,6 +169,11 @@ class EmbeddingDistillationTask(eqx.Module):
 class MarginDistillationTask(eqx.Module):
     """Regress student positive-minus-negative scores onto teacher margins."""
 
+    accumulation_metric_reductions: ClassVar[dict[str, str]] = {
+        "margin_error_mean": "root_mean_square",
+        "valid_examples": "sum",
+    }
+
     similarity: ScoreSimilarity = eqx.field(static=True, default="dot")
     query_route: Route = eqx.field(static=True, default=Route.QUERY)
     document_route: Route = eqx.field(static=True, default=Route.DOCUMENT)
@@ -141,6 +181,9 @@ class MarginDistillationTask(eqx.Module):
     def __post_init__(self) -> None:
         if self.similarity not in {"dot", "cosine"}:
             raise ValueError(f"unsupported score similarity {self.similarity!r}")
+
+    def accumulation_weight(self, batch: MarginDistillationBatch) -> Array:
+        return jnp.sum(batch.valid).astype(jnp.float32)
 
     def loss(
         self,
@@ -223,6 +266,11 @@ class MarginDistillationTask(eqx.Module):
 class DistributionDistillationTask(eqx.Module):
     """Match teacher and student candidate-score distributions."""
 
+    accumulation_metric_reductions: ClassVar[dict[str, str]] = {
+        "teacher_entropy_mean": "mean",
+        "valid_examples": "sum",
+    }
+
     similarity: ScoreSimilarity = eqx.field(static=True, default="dot")
     temperature: float = eqx.field(static=True, default=1.0)
     query_route: Route = eqx.field(static=True, default=Route.QUERY)
@@ -233,6 +281,9 @@ class DistributionDistillationTask(eqx.Module):
             raise ValueError(f"unsupported score similarity {self.similarity!r}")
         if not math.isfinite(self.temperature) or self.temperature <= 0:
             raise ValueError("distillation temperature must be finite and positive")
+
+    def accumulation_weight(self, batch: DistributionDistillationBatch) -> Array:
+        return jnp.sum(batch.valid).astype(jnp.float32)
 
     def loss(
         self,

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 import equinox as eqx
 import jax
@@ -21,6 +21,11 @@ from .losses import pair_features, softmax_classification_loss_terms
 class SoftmaxClassificationTask(eqx.Module):
     """Classify aligned representation pairs through explicit trainable state."""
 
+    accumulation_metric_reductions: ClassVar[dict[str, str]] = {
+        "accuracy": "mean",
+        "valid_pairs": "sum",
+    }
+
     concatenate_representations: bool = eqx.field(static=True, default=True)
     concatenate_difference: bool = eqx.field(static=True, default=True)
     concatenate_product: bool = eqx.field(static=True, default=False)
@@ -36,6 +41,9 @@ class SoftmaxClassificationTask(eqx.Module):
             )
         ):
             raise ValueError("softmax classification requires at least one feature")
+
+    def accumulation_weight(self, batch: PairClassificationBatch) -> Array:
+        return jnp.sum(batch.valid).astype(jnp.float32)
 
     def representations(
         self,

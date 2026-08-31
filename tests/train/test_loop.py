@@ -6,6 +6,7 @@ import time
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 import optax
 import pytest
 
@@ -24,8 +25,9 @@ from representax.train import (
     TrainState,
     build_train_step,
     init_train_state,
-    run_training,
 )
+from representax.train.job import build_job_runtime
+from representax.train.loop import run_training
 from tests.train.toy_retrieval import (
     TOY_BATCH_SIZE,
     TOY_FEATURE_DIMENSION,
@@ -64,6 +66,48 @@ class SleepingBatches(ClosingBatches):
         finally:
             self.last_wait_seconds = time.perf_counter() - started
         return super().__next__()
+
+
+class TokenBatch(tuple):
+    __slots__ = ()
+
+    def __new__(cls, input_ids, attention_mask):
+        return tuple.__new__(cls, (input_ids, attention_mask))
+
+    @property
+    def input_ids(self):
+        return self[0]
+
+    @property
+    def attention_mask(self):
+        return self[1]
+
+
+jax.tree_util.register_pytree_with_keys(
+    TokenBatch,
+    lambda batch: (
+        (
+            (jax.tree_util.GetAttrKey("input_ids"), batch.input_ids),
+            (jax.tree_util.GetAttrKey("attention_mask"), batch.attention_mask),
+        ),
+        None,
+    ),
+    lambda _, values: TokenBatch(*values),
+)
+
+
+def resolve_token_records(_artifact):
+    return [
+        {"tokens": [1, 2, 0], "mask": [1, 1, 0]},
+        {"tokens": [3, 0, 0], "mask": [1, 0, 0]},
+    ] * 2
+
+
+def collate_token_records(examples):
+    return TokenBatch(
+        np.asarray([row["tokens"] for row in examples]),
+        np.asarray([row["mask"] for row in examples]),
+    )
 
 
 class RecordingReporter:
@@ -135,6 +179,10 @@ def _step(state, batch, key):
     )
 
 
+def _token_step(state, batch, key):
+    return _step(state, batch.input_ids, key)
+
+
 def _read_jsonl(path):
     return [json.loads(line) for line in path.read_text().splitlines()]
 
@@ -170,8 +218,10 @@ def test_training_loop_writes_every_metric_and_closes_batches(tmp_path, capsys):
     assert run["scientific"]["training"]["global_batch_size"] == 2
     assert run["execution"]["data"]["prefetch_buffer_size"] == 16
     assert run["config"]["logging"] == {
+        "accelerator": False,
         "console_every": 2,
         "reporter_queue_size": 16,
+        "timing": False,
         "wandb": None,
     }
     assert [row["iteration"] for row in metrics] == [1, 2]
@@ -183,6 +233,180 @@ def test_training_loop_writes_every_metric_and_closes_batches(tmp_path, capsys):
     assert all("/" in name for row in metrics for name in row["metrics"])
     assert [row["event"] for row in events].count("executable_first_use_started") == 1
     assert events[-1]["event"] == "training_finished"
+
+
+def test_timing_records_startup_and_every_completed_step(tmp_path):
+    run_training(
+        state=_state(),
+        step=_step,
+        batches=ClosingBatches(
+            [
+                jnp.asarray([1.0, 3.0]),
+                jnp.asarray([2.0, 4.0]),
+                jnp.asarray([3.0, 5.0]),
+            ]
+        ),
+        job=_job(
+            global_batch_size=2,
+            max_steps=3,
+            seed=17,
+            logging=LoggingConfig(console_every=10, timing=True),
+        ),
+        run_directory=tmp_path / "timed-run",
+        startup_metrics={"perf/startup_seconds": 1.25},
+    )
+
+    metrics = _read_jsonl(tmp_path / "timed-run" / "metrics.jsonl")
+    startup = [row for row in metrics if row["event"] == "startup"]
+    training = [row for row in metrics if row["event"] == "training_step"]
+    assert startup[0]["metrics"] == {"perf/startup_seconds": 1.25}
+    assert [row["iteration"] for row in training] == [1, 2, 3]
+    assert all(row["metrics"]["perf/examples"] == 2 for row in training)
+    assert "perf/step_seconds" not in training[0]["metrics"]
+    assert all(row["metrics"]["perf/step_seconds"] > 0 for row in training[1:])
+    assert all(row["metrics"]["perf/examples_per_second"] > 0 for row in training[1:])
+
+
+def test_timing_starts_a_new_interval_after_evaluation(tmp_path):
+    evaluation = EvaluationConfig(
+        data=DataConfig(
+            distribution=mix(
+                source("memory://validation", map=_identity),
+                shuffle=False,
+            )
+        ),
+        batch_size=2,
+        evaluators=(EvaluatorConfig(name="deterministic"),),
+        every_steps=2,
+        on_start=False,
+        on_end=False,
+        primary_metric="valid/deterministic/key_is_none",
+        primary_metric_mode="max",
+        save_best=False,
+    )
+    job = _job(
+        global_batch_size=2,
+        max_steps=4,
+        seed=17,
+        logging=LoggingConfig(console_every=10, timing=True),
+    ).model_copy(update={"evaluation": evaluation})
+
+    run_training(
+        state=_state(),
+        step=_step,
+        batches=ClosingBatches(
+            [
+                jnp.asarray([1.0, 3.0]),
+                jnp.asarray([2.0, 4.0]),
+                jnp.asarray([3.0, 5.0]),
+                jnp.asarray([4.0, 6.0]),
+            ]
+        ),
+        job=job,
+        run_directory=tmp_path / "evaluation-timing",
+        evaluation_runners=(EvaluationRunner(KeyPresenceEvaluator()),),
+        evaluation_batches=lambda: [jnp.asarray([2.0, 4.0])],
+    )
+
+    metrics = _read_jsonl(tmp_path / "evaluation-timing" / "metrics.jsonl")
+    training = [row for row in metrics if row["event"] == "training_step"]
+    assert "perf/step_seconds" not in training[0]["metrics"]
+    assert training[1]["metrics"]["perf/step_seconds"] > 0
+    assert "perf/step_seconds" not in training[2]["metrics"]
+    assert training[3]["metrics"]["perf/step_seconds"] > 0
+
+
+def test_job_runtime_measures_every_startup_phase():
+    runtime = build_job_runtime(
+        _job(
+            global_batch_size=2,
+            max_steps=1,
+            seed=17,
+            logging=LoggingConfig(timing=True),
+        ),
+        resolvers={"memory": _resolver},
+    )
+
+    assert set(runtime.startup_metrics) == {
+        "perf/adapter_preparation_seconds",
+        "perf/data_loader_initialization_seconds",
+        "perf/evaluation_initialization_seconds",
+        "perf/model_load_seconds",
+        "perf/optimizer_initialization_seconds",
+        "perf/sharding_initialization_seconds",
+        "perf/startup_seconds",
+        "perf/task_initialization_seconds",
+        "perf/train_step_initialization_seconds",
+    }
+    assert all(value >= 0 for value in runtime.startup_metrics.values())
+
+
+def test_accelerator_samples_use_the_job_metric_stream(tmp_path, monkeypatch):
+    class FakeMonitor:
+        def __init__(self, publish):
+            self.publish = publish
+
+        def start(self):
+            self.publish({"accelerator/0/utilization_percent": 75.0})
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("representax.train.loop.AcceleratorMonitor", FakeMonitor)
+    run_training(
+        state=_state(),
+        step=_step,
+        batches=ClosingBatches([jnp.asarray([1.0, 3.0])]),
+        job=_job(
+            global_batch_size=2,
+            max_steps=1,
+            seed=17,
+            logging=LoggingConfig(accelerator=True),
+        ),
+        run_directory=tmp_path / "accelerator-run",
+    )
+
+    metrics = _read_jsonl(tmp_path / "accelerator-run" / "metrics.jsonl")
+    accelerator = [row for row in metrics if row["event"] == "accelerator"]
+    assert accelerator[0]["metrics"] == {"accelerator/0/utilization_percent": 75.0}
+
+
+def test_timing_derives_nonpadding_token_throughput(tmp_path):
+    artifact = source("memory://tokens", map=_identity)
+
+    batches = build_data_loader(
+        mix(artifact, shuffle=False),
+        batch_size=2,
+        batch_fn=collate_token_records,
+        num_threads=0,
+        prefetch_buffer_size=0,
+        measure_training_tokens=True,
+        resolvers={"memory": resolve_token_records},
+        mappers={artifact.mapper: _identity},
+    )
+    run_training(
+        state=_state(),
+        step=_token_step,
+        batches=batches,
+        job=_job(
+            global_batch_size=2,
+            max_steps=2,
+            seed=17,
+            logging=LoggingConfig(console_every=10, timing=True),
+        ),
+        run_directory=tmp_path / "token-timing",
+    )
+
+    metrics = _read_jsonl(tmp_path / "token-timing" / "metrics.jsonl")
+    training = [row for row in metrics if row["event"] == "training_step"]
+    assert [row["metrics"]["perf/tokens"] for row in training] == [3, 3]
+    assert [row["metrics"]["perf/token_capacity"] for row in training] == [6, 6]
+    assert [row["metrics"]["perf/padding_tokens"] for row in training] == [3, 3]
+    assert [row["metrics"]["perf/token_utilization"] for row in training] == [
+        0.5,
+        0.5,
+    ]
+    assert training[1]["metrics"]["perf/tokens_per_second"] > 0
 
 
 def test_training_loop_records_exhaustion_as_a_real_failure(tmp_path):

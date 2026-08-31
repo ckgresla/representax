@@ -712,9 +712,7 @@ def _text_backbone(
             parameter_dtype=parameter_dtype,
             compute_dtype=compute_dtype,
         )
-    raise ValueError(
-        f"Sentence Transformers backbone {model_type!r} is catalogued but not native"
-    )
+    raise ValueError(f"Sentence Transformers backbone {model_type!r} is not supported")
 
 
 def _model_metadata(
@@ -810,7 +808,7 @@ def load_sentence_transformer_artifact(
     if transformer.role is not SentenceTransformerModuleRole.TRANSFORMER:
         raise ValueError(
             f"Sentence Transformers input module {transformer.type!r} is "
-            "catalogued but not a registered native backbone"
+            "not a supported native backbone"
         )
     transformer_directory = _module_directory(resolved.path, transformer.path)
     hf_config = load_hf_config(transformer_directory)

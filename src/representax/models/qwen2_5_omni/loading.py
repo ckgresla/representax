@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from pathlib import Path
 
+import jax
 import jax.numpy as jnp
 
 from representax.integrations.huggingface import resolve_hf_checkpoint
@@ -49,13 +50,14 @@ def load_qwen2_5_omni(
         cache_directory=cache_directory,
         local_files_only=local_files_only,
     )
-    model = Qwen2_5OmniCheckpointAdapter(**adapter_options).load(
-        resolved.path,
-        parameter_dtype=parameter_dtype,
-        compute_dtype=compute_dtype,
-        model_id=resolved.model_id,
-        revision=resolved.revision,
-    )
+    with jax.default_device(jax.devices("cpu")[0]):
+        model = Qwen2_5OmniCheckpointAdapter(**adapter_options).load(
+            resolved.path,
+            parameter_dtype=parameter_dtype,
+            compute_dtype=compute_dtype,
+            model_id=resolved.model_id,
+            revision=resolved.revision,
+        )
     processor = make_qwen2_5_omni_processor(
         resolved.path,
         model.config,

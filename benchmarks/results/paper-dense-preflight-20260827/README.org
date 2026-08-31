@@ -1,0 +1,57 @@
+#+title: Paper dense-retrieval preflight - corrected 2026-08-27
+
+* Contract
+
+The corrected preflight ran the pinned MPNet/MS MARCO exact-GradCache workload
+for 64 updates in Representax and Sentence Transformers 5.6.1. Both used seed
+7, global batch 2048, length 256, four RTX 4090s, FP32 master weights, BF16
+compute, cosine MNR at scale 20, and the same warmup/cosine schedule.
+
+Representax stopped cleanly at update 32, restored the checkpoint in a fresh
+process, completed update 64, evaluated, exported its native inference bundle,
+and reloaded it. Corrected artifacts live under
+=/raid/representax/paper-campaign-v1/preflight/dense-realistic/seed-7-corrected/=.
+
+* Results
+
+| measurement | Representax | Sentence Transformers |
+|-------------+--------------+-----------------------|
+| median step | 8.419 s | 13.404 s |
+| median throughput | 243.26 examples/s | 152.80 examples/s |
+| initial NanoMSMARCO nDCG@10 | 0.63447 | 0.63447 |
+| final NanoMSMARCO nDCG@10 | 0.61772 | 0.60804 |
+| final loss | 4.01959 | 3.93383 |
+
+Representax sustains =1.592x= the reference throughput. The final nDCG@10
+difference is =+0.00969= for Representax, while both systems begin from the
+same metric. This preflight passes the operational and systems-throughput
+gates; it is not evidence for a quality-superiority claim.
+
+Process-visible memory peaks are 22.25 GiB for Representax and 10.51 GiB for
+Sentence Transformers, but these are not a valid live-memory comparison: XLA's
+allocator reserves memory while PyTorch additionally exposes peak live and
+reserved counters. Record allocator-live JAX memory before making a memory
+claim.
+
+The preflight does not select a full-run update count. Select training duration
+from measured learning curves and the campaign compute budget before launch.
+
+* Regression correction
+
+The original artifact root without the =-corrected= suffix is invalid for
+systems conclusions. Replicated DDP did not activate GradCache's internal
+data-axis annotations, so every device scanned the global batch as if it were
+local. Enabling activation sharding for every plan with a data axis reduced the
+median step from 16.906 seconds to 8.419 seconds.
+
+The paired launcher also accepted =--mixed-precision= and =--telemetry= without
+forwarding them to workers. It now forwards both flags and rejects unsupported
+distributed pair launches explicitly.
+
+* Lifecycle finding
+
+The first resume attempt exposed a redundant checkpoint precheck that hashed
+=str(PyTreeDef)=. Static frozenset order changes across Python processes, so the
+hash rejected an unchanged model tree. Orbax already validates the explicit
+shape, dtype, sharding, and tree restore template. Removing the nondeterministic
+duplicate check allowed the complete update-32 checkpoint to restore exactly.

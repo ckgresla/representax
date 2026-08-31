@@ -13,6 +13,7 @@ from representax.models import (
     embedding_lookup,
     l2_normalize,
     mean_pool,
+    segment_mean_pool,
 )
 
 
@@ -93,3 +94,16 @@ def test_pooling_and_normalization_ignore_padding():
     np.testing.assert_allclose(pooled[0], [1.5, 7.0])
     np.testing.assert_allclose(jnp.linalg.norm(normalized[0]), 1.0)
     np.testing.assert_array_equal(normalized[1], jnp.zeros((2,)))
+
+
+def test_segment_mean_pool_restores_packed_logical_order():
+    hidden = jnp.asarray(
+        [[[1.0, 2.0], [3.0, 4.0], [10.0, 20.0], [30.0, 40.0], [99.0, 99.0]]]
+    )
+    pooled = segment_mean_pool(
+        hidden,
+        jnp.asarray([[1, 1, 1, 1, 0]]),
+        jnp.asarray([[1, 1, 0, 0, -1]]),
+        num_segments=2,
+    )
+    np.testing.assert_array_equal(pooled, [[20.0, 30.0], [2.0, 3.0]])

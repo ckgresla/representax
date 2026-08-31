@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 import equinox as eqx
 import jax
 import jax.numpy as jnp
-from jaxtyping import PRNGKeyArray
+from jaxtyping import Array, PRNGKeyArray
 
 from representax.core import LossOutput, Route, encode
 
@@ -21,12 +21,22 @@ from .losses import denoising_autoencoder_loss_terms
 class DenoisingAutoEncoderTask(eqx.Module):
     """Reconstruct clean token sequences from damaged-input representations."""
 
+    accumulation_metric_reductions: ClassVar[dict[str, str]] = {
+        "valid_tokens": "sum",
+        "valid_examples": "sum",
+    }
+
     pad_token_id: int = eqx.field(static=True)
     route: Route = eqx.field(static=True, default=Route.GENERIC)
 
     def __post_init__(self) -> None:
         if self.pad_token_id < 0:
             raise ValueError("pad_token_id must be non-negative")
+
+    def accumulation_weight(self, batch: DenoisingBatch) -> Array:
+        targets = batch.target_input_ids[:, 1:]
+        token_valid = (targets != self.pad_token_id) & batch.valid[:, None]
+        return jnp.sum(token_valid).astype(jnp.float32)
 
     def loss(
         self,

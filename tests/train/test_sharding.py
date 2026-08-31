@@ -12,6 +12,7 @@ import pytest
 from jax.sharding import PartitionSpec as P
 
 from representax.models import DenseEncoder
+from representax.tasks.pairwise import CosineRegressionTask, pairwise_batch
 from representax.tasks.retrieval import (
     ProcessLocalRetrievalBatch,
     place_process_local_retrieval_batch,
@@ -19,6 +20,7 @@ from representax.tasks.retrieval import (
 )
 from representax.train import (
     ShardingPlan,
+    build_train_step,
     fsdp_partition_spec,
     init_train_state,
     parameter_specs_from_rules,
@@ -68,6 +70,109 @@ def test_data_parallel_assembles_process_local_rows_on_one_process():
     np.testing.assert_array_equal(
         global_batch.positive_mask,
         local_batch.positive_mask,
+    )
+
+
+def test_ddp_requires_batch_activation_annotations():
+    device = jax.devices("cpu")[0]
+    mesh = jax.make_mesh((1,), ("data",), devices=[device])
+    model = DenseEncoder(3, 3, key=jax.random.key(3))
+    optimizer = optax.adamw(1e-3)
+    state = init_train_state(model, optimizer)
+
+    plan = ShardingPlan.ddp(state, optimizer, mesh, axis_name="data")
+
+    assert plan.requires_internal_annotations
+
+
+def test_sharded_gradient_accumulation_matches_one_full_batch_update():
+    device = jax.devices("cpu")[0]
+    mesh = jax.make_mesh((1,), ("data",), devices=[device])
+    model = DenseEncoder(3, 3, key=jax.random.key(13))
+    optimizer = optax.sgd(1e-2)
+    state = init_train_state(model, optimizer)
+    batch = pairwise_batch(
+        left=jnp.arange(12, dtype=jnp.float32).reshape(4, 3) / 10,
+        right=jnp.arange(12, 24, dtype=jnp.float32).reshape(4, 3) / 10,
+        labels=jnp.asarray((0.1, 0.3, 0.7, 0.9)),
+    )
+    task = CosineRegressionTask()
+    direct = build_train_step(task, optimizer, max_grad_norm=None)(
+        state,
+        batch,
+        None,
+    )
+    plan = ShardingPlan.ddp(state, optimizer, mesh, axis_name="data")
+    accumulated = build_train_step(
+        task,
+        optimizer,
+        plan=plan,
+        max_grad_norm=None,
+        gradient_accumulation_steps=2,
+    )(
+        plan.place_state(state),
+        plan.place_batch(batch),
+        None,
+    )
+
+    np.testing.assert_allclose(
+        accumulated.metrics.loss,
+        direct.metrics.loss,
+        rtol=1e-6,
+        atol=1e-7,
+    )
+    np.testing.assert_allclose(
+        cast(DenseEncoder, accumulated.state.model).projection.weight,
+        cast(DenseEncoder, direct.state.model).projection.weight,
+        rtol=2e-5,
+        atol=2e-6,
+    )
+
+
+@pytest.mark.distributed
+def test_two_device_ddp_gradient_accumulation_matches_the_full_batch():
+    devices = jax.devices()
+    if len(devices) < 2:
+        pytest.skip("requires two JAX devices")
+    mesh = jax.make_mesh((2,), ("data",), devices=devices[:2])
+    model = DenseEncoder(4, 4, key=jax.random.key(41))
+    optimizer = optax.sgd(1e-2)
+    state = init_train_state(model, optimizer)
+    batch = pairwise_batch(
+        left=jnp.arange(32, dtype=jnp.float32).reshape(8, 4) / 10,
+        right=jnp.arange(32, 64, dtype=jnp.float32).reshape(8, 4) / 10,
+        labels=jnp.linspace(0.1, 0.8, 8),
+    )
+    task = CosineRegressionTask()
+    direct = build_train_step(task, optimizer, max_grad_norm=None)(
+        state,
+        batch,
+        None,
+    )
+    plan = ShardingPlan.ddp(state, optimizer, mesh, axis_name="data")
+    accumulated = build_train_step(
+        task,
+        optimizer,
+        plan=plan,
+        max_grad_norm=None,
+        gradient_accumulation_steps=2,
+    )(
+        plan.place_state(state),
+        plan.place_batch(batch),
+        None,
+    )
+
+    np.testing.assert_allclose(
+        accumulated.metrics.loss,
+        direct.metrics.loss,
+        rtol=1e-6,
+        atol=1e-7,
+    )
+    np.testing.assert_allclose(
+        cast(DenseEncoder, accumulated.state.model).projection.weight,
+        cast(DenseEncoder, direct.state.model).projection.weight,
+        rtol=2e-5,
+        atol=2e-6,
     )
 
 

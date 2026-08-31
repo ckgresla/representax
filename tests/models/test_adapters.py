@@ -18,6 +18,7 @@ from representax.models import (
     Linear,
     LoRALinear,
     QuantizedLoRALinear,
+    apply_lora,
     apply_quantized_lora,
     lora_parameter_filter,
     merge_quantized_lora,
@@ -94,6 +95,29 @@ def test_quantized_lora_packs_base_and_zero_initializes_adapter_output():
         rtol=2e-3,
         atol=2e-3,
     )
+
+
+def test_lora_preserves_exact_base_output_and_layout():
+    original = _AdapterEncoder(key=jax.random.key(11))
+    adapted = apply_lora(
+        original,
+        rank=2,
+        alpha=4.0,
+        key=jax.random.key(12),
+    )
+    assert isinstance(adapted.projection, LoRALinear)
+    np.testing.assert_array_equal(adapted.projection.weight, original.projection.weight)
+    np.testing.assert_array_equal(adapted.projection.bias, original.projection.bias)
+    assert np.count_nonzero(adapted.projection.lora_b) == 0
+
+    values = jax.random.normal(jax.random.key(13), (4, 8))
+    np.testing.assert_array_equal(
+        adapted.encode(values, route=Route.GENERIC),
+        original.encode(values, route=Route.GENERIC),
+    )
+    selected = eqx.filter(adapted, lora_parameter_filter(adapted))
+    selected_arrays = [leaf for leaf in jax.tree.leaves(selected) if eqx.is_array(leaf)]
+    assert {leaf.shape for leaf in selected_arrays} == {(2, 8), (6, 2)}
 
 
 def test_imported_lora_matches_peft_dtype_boundary_and_merged_weight():

@@ -53,16 +53,38 @@ def _embedding_conversation(value: Any, *, default_instruction: str) -> list[dic
     ]
 
 
-def _reranking_conversation(value: Any, *, default_instruction: str) -> list[dict]:
-    if not isinstance(value, Mapping):
-        raise TypeError("reranking samples must contain query and document mappings")
-    if "query" not in value or "document" not in value:
-        raise KeyError("reranking samples require query and document")
-    instruction = value.get("instruction", default_instruction)
+def _reranking_sample(
+    value: Any,
+    *,
+    default_instruction: str,
+) -> tuple[Any, Any, str]:
+    if isinstance(value, Mapping):
+        if "query" not in value or "document" not in value:
+            raise KeyError("reranking samples require query and document")
+        query = value["query"]
+        document = value["document"]
+        instruction = value.get("instruction", default_instruction)
+    elif (
+        isinstance(value, Sequence)
+        and not isinstance(value, (str, bytes, bytearray))
+        and len(value) == 2
+    ):
+        query, document = value
+        instruction = default_instruction
+    else:
+        raise TypeError("reranking samples must be (query, document) pairs or mappings")
     if not isinstance(instruction, str):
         raise TypeError("Qwen3-VL instructions must be strings")
-    query_text, query_image, query_video = _components(value["query"])
-    document_text, document_image, document_video = _components(value["document"])
+    return query, document, instruction
+
+
+def _reranking_conversation(value: Any, *, default_instruction: str) -> list[dict]:
+    query, document, instruction = _reranking_sample(
+        value,
+        default_instruction=default_instruction,
+    )
+    query_text, query_image, query_video = _components(query)
+    document_text, document_image, document_video = _components(document)
     content = [{"type": "text", "text": f"<Instruct>: {instruction}"}]
     content.append({"type": "text", "text": "<Query>:"})
     if query_video is not None:
@@ -159,18 +181,20 @@ def make_qwen3_vl_processor(
                 conversation = _embedding_conversation(
                     artifact, default_instruction=instruction
                 )
+                candidates = (artifact,)
             elif mode == "eager_embedding":
                 conversation = _eager_embedding_conversation(artifact)
+                candidates = (artifact,)
             else:
                 conversation = _reranking_conversation(
                     artifact, default_instruction=instruction
                 )
+                query, document, _ = _reranking_sample(
+                    artifact,
+                    default_instruction=instruction,
+                )
+                candidates = (query, document)
             conversations.append(conversation)
-            candidates = (
-                (artifact["query"], artifact["document"])
-                if mode == "reranking"
-                else (artifact,)
-            )
             for candidate in candidates:
                 _, image, video = _components(candidate)
                 if video is not None:

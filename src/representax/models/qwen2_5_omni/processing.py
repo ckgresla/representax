@@ -324,7 +324,7 @@ def audio_layout(
     chunk_count_buckets: Sequence[int],
     token_count_buckets: Sequence[int],
 ) -> dict[str, np.ndarray]:
-    """Pack valid mel frames into bounded chunks and exact AvgPool index pairs."""
+    """Pack each audio into fixed row-major chunks and AvgPool index pairs."""
 
     features = np.asarray(input_features, dtype=np.float32)
     mask = np.asarray(feature_attention_mask, dtype=bool)
@@ -337,12 +337,14 @@ def audio_layout(
         raise ValueError("feature_attention_mask must align with audio features")
     chunk_size = 2 * config.audio.window_size
     cnn_size = config.audio.window_size
-    chunks = []
-    chunk_lengths = []
-    audio_cnn_indices = []
+    audio_chunks = []
+    audio_chunk_lengths = []
+    audio_pairs = []
     for audio_index in range(features.shape[0]):
         length = int(mask[audio_index].sum())
         values = features[audio_index, :, :length]
+        chunks = []
+        chunk_lengths = []
         packed_indices = []
         for start in range(0, length, chunk_size):
             stop = min(start + chunk_size, length)
@@ -355,43 +357,51 @@ def audio_layout(
             packed_indices.extend(
                 (chunk_index * cnn_size + np.arange(after_cnn)).tolist()
             )
-        audio_cnn_indices.append(np.asarray(packed_indices, dtype=np.int32))
-    required_chunks = len(chunks)
+        pair_count = max((len(packed_indices) - 2) // 2 + 1, 0)
+        audio_chunks.append(chunks)
+        audio_chunk_lengths.append(chunk_lengths)
+        audio_pairs.append(
+            np.asarray(packed_indices[: 2 * pair_count], dtype=np.int32).reshape(
+                (-1, 2)
+            )
+        )
+    required_chunks = max(map(len, audio_chunks), default=0)
+    required_tokens = max(map(len, audio_pairs), default=0)
     if required_chunks == 0:
         raise ValueError("audio features contain no valid frames")
+    if required_tokens == 0:
+        raise ValueError("audio is too short to produce one pooled token")
     chunk_bucket = select_static_shape_bucket(
         (required_chunks,), tuple((value,) for value in chunk_count_buckets)
     )[0]
     padded_chunks = np.zeros(
-        (chunk_bucket, config.audio.num_mel_bins, chunk_size), dtype=np.float32
+        (features.shape[0], chunk_bucket, config.audio.num_mel_bins, chunk_size),
+        dtype=np.float32,
     )
-    padded_chunks[:required_chunks] = np.stack(chunks)
-    feature_valid = np.zeros((chunk_bucket, chunk_size), dtype=bool)
-    after_cnn_valid = np.zeros((chunk_bucket, cnn_size), dtype=bool)
-    for index, length in enumerate(chunk_lengths):
-        feature_valid[index, :length] = True
-        after_cnn_valid[index, : (length - 1) // 2 + 1] = True
+    feature_valid = np.zeros((features.shape[0], chunk_bucket, chunk_size), dtype=bool)
+    after_cnn_valid = np.zeros((features.shape[0], chunk_bucket, cnn_size), dtype=bool)
+    for audio_index, (chunks, lengths) in enumerate(
+        zip(audio_chunks, audio_chunk_lengths, strict=True)
+    ):
+        padded_chunks[audio_index, : len(chunks)] = np.stack(chunks)
+        for chunk_index, length in enumerate(lengths):
+            feature_valid[audio_index, chunk_index, :length] = True
+            after_cnn_valid[audio_index, chunk_index, : (length - 1) // 2 + 1] = True
 
-    pairs = []
-    for indices in audio_cnn_indices:
-        pair_count = max((len(indices) - 2) // 2 + 1, 0)
-        pairs.extend(indices[: 2 * pair_count].reshape((-1, 2)).tolist())
-    token_count = len(pairs)
-    if token_count == 0:
-        raise ValueError("audio is too short to produce one pooled token")
     token_bucket = select_static_shape_bucket(
-        (token_count,), tuple((value,) for value in token_count_buckets)
+        (required_tokens,), tuple((value,) for value in token_count_buckets)
     )[0]
-    pool_indices = np.zeros((token_bucket, 2), dtype=np.int32)
-    pool_indices[:token_count] = np.asarray(pairs, dtype=np.int32)
+    pool_indices = np.zeros((features.shape[0], token_bucket, 2), dtype=np.int32)
+    token_valid = np.zeros((features.shape[0], token_bucket), dtype=bool)
+    for audio_index, pairs in enumerate(audio_pairs):
+        pool_indices[audio_index, : len(pairs)] = pairs
+        token_valid[audio_index, : len(pairs)] = True
     return {
         "input_features": padded_chunks,
         "feature_valid": feature_valid,
         "after_cnn_valid": after_cnn_valid,
         "pool_indices": pool_indices,
-        "token_valid": np.pad(
-            np.ones((token_count,), dtype=bool), (0, token_bucket - token_count)
-        ),
+        "token_valid": token_valid,
         "feature_lengths": mask.sum(axis=1).astype(np.int32),
     }
 
@@ -603,7 +613,7 @@ def batch_from_processor_output(
     values: dict[str, Any] = {
         "input_ids": jnp.asarray(input_ids),
         "attention_mask": jnp.asarray(attention_mask),
-        "position_ids": jnp.asarray(position_ids),
+        "position_ids": jnp.asarray(np.swapaxes(position_ids, 0, 1)),
     }
     if vision is not None:
         visual_indices = np.concatenate(
@@ -636,22 +646,38 @@ def batch_from_processor_output(
             ),
         )
     if audio is not None:
-        audio_indices = np.flatnonzero(flattened == config.audio_token_id).astype(
-            np.int32
-        )
-        audio_count = int(audio["token_valid"].sum())
-        audio_bucket = len(audio["token_valid"])
-        if audio_indices.size != audio_count:
-            raise ValueError("audio placeholders and pooled tokens do not match")
+        audio_rows = np.flatnonzero(np.any(input_ids == config.audio_token_id, axis=1))
+        if len(audio_rows) != audio["input_features"].shape[0]:
+            raise ValueError("audio features and sample rows do not align")
+        audio_bucket = audio["token_valid"].shape[1]
+        audio_indices = np.zeros((input_ids.shape[0], audio_bucket), dtype=np.int32)
+        audio_valid = np.zeros((input_ids.shape[0], audio_bucket), dtype=bool)
+        for audio_index, row_index in enumerate(audio_rows):
+            row_indices = np.flatnonzero(
+                input_ids[row_index] == config.audio_token_id
+            ).astype(np.int32)
+            token_count = int(audio["token_valid"][audio_index].sum())
+            if row_indices.size != token_count:
+                raise ValueError("audio placeholders and pooled tokens do not match")
+            audio_indices[row_index, :token_count] = row_indices
+            audio_valid[row_index, :token_count] = True
+
+        def align_audio_rows(value: np.ndarray) -> np.ndarray:
+            aligned = np.zeros(
+                (input_ids.shape[0], *value.shape[1:]), dtype=value.dtype
+            )
+            aligned[audio_rows] = value
+            return aligned
+
         values.update(
-            input_features=jnp.asarray(audio["input_features"]),
-            audio_feature_valid=jnp.asarray(audio["feature_valid"]),
-            audio_after_cnn_valid=jnp.asarray(audio["after_cnn_valid"]),
-            audio_pool_indices=jnp.asarray(audio["pool_indices"]),
-            audio_token_indices=jnp.asarray(
-                np.pad(audio_indices, (0, audio_bucket - audio_count))
+            input_features=jnp.asarray(align_audio_rows(audio["input_features"])),
+            audio_feature_valid=jnp.asarray(align_audio_rows(audio["feature_valid"])),
+            audio_after_cnn_valid=jnp.asarray(
+                align_audio_rows(audio["after_cnn_valid"])
             ),
-            audio_token_valid=jnp.asarray(audio["token_valid"]),
+            audio_pool_indices=jnp.asarray(align_audio_rows(audio["pool_indices"])),
+            audio_token_indices=jnp.asarray(audio_indices),
+            audio_token_valid=jnp.asarray(audio_valid),
         )
     return Qwen2_5OmniBatch(**values)
 
@@ -677,7 +703,10 @@ def make_qwen2_5_omni_processor(
         raise ImportError(
             "Qwen2.5-Omni processing requires Transformers 5.6 or newer"
         ) from error
-    tokenizer = transformers.AutoTokenizer.from_pretrained(
+    tokenizer_type = import_module(
+        "transformers.models.qwen2.tokenization_qwen2"
+    ).Qwen2Tokenizer
+    tokenizer = tokenizer_type.from_pretrained(
         checkpoint,
         padding_side="right",
     )
@@ -693,10 +722,16 @@ def make_qwen2_5_omni_processor(
         else {}
     )
     raw_prompts = sentence_config.get("prompts", {})
+    default_prompt_name = sentence_config.get("default_prompt_name")
+    default_prompt = (
+        str(raw_prompts.get(default_prompt_name, ""))
+        if isinstance(raw_prompts, Mapping) and isinstance(default_prompt_name, str)
+        else ""
+    )
     prompts = (
         {
-            Route.QUERY: str(raw_prompts.get("query", "")),
-            Route.DOCUMENT: str(raw_prompts.get("document", "")),
+            Route.QUERY: str(raw_prompts.get("query", default_prompt)),
+            Route.DOCUMENT: str(raw_prompts.get("document", default_prompt)),
         }
         if isinstance(raw_prompts, Mapping)
         else {Route.QUERY: "", Route.DOCUMENT: ""}

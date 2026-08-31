@@ -10,6 +10,8 @@ from representax.models.components import AttentionImplementation
 from representax.models.modernvbert import (
     MODERNVBERT_MODEL_ID,
     MODERNVBERT_REVISION,
+    ModernVBERTCheckpointAdapter,
+    ModernVBERTEncoder,
     ModernVBERTTextCheckpointAdapter,
     ModernVBERTTextEncoder,
 )
@@ -33,14 +35,17 @@ _ALLOW_PATTERNS = (
 def load_modernvbert_text_encoder(
     model_name_or_path: str | Path = MODERNVBERT_MODEL_ID,
     *,
-    revision: str = MODERNVBERT_REVISION,
+    revision: str | None = None,
     local_files_only: bool = False,
     parameter_dtype: str = "float32",
     compute_dtype: str = "float32",
     attention_implementation: AttentionImplementation = "xla",
     rematerialization: RematerializationPolicy = "full",
 ) -> ModernVBERTTextEncoder:
-    """Load the pinned ModernVBERT text path directly into native Equinox."""
+    """Load a compatible ModernVBERT text path from the Hub or a local path."""
+
+    if revision is None and str(model_name_or_path) == MODERNVBERT_MODEL_ID:
+        revision = MODERNVBERT_REVISION
 
     resolved = resolve_hf_checkpoint(
         model_name_or_path,
@@ -48,11 +53,6 @@ def load_modernvbert_text_encoder(
         local_files_only=local_files_only,
         allow_patterns=_ALLOW_PATTERNS,
     )
-    if resolved.revision != MODERNVBERT_REVISION:
-        raise ValueError(
-            "native ModernVBERT is locked to revision "
-            f"{MODERNVBERT_REVISION}; got {resolved.revision}"
-        )
     return ModernVBERTTextCheckpointAdapter(
         model_id=resolved.model_id,
         revision=resolved.revision,
@@ -65,4 +65,36 @@ def load_modernvbert_text_encoder(
     )
 
 
-__all__ = ["load_modernvbert_text_encoder"]
+def load_modernvbert_encoder(
+    model_name_or_path: str | Path = MODERNVBERT_MODEL_ID,
+    *,
+    revision: str | None = None,
+    local_files_only: bool = False,
+    parameter_dtype: str = "float32",
+    compute_dtype: str = "float32",
+    attention_implementation: AttentionImplementation = "xla",
+    rematerialization: RematerializationPolicy = "full",
+) -> ModernVBERTEncoder:
+    """Load a complete text-image ModernVBERT from the Hub or a local path."""
+
+    if revision is None and str(model_name_or_path) == MODERNVBERT_MODEL_ID:
+        revision = MODERNVBERT_REVISION
+    resolved = resolve_hf_checkpoint(
+        model_name_or_path,
+        revision=revision,
+        local_files_only=local_files_only,
+        allow_patterns=_ALLOW_PATTERNS,
+    )
+    return ModernVBERTCheckpointAdapter(
+        model_id=resolved.model_id,
+        revision=resolved.revision,
+    ).load(
+        resolved.path,
+        parameter_dtype=jnp.dtype(parameter_dtype),
+        compute_dtype=jnp.dtype(compute_dtype),
+        attention_implementation=attention_implementation,
+        rematerialization=rematerialization,
+    )
+
+
+__all__ = ["load_modernvbert_encoder", "load_modernvbert_text_encoder"]

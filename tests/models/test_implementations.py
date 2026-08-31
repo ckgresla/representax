@@ -8,40 +8,23 @@ from pathlib import Path
 
 import pytest
 
-from representax.integrations import MODEL_FAMILIES, AcceptanceGate
-
 from .acceptance import MODEL_IMPLEMENTATIONS, compare_model_performance
 
 
-def test_every_checkpoint_backed_model_has_an_acceptance_registration():
+def test_every_checkpoint_backed_model_has_parity_tests():
     implementation_root = Path("src/representax/models")
     checkpoint_backed = {
         path.parent.name for path in implementation_root.glob("*/checkpoint.py")
     }
-    family_names = set(MODEL_FAMILIES)
-    assert checkpoint_backed == family_names
-    registered = {case.package for case in MODEL_IMPLEMENTATIONS}
-    performance_claims = {
-        family.name
-        for family in MODEL_FAMILIES.values()
-        if AcceptanceGate.PERFORMANCE in family.acceptance_gates
-    }
-    assert registered == performance_claims
-    for family in MODEL_FAMILIES.values():
-        tests = Path("tests/models") / family.name
+    for package in checkpoint_backed:
+        tests = Path("tests/models") / package
         assert (tests / "test_model.py").is_file()
-        if family.acceptance_gates.intersection(
-            {
-                AcceptanceGate.FORWARD,
-                AcceptanceGate.INPUT_GRADIENT,
-                AcceptanceGate.PARAMETER_GRADIENT,
-                AcceptanceGate.OPTIMIZER_UPDATE,
-                AcceptanceGate.EXPORT_RELOAD,
-            }
-        ):
-            assert (tests / "test_transformers_parity.py").is_file()
-        if AcceptanceGate.PERFORMANCE in family.acceptance_gates:
-            assert (tests / "performance_probe.py").is_file()
+        assert (tests / "test_transformers_parity.py").is_file()
+
+
+def test_every_performance_case_has_a_probe():
+    for package in {case.package for case in MODEL_IMPLEMENTATIONS}:
+        assert (Path("tests/models") / package / "performance_probe.py").is_file()
 
 
 @pytest.mark.performance

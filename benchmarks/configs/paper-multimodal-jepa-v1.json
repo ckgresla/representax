@@ -1,0 +1,111 @@
+{
+  "schema_version": "representax-paper-multimodal-jepa-v1",
+  "models": {
+    "clip-vit-b32": {
+      "repo_id": "sentence-transformers/clip-ViT-B-32",
+      "revision": "327ab6726d33c0e22f920c83f2ff9e4bd38ca37f",
+      "license": "hub-card-unspecified"
+    },
+    "lco-omni-embed-3b": {
+      "repo_id": "LCO-Embedding/LCO-Embedding-Omni-3B-2605",
+      "revision": "5f6b5329da5141367da30e06a9826d1322d6c9b2",
+      "license": "apache-2.0"
+    },
+    "vjepa2-1-vit-b16": {
+      "source": "facebookresearch/vjepa2",
+      "revision": "204698b45b3712590f06245fbfba32d3be539812",
+      "license": "mit",
+      "config": "configs/train_2_1/vitb16/pretrain-256px-16f.yaml",
+      "initialization": "random"
+    }
+  },
+  "datasets": {
+    "coco2017-train": {
+      "repo_id": "phiyodr/coco2017",
+      "revision": "036f3f8291db64d17faad9b09e59dd30bb65c4d7",
+      "split": "train",
+      "license": "upstream-coco-terms"
+    },
+    "flickr30k-test": {
+      "repo_id": "mteb/flickr30kt2i",
+      "revision": "e819702b287bfbe084e129a61f308a802b7c108e",
+      "split": "test",
+      "license": "cc-by-sa-4.0"
+    },
+    "audiocaps-train": {
+      "repo_id": "OpenSound/AudioCaps",
+      "revision": "b29b3243d6ce49c2cd0d48d4b5f0701ae7969ded",
+      "split": "train",
+      "license": "cc-by-nc-4.0"
+    },
+    "audiocaps-test": {
+      "repo_id": "mteb/audiocaps_a2t",
+      "revision": "acfbf827c27f81787800129443780c072dc8ae62",
+      "split": "test",
+      "license": "mit"
+    },
+    "msrvtt-train": {
+      "repo_id": "VLM2Vec/MSR-VTT",
+      "revision": "947b139d0c591235a3f311e45a31a88461bad0d2",
+      "subset": "train_7k",
+      "split": "train",
+      "license": "upstream-unspecified"
+    },
+    "msrvtt-test": {
+      "repo_id": "mteb/MSR-VTT",
+      "revision": "4661603cee25c1fd370e5478a2953203cf37155b",
+      "split": "test",
+      "license": "upstream-unspecified"
+    },
+    "ssv2": {
+      "repo_id": "jxie/something_something_v2",
+      "revision": "86851581ad645fbce86488d474604ea2021ab3cc",
+      "train_split": "train",
+      "evaluate_split": "validation",
+      "license": "upstream-restricted"
+    },
+    "imagenet-1k": {
+      "repo_id": "ILSVRC/imagenet-1k",
+      "revision": "49e2ee26f3810fb5a7536bbf732a7b07389a47b5",
+      "train_split": "train",
+      "evaluate_split": "validation",
+      "license": "gated-upstream-terms"
+    }
+  },
+  "references": {
+    "sentence-transformers": "5.6.1",
+    "vjepa2": "204698b45b3712590f06245fbfba32d3be539812"
+  },
+  "workloads": [
+    {
+      "name": "image-text-retrieval",
+      "model": "clip-vit-b32",
+      "train": "coco2017-train",
+      "evaluate": "flickr30k-test",
+      "reference": "sentence-transformers"
+    },
+    {
+      "name": "audio-text-retrieval",
+      "model": "lco-omni-embed-3b",
+      "train": "audiocaps-train",
+      "evaluate": "audiocaps-test",
+      "reference": "sentence-transformers"
+    },
+    {
+      "name": "video-text-retrieval",
+      "model": "lco-omni-embed-3b",
+      "train": "msrvtt-train",
+      "evaluate": "msrvtt-test",
+      "reference": "sentence-transformers"
+    },
+    {
+      "name": "vjepa2-1-video-representation",
+      "model": "vjepa2-1-vit-b16",
+      "train": "ssv2",
+      "evaluate": "ssv2",
+      "secondary_evaluate": "imagenet-1k",
+      "reference": "vjepa2",
+      "scope": "matched-system-campaign-not-full-pretraining-reproduction"
+    }
+  ]
+}

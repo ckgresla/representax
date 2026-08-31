@@ -1,0 +1,58 @@
+{
+  "schema_version": "representax-paper-dense-preflight-v2",
+  "artifact_root": "/raid/representax/paper-campaign-v1/preflight/dense-realistic/seed-7-corrected",
+  "supersedes": {
+    "artifact_root": "/raid/representax/paper-campaign-v1/preflight/dense-realistic/seed-7",
+    "cause": "DDP omitted internal data-axis activation annotations, so GradCache scan construction treated the global batch as local on every device"
+  },
+  "contract": {
+    "model": "sentence-transformers/all-mpnet-base-v2",
+    "training_data": "sentence-transformers/msmarco-msmarco-MiniLM-L6-v3",
+    "evaluation_data": "sentence-transformers/NanoBEIR-en:NanoMSMARCO",
+    "seed": 7,
+    "updates": 64,
+    "global_batch": 2048,
+    "maximum_length": 256,
+    "world_size": 4,
+    "precision": "bfloat16-compute-float32-master",
+    "objective": "asymmetric-cosine-mnr-scale-20-exact-grad-cache",
+    "schedule": "6-percent-linear-warmup-cosine-decay"
+  },
+  "representax": {
+    "version": "source-tree",
+    "jax_version": "0.11.1",
+    "median_step_seconds": 8.41909786965698,
+    "median_examples_per_second": 243.25646663179148,
+    "peak_process_visible_memory_bytes": 23893114880,
+    "initial_ndcg_at_10": 0.6344653953276497,
+    "final_ndcg_at_10": 0.617721952687397,
+    "final_loss": 4.019594669342041,
+    "completed_updates": 64,
+    "checkpoint_resume_iteration": 32,
+    "resume_count": 1,
+    "export_reloaded": true,
+    "artifact_bytes": 2650938626
+  },
+  "sentence_transformers": {
+    "version": "5.6.1",
+    "transformers_version": "5.6.0",
+    "torch_version": "2.13.0+cu130",
+    "median_step_seconds": 13.403528206981719,
+    "median_examples_per_second": 152.79558996512756,
+    "peak_process_visible_memory_bytes": 11287199744,
+    "torch_peak_allocated_bytes": 7988305920,
+    "initial_ndcg_at_10": 0.6344653953276497,
+    "final_ndcg_at_10": 0.6080363141330728,
+    "final_loss": 3.933832883834839,
+    "completed_updates": 64,
+    "artifact_bytes": 934084
+  },
+  "comparison": {
+    "representax_throughput_over_reference": 1.5920385312646115,
+    "final_ndcg_at_10_difference": 0.00968563855432425,
+    "initial_ndcg_at_10_difference": 0.0,
+    "systems_measurement_valid": true,
+    "process_visible_memory_comparable": false
+  },
+  "verdict": "operational-and-systems-pass-live-memory-comparison-pending"
+}

@@ -12,10 +12,12 @@ from representax.tasks.reward_modeling import (
     BradleyTerryConfig,
     ListwiseRewardBatch,
     ListwiseRewardConfig,
+    ListwiseRewardTask,
     PairwiseRewardBatch,
     PairwiseRewardConfig,
     PairwiseRewardTask,
     PlackettLuceConfig,
+    PointwiseRewardBatch,
     PointwiseRewardConfig,
     PointwiseRewardLossConfig,
     PointwiseRewardTask,
@@ -122,6 +124,106 @@ def test_listwise_and_process_rewards_are_jittable() -> None:
     process_task = ProcessRewardTask()
     assert np.isfinite(
         jax.jit(lambda m: process_task.loss(m, process).loss)(process_model)
+    )
+
+
+def _assert_accumulation_matches(task, candidate, batch) -> None:
+    optimizer = optax.sgd(1e-2)
+    state = init_train_state(candidate, optimizer)
+    direct = build_train_step(task, optimizer, max_grad_norm=None)(state, batch, None)
+    accumulated = build_train_step(
+        task,
+        optimizer,
+        max_grad_norm=None,
+        gradient_accumulation_steps=2,
+    )(state, batch, None)
+
+    np.testing.assert_allclose(accumulated.metrics.loss, direct.metrics.loss, rtol=1e-6)
+    for name in direct.metrics.task:
+        np.testing.assert_allclose(
+            accumulated.metrics.task[name],
+            direct.metrics.task[name],
+            rtol=1e-6,
+            atol=1e-7,
+        )
+    for actual, expected in zip(
+        jax.tree.leaves(accumulated.state),
+        jax.tree.leaves(direct.state),
+        strict=True,
+    ):
+        if eqx.is_array(actual):
+            np.testing.assert_allclose(actual, expected, rtol=2e-5, atol=2e-6)
+
+
+def test_all_reward_families_accumulate_exactly() -> None:
+    rows = jnp.arange(12, dtype=jnp.float32).reshape(4, 3) / 10
+    valid_rows = jnp.asarray((True, False, True, True))
+    _assert_accumulation_matches(
+        PairwiseRewardTask(center_rewards_coefficient=0.01),
+        model(),
+        PairwiseRewardBatch(
+            chosen=Inputs(rows + 0.2),
+            rejected=Inputs(rows - 0.1),
+            margins=jnp.asarray((0.2, 0.0, 0.1, 0.3)),
+            valid=valid_rows,
+        ),
+    )
+    _assert_accumulation_matches(
+        ListwiseRewardTask(),
+        model(),
+        ListwiseRewardBatch(
+            candidates=Inputs(
+                jnp.arange(4 * 3 * 3, dtype=jnp.float32).reshape(4, 3, 3) / 10
+            ),
+            preferences=jnp.asarray(
+                (
+                    (3.0, 2.0, 1.0),
+                    (2.0, 1.0, 0.0),
+                    (1.0, 3.0, 2.0),
+                    (2.0, 1.0, 3.0),
+                )
+            ),
+            valid=jnp.asarray(
+                (
+                    (True, True, True),
+                    (True, True, False),
+                    (True, True, True),
+                    (True, False, False),
+                )
+            ),
+        ),
+    )
+    _assert_accumulation_matches(
+        PointwiseRewardTask(objective="mse"),
+        model(),
+        PointwiseRewardBatch(
+            inputs=Inputs(rows),
+            labels=jnp.asarray((0.1, -0.2, 0.4, 0.8)),
+            valid=valid_rows,
+        ),
+    )
+    _assert_accumulation_matches(
+        ProcessRewardTask(),
+        model(outputs=3),
+        ProcessRewardBatch(
+            inputs=Inputs(rows),
+            labels=jnp.asarray(
+                (
+                    (1.0, 0.0, 1.0),
+                    (0.0, 1.0, 0.0),
+                    (1.0, 1.0, 0.0),
+                    (0.0, 0.0, 1.0),
+                )
+            ),
+            valid=jnp.asarray(
+                (
+                    (True, True, True),
+                    (True, True, False),
+                    (True, False, False),
+                    (True, True, True),
+                )
+            ),
+        ),
     )
 
 

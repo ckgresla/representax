@@ -135,25 +135,30 @@ class Qwen2_5OmniAudioAttention(eqx.Module):
 
     def __call__(
         self,
-        hidden: Float[Array, "sequence hidden"],
-        attention_mask: Bool[Array, "one one sequence sequence"],
+        hidden: Float[Array, "chunk sequence hidden"],
+        attention_mask: Bool[Array, "chunk one sequence sequence"],
         *,
         config: Qwen2_5OmniAudioConfig,
         implementation: AttentionImplementation,
-    ) -> Float[Array, "sequence hidden"]:
-        sequence = hidden.shape[0]
-        shape = (sequence, config.num_attention_heads, config.head_dimension)
+    ) -> Float[Array, "chunk sequence hidden"]:
+        chunks, sequence, _ = hidden.shape
+        shape = (
+            chunks,
+            sequence,
+            config.num_attention_heads,
+            config.head_dimension,
+        )
         query = self.query(hidden).reshape(shape)
         key = self.key(hidden).reshape(shape)
         value = self.value(hidden).reshape(shape)
         attended = dot_product_attention(
-            query[None],
-            key[None],
-            value[None],
+            query,
+            key,
+            value,
             attention_mask=attention_mask,
             implementation=implementation,
-        )[0]
-        return self.output(attended.reshape((sequence, config.hidden_size)))
+        )
+        return self.output(attended.reshape((chunks, sequence, config.hidden_size)))
 
 
 class Qwen2_5OmniAudioLayer(eqx.Module):
@@ -210,12 +215,12 @@ class Qwen2_5OmniAudioLayer(eqx.Module):
 
     def __call__(
         self,
-        hidden: Float[Array, "sequence hidden"],
-        attention_mask: Bool[Array, "one one sequence sequence"],
+        hidden: Float[Array, "chunk sequence hidden"],
+        attention_mask: Bool[Array, "chunk one sequence sequence"],
         *,
         config: Qwen2_5OmniAudioConfig,
         implementation: AttentionImplementation,
-    ) -> Float[Array, "sequence hidden"]:
+    ) -> Float[Array, "chunk sequence hidden"]:
         hidden = hidden + self.attention(
             self.attention_norm(hidden),
             attention_mask,
@@ -348,12 +353,9 @@ class Qwen2_5OmniAudioTower(eqx.Module):
             self.config.hidden_size,
         ).astype(hidden.dtype)
         hidden = hidden + positions[None]
-        hidden = hidden.reshape((-1, self.config.hidden_size))
-        valid = after_cnn_valid.reshape(-1)
-        chunk_ids = jnp.repeat(jnp.arange(chunks), cnn_sequence)
         attention_mask = (
-            (chunk_ids[:, None] == chunk_ids[None, :]) & valid[:, None] & valid[None, :]
-        )[None, None]
+            after_cnn_valid[:, None, :, None] & after_cnn_valid[:, None, None, :]
+        )
 
         def apply_layer(carry, layer):
             output = layer(
@@ -373,7 +375,8 @@ class Qwen2_5OmniAudioTower(eqx.Module):
             raise ValueError("pool_indices must have shape [token, 2]")
         if pool_valid.shape != (pool_indices.shape[0],):
             raise ValueError("pool_valid must align with pool_indices")
-        pooled = jnp.mean(hidden[pool_indices], axis=1)
+        flattened = hidden.reshape((-1, self.config.hidden_size))
+        pooled = jnp.mean(flattened[pool_indices], axis=1)
         projected = self.projection(self.final_norm(pooled))
         return jnp.where(pool_valid[:, None], projected, 0)
 

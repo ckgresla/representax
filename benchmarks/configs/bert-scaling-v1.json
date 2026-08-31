@@ -1,0 +1,66 @@
+{
+  "schema_version": "representax-bert-scaling-v1",
+  "family": "bert",
+  "study": "dense-retrieval-scaling",
+  "shared": {
+    "vocab_size": 30522,
+    "max_position_embeddings": 512,
+    "type_vocab_size": 2,
+    "hidden_activation": "gelu",
+    "hidden_dropout_probability": 0.1,
+    "attention_dropout_probability": 0.1,
+    "norm_epsilon": 1e-12,
+    "initializer_range": 0.02,
+    "pad_token_id": 0,
+    "head_dimension": 64,
+    "intermediate_multiplier": 4
+  },
+  "sizes": [
+    {
+      "name": "bert-30m",
+      "target_parameters": 30000000,
+      "expected_parameters": 29811072,
+      "hidden_size": 384,
+      "intermediate_size": 1536,
+      "num_hidden_layers": 10,
+      "num_attention_heads": 6
+    },
+    {
+      "name": "bert-110m",
+      "target_parameters": 110000000,
+      "expected_parameters": 109482240,
+      "hidden_size": 768,
+      "intermediate_size": 3072,
+      "num_hidden_layers": 12,
+      "num_attention_heads": 12
+    },
+    {
+      "name": "bert-500m",
+      "target_parameters": 500000000,
+      "expected_parameters": 486296576,
+      "hidden_size": 1024,
+      "intermediate_size": 4096,
+      "num_hidden_layers": 36,
+      "num_attention_heads": 16
+    },
+    {
+      "name": "bert-1b",
+      "target_parameters": 1000000000,
+      "expected_parameters": 985885440,
+      "hidden_size": 1280,
+      "intermediate_size": 5120,
+      "num_hidden_layers": 48,
+      "num_attention_heads": 20
+    },
+    {
+      "name": "bert-4b",
+      "target_parameters": 4000000000,
+      "expected_parameters": 4177190400,
+      "hidden_size": 2560,
+      "intermediate_size": 10240,
+      "num_hidden_layers": 52,
+      "num_attention_heads": 40,
+      "admission_gate": "bert-1b-pilot-feasible"
+    }
+  ]
+}

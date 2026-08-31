@@ -60,6 +60,8 @@ class OrbaxCheckpointer(Protocol):
         abstract_checkpointables: dict[str, Any] | None = None,
     ) -> dict[str, Any]: ...
 
+    def checkpointables_metadata(self, step: int | None = None) -> Any: ...
+
     def close(self) -> None: ...
 
 
@@ -146,25 +148,6 @@ def scientific_fingerprint(job: JobConfig) -> str:
     return _fingerprint(job.parameters(ParameterRole.SCIENTIFIC))
 
 
-def tree_structure_fingerprint(tree: PyTree) -> str:
-    """Fingerprint paths, shapes, dtypes, and static PyTree structure."""
-
-    leaves, structure = jax.tree.flatten(tree)
-    return _fingerprint(
-        {
-            "structure": str(structure),
-            "leaves": [
-                {
-                    "type": type(leaf).__qualname__,
-                    "shape": tuple(getattr(leaf, "shape", ())),
-                    "dtype": str(getattr(leaf, "dtype", "")),
-                }
-                for leaf in leaves
-            ],
-        }
-    )
-
-
 def training_checkpointables(
     *,
     state: TrainState,
@@ -228,6 +211,31 @@ def abstract_pytree(tree: PyTree) -> PyTree:
         return value
 
     return jax.tree.map(abstract_leaf, tree)
+
+
+def _array_structure(tree: PyTree) -> dict[tuple[str | int, ...], tuple[Any, str]]:
+    """Describe array paths from either a live tree or Orbax metadata."""
+
+    def path_component(component: Any) -> str | int:
+        if hasattr(component, "key"):
+            return str(component.key)
+        if hasattr(component, "name"):
+            return str(component.name)
+        if hasattr(component, "idx"):
+            return int(component.idx)
+        return str(component)
+
+    structure = {}
+    for path, leaf in jax.tree_util.tree_flatten_with_path(tree)[0]:
+        shape = getattr(leaf, "shape", None)
+        dtype = getattr(leaf, "dtype", None)
+        if shape is None or dtype is None:
+            continue
+        structure[tuple(path_component(item) for item in path)] = (
+            tuple(shape),
+            str(dtype),
+        )
+    return structure
 
 
 def _atomic_write_text(path: Path, text: str) -> None:
@@ -432,10 +440,6 @@ class CheckpointManager:
             "scientific_fingerprint": self.scientific_fingerprint,
             "data_fingerprint": self.data_fingerprint,
             "checkpointables": sorted(checkpointables),
-            "structure_fingerprints": {
-                name: tree_structure_fingerprint(value)
-                for name, value in sorted(checkpointables.items())
-            },
             "metrics": None if metrics is None else _json_value(metrics),
         }
 
@@ -732,15 +736,13 @@ class CheckpointManager:
                 "restore keys must be a non-empty checkpoint subset; "
                 f"requested={sorted(requested)}, available={sorted(available)}"
             )
-        recorded_structures = record.manifest.get("structure_fingerprints")
-        if not isinstance(recorded_structures, Mapping):
-            raise IncompleteCheckpointError(
-                f"checkpoint structure fingerprints are missing: {record.path}"
-            )
+        stored = self._checkpointer.checkpointables_metadata(record.iteration).metadata
         for name, value in checkpointables_like.items():
-            if name == "progress":
+            if name in {"progress", "rng"}:
                 continue
-            if recorded_structures.get(name) != tree_structure_fingerprint(value):
+            if name not in stored or _array_structure(stored[name]) != _array_structure(
+                value
+            ):
                 raise IncompleteCheckpointError(
                     f"restore template structure differs for {name}: {record.path}"
                 )

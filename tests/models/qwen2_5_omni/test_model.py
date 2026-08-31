@@ -21,7 +21,8 @@ from representax.models.qwen2_5_omni import (
     vision_layout,
 )
 from representax.tasks.pairwise import CosineRegressionTask, pairwise_batch
-from representax.train import build_train_step, init_train_state
+from representax.tasks.retrieval import MNRTask, retrieval_batch
+from representax.train import GradCache, build_train_step, init_train_state
 
 
 def tiny_config() -> Qwen2_5OmniConfig:
@@ -134,13 +135,82 @@ def test_audio_layout_preserves_exact_pool_pairs_across_chunks() -> None:
         chunk_count_buckets=(2,),
         token_count_buckets=(4,),
     )
-    assert layout["input_features"].shape == (2, 4, 8)
+    assert layout["input_features"].shape == (1, 2, 4, 8)
     assert layout["after_cnn_valid"].sum() == 7
     np.testing.assert_array_equal(
-        layout["pool_indices"][:3],
+        layout["pool_indices"][0, :3],
         np.asarray(((0, 1), (2, 3), (4, 5))),
     )
-    assert layout["token_valid"].tolist() == [True, True, True, False]
+    assert layout["token_valid"][0].tolist() == [True, True, True, False]
+
+
+def test_audio_batch_is_row_major_and_grad_cache_matches_direct_update() -> None:
+    config = tiny_config()
+    audio_features = np.arange(2 * 4 * 13, dtype=np.float32).reshape((2, 4, 13)) / 100
+    audio_mask = np.ones((2, 13), dtype=np.int32)
+    audio_mask[1, 9:] = 0
+    queries = batch_from_processor_output(
+        {
+            "input_ids": np.asarray(
+                (
+                    (8, 6, 3, 3, 3, 7, 9),
+                    (8, 6, 3, 3, 7, 9, 0),
+                )
+            ),
+            "attention_mask": np.asarray(
+                ((1, 1, 1, 1, 1, 1, 1), (1, 1, 1, 1, 1, 1, 0))
+            ),
+            "input_features": audio_features,
+            "feature_attention_mask": audio_mask,
+        },
+        config,
+        sequence_length_buckets=(8,),
+        patch_count_buckets=(16,),
+        audio_chunk_count_buckets=(2,),
+        audio_token_count_buckets=(4,),
+    )
+    documents = batch_from_processor_output(
+        {
+            "input_ids": np.asarray(((8, 10, 9), (8, 11, 9))),
+            "attention_mask": np.ones((2, 3), dtype=np.int32),
+        },
+        config,
+        sequence_length_buckets=(8,),
+        patch_count_buckets=(16,),
+        audio_chunk_count_buckets=(2,),
+        audio_token_count_buckets=(4,),
+    )
+    assert all(
+        leaf.shape[0] == 2 for leaf in jax.tree.leaves(queries) if eqx.is_array(leaf)
+    )
+
+    model = Qwen2_5OmniEncoder.init(
+        config,
+        key=jax.random.key(31),
+        rematerialization="none",
+    )
+    optimizer = optax.adamw(1e-3)
+    state = init_train_state(model, optimizer)
+    batch = retrieval_batch(
+        query=queries,
+        document=documents,
+        positive_mask=np.eye(2, dtype=np.bool_),
+    )
+    task = MNRTask(scale=7.0)
+    direct = build_train_step(task, optimizer, donate_state=False)
+    cached = build_train_step(
+        task,
+        optimizer,
+        execution=GradCache(query_chunk_size=1, document_chunk_size=1),
+        donate_state=False,
+    )
+    expected = direct(state, batch, None)
+    actual = cached(state, batch, None)
+    for actual_leaf, expected_leaf in zip(
+        jax.tree.leaves(actual), jax.tree.leaves(expected), strict=True
+    ):
+        if eqx.is_array(actual_leaf):
+            np.testing.assert_allclose(actual_leaf, expected_leaf, rtol=1e-4, atol=1e-5)
 
 
 def test_checkpoint_state_dict_round_trip_is_exact() -> None:

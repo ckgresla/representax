@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import inspect
+import time
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from functools import partial
 from importlib import import_module
 from pathlib import Path
@@ -26,6 +27,7 @@ from representax.config import (
     JEPAEvaluatorConfig,
     JEPARepresentationEvaluatorConfig,
     JobConfig,
+    LoRAConfig,
     ModelConfig,
     MSEEvaluatorConfig,
     PairClassificationEvaluatorConfig,
@@ -54,7 +56,7 @@ from representax.evaluation import (
     SimilarityEvaluator,
     TripletEvaluator,
 )
-from representax.models import apply_quantized_lora, lora_parameter_filter
+from representax.models import apply_lora, apply_quantized_lora, lora_parameter_filter
 from representax.models.processing import Processor
 from representax.precision import resolve_precision_policy
 from representax.tasks import build_task
@@ -144,14 +146,20 @@ def load_model(
 def prepare_model(
     model: eqx.Module,
     *,
-    adapter: QuantizedLoRAConfig | None,
+    adapter: QuantizedLoRAConfig | LoRAConfig | None,
     key: Any,
 ) -> tuple[eqx.Module, Any]:
     """Apply one scientific adapter recipe and return its trainable filter."""
 
     if adapter is None:
+        training_filter = getattr(model, "training_filter", None)
+        if callable(training_filter):
+            return model, training_filter()
         return model, eqx.is_inexact_array
-    adapted = apply_quantized_lora(
+    apply = (
+        apply_quantized_lora if isinstance(adapter, QuantizedLoRAConfig) else apply_lora
+    )
+    adapted = apply(
         model,
         rank=adapter.rank,
         alpha=adapter.alpha,
@@ -196,6 +204,7 @@ def build_batches(
     resolvers: Mapping[str, ArtifactResolver] | None = None,
     mappers: Mapping[str, Callable[[Any], Any]] | None = None,
     processor: Processor | None = None,
+    measure_training_tokens: bool = False,
 ) -> Any:
     """Materialize one reproducible Grain batch source from its data config."""
 
@@ -207,6 +216,7 @@ def build_batches(
         num_threads=config.num_threads,
         prefetch_buffer_size=config.prefetch_buffer_size,
         host_memory_budget_bytes=config.host_memory_budget_bytes,
+        measure_training_tokens=measure_training_tokens,
         resolvers=resolvers,
         mappers=mappers,
     )
@@ -217,11 +227,14 @@ class JobRuntime:
     """Fully constructed runtime boundary consumed by ``run_training``."""
 
     state: TrainState
+    processor: Processor | None
     step: TrainStep
     batches: Any
     evaluation_runners: tuple[EvaluationRunner, ...]
     evaluation_batches: Callable[[], Any] | None
+    place_state: Callable[[TrainState], TrainState]
     place_batch: Callable[[Any], Any]
+    startup_metrics: Mapping[str, float]
 
 
 def build_job_runtime(
@@ -229,21 +242,35 @@ def build_job_runtime(
     *,
     resolvers: Mapping[str, ArtifactResolver] | None = None,
     mappers: Mapping[str, Callable[[Any], Any]] | None = None,
+    place_initial_state: bool = True,
 ) -> JobRuntime:
     """Build every live JAX, Optax, task, and Grain object from one JobConfig."""
 
+    startup_started = time.perf_counter()
+    startup_metrics: dict[str, float] = {}
     key = jax.random.key(job.training.seed)
+    phase_started = time.perf_counter()
     model, processor = load_model(
         job.model,
         key=jax.random.fold_in(key, 0),
         activation_rematerialization=job.training.activation_rematerialization,
     )
+    startup_metrics["perf/model_load_seconds"] = time.perf_counter() - phase_started
+    phase_started = time.perf_counter()
     model, trainable_filter = prepare_model(
         model,
         adapter=job.training.adapter,
         key=jax.random.fold_in(key, 1),
     )
+    startup_metrics["perf/adapter_preparation_seconds"] = (
+        time.perf_counter() - phase_started
+    )
+    phase_started = time.perf_counter()
     task = build_task(job.task, job.loss, modifiers=job.loss_modifiers)
+    startup_metrics["perf/task_initialization_seconds"] = (
+        time.perf_counter() - phase_started
+    )
+    phase_started = time.perf_counter()
     optimizer = build_optimizer(job.optimization)
     execution = build_loss_execution(
         job.training.grad_cache,
@@ -256,12 +283,22 @@ def build_job_runtime(
         precision=precision,
         trainable_filter=trainable_filter,
     )
+    startup_metrics["perf/optimizer_initialization_seconds"] = (
+        time.perf_counter() - phase_started
+    )
+    phase_started = time.perf_counter()
     mesh_size = job.training.mesh.device_count
     if mesh_size > len(jax.devices()):
         raise ValueError(
             f"job mesh requires {mesh_size} devices; only {len(jax.devices())} visible"
         )
     plan: ShardingPlan | None = None
+    device = jax.devices()[0]
+
+    def place_single_device_state(value: TrainState) -> TrainState:
+        return jax.device_put(value, device)
+
+    place_state: Callable[[TrainState], TrainState] = place_single_device_state
     place_batch = jax.device_put
     if mesh_size == 1:
         if job.training.grad_cache is None and job.training.mega_batch_mining is None:
@@ -274,6 +311,8 @@ def build_job_runtime(
                     "direct execution batch plan differs from global_batch_size: "
                     f"{realized_batch_size} != {job.training.global_batch_size}"
                 )
+        if place_initial_state:
+            state = place_state(state)
     else:
         mesh = jax.make_mesh(
             job.training.mesh.axis_shapes,
@@ -334,8 +373,14 @@ def build_job_runtime(
                 "distributed batch plan differs from global_batch_size: "
                 f"{realized_batch_size} != {job.training.global_batch_size}"
             )
-        state = plan.place_state(state)
+        if place_initial_state:
+            state = plan.place_state(state)
+        place_state = plan.place_state
         place_batch = plan.place_batch
+    startup_metrics["perf/sharding_initialization_seconds"] = (
+        time.perf_counter() - phase_started
+    )
+    phase_started = time.perf_counter()
     step = build_train_step(
         task,
         optimizer,
@@ -347,13 +392,22 @@ def build_job_runtime(
         precision=precision,
         trainable_filter=trainable_filter,
     )
+    startup_metrics["perf/train_step_initialization_seconds"] = (
+        time.perf_counter() - phase_started
+    )
+    phase_started = time.perf_counter()
     batches = build_batches(
         job.data,
         batch_size=job.training.global_batch_size,
         resolvers=resolvers,
         mappers=mappers,
         processor=processor,
+        measure_training_tokens=job.logging.timing,
     )
+    startup_metrics["perf/data_loader_initialization_seconds"] = (
+        time.perf_counter() - phase_started
+    )
+    phase_started = time.perf_counter()
     if job.evaluation is None:
         evaluation_runners: tuple[EvaluationRunner, ...] = ()
         evaluation_batches = None
@@ -477,13 +531,21 @@ def build_job_runtime(
                 processor=processor,
             )
 
+    startup_metrics["perf/evaluation_initialization_seconds"] = (
+        time.perf_counter() - phase_started
+    )
+    startup_metrics["perf/startup_seconds"] = time.perf_counter() - startup_started
+
     return JobRuntime(
         state=state,
+        processor=processor,
         step=step,
         batches=batches,
         evaluation_runners=evaluation_runners,
         evaluation_batches=evaluation_batches,
+        place_state=place_state,
         place_batch=place_batch,
+        startup_metrics=startup_metrics,
     )
 
 
@@ -495,10 +557,16 @@ def run_job(
     reporters: tuple[Any, ...] = (),
     resolvers: Mapping[str, ArtifactResolver] | None = None,
     mappers: Mapping[str, Callable[[Any], Any]] | None = None,
+    stop_after: int | None = None,
 ) -> TrainingRunResult:
     """Execute one validated configuration from artifacts to inference model."""
 
-    runtime = build_job_runtime(job, resolvers=resolvers, mappers=mappers)
+    runtime = build_job_runtime(
+        job,
+        resolvers=resolvers,
+        mappers=mappers,
+        place_initial_state=not resume,
+    )
     configured_reporters = list(reporters)
     if job.logging.wandb is not None:
         configured_reporters.append(
@@ -517,24 +585,14 @@ def run_job(
         run_directory=run_directory,
         resume=resume,
         reporters=tuple(configured_reporters),
+        place_state=runtime.place_state,
         place_batch=runtime.place_batch,
         evaluation_runners=runtime.evaluation_runners,
         evaluation_batches=runtime.evaluation_batches,
+        startup_metrics=runtime.startup_metrics,
+        export_inference=job.export.enabled,
+        stop_after=stop_after,
     )
-    if job.export.enabled:
-        from representax.export import export_inference_bundle
-
-        bundle = export_inference_bundle(
-            result.selected_model,
-            job,
-            result.run_directory / job.export.directory_name,
-            iteration=(
-                result.best_iteration
-                if job.export.selection == "best"
-                else result.completed_iterations
-            ),
-        )
-        result = replace(result, inference_bundle=bundle.path)
     return result
 
 

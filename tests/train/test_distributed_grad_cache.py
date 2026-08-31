@@ -45,11 +45,11 @@ from representax.train import (
     Direct,
     GradCache,
     ShardingPlan,
-    build_job_runtime,
     build_train_step,
     init_train_state,
     training_checkpointables,
 )
+from representax.train.job import build_job_runtime
 from tests.train.toy_retrieval import (
     TOY_BATCH_SIZE,
     identity,

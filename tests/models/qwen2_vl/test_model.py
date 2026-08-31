@@ -12,6 +12,7 @@ import pytest
 
 from representax.core import Route
 from representax.models import Linear
+from representax.models.adapters import LoRALinear
 from representax.models.qwen2_5_omni.config import Qwen2_5OmniTextConfig
 from representax.models.qwen2_vl import (
     Qwen2VLBatch,
@@ -191,6 +192,37 @@ def test_nomic_export_is_one_full_checkpoint_not_a_stale_peft_adapter(tmp_path):
     restored = adapter.load(target, parameter_dtype=jnp.float32)
     for name, value in adapter.state_dict(model).items():
         np.testing.assert_array_equal(adapter.state_dict(restored)[name], value)
+
+
+def test_imported_lora_model_trains_only_adapter_parameters():
+    model = Qwen2VLEncoder.init(tiny_config(), key=jax.random.key(43))
+    base = model.text.layers.blocks.query
+    adapted = LoRALinear(
+        weight=base.weight,
+        bias=base.bias,
+        lora_a=jnp.zeros((*base.weight.shape[:-2], 2, base.weight.shape[-1])),
+        lora_b=jnp.zeros((*base.weight.shape[:-2], base.weight.shape[-2], 2)),
+        rank=2,
+        alpha=4.0,
+        weight_layout=base.weight_layout,
+    )
+    model = eqx.tree_at(
+        lambda candidate: candidate.text.layers.blocks.query,
+        model,
+        adapted,
+    )
+
+    selected = model.training_filter()
+    selected_paths = {
+        jax.tree_util.keystr(path)
+        for path, value in jax.tree_util.tree_flatten_with_path(selected)[0]
+        if value
+    }
+
+    assert selected_paths == {
+        ".text.layers.blocks.query.lora_a",
+        ".text.layers.blocks.query.lora_b",
+    }
 
 
 def test_jina_reranker_checkpoint_round_trip_preserves_scoring_head(tmp_path):

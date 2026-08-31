@@ -90,7 +90,16 @@ make_train_state = init_train_state
 TrainStep = Callable[[TrainState, Any, PRNGKeyArray | None], StepResult]
 
 
-def _validate_accumulation_batch(batch: Any, steps: int) -> None:
+def _validate_accumulation_batch(batch: Any, steps: int, *, task: Any) -> None:
+    batch_size_for_accumulation = getattr(task, "accumulation_batch_size", None)
+    if callable(batch_size_for_accumulation):
+        batch_size = int(batch_size_for_accumulation(batch))
+        if batch_size % steps != 0:
+            raise ValueError(
+                "logical batch size must be divisible by "
+                f"gradient_accumulation_steps: {batch_size} % {steps} != 0"
+            )
+        return
     arrays = [leaf for leaf in jax.tree.leaves(batch) if eqx.is_array(leaf)]
     if not arrays:
         raise TypeError("gradient accumulation requires an array batch")
@@ -128,6 +137,7 @@ def _build_train_step_body(
     execution: LossExecution | None = None,
     context: ExecutionContext = _LOCAL_EXECUTION_CONTEXT,
     gradient_accumulation_steps: int = 1,
+    accumulation_split_sharding: Any | None = None,
     precision: PrecisionPolicy = FP32_POLICY,
     trainable_filter: Any = eqx.is_inexact_array,
 ) -> TrainStep:
@@ -151,6 +161,14 @@ def _build_train_step_body(
         "accumulation_metric_reductions",
         None,
     )
+    accumulation_loss_reduction = getattr(
+        task,
+        "accumulation_loss_reduction",
+        "mean",
+    )
+    if accumulation_loss_reduction not in {"mean", "sum"}:
+        raise ValueError("accumulation loss reduction must be 'mean' or 'sum'")
+    accumulation_microbatch = getattr(task, "accumulation_microbatch", None)
     if gradient_accumulation_steps > 1 and not callable(accumulation_weight):
         raise TypeError(
             "gradient accumulation requires a task with accumulation_weight(batch)"
@@ -166,11 +184,12 @@ def _build_train_step_body(
         invalid_reductions = {
             name: reduction
             for name, reduction in accumulation_metric_reductions.items()
-            if reduction not in {"mean", "sum"}
+            if reduction not in {"mean", "sum", "root_mean_square"}
         }
         if invalid_reductions:
             raise ValueError(
-                "accumulation metric reductions must be 'mean' or 'sum': "
+                "accumulation metric reductions must be 'mean', 'sum', or "
+                "'root_mean_square': "
                 f"{invalid_reductions}"
             )
     metric_reductions = (
@@ -253,17 +272,35 @@ def _build_train_step_body(
         if gradient_accumulation_steps == 1:
             (loss, task_metrics), gradients = differentiated_loss(batch, key)
         else:
-            split_arrays, batch_static = _split_batch_arrays(
-                batch,
-                gradient_accumulation_steps,
-            )
+            if callable(accumulation_microbatch):
+                split_arrays = batch_static = None
+            else:
+                split_arrays, batch_static = _split_batch_arrays(
+                    batch,
+                    gradient_accumulation_steps,
+                )
+                if accumulation_split_sharding is not None:
+                    split_arrays = jax.tree.map(
+                        lambda value: jax.reshard(
+                            value,
+                            accumulation_split_sharding,
+                        ),
+                        split_arrays,
+                    )
 
             def evaluate_microbatch(index: Array) -> tuple[Any, Any, Array]:
-                microbatch_arrays = jax.tree.map(
-                    lambda leaf: leaf[index],
-                    split_arrays,
-                )
-                microbatch = eqx.combine(microbatch_arrays, batch_static)
+                if callable(accumulation_microbatch):
+                    microbatch = accumulation_microbatch(
+                        batch,
+                        index,
+                        gradient_accumulation_steps,
+                    )
+                else:
+                    microbatch_arrays = jax.tree.map(
+                        lambda leaf: leaf[index],
+                        split_arrays,
+                    )
+                    microbatch = eqx.combine(microbatch_arrays, batch_static)
                 microbatch_key = None if key is None else jax.random.fold_in(key, index)
                 loss_and_metrics, gradients = differentiated_loss(
                     microbatch,
@@ -283,6 +320,11 @@ def _build_train_step_body(
                 first_weight,
             ) = evaluate_microbatch(jnp.asarray(0, dtype=jnp.int32))
             first_loss, first_metrics = first_loss_and_metrics
+            first_loss_weight = (
+                jnp.asarray(1.0, dtype=jnp.float32)
+                if accumulation_loss_reduction == "sum"
+                else first_weight
+            )
             unknown_metrics = set(first_metrics) - set(metric_reductions)
             if unknown_metrics:
                 raise ValueError(
@@ -290,18 +332,22 @@ def _build_train_step_body(
                     f"{sorted(unknown_metrics)}"
                 )
             first_loss_and_metrics = (
-                first_loss * first_weight,
+                first_loss * first_loss_weight,
                 {
                     name: (
                         value
                         if metric_reductions[name] == "sum"
-                        else value * first_weight
+                        else (
+                            jnp.square(value) * first_weight
+                            if metric_reductions[name] == "root_mean_square"
+                            else value * first_weight
+                        )
                     )
                     for name, value in first_metrics.items()
                 },
             )
             first_gradients = jax.tree.map(
-                lambda value: value * first_weight,
+                lambda value: value * first_loss_weight,
                 first_gradients,
             )
 
@@ -314,21 +360,30 @@ def _build_train_step_body(
                     microbatch_gradients,
                     weight,
                 ) = evaluate_microbatch(index)
+                loss_weight = (
+                    jnp.asarray(1.0, dtype=jnp.float32)
+                    if accumulation_loss_reduction == "sum"
+                    else weight
+                )
                 return (
                     (
                         (
-                            totals[0][0] + microbatch_loss * weight,
+                            totals[0][0] + microbatch_loss * loss_weight,
                             {
                                 name: (
                                     totals[0][1][name] + value
                                     if metric_reductions[name] == "sum"
-                                    else totals[0][1][name] + value * weight
+                                    else (
+                                        totals[0][1][name] + jnp.square(value) * weight
+                                        if metric_reductions[name] == "root_mean_square"
+                                        else totals[0][1][name] + value * weight
+                                    )
                                 )
                                 for name, value in microbatch_metrics.items()
                             },
                         ),
                         jax.tree.map(
-                            lambda total, value: total + value * weight,
+                            lambda total, value: total + value * loss_weight,
                             totals[1],
                             microbatch_gradients,
                         ),
@@ -344,19 +399,28 @@ def _build_train_step_body(
             )
             reciprocal_weight = jnp.reciprocal(jnp.maximum(total_weight, 1.0))
             loss_total, metric_totals = loss_and_metrics
-            loss = loss_total * reciprocal_weight
+            loss = (
+                loss_total
+                if accumulation_loss_reduction == "sum"
+                else loss_total * reciprocal_weight
+            )
             task_metrics = {
                 name: (
                     value
                     if metric_reductions[name] == "sum"
-                    else value * reciprocal_weight
+                    else (
+                        jnp.sqrt(value * reciprocal_weight)
+                        if metric_reductions[name] == "root_mean_square"
+                        else value * reciprocal_weight
+                    )
                 )
                 for name, value in metric_totals.items()
             }
-            gradients = jax.tree.map(
-                lambda value: value * reciprocal_weight,
-                gradients,
-            )
+            if accumulation_loss_reduction == "mean":
+                gradients = jax.tree.map(
+                    lambda value: value * reciprocal_weight,
+                    gradients,
+                )
         gradient_norm = tree_global_norm(gradients)
         if max_grad_norm is None:
             clipped_gradients = gradients
@@ -399,6 +463,16 @@ def _build_train_step_body(
                 updates,
             )
             model = cast(eqx.Module, eqx.combine(trainable_model, frozen_model))
+        post_update_model = getattr(task, "post_update_model", None)
+        if callable(post_update_model):
+            model = cast(
+                eqx.Module,
+                post_update_model(
+                    state.model,
+                    model,
+                    step=state.step,
+                ),
+            )
         proposed_state = TrainState(
             model=model,
             optimizer_state=optimizer_state,
@@ -453,23 +527,34 @@ def build_train_step(
     """
 
     if plan is not None:
-        if gradient_accumulation_steps != 1:
-            raise NotImplementedError(
-                "distributed gradient accumulation is not implemented; use the "
-                "scientific global batch directly or exact GradCache"
-            )
         from .sharding import _build_train_step_from_sharding_plan
 
-        return _build_train_step_from_sharding_plan(
+        sharded_step = _build_train_step_from_sharding_plan(
             task,
             optimizer,
             plan,
             max_grad_norm=max_grad_norm,
             execution=Direct() if execution is None else execution,
             donate_state=donate_state,
+            gradient_accumulation_steps=gradient_accumulation_steps,
             precision=precision,
             trainable_filter=trainable_filter,
         )
+
+        def train_step(
+            state: TrainState,
+            batch: Any,
+            key: PRNGKeyArray | None = None,
+        ) -> StepResult:
+            if gradient_accumulation_steps > 1:
+                _validate_accumulation_batch(
+                    batch,
+                    gradient_accumulation_steps,
+                    task=task,
+                )
+            return sharded_step(state, batch, key)
+
+        return train_step
 
     train_step_body = _build_train_step_body(
         task,
@@ -496,7 +581,11 @@ def build_train_step(
         key: PRNGKeyArray | None = None,
     ) -> StepResult:
         if gradient_accumulation_steps > 1:
-            _validate_accumulation_batch(batch, gradient_accumulation_steps)
+            _validate_accumulation_batch(
+                batch,
+                gradient_accumulation_steps,
+                task=task,
+            )
         return compiled_step((batch, key), state)
 
     return train_step

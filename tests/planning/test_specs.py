@@ -234,6 +234,17 @@ def test_named_and_custom_sharding_configs_round_trip():
     )
 
 
+def test_fsdp_can_shard_parameters_without_a_data_axis():
+    training = _training(
+        mesh=MeshConfig(axis_shapes=(2,), axis_names=("model",)),
+        sharding=FSDPConfig(data_axis=None, parameter_axis="model"),
+    )
+
+    assert isinstance(training.sharding, FSDPConfig)
+    assert training.sharding.data_axis is None
+    assert training.sharding.resolved_parameter_axis == "model"
+
+
 def test_custom_sharding_rejects_invalid_rules():
     with pytest.raises(ValidationError, match="regular expression"):
         PartitionRuleConfig(pattern="[", axes=("model",))

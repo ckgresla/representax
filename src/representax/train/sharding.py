@@ -488,10 +488,12 @@ class ShardingPlan:
 
     @property
     def requires_internal_annotations(self) -> bool:
-        """Whether explicit inference or parameter shards need layout guidance."""
+        """Whether activation or parameter layouts need internal guidance."""
 
-        return self.has_sharded_parameters or any(
-            axis_type is AxisType.Explicit for axis_type in self.mesh.axis_types
+        return (
+            self.data_axis_name is not None
+            or self.has_sharded_parameters
+            or any(axis_type is AxisType.Explicit for axis_type in self.mesh.axis_types)
         )
 
 
@@ -503,6 +505,7 @@ def _build_train_step_from_sharding_plan(
     max_grad_norm: float | None = 1.0,
     execution: LossExecution,
     donate_state: bool = False,
+    gradient_accumulation_steps: int = 1,
     precision: PrecisionPolicy = FP32_POLICY,
     trainable_filter: Any = eqx.is_inexact_array,
 ) -> TrainStep:
@@ -519,6 +522,12 @@ def _build_train_step_from_sharding_plan(
         max_grad_norm=max_grad_norm,
         execution=execution,
         context=ExecutionContext(),
+        gradient_accumulation_steps=gradient_accumulation_steps,
+        accumulation_split_sharding=(
+            NamedSharding(plan.mesh, P(None, plan.data_axis_name))
+            if gradient_accumulation_steps > 1 and plan.data_axis_name is not None
+            else None
+        ),
         precision=precision,
         trainable_filter=trainable_filter,
     )

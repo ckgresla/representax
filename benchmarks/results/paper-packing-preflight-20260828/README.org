@@ -1,0 +1,33 @@
+#+title: Paper packing preflight
+
+* Decision
+
+Use ordinary sequence-length bucketing for the paper's text training jobs. Do
+not implement GradCache training packing on the paper critical path.
+
+The compile-stable packed MPNet run is scientifically correct and 1.240x faster
+than fixed 256-token padding, but ordinary bucketing is 4.668x faster than fixed
+padding and 3.766x faster than packing. Bucketing averages 4,472 physical token
+slots per update versus 8,640 for the smallest fixed packed ABI that covers all
+64 batches.
+
+* Evidence
+
+All matched direct-MNR runs use all-mpnet-base-v2, the pinned MS MARCO shard,
+32 logical pairs, 64 updates, seed 7, BF16 compute, FP32 parameters, one RTX
+4090, and the JAX platform allocator. Initial NanoMSMARCO NDCG@10 is identical
+at 0.6370839903990788.
+
+The packed implementation resets MPNet positions and relative positions per
+segment, uses block-diagonal attention, and pools each logical segment in its
+original order. Real-checkpoint embeddings agree within 9.69e-8 maximum
+absolute error. Full MNR loss and parameter-gradient parity is covered by the
+focused MPNet test.
+
+The broad adaptive selector was rejected after producing 13 compiled training
+signatures in 13 updates. The accepted packed comparison uses one fixed query
+shape (11,64) and one fixed document shape (31,256).
+
+Canonical large artifacts and metrics are under
+=/raid/representax/paper-campaign-v1/preflight/packing/20260828/=. The compact
+machine-readable result is =summary.json= in this directory.

@@ -12,7 +12,7 @@ from jaxtyping import Array, Bool, Float, Int, PRNGKeyArray
 
 from representax.core import EncoderMetadata, Route
 
-from .components import Linear, l2_normalize
+from .components import Linear, l2_normalize, segment_mean_pool
 from .processing import Processor
 
 PoolingMode = Literal[
@@ -179,6 +179,11 @@ class SentenceBatch(eqx.Module):
     backbone_inputs: Any
     pooling_mask: Bool[Array, "batch sequence"] | Int[Array, "batch sequence"]
 
+    @property
+    def batch_size(self) -> int:
+        explicit = getattr(self.backbone_inputs, "batch_size", None)
+        return self.pooling_mask.shape[0] if explicit is None else explicit
+
 
 class SentenceEncoder(eqx.Module):
     """A token backbone plus serialized dense sentence modules."""
@@ -262,7 +267,22 @@ class SentenceEncoder(eqx.Module):
             attention_mask = getattr(inputs, "attention_mask", None)
         if attention_mask is None:
             raise TypeError("sentence inputs must expose attention_mask")
-        value = self.pooling(hidden_states(backbone_inputs, key=key), attention_mask)
+        hidden = hidden_states(backbone_inputs, key=key)
+        segment_ids = getattr(backbone_inputs, "segment_ids", None)
+        if segment_ids is None:
+            value = self.pooling(hidden, attention_mask)
+        else:
+            if self.pooling.modes != ("mean",):
+                raise TypeError("packed sentence inputs currently require mean pooling")
+            logical_batch_size = getattr(backbone_inputs, "logical_batch_size", None)
+            if logical_batch_size is None:
+                raise TypeError("packed sentence inputs require logical_batch_size")
+            value = segment_mean_pool(
+                hidden,
+                attention_mask,
+                segment_ids,
+                num_segments=logical_batch_size,
+            )
         for module in self.postprocessors:
             value = module(value)
         if self.truncate_dimension is not None:
@@ -291,7 +311,23 @@ class SentenceEncoder(eqx.Module):
         if attention_mask is None:
             raise TypeError("sentence inputs must expose attention_mask")
         hidden = layer_states(backbone_inputs, key=key)
-        value = jax.vmap(lambda state: self.pooling(state, attention_mask))(hidden)
+        segment_ids = getattr(backbone_inputs, "segment_ids", None)
+        if segment_ids is None:
+            value = jax.vmap(lambda state: self.pooling(state, attention_mask))(hidden)
+        else:
+            if self.pooling.modes != ("mean",):
+                raise TypeError("packed sentence inputs currently require mean pooling")
+            logical_batch_size = getattr(backbone_inputs, "logical_batch_size", None)
+            if logical_batch_size is None:
+                raise TypeError("packed sentence inputs require logical_batch_size")
+            value = jax.vmap(
+                lambda state: segment_mean_pool(
+                    state,
+                    attention_mask,
+                    segment_ids,
+                    num_segments=logical_batch_size,
+                )
+            )(hidden)
         for module in self.postprocessors:
             value = jax.vmap(module)(value)
         if self.truncate_dimension is not None:

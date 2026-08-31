@@ -1,7 +1,7 @@
 """Representax: task-general representation learning in JAX."""
 
 from . import data, evaluation, integrations, models, planning, tasks, train
-from .config import JobConfig, PrecisionConfig, QuantizedLoRAConfig
+from .config import JobConfig, LoRAConfig, PrecisionConfig, QuantizedLoRAConfig
 from .core import (
     BoundEncoder,
     Encoder,
@@ -24,6 +24,7 @@ __all__ = [
     "Encoder",
     "EncoderMetadata",
     "LossOutput",
+    "LoRAConfig",
     "Modality",
     "Processor",
     "PrecisionConfig",

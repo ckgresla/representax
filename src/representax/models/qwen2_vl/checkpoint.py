@@ -498,16 +498,15 @@ class Qwen2VLCheckpointAdapter:
                     a_name, b_name = lora + "A.weight", lora + "B.weight"
                     if a_name not in available or b_name not in available:
                         raise KeyError(f"Nomic adapter is missing {a_name} or {b_name}")
-                    # Preserve the requested runtime dtype. Sentence
-                    # Transformers casts these Nomic adapters with the BF16
-                    # backbone; LoRALinear still keeps the branch separate so
-                    # export can merge once in FP32 without erasing updates.
+                    # PEFT keeps adapter masters in FP32 even when the backbone
+                    # runs in BF16. This also keeps inference-bundle templates
+                    # identical to the updated training model.
                     with jax.default_device(jax.devices("cpu")[0]):
                         lora_a.append(
-                            jnp.asarray(handle.get_tensor(a_name), dtype=dtype)
+                            jnp.asarray(handle.get_tensor(a_name), dtype=jnp.float32)
                         )
                         lora_b.append(
-                            jnp.asarray(handle.get_tensor(b_name), dtype=dtype)
+                            jnp.asarray(handle.get_tensor(b_name), dtype=jnp.float32)
                         )
                 base = getattr(model.text.layers.blocks, attribute)
                 adapters[attribute] = LoRALinear(

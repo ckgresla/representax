@@ -1,5 +1,7 @@
 """Native explicit and in-batch-mined triplet contracts."""
 
+from typing import cast
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -222,3 +224,32 @@ def test_triplet_tasks_run_through_the_generic_compiled_train_step(task_kind):
     assert result.state.step == 1
     assert result.metrics.numeric_finite
     assert not result.metrics.skipped_update
+
+
+def test_explicit_triplet_accumulation_matches_the_full_batch() -> None:
+    examples = _examples()[:4]
+    batch = explicit_triplet_batch(
+        anchor=examples,
+        positive=examples + 0.1,
+        negative=examples[::-1],
+    )
+    task = ExplicitTripletTask(distance="cosine", margin=0.5)
+    model = DenseEncoder(4, 5, key=jax.random.key(23))
+    optimizer = optax.sgd(1e-2)
+    state = init_train_state(model, optimizer)
+
+    direct = build_train_step(task, optimizer, max_grad_norm=None)(state, batch, None)
+    accumulated = build_train_step(
+        task,
+        optimizer,
+        max_grad_norm=None,
+        gradient_accumulation_steps=2,
+    )(state, batch, None)
+
+    np.testing.assert_allclose(accumulated.metrics.loss, direct.metrics.loss, rtol=1e-6)
+    np.testing.assert_allclose(
+        cast(DenseEncoder, accumulated.state.model).projection.weight,
+        cast(DenseEncoder, direct.state.model).projection.weight,
+        rtol=2e-5,
+        atol=2e-6,
+    )

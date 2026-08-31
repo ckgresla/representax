@@ -206,6 +206,20 @@ class Qwen2VLEncoder(eqx.Module):
             pooled = pooled / jnp.maximum(jnp.sum(weights, axis=1, keepdims=True), 1)
         return l2_normalize(pooled)
 
+    def training_filter(self) -> Any:
+        """Train imported PEFT leaves, or all parameters for a full checkpoint."""
+
+        from representax.models.adapters import LoRALinear, lora_parameter_filter
+
+        has_lora = any(
+            isinstance(value, LoRALinear)
+            for value in jax.tree.leaves(
+                self,
+                is_leaf=lambda value: isinstance(value, LoRALinear),
+            )
+        )
+        return lora_parameter_filter(self) if has_lora else eqx.is_inexact_array
+
 
 class Qwen2VLReranker(eqx.Module):
     """Qwen2-VL pair scorer used by Jina reranker m0."""

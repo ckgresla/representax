@@ -8,9 +8,15 @@ from pathlib import Path
 
 import pytest
 from benchmarks.dense_retrieval import (
+    MODEL_SPECS,
     _aggregate,
+    _reference_steady_state_summary,
+    _representax_worker_flags,
+    _shared_worker_flags,
     _three_run_interval,
     _time_to_quality_summary,
+    _training_compile_summary,
+    _training_steady_state_summary,
 )
 
 
@@ -19,7 +25,7 @@ def _summary(seed: int, speedup: float) -> dict:
         "schema_version": "representax-dense-retrieval-comparison-v1",
         "contract": {"model": "tiny", "batch_size": 8, "seed": seed},
         "representax": {
-            "sustained_examples_per_second_after_first_step": 100.0 * speedup,
+            "steady_state_examples_per_second": 100.0 * speedup,
         },
         "sentence_transformers": {"amortized_examples_per_second": 100.0},
         "comparison": {
@@ -44,6 +50,135 @@ def test_three_run_interval_reports_student_t_confidence_bounds():
     assert interval["confidence_interval"] == pytest.approx(
         [-0.484137711719546, 4.484137711719546]
     )
+
+
+def test_pair_worker_flags_preserve_precision_and_telemetry():
+    arguments = argparse.Namespace(mixed_precision=True, telemetry=True)
+
+    assert _shared_worker_flags(arguments) == ["--mixed-precision", "--telemetry"]
+
+
+def test_pair_worker_flags_preserve_representax_sequence_buckets():
+    arguments = argparse.Namespace(sequence_length_bucket=[16, 32, 128])
+
+    assert _representax_worker_flags(arguments) == [
+        "--sequence-length-bucket",
+        "16",
+        "--sequence-length-bucket",
+        "32",
+        "--sequence-length-bucket",
+        "128",
+    ]
+
+
+def test_mpnet_mixed_precision_uses_a_metric_level_parity_tolerance():
+    assert MODEL_SPECS["mpnet"].initial_metric_tolerance == 5e-3
+
+
+def test_compile_summary_counts_every_executable_first_use(tmp_path):
+    run = tmp_path / "run"
+    run.mkdir()
+    rows = [
+        {
+            "metrics": {
+                "perf/compilation_and_first_step_seconds": duration,
+            }
+        }
+        for duration in (3.0, 5.0, 7.0)
+    ]
+    (run / "metrics.jsonl").write_text("".join(json.dumps(row) + "\n" for row in rows))
+
+    assert _training_compile_summary(run) == (15.0, 3)
+
+
+def test_steady_state_summary_uses_completed_warm_steps(tmp_path):
+    run = tmp_path / "run"
+    run.mkdir()
+    rows = [
+        {
+            "event": "training_step",
+            "iteration": 1,
+            "metrics": {
+                "perf/compilation_and_first_step_seconds": 36.8,
+                "perf/examples": 2048,
+            },
+        },
+        {
+            "event": "training_step",
+            "iteration": 2,
+            "metrics": {
+                "perf/step_seconds": 8.4,
+                "perf/examples": 2048,
+            },
+        },
+        {
+            "event": "evaluation",
+            "iteration": 2,
+            "metrics": {
+                "perf/step_seconds": 2.0,
+                "perf/examples": 100,
+            },
+        },
+        {
+            "event": "training_step",
+            "iteration": 3,
+            "metrics": {
+                "perf/step_seconds": 8.2,
+                "perf/examples": 2048,
+            },
+        },
+        {
+            "event": "training_step",
+            "iteration": 4,
+            "metrics": {
+                "perf/compilation_and_first_step_seconds": 8.3,
+                "perf/step_seconds": 8.3,
+                "perf/examples": 2048,
+            },
+        },
+    ]
+    (run / "metrics.jsonl").write_text("".join(json.dumps(row) + "\n" for row in rows))
+
+    assert _training_steady_state_summary(run) == pytest.approx((16.6, 2, 4096))
+
+
+def test_reference_steady_state_summary_excludes_framework_warmup(tmp_path):
+    run = tmp_path / "run"
+    run.mkdir()
+    rows = [
+        {
+            "event": "training_step",
+            "iteration": iteration,
+            "metrics": {
+                "perf/step_seconds": duration,
+                "perf/examples": 32,
+            },
+        }
+        for iteration, duration in ((1, 0.6), (2, 0.2), (3, 0.21))
+    ]
+    (run / "metrics.jsonl").write_text("".join(json.dumps(row) + "\n" for row in rows))
+
+    assert _reference_steady_state_summary(run) == pytest.approx((0.41, 2, 64))
+
+
+def test_reference_steady_state_summary_excludes_delayed_compilation(tmp_path):
+    run = tmp_path / "run"
+    run.mkdir()
+    durations = (1.5, 0.7, 0.6, 0.5, 0.2, 0.21, 0.19, 0.2, 0.2)
+    rows = [
+        {
+            "event": "training_step",
+            "iteration": iteration,
+            "metrics": {
+                "perf/step_seconds": duration,
+                "perf/examples": 32,
+            },
+        }
+        for iteration, duration in enumerate(durations, start=1)
+    ]
+    (run / "metrics.jsonl").write_text("".join(json.dumps(row) + "\n" for row in rows))
+
+    assert _reference_steady_state_summary(run) == pytest.approx((0.8, 4, 128))
 
 
 def test_dense_retrieval_aggregate_sorts_and_fingerprints_three_seeds(tmp_path):

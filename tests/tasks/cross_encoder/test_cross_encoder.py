@@ -1,5 +1,7 @@
 """Fast contracts for scorer tasks and their registered construction."""
 
+from typing import cast
+
 import equinox as eqx
 import jax
 import jax.numpy as jnp
@@ -232,20 +234,29 @@ def test_pairwise_margin_matches_direct_difference() -> None:
 @pytest.mark.parametrize(
     "task",
     (
+        PointwiseScoringTask(objective="binary_cross_entropy"),
+        PointwiseScoringTask(objective="cross_entropy"),
         PointwiseScoringTask(objective="mse"),
+        ListwiseScoringTask(objective="ranknet"),
+        ListwiseScoringTask(objective="lambda"),
         ListwiseScoringTask(objective="listnet"),
         ListwiseScoringTask(objective="list_mle"),
     ),
 )
 def test_exact_gradient_accumulation_matches_one_full_batch(task) -> None:
-    model = _scorer()
+    model = _scorer(3 if getattr(task, "objective", None) == "cross_entropy" else 1)
     optimizer = optax.sgd(learning_rate=3e-3)
     state = init_train_state(model, optimizer)
     values = jnp.arange(4 * 3 * 3, dtype=jnp.float32).reshape(4, 3, 3) / 20
     if isinstance(task, PointwiseScoringTask):
+        labels = {
+            "binary_cross_entropy": jnp.asarray((0.0, 1.0, 1.0, 0.0)),
+            "cross_entropy": jnp.asarray((0, 1, 2, 1), dtype=jnp.int32),
+            "mse": jnp.asarray((0.2, -0.3, 0.7, 0.1)),
+        }[task.objective]
         batch = PointwiseBatch(
             inputs=_Inputs(values[:, 0]),
-            labels=jnp.asarray((0.2, -0.3, 0.7, 0.1)),
+            labels=labels,
             valid=jnp.asarray((True, True, True, False)),
         )
     else:
@@ -284,16 +295,72 @@ def test_exact_gradient_accumulation_matches_one_full_batch(task) -> None:
             np.testing.assert_allclose(actual, expected, rtol=2e-5, atol=2e-6)
 
 
+def test_margin_mse_accumulation_matches_one_full_batch() -> None:
+    model = _scorer()
+    optimizer = optax.sgd(learning_rate=3e-3)
+    state = init_train_state(model, optimizer)
+    values = jnp.arange(4 * 3, dtype=jnp.float32).reshape(4, 3) / 20
+    batch = PairwiseRankingBatch(
+        positive=_Inputs(values + 0.2),
+        negative=_Inputs(values - 0.1),
+        margins=jnp.asarray((0.4, 0.2, -0.1, 0.3)),
+        valid=jnp.asarray((True, True, False, True)),
+    )
+    task = build_task(PairwiseRankingConfig(), MarginMSEConfig())
+
+    direct = build_train_step(task, optimizer, max_grad_norm=None)(state, batch, None)
+    accumulated = build_train_step(
+        task,
+        optimizer,
+        max_grad_norm=None,
+        gradient_accumulation_steps=2,
+    )(state, batch, None)
+
+    np.testing.assert_allclose(accumulated.metrics.loss, direct.metrics.loss, rtol=1e-6)
+    np.testing.assert_allclose(
+        cast(_Scorer, accumulated.state.model).weight,
+        cast(_Scorer, direct.state.model).weight,
+        rtol=2e-5,
+        atol=2e-6,
+    )
+
+
 @pytest.mark.parametrize("objective", ("ranknet", "lambda"))
-def test_order_dependent_listwise_losses_reject_gradient_accumulation(
-    objective,
-) -> None:
+def test_top_k_listwise_losses_reject_gradient_accumulation(objective) -> None:
     with pytest.raises(TypeError, match="does not support exact"):
         build_train_step(
-            ListwiseScoringTask(objective=objective),
+            ListwiseScoringTask(objective=objective, k=2),
             optax.sgd(1e-3),
             gradient_accumulation_steps=2,
         )
+
+
+def test_cross_mnr_accumulation_preserves_the_global_candidate_grid() -> None:
+    rows = [
+        {"query": f"q{index}", "positive": f"p{index}", "negatives": [f"n{index}"]}
+        for index in range(4)
+    ]
+    batch = CrossMNRCollator(processor=_processor(), hard_negatives_per_query=1)(rows)
+    task = CrossMNRTask()
+    model = _scorer()
+    optimizer = optax.sgd(learning_rate=3e-3)
+    state = init_train_state(model, optimizer)
+
+    direct = build_train_step(task, optimizer, max_grad_norm=None)(state, batch, None)
+    accumulated = build_train_step(
+        task,
+        optimizer,
+        max_grad_norm=None,
+        gradient_accumulation_steps=2,
+    )(state, batch, None)
+
+    np.testing.assert_allclose(accumulated.metrics.loss, direct.metrics.loss, rtol=1e-6)
+    np.testing.assert_allclose(
+        cast(_Scorer, accumulated.state.model).weight,
+        cast(_Scorer, direct.state.model).weight,
+        rtol=2e-5,
+        atol=2e-6,
+    )
 
 
 @pytest.mark.parametrize(

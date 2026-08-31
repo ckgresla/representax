@@ -12,6 +12,12 @@ from .model import (
     BertSelfAttention,
     BertTower,
 )
+from .scoring import BertScorer
+from .scoring_checkpoint import (
+    BertScorerCheckpointAdapter,
+    bert_scorer_weight_names,
+)
+from .scoring_loading import load_bert_scorer
 
 __all__ = [
     "BERT_MODEL_ID",
@@ -24,6 +30,10 @@ __all__ = [
     "BertLayerStack",
     "BertMLP",
     "BertSelfAttention",
+    "BertScorer",
+    "BertScorerCheckpointAdapter",
     "BertTower",
+    "bert_scorer_weight_names",
     "bert_weight_names",
+    "load_bert_scorer",
 ]

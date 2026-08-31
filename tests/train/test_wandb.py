@@ -40,6 +40,8 @@ class FakeWandb:
 
 def test_wandb_config_is_optional_and_serializable() -> None:
     assert LoggingConfig().wandb is None
+    assert LoggingConfig().timing is False
+    assert LoggingConfig().accelerator is False
     config = LoggingConfig(
         wandb=WandbConfig(
             project="representax",

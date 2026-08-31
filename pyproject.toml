@@ -75,8 +75,11 @@ static = [
 parity = [
     "accelerate>=1.1,<2",
     "colpali-engine==0.3.18",
+    "einops>=0.8,<1",
+    "ir-datasets==0.5.11",
     "peft==0.19.1",
     "sentence-transformers==5.6.1",
+    "timm>=1.0,<2",
     "torch>=2.5",
     "torchvision==0.28.0",
     "transformers==5.6.0",
@@ -134,12 +137,15 @@ include = [
     "tests/models/**/transformers_*.py",
     "tests/models/upstream.py",
     "tests/tasks/late_interaction_oracle.py",
+    "tests/tasks/vjepa2_1_oracle.py",
     "tests/models/late_interaction/gte_modern_colbert_oracle.py",
 ]
 
 [tool.ty.overrides.analysis]
 # Upstream parity programs load these optional reference runtimes dynamically.
 replace-imports-with-any = [
+    "app",
+    "app.**",
     "PIL",
     "PIL.**",
     "pylate",

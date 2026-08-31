@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import threading
+from dataclasses import replace
+from types import SimpleNamespace
 
 import equinox as eqx
 import jax
@@ -20,15 +22,16 @@ from representax.train import (
     CheckpointManager,
     CheckpointWriteError,
     IncompleteCheckpointError,
+    LoggingConfig,
     RunLogger,
     TrainState,
     build_train_step,
     init_train_state,
-    run_training,
     scientific_fingerprint,
     training_checkpointables,
     validate_complete_checkpoint,
 )
+from representax.train.loop import run_training
 from tests.train.toy_retrieval import (
     TOY_FEATURE_DIMENSION,
     TOY_OUTPUT_DIMENSION,
@@ -79,6 +82,9 @@ class _ControlledCheckpointer:
 
     def load_checkpointables(self, *_args, **_kwargs):
         raise AssertionError("restore is not used by this fake")
+
+    def checkpointables_metadata(self, *_args, **_kwargs):
+        raise AssertionError("restore metadata is not used by this fake")
 
     def close(self):
         self.closed = True
@@ -263,9 +269,9 @@ def test_orbax_retains_latest_complete_checkpoints_and_restores_state(tmp_path):
 
     different_model = DenseEncoder(
         4,
-        2,
+        3,
         key=jax.random.key(0),
-        normalize=True,
+        normalize=False,
     )
     incompatible_state = init_train_state(
         different_model,
@@ -378,7 +384,11 @@ def test_donated_training_with_async_orbax_resumes_exactly(tmp_path):
         num_threads=2,
         prefetch_buffer_size=2,
     )
-    job = toy_job_config(seed=29, data=baseline_data)
+    job = toy_job_config(
+        seed=29,
+        data=baseline_data,
+        logging=LoggingConfig(timing=True),
+    )
     optimizer = optax.adamw(learning_rate=0.03, weight_decay=0.0)
 
     def fresh_initial():
@@ -422,6 +432,7 @@ def test_donated_training_with_async_orbax_resumes_exactly(tmp_path):
         seed=29,
         checkpointing=checkpoint,
         data=serial_data,
+        logging=LoggingConfig(timing=True),
     )
     with pytest.raises(RuntimeError, match="simulated interruption"):
         run_training(
@@ -440,6 +451,7 @@ def test_donated_training_with_async_orbax_resumes_exactly(tmp_path):
         seed=29,
         checkpointing=checkpoint,
         data=parallel_data,
+        logging=LoggingConfig(timing=True),
     )
     resumed = run_training(
         # A real restart constructs a fresh abstract/state template. Reusing the
@@ -484,3 +496,139 @@ def test_donated_training_with_async_orbax_resumes_exactly(tmp_path):
     assert manifest["execution"]["data"]["prefetch_buffer_size"] == 4
     assert "error" not in manifest
     assert "error_type" not in manifest
+
+
+def test_clean_stop_preserves_scientific_job_for_resume(tmp_path):
+    optimizer = optax.adamw(learning_rate=0.03, weight_decay=0.0)
+    step = build_train_step(
+        MNRTask(scale=5.0, symmetric=True),
+        optimizer,
+        donate_state=True,
+    )
+    job = toy_job_config(
+        seed=31,
+        checkpointing=CheckpointConfig(every=4, keep=2),
+    )
+    run = tmp_path / "clean-stop"
+
+    paused = run_training(
+        state=_state(
+            input_dimension=TOY_FEATURE_DIMENSION,
+            output_dimension=TOY_OUTPUT_DIMENSION,
+            optimizer=optimizer,
+        ),
+        step=step,
+        batches=build_toy_retrieval_batches(seed=31),
+        job=job,
+        run_directory=run,
+        stop_after=4,
+    )
+
+    assert paused.completed_iterations == 4
+    assert paused.inference_bundle is None
+    assert json.loads((run / "run.json").read_text())["status"] == "paused"
+    checkpoint_manifest = json.loads(
+        (run / "checkpoints" / "4" / "checkpoint.json").read_text()
+    )
+    assert "structure_fingerprints" not in checkpoint_manifest
+
+    placements = []
+
+    def place_restored_state(state):
+        placements.append(state)
+        return jax.device_put(state)
+
+    resumed = run_training(
+        state=_state(
+            input_dimension=TOY_FEATURE_DIMENSION,
+            output_dimension=TOY_OUTPUT_DIMENSION,
+            optimizer=optimizer,
+        ),
+        step=step,
+        batches=build_toy_retrieval_batches(seed=31),
+        job=job,
+        run_directory=run,
+        resume=True,
+        place_state=place_restored_state,
+    )
+
+    assert resumed.completed_iterations == TOY_STEPS
+    assert resumed.resumed is True
+    assert len(placements) == 1
+    manifest = json.loads((run / "run.json").read_text())
+    assert manifest["status"] == "completed"
+    assert manifest["resume_count"] == 1
+
+
+def test_resume_recovers_export_after_final_checkpoint(tmp_path, monkeypatch):
+    import representax.export as export_module
+
+    optimizer = optax.adamw(learning_rate=0.03, weight_decay=0.0)
+    step = build_train_step(
+        MNRTask(scale=5.0, symmetric=True),
+        optimizer,
+        donate_state=True,
+    )
+    job = toy_job_config(
+        seed=37,
+        checkpointing=CheckpointConfig(every=TOY_STEPS, keep=1),
+    )
+    run = tmp_path / "interrupted-export"
+
+    def fail_export(*_args, **_kwargs):
+        raise RuntimeError("simulated export interruption")
+
+    monkeypatch.setattr(export_module, "export_inference_bundle", fail_export)
+    with pytest.raises(RuntimeError, match="simulated export interruption"):
+        run_training(
+            state=_state(
+                input_dimension=TOY_FEATURE_DIMENSION,
+                output_dimension=TOY_OUTPUT_DIMENSION,
+                optimizer=optimizer,
+            ),
+            step=step,
+            batches=build_toy_retrieval_batches(seed=37),
+            job=job,
+            run_directory=run,
+            export_inference=True,
+        )
+
+    prior_manifest = json.loads((run / "run.json").read_text())
+    assert prior_manifest["status"] == "failed"
+    resumed_batches = build_toy_retrieval_batches(seed=37)
+    resumed_batches = replace(
+        resumed_batches,
+        data_contract={**resumed_batches.data_contract, "test_revision": "changed"},
+    )
+    assert resumed_batches.data_fingerprint != prior_manifest["data_fingerprint"]
+
+    def successful_export(_model, _job, directory, *, iteration):
+        assert iteration == TOY_STEPS
+        directory.mkdir()
+        return SimpleNamespace(path=directory)
+
+    def unexpected_step(*_args, **_kwargs):
+        raise AssertionError("completed training must not execute another update")
+
+    monkeypatch.setattr(export_module, "export_inference_bundle", successful_export)
+    resumed = run_training(
+        state=_state(
+            input_dimension=TOY_FEATURE_DIMENSION,
+            output_dimension=TOY_OUTPUT_DIMENSION,
+            optimizer=optimizer,
+        ),
+        step=unexpected_step,
+        batches=resumed_batches,
+        job=job,
+        run_directory=run,
+        resume=True,
+        export_inference=True,
+    )
+
+    assert resumed.completed_iterations == TOY_STEPS
+    assert resumed.inference_bundle == run / "final-model"
+    manifest = json.loads((run / "run.json").read_text())
+    assert manifest["status"] == "completed"
+    assert manifest["data_fingerprint"] == prior_manifest["data_fingerprint"]
+    events = _read_jsonl(run / "events.jsonl")
+    assert any(row["event"] == "run_finalization_resumed" for row in events)

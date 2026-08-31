@@ -1,0 +1,55 @@
+#+title: Image-text retrieval paper preflight - 2026-08-28
+
+* Scope
+
+This is the short readiness run for the frozen image-text retrieval workload.
+It uses =sentence-transformers/clip-ViT-B-32@327ab672=, 512 distinct COCO 2017
+caption/image pairs, and the complete Flickr30k test panel of 5,000 caption
+queries, 1,000 images, and 5,000 relevance judgments. Both implementations use
+cached MNR with scale 20, global candidate batch 512, cache microbatch 8, four
+updates, seed 7, bfloat16 compute, and one RTX 4090.
+
+The complete data and run artifacts are under:
+
+- =/raid/representax/paper-campaign-v1/preflight/image-text/data-v2/=
+- =/raid/representax/paper-campaign-v1/preflight/image-text/seed-7-v4/=
+
+* Result
+
+| measurement | Representax | Sentence Transformers 5.6.1 |
+|-------------+-------------+-----------------------------|
+| final loss | 1.677548 | 1.678729 |
+| initial Flickr30k Recall@10 | 0.8914 | 0.8916 |
+| final Flickr30k Recall@10 | 0.9232 | 0.9248 |
+| initial Flickr30k nDCG@10 | 0.737348 | 0.736074 |
+| final Flickr30k nDCG@10 | 0.785947 | 0.785997 |
+| export reload maximum difference | 0 | 0 |
+
+Representax stopped after update 2, restored its optimizer, model, RNG, and data
+state through =run_job(resume=True)=, and completed updates 3-4. Its native
+inference bundle reload is exact. Its Hugging Face CLIP export also passed exact
+adapter reload verification. The reference saved resumable checkpoints at
+updates 2 and 4; its final checkpoint and exported Sentence Transformers model
+produce identical probe embeddings.
+
+Representax recorded 111.34 examples/s over two post-compilation steps. The
+reference trainer recorded 57.62 examples/s over the four-step lifecycle, which
+includes midpoint and final checkpoint serialization. These timings establish
+that the workload executes feasibly but are not a matched paper speedup estimate.
+A longer run without a forced midpoint process restart is required for the final
+systems comparison.
+
+* Command
+
+#+begin_src sh
+CUDA_VISIBLE_DEVICES=1 HF_HOME=/raid/.cache/huggingface \
+  conda run -n representax python -m experiments.paper.image_text pair \
+  --checkpoint /raid/.cache/huggingface/models--sentence-transformers--clip-ViT-B-32/snapshots/327ab6726d33c0e22f920c83f2ff9e4bd38ca37f \
+  --data-directory /raid/representax/paper-campaign-v1/preflight/image-text/data-v2 \
+  --output /raid/representax/paper-campaign-v1/preflight/image-text/seed-7-v4 \
+  --steps 4 --seed 7 --gpu 1
+#+end_src
+
+The compact machine-readable result is =summary.json=. The large summary,
+canonical metrics stream, checkpoints, logs, native bundle, and Hugging Face
+artifact remain under =/raid=.

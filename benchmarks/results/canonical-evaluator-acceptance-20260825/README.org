@@ -1,0 +1,26 @@
+#+TITLE: Canonical evaluator source acceptance
+
+This compact artifact proves that Representax reads the original pinned data
+sources, preserves the declared example counts, streams task-native batches,
+and reduces all four canonical evaluator families. It is not a model-quality
+result: =acceptance.json= records deterministic frozen test features solely to
+exercise the complete source-to-metric path.
+
+The generic reducers are separately matched against Sentence Transformers
+5.6.1 and scikit-learn on identical embeddings in the parity test suite.
+Distributed tests prove identical results on one-, two-, and four-device data
+meshes. The accepted sources are:
+
+- Sprint Duplicate Questions: 101,000 pairs;
+- Banking77: 9,993 train and 3,076 test examples;
+- Twenty Newsgroups: all ten packed clustering samples; and
+- CIFAR-100: 50,000 train and 10,000 test images for the bounded JEPA transfer
+  acceptance gate.
+
+Reproduce with:
+
+#+begin_src sh
+JAX_PLATFORMS=cpu CUDA_VISIBLE_DEVICES='' HF_HUB_DISABLE_PROGRESS_BARS=1 \
+  python scripts/accept_canonical_evaluators.py \
+  --output benchmarks/results/canonical-evaluator-acceptance-20260825/acceptance.json
+#+end_src

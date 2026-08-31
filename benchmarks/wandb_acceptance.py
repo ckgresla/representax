@@ -52,6 +52,7 @@ from representax.models import (
     TokenReconstructionDecoder,
 )
 from representax.models.processing import Processor
+from representax.models.vjepa2_1 import VJEPA2_1Config, VJEPA2_1Model
 from representax.tasks import build_task
 from representax.tasks.classification import (
     PairClassificationConfig,
@@ -92,7 +93,14 @@ from representax.tasks.distillation import (
     margin_distillation_batch,
 )
 from representax.tasks.guided import GISTConfig, GuidedRetrievalConfig, gist_batch
-from representax.tasks.jepa import JEPABatch, JEPAConfig, LeJEPAConfig
+from representax.tasks.jepa import (
+    JEPABatch,
+    JEPAConfig,
+    LeJEPAConfig,
+    VJEPA2_1Batch,
+    VJEPA2_1DenseConfig,
+    VJEPA2_1TaskConfig,
+)
 from representax.tasks.late_interaction import (
     LateInteractionConfig,
     LateInteractionContrastiveConfig,
@@ -357,6 +365,43 @@ def training_cases() -> dict[str, TrainingCase]:
         JEPABatch(
             Inputs(jnp.stack((a, a + 0.05, a - 0.05), axis=1)),
             jnp.ones((8, 3), dtype=jnp.bool_),
+        ),
+    )
+    vjepa_config = VJEPA2_1Config(
+        image_size=8,
+        patch_size=4,
+        video_frames=4,
+        tubelet_size=2,
+        hidden_size=12,
+        depth=2,
+        heads=2,
+        predictor_hidden_size=12,
+        predictor_depth=2,
+        predictor_heads=2,
+        supervision_layers=(0, 1),
+    )
+    context_ids = jnp.broadcast_to(
+        jnp.asarray([[[0, 1]]], dtype=jnp.int32),
+        (8, 1, 2),
+    )
+    target_ids = jnp.broadcast_to(
+        jnp.asarray([[[2, 3]]], dtype=jnp.int32),
+        (8, 1, 2),
+    )
+    cases["vjepa2_1"] = TrainingCase(
+        "vjepa2_1",
+        VJEPA2_1Model.init(
+            vjepa_config,
+            key=jax.random.key(18),
+            rematerialization="none",
+        ),
+        build_task(VJEPA2_1TaskConfig(), VJEPA2_1DenseConfig()),
+        VJEPA2_1Batch(
+            pixels=jax.random.normal(jax.random.key(19), (8, 3, 8, 8)),
+            context_ids=context_ids,
+            target_ids=target_ids,
+            context_valid=jnp.ones_like(context_ids, dtype=jnp.bool_),
+            target_valid=jnp.ones_like(target_ids, dtype=jnp.bool_),
         ),
     )
     cases["explicit_triplet"] = TrainingCase(
@@ -630,11 +675,25 @@ def run_training_case(
         lambda value: jnp.array(value, copy=True) if eqx.is_array(value) else value,
         case.model,
     )
-    state = init_train_state(model, optimizer)
+    filter_factory = getattr(model, "training_filter", None)
+    trainable_filter = (
+        filter_factory() if callable(filter_factory) else eqx.is_inexact_array
+    )
+    state = init_train_state(
+        model,
+        optimizer,
+        trainable_filter=trainable_filter,
+    )
     plan = None if plan_factory is None else plan_factory(state, optimizer)
     if plan is not None:
         state = plan.place_state(state)
-    step = build_train_step(case.task, optimizer, plan=plan, donate_state=True)
+    step = build_train_step(
+        case.task,
+        optimizer,
+        plan=plan,
+        donate_state=True,
+        trainable_filter=trainable_filter,
+    )
     batch = case.batch if plan is None else plan.place_batch(case.batch)
     name = case.kind if plan is None else f"{case.kind}-{plan.mesh.size}-device"
     logger, run_directory = _reporter(
@@ -815,6 +874,7 @@ def main() -> int:
     parser.add_argument("--shard", type=int, default=0)
     parser.add_argument("--shards", type=int, default=1)
     parser.add_argument("--steps", type=int, default=30)
+    parser.add_argument("--case", help="run one named task or evaluator case")
     parser.add_argument("--project", default="representax")
     parser.add_argument("--entity", default="ckgresla")
     parser.add_argument("--group", required=True)
@@ -827,6 +887,10 @@ def main() -> int:
     results: list[dict[str, Any]] = []
     if args.mode == "tasks":
         cases = sorted(training_cases().values(), key=lambda case: case.kind)
+        if args.case is not None:
+            cases = [case for case in cases if case.kind == args.case]
+            if not cases:
+                raise ValueError(f"unknown task acceptance case {args.case!r}")
         cases = [
             case
             for index, case in enumerate(cases)
@@ -845,6 +909,10 @@ def main() -> int:
             )
     elif args.mode == "evaluators":
         cases = sorted(evaluation_cases().values(), key=lambda case: case.kind)
+        if args.case is not None:
+            cases = [case for case in cases if case.kind == args.case]
+            if not cases:
+                raise ValueError(f"unknown evaluator acceptance case {args.case!r}")
         cases = [
             case
             for index, case in enumerate(cases)

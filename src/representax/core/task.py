@@ -40,6 +40,25 @@ class Task(Protocol, Generic[ModelT]):
 
 
 @runtime_checkable
+class PostUpdateTask(Task[ModelT], Protocol, Generic[ModelT]):
+    """A task with a deterministic model-state transition after optimization.
+
+    This is the narrow stateful seam used by objectives such as V-JEPA, whose
+    stop-gradient target encoder is an exponential moving average of the newly
+    optimized online encoder. The ordinary optimizer remains responsible only
+    for selected trainable leaves.
+    """
+
+    def post_update_model(
+        self,
+        previous_model: ModelT,
+        optimized_model: ModelT,
+        *,
+        step: Array,
+    ) -> ModelT: ...
+
+
+@runtime_checkable
 class RepresentationTask(Task[ModelT], Protocol, Generic[ModelT]):
     """A task whose model work can be separated from its representation loss.
 

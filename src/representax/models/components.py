@@ -288,6 +288,39 @@ def mean_pool(
     return total / count
 
 
+def segment_mean_pool(
+    hidden: Float[Array, "physical_batch sequence hidden"],
+    attention_mask: (
+        Bool[Array, "physical_batch sequence"] | Int[Array, "physical_batch sequence"]
+    ),
+    segment_ids: Int[Array, "physical_batch sequence"],
+    *,
+    num_segments: int,
+) -> Float[Array, "logical_batch hidden"]:
+    """Mean token states for independently packed logical examples."""
+
+    if num_segments <= 0:
+        raise ValueError("num_segments must be positive")
+    if hidden.shape[:2] != attention_mask.shape:
+        raise ValueError("attention_mask must align with hidden states")
+    if segment_ids.shape != attention_mask.shape:
+        raise ValueError("segment_ids must align with attention_mask")
+    valid = attention_mask.astype(bool) & (segment_ids >= 0)
+    safe_ids = jnp.maximum(segment_ids, 0).reshape(-1)
+    values = jnp.where(valid[..., None], hidden.astype(jnp.float32), 0.0)
+    totals = jax.ops.segment_sum(
+        values.reshape(-1, hidden.shape[-1]),
+        safe_ids,
+        num_segments=num_segments,
+    )
+    counts = jax.ops.segment_sum(
+        valid.reshape(-1).astype(jnp.float32),
+        safe_ids,
+        num_segments=num_segments,
+    )
+    return totals / jnp.maximum(counts[:, None], 1.0)
+
+
 def l2_normalize(
     value: Float[Array, "*batch hidden"],
 ) -> Float[Array, "*batch hidden"]:
@@ -311,4 +344,5 @@ __all__ = [
     "l2_normalize",
     "mean_pool",
     "rematerialize",
+    "segment_mean_pool",
 ]

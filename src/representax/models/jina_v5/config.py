@@ -95,8 +95,16 @@ class JinaV5TextConfig(FrozenConfig):
             max_position_embeddings=int(text["max_position_embeddings"]),
             rope_theta=float(rope.get("rope_theta", 1_000_000.0)),
             norm_epsilon=float(text.get("rms_norm_eps", 1e-6)),
-            pad_token_id=int(text.get("pad_token_id") or 151643),
-            output_dimension=(hidden if output_dimension is None else output_dimension),
+            pad_token_id=(
+                151643
+                if text.get("pad_token_id") is None
+                else int(text["pad_token_id"])
+            ),
+            output_dimension=(
+                int(value.get("output_dimension", hidden))
+                if output_dimension is None
+                else output_dimension
+            ),
         )
 
 

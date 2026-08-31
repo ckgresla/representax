@@ -30,10 +30,17 @@ class EvaluationResult:
     examples: int
     duration_seconds: float
     compilation_seconds: float
+    data_wait_seconds: float
+    placement_seconds: float
+    dispatch_seconds: float
     metrics: Mapping[str, float]
 
 
 def _batch_size(batch: Any) -> int:
+    for name in ("valid", "query_valid", "labels"):
+        value = getattr(batch, name, None)
+        if isinstance(value, jax.Array) and value.ndim > 0:
+            return int(value.shape[0])
     arrays = [leaf for leaf in jax.tree.leaves(batch) if eqx.is_array(leaf)]
     if not arrays or arrays[0].ndim == 0:
         raise TypeError("evaluation batches require a leading example dimension")
@@ -107,6 +114,9 @@ class EvaluationRunner:
             raise ValueError("max_batches must be positive or None")
         started = time.perf_counter()
         compilation_seconds = 0.0
+        data_wait_seconds = 0.0
+        placement_seconds = 0.0
+        dispatch_seconds = 0.0
         accumulator = self._evaluator.initialize()
         examples = 0
         batch_count = 0
@@ -129,10 +139,17 @@ class EvaluationRunner:
 
         iterator = iter(batches)
         try:
-            for batch_index, host_batch in enumerate(iterator):
-                if max_batches is not None and batch_index >= max_batches:
+            batch_index = 0
+            while max_batches is None or batch_index < max_batches:
+                wait_started = time.perf_counter()
+                try:
+                    host_batch = next(iterator)
+                except StopIteration:
                     break
+                data_wait_seconds += time.perf_counter() - wait_started
+                placement_started = time.perf_counter()
                 batch = place_batch(host_batch)
+                placement_seconds += time.perf_counter() - placement_started
                 size = _batch_size(batch)
                 signature = _compilation_signature(batch)
                 first_use = signature not in self._seen_signatures
@@ -141,6 +158,7 @@ class EvaluationRunner:
                 )
                 dispatch_started = time.perf_counter()
                 output = self._compiled(model, batch, batch_key)
+                dispatch_seconds += time.perf_counter() - dispatch_started
                 if first_use:
                     if pending_output is not None:
                         consume(pending_output)
@@ -154,6 +172,7 @@ class EvaluationRunner:
                     pending_output = output
                 examples += size
                 batch_count += 1
+                batch_index += 1
         finally:
             close = getattr(iterator, "close", None)
             if close is not None:
@@ -180,6 +199,9 @@ class EvaluationRunner:
             examples=examples,
             duration_seconds=time.perf_counter() - started,
             compilation_seconds=compilation_seconds,
+            data_wait_seconds=data_wait_seconds,
+            placement_seconds=placement_seconds,
+            dispatch_seconds=dispatch_seconds,
             metrics=metrics,
         )
 

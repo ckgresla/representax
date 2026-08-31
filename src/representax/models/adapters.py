@@ -211,6 +211,54 @@ class LoRALinear(eqx.Module):
     alpha: float = eqx.field(static=True)
     weight_layout: str = eqx.field(static=True, default="output_input")
 
+    @classmethod
+    def from_linear(
+        cls,
+        linear: Linear,
+        *,
+        rank: int,
+        alpha: float,
+        key: PRNGKeyArray,
+        initialization_scale: float | None = None,
+    ) -> LoRALinear:
+        """Add a zero-output adapter without changing the base projection."""
+
+        input_size = (
+            linear.weight.shape[-2]
+            if linear.weight_layout == "input_output"
+            else linear.weight.shape[-1]
+        )
+        output_size = (
+            linear.weight.shape[-1]
+            if linear.weight_layout == "input_output"
+            else linear.weight.shape[-2]
+        )
+        if rank <= 0 or rank > min(input_size, output_size):
+            raise ValueError("adapter rank must fit both linear dimensions")
+        if alpha <= 0:
+            raise ValueError("adapter alpha must be positive")
+        scale = (
+            input_size**-0.5 if initialization_scale is None else initialization_scale
+        )
+        stack_shape = linear.weight.shape[:-2]
+        return cls(
+            weight=linear.weight,
+            bias=linear.bias,
+            lora_a=scale
+            * jax.random.normal(
+                key,
+                (*stack_shape, rank, input_size),
+                dtype=jnp.float32,
+            ),
+            lora_b=jnp.zeros(
+                (*stack_shape, output_size, rank),
+                dtype=jnp.float32,
+            ),
+            rank=rank,
+            alpha=alpha,
+            weight_layout=linear.weight_layout,
+        )
+
     def __call__(
         self,
         value: Float[Array, "*batch input"],
@@ -310,6 +358,44 @@ def _path_name(path: tuple[Any, ...]) -> str:
     return jax.tree_util.keystr(path)
 
 
+def apply_lora(
+    model: ModelT,
+    *,
+    rank: int,
+    alpha: float,
+    key: PRNGKeyArray,
+    target_pattern: str = ".*",
+    initialization_scale: float | None = None,
+) -> ModelT:
+    """Replace matching native Linear leaves with exact-base LoRA projections."""
+
+    pattern = re.compile(target_pattern)
+    path_leaves, structure = jax.tree_util.tree_flatten_with_path(
+        model,
+        is_leaf=lambda value: isinstance(value, Linear),
+    )
+    matched = [
+        (path, leaf)
+        for path, leaf in path_leaves
+        if isinstance(leaf, Linear) and pattern.search(_path_name(path))
+    ]
+    if not matched:
+        raise ValueError("adapter target_pattern matched no native Linear modules")
+    keys = iter(jax.random.split(key, len(matched)))
+    replacements = {
+        _path_name(path): LoRALinear.from_linear(
+            leaf,
+            rank=rank,
+            alpha=alpha,
+            key=next(keys),
+            initialization_scale=initialization_scale,
+        )
+        for path, leaf in matched
+    }
+    leaves = [replacements.get(_path_name(path), leaf) for path, leaf in path_leaves]
+    return cast(ModelT, structure.unflatten(leaves))
+
+
 def apply_quantized_lora(
     model: ModelT,
     *,
@@ -384,6 +470,7 @@ def lora_parameter_filter(model: eqx.Module) -> Any:
 __all__ = [
     "LoRALinear",
     "QuantizedLoRALinear",
+    "apply_lora",
     "apply_quantized_lora",
     "lora_parameter_filter",
     "merge_quantized_lora",

@@ -36,7 +36,7 @@ facade. Library code, tests, and focused examples should import names directly
 from their owning module, for example:
 
 ```python
-from representax.train import build_train_step, make_train_state, run_training
+from representax.train import build_train_step, make_train_state, run_job
 ```
 
 Do not use the shorter `rx` alias; it is already conventional in other domains.

@@ -1,6 +1,20 @@
 """Reusable evaluators and exact host-side metric reducers."""
 
-from .adapters import beir_evaluation
+from .adapters import (
+    BANKING77_TEST,
+    BANKING77_TRAIN,
+    CIFAR100_TEST,
+    CIFAR100_TRAIN,
+    SPRINT_DUPLICATE_QUESTIONS,
+    TWENTY_NEWSGROUPS,
+    CanonicalEvaluationSource,
+    PackedColumns,
+    beir_evaluation,
+    clustering_evaluation_batches,
+    clustering_samples,
+    labeled_evaluation_batches,
+    pair_classification_batches,
+)
 from .classification import (
     ClassificationBatchOutput,
     ClassificationEvaluator,
@@ -65,6 +79,13 @@ from .similarity import (
 from .triplet import TripletBatchOutput, TripletEvaluator
 
 __all__ = [
+    "BANKING77_TEST",
+    "BANKING77_TRAIN",
+    "CIFAR100_TEST",
+    "CIFAR100_TRAIN",
+    "SPRINT_DUPLICATE_QUESTIONS",
+    "TWENTY_NEWSGROUPS",
+    "CanonicalEvaluationSource",
     "ClassificationBatchOutput",
     "ClassificationEvaluator",
     "ClassificationProbeEvaluator",
@@ -86,6 +107,7 @@ __all__ = [
     "ParaphraseMiningEvaluator",
     "PairClassificationEvaluator",
     "PairClassificationOutput",
+    "PackedColumns",
     "RETRIEVAL_SCORE_FUNCTIONS",
     "RankingBatchOutput",
     "RegressionBatchOutput",
@@ -106,12 +128,16 @@ __all__ = [
     "TripletEvaluator",
     "classification_metrics",
     "clustering_metrics",
+    "clustering_evaluation_batches",
+    "clustering_samples",
     "beir_evaluation",
     "information_retrieval_metrics",
     "knn_accuracy",
     "labeled_evaluation_batch",
+    "labeled_evaluation_batches",
     "linear_probe_metrics",
     "pair_classification_metrics",
+    "pair_classification_batches",
     "ranking_metrics",
     "regression_metrics",
     "retrieval_evaluation_batch",

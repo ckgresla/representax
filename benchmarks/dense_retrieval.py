@@ -12,7 +12,7 @@ import statistics
 import subprocess
 import sys
 import time
-from collections.abc import Iterable, Iterator, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
@@ -25,7 +25,7 @@ EVALUATION_DATASET_ID = "sentence-transformers/NanoBEIR-en"
 EVALUATION_DATASET_REVISION = "beb106fbcfaa599c508c667041bf8c85fd78736b"
 EVALUATION_SUBSET = "NanoMSMARCO"
 ORACLE_VERSION = "5.6.1"
-TRANSFORMERS_VERSION = "5.3.0"
+TRANSFORMERS_VERSION = "5.6.0"
 THREE_RUN_95_PERCENT_T_CRITICAL = 4.302652729911275
 
 
@@ -51,6 +51,7 @@ MODEL_SPECS = {
         name="mpnet",
         model_id="sentence-transformers/all-mpnet-base-v2",
         revision="e8c3b32edf5434bc2275fc9bab85f82640a19130",
+        initial_metric_tolerance=5e-3,
     ),
     "modernvbert": ModelSpec(
         name="modernvbert",
@@ -230,80 +231,66 @@ def _training_table(path: Path, rows: int) -> Any:
     return source.read_row_groups(groups, columns=("query", "positive")).slice(0, rows)
 
 
-def _padded_chunks(
-    rows: Sequence[tuple[int, str]],
-    batch_size: int,
-) -> Iterator[tuple[tuple[int, ...], tuple[str, ...], tuple[bool, ...]]]:
-    for start in range(0, len(rows), batch_size):
-        chunk = rows[start : start + batch_size]
-        padding = batch_size - len(chunk)
-        yield (
-            tuple(row[0] for row in chunk) + (-1,) * padding,
-            tuple(row[1] for row in chunk) + ("",) * padding,
-            (True,) * len(chunk) + (False,) * padding,
-        )
-
-
-def _native_evaluation_batches(
-    data: RetrievalEvaluationData,
-    collator: Any,
-    batch_size: int,
-) -> Iterable[Any]:
-    import jax.numpy as jnp
-
-    from representax.evaluation import retrieval_evaluation_batch
-
-    for kind, rows in (("query", data.queries), ("document", data.documents)):
-        for ids, texts, valid in _padded_chunks(rows, batch_size):
-            yield retrieval_evaluation_batch(
-                collator(texts),
-                jnp.asarray(ids, dtype=jnp.int32),
-                kind=kind,
-                valid=jnp.asarray(valid),
-            )
-
-
-def _native_retrieval_runner(data: RetrievalEvaluationData) -> Any:
-    from representax.evaluation import InformationRetrievalEvaluator
-    from representax.train import EvaluationRunner
-
-    return EvaluationRunner(
-        InformationRetrievalEvaluator(
-            relevant_documents=data.relevant_documents,
-            name=EVALUATION_SUBSET,
-            score_functions=("cosine",),
-            main_score_function="cosine",
-            accuracy_at_k=(1, 3, 5, 10),
-            precision_recall_at_k=(1, 3, 5, 10, 100),
-            mrr_at_k=(10,),
-            ndcg_at_k=(10,),
-            map_at_k=(100,),
-        )
-    )
-
-
-def _native_retrieval_metrics(
-    runner: Any,
-    model: Any,
-    data: RetrievalEvaluationData,
-    collator: Any,
-    batch_size: int,
-) -> tuple[dict[str, float], float, float]:
-    result = runner.run(
-        model,
-        _native_evaluation_batches(data, collator, batch_size),
-    )
-    return dict(result.metrics), result.duration_seconds, result.compilation_seconds
-
-
-def _training_compile_seconds(run_directory: Path) -> float:
+def _training_compile_summary(run_directory: Path) -> tuple[float, int]:
+    durations = []
     with (run_directory / "metrics.jsonl").open() as stream:
         for line in stream:
             row = json.loads(line)
             value = row["metrics"].get("perf/compilation_and_first_step_seconds")
             if value is not None:
-                return float(value)
-    raise ValueError("Representax run did not report first executable use")
+                durations.append(float(value))
+    if not durations:
+        raise ValueError("Representax run did not report executable first use")
+    return sum(durations), len(durations)
+
+
+def _steady_state_totals(rows: Sequence[tuple[float, int]]) -> tuple[float, int, int]:
+    if len(rows) >= 8:
+        rows = rows[len(rows) // 2 :]
+    if not rows:
+        raise ValueError("run did not report a steady-state training step")
+    return sum(row[0] for row in rows), len(rows), sum(row[1] for row in rows)
+
+
+def _training_steady_state_summary(run_directory: Path) -> tuple[float, int, int]:
+    rows = []
+    with (run_directory / "metrics.jsonl").open() as stream:
+        for line in stream:
+            row = json.loads(line)
+            if row.get("event") != "training_step":
+                continue
+            metrics = row["metrics"]
+            if metrics.get("perf/compilation_and_first_step_seconds") is not None:
+                continue
+            step_seconds = metrics.get("perf/step_seconds")
+            if step_seconds is None:
+                continue
+            rows.append((float(step_seconds), int(metrics["perf/examples"])))
+    try:
+        return _steady_state_totals(rows)
+    except ValueError as error:
+        raise ValueError(
+            "Representax run did not report a steady-state training step"
+        ) from error
+
+
+def _reference_steady_state_summary(run_directory: Path) -> tuple[float, int, int]:
+    rows = []
+    with (run_directory / "metrics.jsonl").open() as stream:
+        for line in stream:
+            row = json.loads(line)
+            if row.get("event") != "training_step" or row["iteration"] <= 1:
+                continue
+            metrics = row["metrics"]
+            rows.append(
+                (float(metrics["perf/step_seconds"]), int(metrics["perf/examples"]))
+            )
+    try:
+        return _steady_state_totals(rows)
+    except ValueError as error:
+        raise ValueError(
+            "reference run did not report a steady-state training step"
+        ) from error
 
 
 def _final_training_loss(run_directory: Path) -> float:
@@ -377,39 +364,70 @@ def _representax_report(
     batch_size: int,
     steps: int,
     maximum_length: int,
+    sequence_length_buckets: tuple[int, ...],
     cache_chunk_size: int | None,
     evaluation_batch_size: int,
     evaluation_every_steps: int | None,
     data_threads: int,
     prefetch_buffer_size: int,
     seed: int,
+    world_size: int,
+    mixed_precision: bool,
+    telemetry: bool,
+    checkpoint_every: int | None,
+    stop_after: int | None,
+    resume: bool,
+    export: bool,
+    packing: bool,
+    packing_query_shape: tuple[int, int] | None,
+    packing_document_shape: tuple[int, int] | None,
 ) -> dict[str, Any]:
     import jax
+    from experiments.paper.dense_retrieval import (
+        evaluation_rows,
+        event_metrics,
+        fixed_rows_resolver,
+    )
 
+    from representax import load_inference_bundle
     from representax.config import (
         BatchConfig,
+        CheckpointConfig,
         ComponentConfig,
         DataConfig,
+        DDPConfig,
         EvaluationConfig,
-        EvaluatorConfig,
         ExportConfig,
         GradCacheConfig,
+        InformationRetrievalEvaluatorConfig,
         JobConfig,
         LoggingConfig,
+        MeshConfig,
         ModelConfig,
         OptimizationConfig,
+        PrecisionConfig,
         TrainingConfig,
     )
     from representax.data import identity, mix, source
-    from representax.integrations import SentenceTextCollator
     from representax.tasks.retrieval import MNRConfig, RetrievalConfig
-    from representax.train import build_job_runtime, run_training
+    from representax.train import run_job
+
+    if batch_size % world_size:
+        raise ValueError("global batch size must be divisible by world size")
+    if not sequence_length_buckets or any(
+        value <= 0 for value in sequence_length_buckets
+    ):
+        raise ValueError("sequence length buckets must be positive")
+    if max(sequence_length_buckets) != maximum_length:
+        raise ValueError("the largest sequence length bucket must equal maximum length")
 
     checkpoint = _checkpoint(spec)
     evaluation_data = _evaluation_data(data_directory)
-    evaluation_collator = SentenceTextCollator(
-        checkpoint,
-        maximum_length=maximum_length,
+    evaluation_source = "paper-evaluation://nano-msmarco"
+    evaluation_records = evaluation_rows(
+        evaluation_data.queries,
+        evaluation_data.documents,
+        batch_size=evaluation_batch_size,
     )
     training_path = _artifact_path(
         data_directory,
@@ -419,27 +437,44 @@ def _representax_report(
     training_data = DataConfig(
         distribution=mix(source(str(training_path), map=identity), shuffle=False),
         collate=ComponentConfig(
-            target="representax.integrations.RetrievalPairCollator",
-            parameters={
-                "checkpoint": str(checkpoint),
-                "maximum_length": maximum_length,
-            },
+            target="representax.tasks.retrieval.RetrievalCollator",
         ),
         drop_remainder=True,
         num_threads=data_threads,
         prefetch_buffer_size=prefetch_buffer_size,
     )
+    model_parameters: dict[str, Any] = {
+        "model_name_or_path": str(checkpoint),
+        "revision": spec.revision,
+        "local_files_only": True,
+        "parameter_dtype": "float32",
+        "compute_dtype": "bfloat16" if mixed_precision else "float32",
+    }
+    if packing:
+        model_target = "experiments.paper.padding:load_packed_mpnet_sentence_encoder"
+        model_parameters.update(
+            {
+                "maximum_batch_size": max(batch_size, evaluation_batch_size),
+                "sequence_lengths": sequence_length_buckets,
+            }
+        )
+        if packing_query_shape is not None and packing_document_shape is not None:
+            model_parameters.update(
+                {
+                    "fixed_batch_size": batch_size,
+                    "fixed_query_shape": packing_query_shape,
+                    "fixed_document_shape": packing_document_shape,
+                }
+            )
+    else:
+        model_target = "representax.models:SentenceEncoder.load_from_hf"
+        model_parameters["sequence_length_buckets"] = sequence_length_buckets
+
     job = JobConfig(
         name=f"matched-dense-retrieval-{spec.name}",
         model=ModelConfig(
-            target=spec.native_target,
-            parameters={
-                "model_name_or_path": str(checkpoint),
-                "revision": spec.revision,
-                "local_files_only": True,
-                "parameter_dtype": "float32",
-                "compute_dtype": "float32",
-            },
+            target=model_target,
+            parameters=model_parameters,
         ),
         task=RetrievalConfig(),
         loss=MNRConfig(scale=20.0, symmetric=False),
@@ -447,11 +482,20 @@ def _representax_report(
             optimizer=ComponentConfig(
                 target="optax.adamw",
                 parameters={
-                    "learning_rate": 2e-5,
                     "b1": 0.9,
                     "b2": 0.999,
                     "eps": 1e-8,
                     "weight_decay": 0.0,
+                },
+            ),
+            schedule=ComponentConfig(
+                target="optax.warmup_cosine_decay_schedule",
+                parameters={
+                    "init_value": 0.0,
+                    "peak_value": 2e-5,
+                    "warmup_steps": round(steps * 0.06),
+                    "decay_steps": steps,
+                    "end_value": 0.0,
                 },
             ),
             max_gradient_norm=1.0,
@@ -461,7 +505,9 @@ def _representax_report(
             global_batch_size=batch_size,
             max_steps=steps,
             seed=seed,
-            batch=BatchConfig(micro_batch_size=batch_size),
+            mesh=MeshConfig(axis_shapes=(world_size,), axis_names=("data",)),
+            sharding=DDPConfig(axis="data"),
+            batch=BatchConfig(micro_batch_size=batch_size // world_size),
             grad_cache=(
                 None
                 if cache_chunk_size is None
@@ -469,95 +515,106 @@ def _representax_report(
             ),
             activation_rematerialization="none",
             donate_buffers=True,
+            precision=(
+                PrecisionConfig.bfloat16_mixed()
+                if mixed_precision
+                else PrecisionConfig()
+            ),
         ),
-        logging=LoggingConfig(console_every=steps),
-        evaluation=(
+        checkpointing=(
             None
-            if evaluation_every_steps is None
-            else EvaluationConfig(
-                data=training_data,
-                batch_size=evaluation_batch_size,
-                evaluators=(EvaluatorConfig(name=EVALUATION_SUBSET),),
-                every_steps=evaluation_every_steps,
-                on_start=True,
-                on_end=True,
-                primary_metric=(f"valid/{EVALUATION_SUBSET}/cosine_ndcg@10"),
-                primary_metric_mode="max",
-                save_best=False,
-            )
+            if checkpoint_every is None
+            else CheckpointConfig(every=checkpoint_every, keep=3)
         ),
-        export=ExportConfig(enabled=False),
+        logging=LoggingConfig(
+            console_every=steps,
+            timing=telemetry,
+            accelerator=telemetry,
+        ),
+        evaluation=EvaluationConfig(
+            data=DataConfig(
+                distribution=mix(
+                    source(evaluation_source, map=identity),
+                    shuffle=False,
+                ),
+                collate=ComponentConfig(
+                    target=(
+                        "experiments.paper.dense_retrieval:RetrievalEvaluationCollator"
+                    ),
+                ),
+                drop_remainder=True,
+                num_threads=0,
+                prefetch_buffer_size=0,
+            ),
+            batch_size=evaluation_batch_size,
+            evaluators=(
+                InformationRetrievalEvaluatorConfig(
+                    name=EVALUATION_SUBSET,
+                    relevant_documents=dict(evaluation_data.relevant_documents),
+                    score_functions=("cosine",),
+                    main_score_function="cosine",
+                    accuracy_at_k=(1, 3, 5, 10),
+                    precision_recall_at_k=(1, 3, 5, 10, 100),
+                    mrr_at_k=(10,),
+                    ndcg_at_k=(10,),
+                    map_at_k=(100,),
+                ),
+            ),
+            every_steps=evaluation_every_steps,
+            on_start=True,
+            on_end=True,
+            primary_metric=(f"valid/{EVALUATION_SUBSET}/cosine_ndcg@10"),
+            primary_metric_mode="max",
+            save_best=False,
+        ),
+        export=ExportConfig(enabled=export),
     )
 
-    load_started = time.perf_counter()
-    runtime = build_job_runtime(job)
-    model_and_data_seconds = time.perf_counter() - load_started
-    evaluation_runner = _native_retrieval_runner(evaluation_data)
-    periodic_evaluation = evaluation_every_steps is not None
-    if periodic_evaluation:
-        initial = None
-        initial_seconds = None
-        initial_compile_seconds = None
-    else:
-        initial, initial_seconds, initial_compile_seconds = _native_retrieval_metrics(
-            evaluation_runner,
-            runtime.state.model,
-            evaluation_data,
-            evaluation_collator,
-            evaluation_batch_size,
-        )
-    training_started = time.perf_counter()
-    result = run_training(
-        state=runtime.state,
-        step=runtime.step,
-        batches=runtime.batches,
-        job=job,
-        run_directory=run_directory,
-        place_batch=runtime.place_batch,
-        evaluation_runners=(evaluation_runner,) if periodic_evaluation else (),
-        evaluation_batches=(
-            (
-                lambda: _native_evaluation_batches(
-                    evaluation_data,
-                    evaluation_collator,
-                    evaluation_batch_size,
-                )
-            )
-            if periodic_evaluation
-            else None
-        ),
+    lifecycle_started = time.perf_counter()
+    result = run_job(
+        job,
+        run_directory,
+        resolvers={
+            "paper-evaluation": fixed_rows_resolver(evaluation_records),
+        },
+        stop_after=stop_after,
+        resume=resume,
     )
     jax.block_until_ready(result.state)
-    training_seconds = time.perf_counter() - training_started
-    if periodic_evaluation:
-        evaluation_history = _representax_evaluation_history(run_directory)
-        initial = evaluation_history[0]["metrics"]
-        final = evaluation_history[-1]["metrics"]
-        initial_seconds = evaluation_history[0]["evaluation_seconds"]
-        initial_compile_seconds = evaluation_history[0][
-            "evaluation_compilation_seconds"
-        ]
-        final_seconds = evaluation_history[-1]["evaluation_seconds"]
-        final_compile_seconds = evaluation_history[-1]["evaluation_compilation_seconds"]
-        evaluation_during_training_seconds = sum(
-            item["evaluation_seconds"] for item in evaluation_history
-        )
-    else:
-        final, final_seconds, final_compile_seconds = _native_retrieval_metrics(
-            evaluation_runner,
-            result.state.model,
-            evaluation_data,
-            evaluation_collator,
-            evaluation_batch_size,
-        )
-        evaluation_history = []
-        evaluation_during_training_seconds = 0.0
-    training_compute_seconds = training_seconds - evaluation_during_training_seconds
-    compilation_and_first_step_seconds = _training_compile_seconds(run_directory)
-    sustained_seconds = max(
-        training_compute_seconds - compilation_and_first_step_seconds,
+    lifecycle_seconds = time.perf_counter() - lifecycle_started
+    metric_path = run_directory / "metrics.jsonl"
+    startup = event_metrics(metric_path, "startup")
+    model_and_data_seconds = startup["perf/startup_seconds"]
+    export_seconds = (
+        event_metrics(metric_path, "export")["perf/export_seconds"] if export else 0.0
+    )
+    training_seconds = max(
+        lifecycle_seconds - model_and_data_seconds - export_seconds,
         0.0,
     )
+    evaluation_history = _representax_evaluation_history(run_directory)
+    initial = evaluation_history[0]["metrics"]
+    final = evaluation_history[-1]["metrics"]
+    initial_seconds = evaluation_history[0]["evaluation_seconds"]
+    initial_compile_seconds = evaluation_history[0]["evaluation_compilation_seconds"]
+    final_seconds = evaluation_history[-1]["evaluation_seconds"]
+    final_compile_seconds = evaluation_history[-1]["evaluation_compilation_seconds"]
+    evaluation_during_training_seconds = sum(
+        item["evaluation_seconds"] for item in evaluation_history
+    )
+    training_compute_seconds = training_seconds - evaluation_during_training_seconds
+    compilation_and_first_use_seconds, compiled_signature_count = (
+        _training_compile_summary(run_directory)
+    )
+    steady_state_seconds, steady_state_step_count, steady_state_examples = (
+        _training_steady_state_summary(run_directory)
+    )
+    exported_bundle = None
+    if result.inference_bundle is not None:
+        _, restored_job = load_inference_bundle(result.inference_bundle)
+        if restored_job.name != job.name:
+            raise ValueError("reloaded inference bundle contains the wrong job")
+        exported_bundle = str(result.inference_bundle)
     return {
         "schema_version": "representax-dense-retrieval-worker-v1",
         "framework": "representax",
@@ -568,18 +625,29 @@ def _representax_report(
         "batch_size": batch_size,
         "steps": steps,
         "maximum_length": maximum_length,
+        "sequence_length_buckets": list(sequence_length_buckets),
+        "packing": packing,
+        "packing_query_shape": packing_query_shape,
+        "packing_document_shape": packing_document_shape,
         "cache_chunk_size": cache_chunk_size,
         "seed": seed,
+        "world_size": world_size,
+        "mixed_precision": mixed_precision,
+        "resumed": result.resumed,
+        "completed_iterations": result.completed_iterations,
+        "exported_bundle": exported_bundle,
+        "export_seconds": export_seconds,
         "model_and_data_seconds": model_and_data_seconds,
         "training_seconds": training_seconds,
         "training_compute_seconds": training_compute_seconds,
-        "compilation_and_first_step_seconds": compilation_and_first_step_seconds,
-        "sustained_seconds_after_first_step": sustained_seconds,
+        "compilation_and_first_use_seconds": compilation_and_first_use_seconds,
+        "compiled_signature_count": compiled_signature_count,
+        "steady_state_seconds": steady_state_seconds,
+        "steady_state_step_count": steady_state_step_count,
+        "steady_state_examples": steady_state_examples,
         "amortized_examples_per_second": batch_size * steps / training_compute_seconds,
-        "sustained_examples_per_second_after_first_step": (
-            batch_size * max(steps - 1, 0) / sustained_seconds
-            if sustained_seconds > 0
-            else None
+        "steady_state_examples_per_second": (
+            steady_state_examples / steady_state_seconds
         ),
         "final_train_loss": _final_training_loss(run_directory),
         "initial_evaluation": initial,
@@ -691,7 +759,14 @@ def _sentence_transformers_report(
     data_threads: int,
     prefetch_buffer_size: int,
     seed: int,
-) -> dict[str, Any]:
+    world_size: int,
+    mixed_precision: bool,
+    telemetry: bool,
+    checkpoint_every: int | None,
+    stop_after: int | None,
+    resume: bool,
+    export: bool,
+) -> dict[str, Any] | None:
     import datasets
     import sentence_transformers
     import torch
@@ -716,6 +791,20 @@ def _sentence_transformers_report(
         raise RuntimeError(f"expected sentence-transformers=={ORACLE_VERSION}")
     if transformers.__version__ != TRANSFORMERS_VERSION:
         raise RuntimeError(f"expected transformers=={TRANSFORMERS_VERSION}")
+    if any(value is not None for value in (checkpoint_every, stop_after)):
+        raise ValueError("reference preflight does not use checkpoint pause controls")
+    if resume or export:
+        raise ValueError("reference preflight does not use Representax lifecycle flags")
+    if batch_size % world_size:
+        raise ValueError("global batch size must be divisible by world size")
+    process_world_size = int(os.environ.get("WORLD_SIZE", "1"))
+    rank = int(os.environ.get("RANK", "0"))
+    distributed = process_world_size > 1
+    if process_world_size != world_size:
+        raise ValueError(
+            f"launched world size {process_world_size} differs from {world_size}"
+        )
+    is_main = rank == 0
     del data_threads, prefetch_buffer_size
     checkpoint = _checkpoint(spec)
     evaluation_data = _evaluation_data(data_directory)
@@ -746,22 +835,23 @@ def _sentence_transformers_report(
             model,
             scale=20.0,
             mini_batch_size=cache_chunk_size,
+            gather_across_devices=world_size > 1,
             show_progress_bar=False,
         )
     )
     arguments = SentenceTransformerTrainingArguments(
         output_dir=str(run_directory / "checkpoints"),
-        per_device_train_batch_size=batch_size,
+        per_device_train_batch_size=batch_size // world_size,
         max_steps=steps,
         learning_rate=2e-5,
-        lr_scheduler_type="constant",
-        warmup_steps=0,
+        lr_scheduler_type="cosine",
+        warmup_steps=0.06,
         weight_decay=0.0,
         adam_beta1=0.9,
         adam_beta2=0.999,
         adam_epsilon=1e-8,
         max_grad_norm=1.0,
-        bf16=False,
+        bf16=mixed_precision,
         fp16=False,
         gradient_checkpointing=False,
         logging_strategy="no",
@@ -771,6 +861,7 @@ def _sentence_transformers_report(
         dataloader_drop_last=True,
         dataloader_num_workers=0,
         dataloader_pin_memory=True,
+        ddp_find_unused_parameters=True,
         batch_sampler=sequential_sentence_transformers_batches,
         seed=seed,
         data_seed=seed,
@@ -824,24 +915,27 @@ def _sentence_transformers_report(
                 - training_started_at
                 - evaluation_during_training_seconds
             )
-            was_training = model.training
-            metrics, duration = _oracle_retrieval_metrics(
-                model,
-                evaluation_data,
-                evaluation_batch_size,
-                maximum_length,
-            )
-            model.train(was_training)
-            evaluation_during_training_seconds += duration
-            evaluation_history.append(
-                {
-                    "updates": updates,
-                    "metrics": metrics,
-                    "final_train_loss": float(self.trainer.final_train_loss),
-                    "evaluation_seconds": duration,
-                    "training_elapsed_seconds": elapsed,
-                }
-            )
+            if is_main:
+                was_training = model.training
+                metrics, duration = _oracle_retrieval_metrics(
+                    model,
+                    evaluation_data,
+                    evaluation_batch_size,
+                    maximum_length,
+                )
+                model.train(was_training)
+                evaluation_during_training_seconds += duration
+                evaluation_history.append(
+                    {
+                        "updates": updates,
+                        "metrics": metrics,
+                        "final_train_loss": float(self.trainer.final_train_loss),
+                        "evaluation_seconds": duration,
+                        "training_elapsed_seconds": elapsed,
+                    }
+                )
+            if distributed:
+                torch.distributed.barrier()
             return control
 
     callback = PeriodicRetrievalCallback()
@@ -856,17 +950,103 @@ def _sentence_transformers_report(
         ),
     )
     callback.trainer = trainer
+    metrics_stream = None
+    accelerator_monitor = None
+    if telemetry and is_main:
+        import threading
+
+        from representax.train.accelerator import AcceleratorMonitor
+
+        run_directory.mkdir(parents=True, exist_ok=True)
+        metrics_stream = (run_directory / "metrics.jsonl").open(
+            "x", encoding="utf-8", buffering=1
+        )
+        metrics_lock = threading.Lock()
+        current_iteration = {"value": 0}
+
+        def publish_reference_metric(
+            event: str,
+            iteration: int,
+            values: Mapping[str, float | int],
+        ) -> None:
+            if metrics_stream is None:  # pragma: no cover - closure invariant
+                raise AssertionError("reference metrics stream is unavailable")
+            row = {
+                "schema_version": "representax-reference-metrics-v1",
+                "timestamp": datetime.now().astimezone().isoformat(),
+                "event": event,
+                "iteration": iteration,
+                "metrics": dict(values),
+            }
+            with metrics_lock:
+                metrics_stream.write(json.dumps(row, sort_keys=True) + "\n")
+
+        publish_reference_metric(
+            "startup",
+            0,
+            {"perf/model_and_data_seconds": model_and_data_seconds},
+        )
+
+        class ReferenceTimingCallback(TrainerCallback):
+            started: float | None = None
+
+            def on_step_begin(
+                self, args: Any, state: Any, control: Any, **kwargs: Any
+            ) -> Any:
+                self.started = time.perf_counter()
+                return control
+
+            def on_step_end(
+                self, args: Any, state: Any, control: Any, **kwargs: Any
+            ) -> Any:
+                if self.started is None:
+                    raise AssertionError("reference step timer did not start")
+                iteration = int(state.global_step)
+                duration = time.perf_counter() - self.started
+                current_iteration["value"] = iteration
+                if trainer.final_train_loss is None:
+                    raise AssertionError("reference trainer loss is unavailable")
+                publish_reference_metric(
+                    "training_step",
+                    iteration,
+                    {
+                        "perf/examples": batch_size,
+                        "perf/step_seconds": duration,
+                        "perf/examples_per_second": batch_size / duration,
+                        "train/loss": float(trainer.final_train_loss),
+                    },
+                )
+                return control
+
+        trainer.add_callback(ReferenceTimingCallback())
+        accelerator_monitor = AcceleratorMonitor(
+            lambda values: publish_reference_metric(
+                "accelerator", current_iteration["value"], values
+            )
+        )
+        accelerator_monitor.start()
     trainer.add_callback(callback)
     torch.cuda.reset_peak_memory_stats()
     training_started = time.perf_counter()
     training_started_at = training_started
-    output = trainer.train()
-    torch.cuda.synchronize()
+    try:
+        output = trainer.train()
+        torch.cuda.synchronize()
+    finally:
+        if accelerator_monitor is not None:
+            accelerator_monitor.close()
+        if metrics_stream is not None:
+            metrics_stream.close()
     training_seconds = time.perf_counter() - training_started
     if trainer.final_train_loss is None:  # pragma: no cover - trainer invariant
         raise AssertionError("Sentence Transformers did not compute a training loss")
     final_train_loss = float(trainer.final_train_loss)
     training_compute_seconds = training_seconds - evaluation_during_training_seconds
+    if not is_main:
+        return None
+    reference_steady_state = (
+        _reference_steady_state_summary(run_directory) if telemetry else None
+    )
     if evaluation_every_steps is None:
         final, final_seconds = _oracle_retrieval_metrics(
             model,
@@ -894,11 +1074,27 @@ def _sentence_transformers_report(
         "maximum_length": maximum_length,
         "cache_chunk_size": cache_chunk_size,
         "seed": seed,
+        "world_size": world_size,
+        "mixed_precision": mixed_precision,
         "model_and_data_seconds": model_and_data_seconds,
         "training_seconds": training_seconds,
         "training_compute_seconds": training_compute_seconds,
         "amortized_examples_per_second": (
             batch_size * steps / training_compute_seconds
+        ),
+        "steady_state_seconds": (
+            None if reference_steady_state is None else reference_steady_state[0]
+        ),
+        "steady_state_step_count": (
+            None if reference_steady_state is None else reference_steady_state[1]
+        ),
+        "steady_state_examples": (
+            None if reference_steady_state is None else reference_steady_state[2]
+        ),
+        "steady_state_examples_per_second": (
+            None
+            if reference_steady_state is None
+            else reference_steady_state[2] / reference_steady_state[0]
         ),
         "trainer_metrics": output.metrics,
         "final_train_loss": final_train_loss,
@@ -927,13 +1123,48 @@ def _worker(arguments: argparse.Namespace) -> None:
         "data_threads": arguments.data_threads,
         "prefetch_buffer_size": arguments.prefetch_buffer_size,
         "seed": arguments.seed,
+        "world_size": arguments.world_size,
+        "mixed_precision": arguments.mixed_precision,
+        "telemetry": arguments.telemetry,
+        "checkpoint_every": arguments.checkpoint_every,
+        "stop_after": arguments.stop_after,
+        "resume": arguments.resume,
+        "export": arguments.export,
     }
-    report = (
-        _representax_report(spec, **kwargs)
-        if arguments.framework == "representax"
-        else _sentence_transformers_report(spec, **kwargs)
-    )
-    _atomic_json(arguments.report, report)
+    if arguments.framework == "representax":
+        packing_query_shape = (
+            None
+            if arguments.packing_query_shape is None
+            else tuple(arguments.packing_query_shape)
+        )
+        packing_document_shape = (
+            None
+            if arguments.packing_document_shape is None
+            else tuple(arguments.packing_document_shape)
+        )
+        if (packing_query_shape is None) != (packing_document_shape is None):
+            raise ValueError(
+                "packing query and document shapes must be specified together"
+            )
+        if packing_query_shape is not None and not arguments.packing:
+            raise ValueError("fixed packing shapes require --packing")
+        buckets = tuple(arguments.sequence_length_bucket or (arguments.maximum_length,))
+        report = _representax_report(
+            spec,
+            sequence_length_buckets=buckets,
+            packing=arguments.packing,
+            packing_query_shape=packing_query_shape,
+            packing_document_shape=packing_document_shape,
+            **kwargs,
+        )
+    else:
+        if arguments.packing:
+            raise ValueError("packing is a Representax worker option")
+        if arguments.sequence_length_bucket:
+            raise ValueError("sequence length buckets are a Representax worker option")
+        report = _sentence_transformers_report(spec, **kwargs)
+    if report is not None:
+        _atomic_json(arguments.report, report)
 
 
 def _device_stats(index: int) -> tuple[int, int]:
@@ -983,6 +1214,14 @@ def _run_processes(
                 "JAX_COMPILATION_CACHE_DIR": str(log_path.parent.parent / "jax-cache"),
             }
         )
+        if name == "representax":
+            environment.pop("XLA_PYTHON_CLIENT_ALLOCATOR", None)
+            environment.update(
+                {
+                    "XLA_PYTHON_CLIENT_PREALLOCATE": "true",
+                    "XLA_PYTHON_CLIENT_MEM_FRACTION": "0.90",
+                }
+            )
         started = time.perf_counter()
         process = subprocess.Popen(
             command,
@@ -1103,8 +1342,8 @@ def _aggregate(arguments: argparse.Namespace) -> None:
         "sustained_training_speedup": lambda row: row["comparison"][
             "sustained_training_speedup"
         ],
-        "representax_sustained_examples_per_second": lambda row: row["representax"][
-            "sustained_examples_per_second_after_first_step"
+        "representax_steady_state_examples_per_second": lambda row: row["representax"][
+            "steady_state_examples_per_second"
         ],
         "sentence_transformers_examples_per_second": lambda row: row[
             "sentence_transformers"
@@ -1140,8 +1379,41 @@ def _aggregate(arguments: argparse.Namespace) -> None:
     print(json.dumps(aggregate["metrics"], indent=2, sort_keys=True))
 
 
+def _shared_worker_flags(arguments: argparse.Namespace) -> list[str]:
+    flags = []
+    if arguments.mixed_precision:
+        flags.append("--mixed-precision")
+    if arguments.telemetry:
+        flags.append("--telemetry")
+    return flags
+
+
+def _representax_worker_flags(arguments: argparse.Namespace) -> list[str]:
+    return [
+        flag
+        for bucket in arguments.sequence_length_bucket or ()
+        for flag in ("--sequence-length-bucket", str(bucket))
+    ]
+
+
 def _pair(arguments: argparse.Namespace) -> None:
     spec = _model_spec(arguments)
+    if arguments.world_size != 1:
+        raise ValueError(
+            "pair launches one isolated GPU per framework; use workers for "
+            "distributed comparisons"
+        )
+    if (
+        any(
+            value is not None
+            for value in (arguments.checkpoint_every, arguments.stop_after)
+        )
+        or arguments.resume
+        or arguments.export
+    ):
+        raise ValueError(
+            "pair does not apply Representax-only checkpoint or export controls"
+        )
     result_directory = arguments.result_directory.expanduser().resolve()
     result_directory.mkdir(parents=True, exist_ok=False)
     reports = {
@@ -1176,6 +1448,8 @@ def _pair(arguments: argparse.Namespace) -> None:
         )
     if arguments.cache_chunk_size is not None:
         common.extend(("--cache-chunk-size", str(arguments.cache_chunk_size)))
+    common.extend(_shared_worker_flags(arguments))
+    representax_only = _representax_worker_flags(arguments)
     commands = [
         (
             name,
@@ -1188,6 +1462,7 @@ def _pair(arguments: argparse.Namespace) -> None:
                 "--framework",
                 name,
                 *common,
+                *(representax_only if name == "representax" else ()),
                 "--run-directory",
                 str(result_directory / "runs" / name),
                 "--report",
@@ -1203,22 +1478,31 @@ def _pair(arguments: argparse.Namespace) -> None:
     process = _run_processes(commands)
     native = json.loads(reports["representax"].read_text())
     oracle = json.loads(reports["sentence-transformers"].read_text())
+    if native["mixed_precision"] != oracle["mixed_precision"]:
+        raise ValueError("paired workers used different precision policies")
     maximum_initial_metric_difference = _initial_metric_parity(
         native["initial_evaluation"],
         oracle["initial_evaluation"],
         tolerance=spec.initial_metric_tolerance,
     )
     metric = f"valid/{EVALUATION_SUBSET}/cosine_ndcg@10"
-    native_sustained_rate = native["sustained_examples_per_second_after_first_step"]
-    oracle_rate = oracle["amortized_examples_per_second"]
-    native_step_seconds = native["sustained_seconds_after_first_step"] / max(
-        arguments.steps - 1,
-        1,
+    native_sustained_rate = native["steady_state_examples_per_second"]
+    oracle_rate = (
+        oracle["steady_state_examples_per_second"]
+        if oracle["steady_state_examples_per_second"] is not None
+        else oracle["amortized_examples_per_second"]
     )
-    oracle_step_seconds = oracle["training_compute_seconds"] / arguments.steps
+    native_step_seconds = (
+        native["steady_state_seconds"] / native["steady_state_step_count"]
+    )
+    oracle_step_seconds = (
+        oracle["steady_state_seconds"] / oracle["steady_state_step_count"]
+        if oracle["steady_state_seconds"] is not None
+        else oracle["training_compute_seconds"] / arguments.steps
+    )
     seconds_saved_per_step = oracle_step_seconds - native_step_seconds
     compilation_break_even_steps = (
-        native["compilation_and_first_step_seconds"] / seconds_saved_per_step
+        native["compilation_and_first_use_seconds"] / seconds_saved_per_step
         if seconds_saved_per_step > 0
         else None
     )
@@ -1242,7 +1526,11 @@ def _pair(arguments: argparse.Namespace) -> None:
             "representax_prefetch_buffer_size": arguments.prefetch_buffer_size,
             "optimizer": "AdamW",
             "learning_rate": 2e-5,
-            "precision": "float32",
+            "precision": (
+                "bfloat16-compute-float32-master"
+                if native["mixed_precision"]
+                else "float32"
+            ),
             "loss": "cosine MNR scale=20 asymmetric",
             "initial_metric_absolute_tolerance": spec.initial_metric_tolerance,
         },
@@ -1386,6 +1674,7 @@ def _curve(arguments: argparse.Namespace) -> None:
     ]
     if arguments.cache_chunk_size is not None:
         command.extend(("--cache-chunk-size", str(arguments.cache_chunk_size)))
+    command.extend(_shared_worker_flags(arguments))
     subprocess.run(
         command,
         check=True,
@@ -1412,12 +1701,23 @@ def _worker_arguments(
     if include_steps:
         parser.add_argument("--steps", type=int, default=100)
     parser.add_argument("--maximum-length", type=int, default=128)
+    parser.add_argument("--sequence-length-bucket", type=int, action="append")
+    parser.add_argument("--packing", action="store_true")
+    parser.add_argument("--packing-query-shape", type=int, nargs=2)
+    parser.add_argument("--packing-document-shape", type=int, nargs=2)
     parser.add_argument("--cache-chunk-size", type=int)
     parser.add_argument("--evaluation-batch-size", type=int, default=128)
     parser.add_argument("--evaluation-every-steps", type=int)
     parser.add_argument("--data-threads", type=int, default=4)
     parser.add_argument("--prefetch-buffer-size", type=int, default=8)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--world-size", type=int, default=1)
+    parser.add_argument("--mixed-precision", action="store_true")
+    parser.add_argument("--telemetry", action="store_true")
+    parser.add_argument("--checkpoint-every", type=int)
+    parser.add_argument("--stop-after", type=int)
+    parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--export", action="store_true")
 
 
 def _parser() -> argparse.ArgumentParser:

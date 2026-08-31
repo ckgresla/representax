@@ -18,7 +18,14 @@ from .model import (
     encode_layers,
 )
 from .scoring import Scorer, score_logits
-from .task import EncodeFunction, LossOutput, RepresentationTask, Task, evaluate_loss
+from .task import (
+    EncodeFunction,
+    LossOutput,
+    PostUpdateTask,
+    RepresentationTask,
+    Task,
+    evaluate_loss,
+)
 
 __all__ = [
     "BUILTIN_MODALITIES",
@@ -31,6 +38,7 @@ __all__ = [
     "EncodeFunction",
     "LossOutput",
     "Modality",
+    "PostUpdateTask",
     "Route",
     "Scorer",
     "RepresentationTask",

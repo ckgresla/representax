@@ -69,15 +69,10 @@ python -m pip install -e ".[test]" --group parity-llava-next-legacy
 python -m pip install -e ".[test,performance]" --group parity-modernvbert
 ```
 
-The v0 Hugging Face reference is pinned to Transformers 5.3.0. Its complete
-architecture catalog is distinct from native support: BERT, MPNet, and
-ModernVBERT have the broadest current acceptance, Jina v5 Omni Small has a
-pinned native text path, Qwen3-VL 2B has native text/image/video embedding and
-reranking paths, Qwen2.5-Omni has a native text/image/audio/video embedding
-path, and the Qwen2/Qwen2.5-VL, CLIP/BGE-VL, and LLaVA-NeXT families have native
-text-image paths. Repository-only dense-route acceptance uses Sentence
-Transformers 5.6.1, with a checkpoint-authored 5.4/5.5 oracle retained for
-E5-V's legacy LLaVA-NeXT layout.
+Representax implements Hugging Face checkpoint adapters as native Equinox
+models. The model packages and their tests are the source of truth for support;
+there is no separately maintained support registry. Repository-only parity uses
+pinned upstream Transformers and Sentence Transformers environments.
 
 See the [compatibility matrix](https://github.com/ckgresla/representax/blob/main/docs/compatibility.md) for the locally accepted
 Python/JAX combinations and the distinction between CPU CI and accelerator
@@ -471,8 +466,8 @@ result = run_job(job, "runs/example")
 `run_job` is the canonical configured boundary: it builds the Equinox model,
 task and loss modifiers, Optax schedule/state, Grain sources, compiled execution
 strategy, evaluator cache, Orbax lifecycle, and selected inference artifact.
-The lower-level builders and `run_training` remain public for research programs
-that need to assemble those pieces directly.
+It is the only public end-to-end training entrypoint. Focused numerical tests
+and microbenchmarks may use lower-level primitives from their owning modules.
 
 W&B is an optional reporter rather than a training dependency. Install
 `representax[wandb]`, then configure the existing logging boundary:

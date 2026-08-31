@@ -1,0 +1,8 @@
+{
+  "paper": "arXiv:2603.14482",
+  "purpose": "Tiny exact forward/loss/gradient/update/EMA oracle",
+  "reference_commit": "204698b45b3712590f06245fbfba32d3be539812",
+  "reference_repository": "facebookresearch/vjepa2",
+  "schema_version": "representax-vjepa2-1-oracle-v1",
+  "torch": "2.13.0+cu130"
+}

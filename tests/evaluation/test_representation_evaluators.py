@@ -13,9 +13,11 @@ from representax.evaluation import (
     JEPARepresentationEvaluator,
     PairClassificationEvaluator,
     clustering_metrics,
+    knn_accuracy,
     labeled_evaluation_batch,
     pair_classification_metrics,
 )
+from representax.models.vjepa2_1 import VJEPA2_1Config, VJEPA2_1Model
 from representax.tasks.classification import pair_classification_batch
 from representax.tasks.triplet import labeled_examples_batch
 from representax.train import EvaluationRunner
@@ -151,3 +153,86 @@ def test_jepa_representation_combines_transfer_knn_and_health() -> None:
     assert result.metrics["valid/jepa_representation/knn_accuracy"] == 1.0
     assert result.metrics["valid/jepa_representation/effective_rank"] > 1.0
     assert result.metrics["valid/jepa_representation/feature_std_min"] > 0.0
+
+
+def test_jepa_knn_query_blocking_is_exact() -> None:
+    embeddings = np.asarray(
+        ((2.0, 0.0), (0.0, 2.0), (1.8, 0.1), (0.1, 1.8)),
+        dtype=np.float32,
+    )
+    labels = np.asarray((0, 1, 0, 1), dtype=np.int32)
+    splits = np.asarray(
+        (
+            EvaluationSplit.TRAIN,
+            EvaluationSplit.TRAIN,
+            EvaluationSplit.TEST,
+            EvaluationSplit.TEST,
+        ),
+        dtype=np.int32,
+    )
+    assert knn_accuracy(
+        embeddings,
+        labels,
+        splits,
+        neighbors=1,
+        query_batch_size=1,
+    ) == knn_accuracy(
+        embeddings,
+        labels,
+        splits,
+        neighbors=1,
+        query_batch_size=16,
+    )
+
+
+def test_vjepa_model_runs_transfer_and_geometry_evaluation() -> None:
+    config = VJEPA2_1Config(
+        image_size=8,
+        patch_size=4,
+        video_frames=4,
+        tubelet_size=2,
+        hidden_size=12,
+        depth=2,
+        heads=2,
+        predictor_hidden_size=12,
+        predictor_depth=2,
+        predictor_heads=2,
+        supervision_layers=(0, 1),
+    )
+    model = VJEPA2_1Model.init(
+        config,
+        key=jax.random.key(40),
+        rematerialization="none",
+    )
+    pixels = jax.random.normal(jax.random.key(41), (8, 3, 8, 8))
+    batches = (
+        labeled_evaluation_batch(
+            examples=pixels[:4],
+            labels=jnp.asarray((0, 0, 1, 1)),
+            split=EvaluationSplit.TRAIN,
+        ),
+        labeled_evaluation_batch(
+            examples=pixels[4:6],
+            labels=jnp.asarray((0, 1)),
+            split=EvaluationSplit.VALIDATION,
+        ),
+        labeled_evaluation_batch(
+            examples=pixels[6:],
+            labels=jnp.asarray((0, 1)),
+            split=EvaluationSplit.TEST,
+        ),
+    )
+    evaluator = JEPARepresentationEvaluator(
+        inverse_regularization=(1.0,),
+        max_iterations=50,
+        neighbors=1,
+    )
+    metrics = EvaluationRunner(evaluator).run(model, batches).metrics
+    expected = {
+        "valid/jepa_representation/linear_probe_accuracy",
+        "valid/jepa_representation/knn_accuracy",
+        "valid/jepa_representation/effective_rank",
+        "valid/jepa_representation/feature_std_mean",
+    }
+    assert expected <= metrics.keys()
+    assert all(np.isfinite(metrics[name]) for name in expected)
