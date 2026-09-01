@@ -13,8 +13,6 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from experiments.preflights.provenance import reference_source
-
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_ARTIFACT_ROOT = (
     Path(os.environ.get("REPRESENTAX_PAPER_ROOT", "/raid/representax-paper"))
@@ -63,9 +61,14 @@ def _source_commits() -> dict[str, str]:
         capture_output=True,
         text=True,
     ).stdout.strip()
+    references = json.loads(
+        (REPOSITORY_ROOT / "benchmarks/configs/paper-references-v1.json").read_text(
+            encoding="utf-8"
+        )
+    )["references"]
     return {
         "representax": representax,
-        "sentence-transformers": reference_source("sentence-transformers").commit,
+        "sentence-transformers": references["sentence-transformers"]["commit"],
     }
 
 

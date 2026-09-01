@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import runpy
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -18,6 +20,17 @@ SCRIPT = (
 
 def _experiment() -> dict:
     return runpy.run_path(str(SCRIPT))
+
+
+def test_launcher_executes_directly() -> None:
+    result = subprocess.run(
+        (sys.executable, SCRIPT, "--help"),
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert "{tune,run}" in result.stdout
 
 
 def test_candidate_commands_keep_the_scientific_contract_fixed(tmp_path: Path) -> None:
