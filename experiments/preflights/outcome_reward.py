@@ -21,7 +21,7 @@ from typing import Any, Literal, cast
 
 import numpy as np
 
-from experiments.paper.provenance import reference_source, write_reference_result
+from experiments.preflights.provenance import reference_source, write_reference_result
 
 ROOT = Path(__file__).resolve().parents[2]
 CAMPAIGN_MANIFEST = ROOT / "benchmarks/configs/paper-campaign-v1.json"
@@ -1454,7 +1454,7 @@ def _pair(arguments: argparse.Namespace) -> None:
         command = [
             str(python),
             "-m",
-            "experiments.paper.outcome_reward",
+            "experiments.preflights.outcome_reward",
             "worker",
             "--framework",
             framework,
@@ -1509,7 +1509,7 @@ def _pair(arguments: argparse.Namespace) -> None:
             (
                 str(arguments.trl_python),
                 "-m",
-                "experiments.paper.outcome_reward",
+                "experiments.preflights.outcome_reward",
                 "verify-export",
                 "--report",
                 str(output / "representax.json"),

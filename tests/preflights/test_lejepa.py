@@ -5,7 +5,7 @@ import json
 import jax.numpy as jnp
 import numpy as np
 import torch
-from experiments.paper.lejepa import (
+from experiments.preflights.lejepa import (
     CANARY_ARCHITECTURE,
     OFFICIAL_COMMIT,
     PAPER_VIT_LARGE_ARCHITECTURE,

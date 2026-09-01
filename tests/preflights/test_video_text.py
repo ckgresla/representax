@@ -7,7 +7,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import optax
-from experiments.paper.video_text import (
+from experiments.preflights.video_text import (
     GRAD_CACHE_MICRO_BATCH,
     PREFLIGHT_BATCH_SIZE,
     VIDEO_FPS,

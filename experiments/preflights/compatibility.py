@@ -285,7 +285,9 @@ def _job(entry: ModelEntry, checkpoint: Path) -> Any:
             target=(
                 "representax.tasks.cross_encoder:PointwiseCollator"
                 if recipe.scorer
-                else ("experiments.paper.compatibility:CompatibilityPairwiseCollator")
+                else (
+                    "experiments.preflights.compatibility:CompatibilityPairwiseCollator"
+                )
             )
         ),
         num_threads=0,
@@ -515,7 +517,7 @@ def _sweep_command(arguments: argparse.Namespace) -> None:
         command = [
             sys.executable,
             "-m",
-            "experiments.paper.compatibility",
+            "experiments.preflights.compatibility",
             "model",
             "--manifest",
             str(arguments.manifest),

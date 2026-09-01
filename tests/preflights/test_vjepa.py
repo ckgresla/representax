@@ -4,7 +4,7 @@ import json
 
 import jax.numpy as jnp
 import numpy as np
-from experiments.paper.vjepa import (
+from experiments.preflights.vjepa import (
     FRAMEWORKS,
     PREFLIGHT_BATCH_SIZE,
     VJEPAPreflightCollator,

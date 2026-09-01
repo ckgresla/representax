@@ -4,7 +4,7 @@ import json
 
 import jax.numpy as jnp
 import numpy as np
-from experiments.paper.audio_text import (
+from experiments.preflights.audio_text import (
     GRAD_CACHE_MICRO_BATCH,
     PREFLIGHT_BATCH_SIZE,
     SAMPLE_RATE,

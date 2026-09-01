@@ -19,7 +19,7 @@ from typing import Any
 
 import numpy as np
 
-from experiments.paper.provenance import reference_source, write_reference_result
+from experiments.preflights.provenance import reference_source, write_reference_result
 
 ROOT = Path(__file__).resolve().parents[2]
 CAMPAIGN_MANIFEST = ROOT / "benchmarks/configs/paper-campaign-v1.json"
@@ -536,7 +536,7 @@ def _representax_job(
         ),
         data=data(
             data_directory / "train.jsonl",
-            "experiments.paper.video_text:VideoTextRetrievalCollator",
+            "experiments.preflights.video_text:VideoTextRetrievalCollator",
         ),
         training=TrainingConfig(
             global_batch_size=batch_size,
@@ -556,7 +556,7 @@ def _representax_job(
         evaluation=EvaluationConfig(
             data=data(
                 data_directory / "evaluation.jsonl",
-                "experiments.paper.video_text:VideoTextEvaluationCollator",
+                "experiments.preflights.video_text:VideoTextEvaluationCollator",
             ),
             batch_size=EVALUATION_BATCH_SIZE,
             evaluators=(
@@ -1136,7 +1136,7 @@ def _pair(arguments: argparse.Namespace) -> None:
         command = [
             sys.executable,
             "-m",
-            "experiments.paper.video_text",
+            "experiments.preflights.video_text",
             "worker",
             "--framework",
             framework,

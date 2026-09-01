@@ -4,7 +4,7 @@ import json
 
 import jax.numpy as jnp
 import numpy as np
-from experiments.paper.image_text import (
+from experiments.preflights.image_text import (
     GRAD_CACHE_MICRO_BATCH,
     ImageTextEvaluationCollator,
     ImageTextRetrievalCollator,

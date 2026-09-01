@@ -20,7 +20,7 @@ from typing import Any
 
 import numpy as np
 
-from experiments.paper.provenance import reference_source, write_reference_result
+from experiments.preflights.provenance import reference_source, write_reference_result
 
 ROOT = Path(__file__).resolve().parents[2]
 CAMPAIGN_MANIFEST = ROOT / "benchmarks/configs/paper-campaign-v1.json"
@@ -528,7 +528,7 @@ def _representax_job(
             shuffle=False,
         ),
         collate=ComponentConfig(
-            target="experiments.paper.vjepa:VJEPAPreflightCollator",
+            target="experiments.preflights.vjepa:VJEPAPreflightCollator",
             parameters={"root_directory": str(data_directory)},
         ),
         drop_remainder=True,
@@ -1085,7 +1085,7 @@ def _pair(arguments: argparse.Namespace) -> None:
         command = [
             sys.executable,
             "-m",
-            "experiments.paper.vjepa",
+            "experiments.preflights.vjepa",
             "worker",
             "--framework",
             framework,

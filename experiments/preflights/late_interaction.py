@@ -18,7 +18,7 @@ from typing import Any, cast
 
 import numpy as np
 
-from experiments.paper.provenance import reference_source, write_reference_result
+from experiments.preflights.provenance import reference_source, write_reference_result
 
 ROOT = Path(__file__).resolve().parents[2]
 CAMPAIGN_MANIFEST = ROOT / "benchmarks/configs/paper-campaign-v1.json"
@@ -1781,7 +1781,7 @@ def _pair(arguments: argparse.Namespace) -> None:
         command = [
             str(interpreters[framework]),
             "-m",
-            "experiments.paper.late_interaction",
+            "experiments.preflights.late_interaction",
             "worker",
             "--framework",
             framework,
@@ -1829,7 +1829,7 @@ def _pair(arguments: argparse.Namespace) -> None:
     verify = [
         str(arguments.reference_python),
         "-m",
-        "experiments.paper.late_interaction",
+        "experiments.preflights.late_interaction",
         "verify-export",
         "--report",
         str(output / "representax.json"),

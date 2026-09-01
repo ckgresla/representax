@@ -401,7 +401,7 @@ def build_job(
     return JobConfig(
         name="paper-lejepa-vit-b16-imagenet1k-readiness",
         model=ModelConfig(
-            target="experiments.paper.lejepa:load_lejepa_model",
+            target="experiments.preflights.lejepa:load_lejepa_model",
             parameters={
                 "config": model_config,
                 "initialization_path": str(initialization.resolve()),
@@ -532,7 +532,7 @@ def build_capacity_job(
     return JobConfig(
         name="paper-lejepa-vit-l16-imagenet1k-capacity",
         model=ModelConfig(
-            target="experiments.paper.lejepa:load_lejepa_model",
+            target="experiments.preflights.lejepa:load_lejepa_model",
             parameters={
                 "config": model_config,
                 "initialization_path": None,

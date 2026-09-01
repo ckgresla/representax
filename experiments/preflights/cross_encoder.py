@@ -19,7 +19,7 @@ from typing import Any
 
 import numpy as np
 
-from experiments.paper.provenance import reference_source, write_reference_result
+from experiments.preflights.provenance import reference_source, write_reference_result
 
 ROOT = Path(__file__).resolve().parents[2]
 CAMPAIGN_MANIFEST = ROOT / "benchmarks/configs/paper-campaign-v1.json"
@@ -839,7 +839,7 @@ def _pair(arguments: argparse.Namespace) -> None:
         command = [
             sys.executable,
             "-m",
-            "experiments.paper.cross_encoder",
+            "experiments.preflights.cross_encoder",
             "worker",
             "--framework",
             framework,
@@ -885,7 +885,7 @@ def _pair(arguments: argparse.Namespace) -> None:
         (
             sys.executable,
             "-m",
-            "experiments.paper.cross_encoder",
+            "experiments.preflights.cross_encoder",
             "verify-export",
             "--report",
             str(output / "representax.json"),

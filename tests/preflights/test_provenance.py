@@ -7,8 +7,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from experiments.paper import provenance
-from experiments.paper.provenance import REFERENCE_MANIFEST, reference_source
+from experiments.preflights import provenance
+from experiments.preflights.provenance import REFERENCE_MANIFEST, reference_source
 
 
 def test_every_paper_reference_has_one_immutable_source_record() -> None:

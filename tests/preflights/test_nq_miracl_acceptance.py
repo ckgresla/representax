@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 
 import pytest
-from experiments.paper.nq_miracl_acceptance import (
+from experiments.preflights.nq_miracl_acceptance import (
     EVALUATION_BATCH_SIZE,
     LANGUAGES,
     MAXIMUM_LENGTH,

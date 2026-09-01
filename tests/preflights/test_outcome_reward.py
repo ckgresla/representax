@@ -1,6 +1,6 @@
 """Contracts for the paper outcome-reward preflight."""
 
-from experiments.paper.outcome_reward import (
+from experiments.preflights.outcome_reward import (
     MICRO_BATCH_SIZE,
     _representax_job,
     frozen_contract,

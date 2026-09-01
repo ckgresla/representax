@@ -3,11 +3,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from experiments.paper.compatibility import _read_manifest, _recipe
+from experiments.preflights.compatibility import _read_manifest, _recipe
 
 
 def test_paper_compatibility_panel_has_25_pinned_checkpoints() -> None:
-    root = Path(__file__).parents[1]
+    root = Path(__file__).parents[2]
     path = root / "benchmarks/configs/paper-compatibility-v1.json"
     document = json.loads(path.read_text(encoding="utf-8"))
     assert document["schema_version"] == "representax-paper-compatibility-v1"

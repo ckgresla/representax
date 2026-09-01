@@ -69,7 +69,7 @@ CONTRACTS: dict[RowName, RowContract] = {
         model_id="jinaai/jina-embeddings-v5-omni-small-retrieval",
         model_revision="12949877f0092093f366c6450340011320152a05",
         model_target=(
-            "experiments.paper.nq_miracl_acceptance:load_miracl_text_encoder"
+            "experiments.preflights.nq_miracl_acceptance:load_miracl_text_encoder"
         ),
         training_datasets=(
             ("miracl/miracl", "5be20db9509754dadad47689368639fcec739c00"),
@@ -817,7 +817,7 @@ def acceptance_job(
                 ),
                 collate=ComponentConfig(
                     target=(
-                        "experiments.paper.dense_retrieval:"
+                        "experiments.preflights.dense_retrieval:"
                         "RetrievalEvaluationCollator"
                     )
                 ),
@@ -850,7 +850,7 @@ def acceptance_job(
 
 
 def _evaluation_records(data: EvaluationData) -> tuple[Any, ...]:
-    from experiments.paper.dense_retrieval import evaluation_rows
+    from experiments.preflights.dense_retrieval import evaluation_rows
 
     return evaluation_rows(
         data.queries,
@@ -860,7 +860,7 @@ def _evaluation_records(data: EvaluationData) -> tuple[Any, ...]:
 
 
 def _evaluation_batches(processor: Any, data: EvaluationData) -> tuple[Any, ...]:
-    from experiments.paper.dense_retrieval import RetrievalEvaluationCollator
+    from experiments.preflights.dense_retrieval import RetrievalEvaluationCollator
 
     rows = _evaluation_records(data)
     collate = RetrievalEvaluationCollator(processor)
@@ -921,7 +921,7 @@ def run_acceptance(
 
     import jax
 
-    from experiments.paper.dense_retrieval import fixed_rows_resolver
+    from experiments.preflights.dense_retrieval import fixed_rows_resolver
     from representax import load_inference_bundle
     from representax.train import run_job
     from representax.train.job import load_model

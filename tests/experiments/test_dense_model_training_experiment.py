@@ -5,6 +5,8 @@ from __future__ import annotations
 import runpy
 from pathlib import Path
 
+import pytest
+
 SCRIPT = (
     Path(__file__).parents[2] / "experiments" / "01-dense-model-training" / "run.py"
 )
@@ -14,9 +16,9 @@ def _experiment() -> dict:
     return runpy.run_path(str(SCRIPT))
 
 
-def test_pair_command_pins_the_accepted_scientific_contract(tmp_path: Path) -> None:
+def test_run_command_pins_the_accepted_scientific_contract(tmp_path: Path) -> None:
     experiment = _experiment()
-    command = experiment["_pair_command"](
+    command = experiment["_run_command"](
         42,
         (0, 1),
         tmp_path,
@@ -65,28 +67,17 @@ def test_aggregate_command_uses_all_three_quality_seeds(tmp_path: Path) -> None:
     ]
 
 
-def test_reference_training_and_shared_evaluation_are_public_commands(
-    tmp_path: Path,
-) -> None:
+def test_public_cli_only_exposes_paired_experiment_commands() -> None:
     experiment = _experiment()
-    worker = experiment["_worker_command"](
-        "sentence-transformers",
-        773,
-        tmp_path,
-        Path("/model"),
-        Path("/data"),
-    )
-    evaluation = experiment["_evaluation_command"](
-        "sentence-transformers",
-        Path("/export"),
-        tmp_path / "evaluation.json",
-        Path("/data"),
-    )
+    parser = experiment["_parser"]()
+    help_text = parser.format_help()
+    arguments = parser.parse_args(["run", "--seed", "773", "--gpus", "2", "3"])
 
-    assert worker[worker.index("--framework") + 1] == "sentence-transformers"
-    assert worker[worker.index("--seed") + 1] == "773"
-    assert evaluation[3] == "offline-evaluate"
-    assert evaluation[evaluation.index("--artifact-kind") + 1] == (
-        "sentence-transformers"
-    )
-    assert evaluation[evaluation.index("--artifact") + 1] == "/export"
+    assert "{run,aggregate,campaign}" in help_text
+    with pytest.raises(SystemExit):
+        parser.parse_args(["train"])
+    with pytest.raises(SystemExit):
+        parser.parse_args(["evaluate"])
+    assert arguments.command == "run"
+    assert arguments.seed == 773
+    assert arguments.gpus == [2, 3]

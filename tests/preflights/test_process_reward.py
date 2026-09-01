@@ -6,7 +6,7 @@ import math
 
 import numpy as np
 import pytest
-from experiments.paper.process_reward import (
+from experiments.preflights.process_reward import (
     EXECUTION_SEQUENCE_LENGTH,
     MICRO_BATCH_SIZE,
     STEPS_PER_TRAJECTORY,

@@ -2,7 +2,7 @@
 
 import json
 
-from experiments.paper.cross_encoder import (
+from experiments.preflights.cross_encoder import (
     _reference_training_dataset,
     frozen_contract,
     pointwise_training_rows,

@@ -18,7 +18,7 @@ from typing import Any, Literal
 
 import numpy as np
 
-from experiments.paper.provenance import reference_source, write_reference_result
+from experiments.preflights.provenance import reference_source, write_reference_result
 
 ROOT = Path(__file__).resolve().parents[2]
 CAMPAIGN_MANIFEST = ROOT / "benchmarks/configs/paper-campaign-v1.json"
@@ -354,7 +354,7 @@ def _representax_job(
     def data(path: Path, *, evaluation: bool = False) -> DataConfig:
         if evaluation and workload == "pair-classification":
             collator = ComponentConfig(
-                target="experiments.paper.semantic_pair:PairEvaluationCollator",
+                target="experiments.preflights.semantic_pair:PairEvaluationCollator",
                 parameters={"pad_to_size": MICRO_BATCH_SIZE},
             )
         else:
@@ -1041,7 +1041,7 @@ def _pair(arguments: argparse.Namespace) -> None:
         command = [
             sys.executable,
             "-m",
-            "experiments.paper.semantic_pair",
+            "experiments.preflights.semantic_pair",
             "worker",
             "--workload",
             arguments.workload,

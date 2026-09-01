@@ -18,7 +18,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, TextIO
 
-from experiments.paper.provenance import reference_source, write_reference_result
+from experiments.preflights.provenance import reference_source, write_reference_result
 
 TRAIN_DATASET_ID = "sentence-transformers/msmarco-msmarco-MiniLM-L6-v3"
 TRAIN_DATASET_REVISION = "0d54352548089199bde15ad7e06efe895dc80b56"
@@ -473,7 +473,7 @@ def _representax_report(
     packing_document_shape: tuple[int, int] | None,
 ) -> dict[str, Any]:
     import jax
-    from experiments.paper.dense_retrieval import (
+    from experiments.preflights.dense_retrieval import (
         evaluation_rows,
         event_metrics,
         fixed_rows_resolver,
@@ -541,7 +541,9 @@ def _representax_report(
         "compute_dtype": "bfloat16" if mixed_precision else "float32",
     }
     if packing:
-        model_target = "experiments.paper.padding:load_packed_mpnet_sentence_encoder"
+        model_target = (
+            "experiments.preflights.padding:load_packed_mpnet_sentence_encoder"
+        )
         model_parameters.update(
             {
                 "maximum_batch_size": max(batch_size, evaluation_batch_size),
@@ -629,7 +631,7 @@ def _representax_report(
                 ),
                 collate=ComponentConfig(
                     target=(
-                        "experiments.paper.dense_retrieval:RetrievalEvaluationCollator"
+                        "experiments.preflights.dense_retrieval:RetrievalEvaluationCollator"
                     ),
                 ),
                 drop_remainder=True,
@@ -848,7 +850,7 @@ def _representax_offline_metrics(
     batch_size: int,
     iteration: int,
 ) -> dict[str, Any]:
-    from experiments.paper.dense_retrieval import (
+    from experiments.preflights.dense_retrieval import (
         RetrievalEvaluationCollator,
         evaluation_rows,
     )

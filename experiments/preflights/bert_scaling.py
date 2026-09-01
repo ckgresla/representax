@@ -617,7 +617,7 @@ def build_job(
     return JobConfig(
         name=f"paper-bert-scaling-msmarco-{entry.name}",
         model=ModelConfig(
-            target="experiments.paper.bert_scaling:load_bert_ladder_model",
+            target="experiments.preflights.bert_scaling:load_bert_ladder_model",
             parameters={
                 "size": entry.name,
                 "tokenizer_path": str(data_directory / "tokenizer"),
@@ -680,7 +680,7 @@ def build_job(
                 ),
                 collate=ComponentConfig(
                     target=(
-                        "experiments.paper.dense_retrieval:"
+                        "experiments.preflights.dense_retrieval:"
                         "RetrievalEvaluationCollator"
                     )
                 ),
@@ -818,7 +818,7 @@ def _timings(updates: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
 
 
 def _evaluation_records(data: EvaluationData) -> tuple[Any, ...]:
-    from experiments.paper.dense_retrieval import evaluation_rows
+    from experiments.preflights.dense_retrieval import evaluation_rows
 
     return evaluation_rows(
         data.queries,
@@ -828,7 +828,7 @@ def _evaluation_records(data: EvaluationData) -> tuple[Any, ...]:
 
 
 def _evaluation_batches(processor: Any, data: EvaluationData) -> tuple[Any, ...]:
-    from experiments.paper.dense_retrieval import RetrievalEvaluationCollator
+    from experiments.preflights.dense_retrieval import RetrievalEvaluationCollator
 
     rows = _evaluation_records(data)
     collate = RetrievalEvaluationCollator(processor)
@@ -957,7 +957,7 @@ def run_size(
 
     import jax
 
-    from experiments.paper.dense_retrieval import fixed_rows_resolver
+    from experiments.preflights.dense_retrieval import fixed_rows_resolver
     from representax import load_inference_bundle
     from representax.train import run_job
 
@@ -1366,7 +1366,7 @@ def _worker_command(
         [
             sys.executable,
             "-m",
-            "experiments.paper.bert_scaling",
+            "experiments.preflights.bert_scaling",
             "worker",
             "--size",
             entry.name,

@@ -32,7 +32,9 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   the frozen configuration, native and pinned-reference dispatch, shared
   Representax evaluation, aggregation, and artifact naming while reusing the
   production training and evaluation implementations. Write durable outputs to
-  the matching directory under =/raid/representax-paper/=.
+  the matching directory under =/raid/representax-paper/=. Keep lifecycle,
+  compatibility, and bounded readiness runners under =experiments/preflights/=
+  rather than mixing them with serious experiment entrypoints.
 
 *** DONE Define measurable monotonic-improvement gates over existing trainers :research:
    This is a paper-protocol decision, not an implementation backlog. Freeze a
@@ -347,7 +349,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
    systems gates before it appears in the table.
    The identity-only panel lives in
    =benchmarks/configs/paper-compatibility-v1.json=. The single executable flow
-   is =experiments/paper/compatibility.py=: it performs checkpoint load, update,
+   is =experiments/preflights/compatibility.py=: it performs checkpoint load, update,
    resumable checkpoint restore, configured evaluation, native inference export,
    and reload through =run_job=. The initial discovery evidence is under
    =/raid/representax/paper-compatibility-v1-20260828-v3/=. All 25 pinned rows

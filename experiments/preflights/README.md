@@ -1,4 +1,10 @@
-# Paper experiments
+# Preflights and acceptance checks
+
+These modules establish lifecycle readiness, compatibility, and bounded systems
+behavior before a workload becomes a numbered serious experiment. They may
+launch native and reference workers, but they are not the paper's public
+experiment commands. Serious runs live in the numbered directories directly
+under `experiments/`.
 
 Install one environment for native and reference runs:
 
@@ -15,7 +21,7 @@ scripts.
 Run the pinned compatibility panel on two GPUs:
 
 ```bash
-python -m experiments.paper.compatibility sweep \
+python -m experiments.preflights.compatibility sweep \
   --gpus 0 1 \
   --cache-directory /raid/.cache/huggingface \
   --output-root /raid/representax/paper-compatibility-v1

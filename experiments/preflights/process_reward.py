@@ -17,7 +17,7 @@ from typing import Any
 
 import numpy as np
 
-from experiments.paper.provenance import reference_source, write_reference_result
+from experiments.preflights.provenance import reference_source, write_reference_result
 
 ROOT = Path(__file__).resolve().parents[2]
 CAMPAIGN_MANIFEST = ROOT / "benchmarks/configs/paper-campaign-v1.json"
@@ -416,7 +416,7 @@ def _representax_job(
         return DataConfig(
             distribution=mix(source(str(path), map=identity), shuffle=False),
             collate=ComponentConfig(
-                target=("experiments.paper.process_reward:ProcessRewardPaperCollator")
+                target=("experiments.preflights.process_reward:ProcessRewardPaperCollator")
             ),
             drop_remainder=not evaluation,
             num_threads=0,
@@ -426,7 +426,7 @@ def _representax_job(
     return JobConfig(
         name="paper-preflight-process-reward",
         model=ModelConfig(
-            target="experiments.paper.process_reward:load_process_reward_model",
+            target="experiments.preflights.process_reward:load_process_reward_model",
             parameters={
                 "model_name_or_path": str(checkpoint),
                 "revision": contract.model_revision,
@@ -962,7 +962,7 @@ def _pair(arguments: argparse.Namespace) -> None:
         command = [
             executables[framework],
             "-m",
-            "experiments.paper.process_reward",
+            "experiments.preflights.process_reward",
             "worker",
             "--framework",
             framework,

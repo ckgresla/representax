@@ -6,7 +6,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from experiments.paper.late_interaction import (
+from experiments.preflights.late_interaction import (
     _build_summary,
     _encoding_timings,
     _pad_embeddings,
@@ -309,7 +309,7 @@ def test_existing_reports_can_be_summarized_after_interruption(
         reports[name] = tmp_path / f"{name}.json"
         reports[name].write_text(f'{{"framework": "{name}"}}')
     monkeypatch.setattr(
-        "experiments.paper.late_interaction.frozen_contract",
+        "experiments.preflights.late_interaction.frozen_contract",
         lambda: frozen_contract(),
     )
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from experiments.paper.bert_scaling import (
+from experiments.preflights.bert_scaling import (
     ACTIVE_UPDATE_BYTES_PER_PARAMETER,
     DEFAULT_ARTIFACT_ROOT,
     EVALUATION_DATASET_ID,

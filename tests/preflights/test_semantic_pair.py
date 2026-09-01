@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from experiments.paper.semantic_pair import (
+from experiments.preflights.semantic_pair import (
     PairEvaluationCollator,
     frozen_contract,
     normalize_sts_score,
