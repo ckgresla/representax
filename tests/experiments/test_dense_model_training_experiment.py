@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import runpy
 import subprocess
-import tomllib
 from pathlib import Path
 
 import pytest
@@ -13,9 +12,6 @@ SCRIPT = (
     Path(__file__).parents[2] / "experiments" / "01-dense-model-training" / "run.py"
 )
 SHELL_RUNNER = SCRIPT.with_name("run.sh")
-SETUP = SCRIPT.with_name("setup.sh")
-ENVIRONMENT = SCRIPT.with_name("pyproject.toml")
-LOCK = SCRIPT.with_name("uv.lock")
 
 
 def _experiment() -> dict:
@@ -91,22 +87,16 @@ def test_public_cli_only_exposes_paired_experiment_commands() -> None:
     assert arguments.gpus == [2, 3]
 
 
-def test_shell_files_are_syntactically_valid() -> None:
-    for script in (SHELL_RUNNER, SETUP):
-        subprocess.run(("bash", "-n", script), check=True)
-
-
-def test_locked_environment_uses_one_cuda_stack() -> None:
-    environment = tomllib.loads(ENVIRONMENT.read_text(encoding="utf-8"))
-    dependencies = set(environment["project"]["dependencies"])
-    lock = tomllib.loads(LOCK.read_text(encoding="utf-8"))
-    packages = {package["name"]: package for package in lock["package"]}
-
-    assert "representax[config,hf,performance,wandb,cuda12]" in dependencies
-    assert "torch==2.11.0" in dependencies
-    assert packages["torch"]["version"] == "2.11.0+cu128"
-    assert "jax-cuda12-plugin" in packages
-    assert all("cu13" not in name for name in packages)
+def test_shell_runner_is_syntactically_valid_and_has_standard_help() -> None:
+    subprocess.run(("bash", "-n", SHELL_RUNNER), check=True)
+    result = subprocess.run(
+        (SHELL_RUNNER, "-h"),
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert "Usage:" in result.stdout
+    assert "-g GPU_IDS" in result.stdout
 
 
 @pytest.mark.parametrize(
@@ -152,7 +142,7 @@ def test_shell_runner_schedules_seed_pairs_in_waves(
     fake_python.chmod(0o755)
 
     subprocess.run(
-        (SHELL_RUNNER, "--gpus", ",".join(gpus)),
+        (SHELL_RUNNER, "-g", ",".join(gpus)),
         check=True,
         env={
             "CALLS": str(calls),

@@ -2,31 +2,46 @@
 set -euo pipefail
 
 experiment_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-environment_dir="${REPRESENTAX_EXPERIMENT_ENV:-${experiment_dir}/.venv}"
+experiments_dir="$(cd "${experiment_dir}/.." && pwd)"
+environment_dir="${REPRESENTAX_EXPERIMENT_ENV:-${experiments_dir}/.venv}"
 python="${REPRESENTAX_EXPERIMENT_PYTHON:-${environment_dir}/bin/python}"
 seeds=(7 42 773)
 
 usage() {
-  echo "usage: $0 --gpus LIST" >&2
-  echo "LIST is 2, 4, or 6 comma-separated GPU indices" >&2
+  cat <<EOF
+Usage: $0 -g GPU_IDS
+
+GPU_IDS is a comma-separated list of 2, 4, or 6 indices.
+EOF
 }
 
-if [[ ${1:-} == "--help" ]]; then
-  usage
-  exit 0
-fi
-if (( $# != 2 )) || [[ $1 != "--gpus" ]]; then
-  usage
+gpu_ids=""
+while getopts ":g:h" option; do
+  case "${option}" in
+    g) gpu_ids="${OPTARG}" ;;
+    h)
+      usage
+      exit 0
+      ;;
+    *)
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
+shift "$((OPTIND - 1))"
+if [[ -z "${gpu_ids}" ]] || (( $# )); then
+  usage >&2
   exit 2
 fi
 if [[ ! -x "${python}" ]]; then
-  echo "experiment Python not found at ${python}; run ${experiment_dir}/setup.sh" >&2
+  echo "experiment Python not found at ${python}; run ${experiments_dir}/setup.sh" >&2
   exit 2
 fi
 
-IFS=',' read -r -a gpus <<< "$2"
+IFS=',' read -r -a gpus <<< "${gpu_ids}"
 if (( ${#gpus[@]} != 2 && ${#gpus[@]} != 4 && ${#gpus[@]} != 6 )); then
-  usage
+  usage >&2
   exit 2
 fi
 pair_count=$(( ${#gpus[@]} / 2 ))

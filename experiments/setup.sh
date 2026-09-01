@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-experiment_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-repository_root="$(cd "${experiment_dir}/../.." && pwd)"
-environment_dir="${REPRESENTAX_EXPERIMENT_ENV:-${experiment_dir}/.venv}"
+experiments_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repository_root="$(cd "${experiments_dir}/.." && pwd)"
+environment_dir="${REPRESENTAX_EXPERIMENT_ENV:-${experiments_dir}/.venv}"
 uv_command="${UV:-uv}"
 setup_gpu="${REPRESENTAX_SETUP_GPU:-0}"
 
@@ -22,7 +22,7 @@ if (( ${driver_version%%.*} < 525 )); then
 fi
 
 UV_PROJECT_ENVIRONMENT="${environment_dir}" \
-  "${uv_command}" sync --project "${experiment_dir}" --locked
+  "${uv_command}" sync --project "${experiments_dir}" --locked
 
 (
   cd "${repository_root}"
