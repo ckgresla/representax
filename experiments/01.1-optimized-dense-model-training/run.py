@@ -13,6 +13,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+from experiments.preflights.provenance import reference_source
+
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_ARTIFACT_ROOT = (
     Path(os.environ.get("REPRESENTAX_PAPER_ROOT", "/raid/representax-paper"))
@@ -51,6 +53,20 @@ class Candidate:
 
 def _benchmark_command(command: str) -> list[str]:
     return [sys.executable, "-m", "benchmarks.dense_retrieval", command]
+
+
+def _source_commits() -> dict[str, str]:
+    representax = subprocess.run(
+        ("git", "rev-parse", "HEAD"),
+        cwd=REPOSITORY_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    return {
+        "representax": representax,
+        "sentence-transformers": reference_source("sentence-transformers").commit,
+    }
 
 
 def _scientific_arguments(
@@ -357,6 +373,7 @@ def _tune(arguments: argparse.Namespace) -> None:
     winners = {framework: _best(values) for framework, values in results.items()}
     document = {
         "schema_version": "representax-optimized-dense-tuning-v1",
+        "source_commits": _source_commits(),
         "selection_metric": "projected_256_update_examples_per_second",
         "scientific_contract": {
             "model": "sentence-transformers/all-mpnet-base-v2",
