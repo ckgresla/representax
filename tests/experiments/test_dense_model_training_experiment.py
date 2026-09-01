@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import runpy
 import subprocess
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -13,6 +14,8 @@ SCRIPT = (
 )
 SHELL_RUNNER = SCRIPT.with_name("run.sh")
 SETUP = SCRIPT.with_name("setup.sh")
+ENVIRONMENT = SCRIPT.with_name("pyproject.toml")
+LOCK = SCRIPT.with_name("uv.lock")
 
 
 def _experiment() -> dict:
@@ -93,6 +96,19 @@ def test_shell_files_are_syntactically_valid() -> None:
         subprocess.run(("bash", "-n", script), check=True)
 
 
+def test_locked_environment_uses_one_cuda_stack() -> None:
+    environment = tomllib.loads(ENVIRONMENT.read_text(encoding="utf-8"))
+    dependencies = set(environment["project"]["dependencies"])
+    lock = tomllib.loads(LOCK.read_text(encoding="utf-8"))
+    packages = {package["name"]: package for package in lock["package"]}
+
+    assert "representax[config,hf,performance,wandb,cuda12]" in dependencies
+    assert "torch==2.11.0" in dependencies
+    assert packages["torch"]["version"] == "2.11.0+cu128"
+    assert "jax-cuda12-plugin" in packages
+    assert all("cu13" not in name for name in packages)
+
+
 @pytest.mark.parametrize(
     ("gpus", "expected"),
     [
@@ -136,7 +152,7 @@ def test_shell_runner_schedules_seed_pairs_in_waves(
     fake_python.chmod(0o755)
 
     subprocess.run(
-        (SHELL_RUNNER, *gpus),
+        (SHELL_RUNNER, "--gpus", ",".join(gpus)),
         check=True,
         env={
             "CALLS": str(calls),

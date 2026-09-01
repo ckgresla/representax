@@ -1,0 +1,19 @@
+[project]
+name = "representax-paper-01"
+version = "0.0.0"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "accelerate==1.14.0",
+    "representax[config,hf,performance,wandb,cuda12]",
+    "sentence-transformers==5.6.1",
+    "torch==2.11.0",
+]
+
+[tool.uv.sources]
+representax = { path = "../..", editable = true }
+torch = { index = "pytorch-cu128" }
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true

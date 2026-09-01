@@ -7,20 +7,28 @@ python="${REPRESENTAX_EXPERIMENT_PYTHON:-${environment_dir}/bin/python}"
 seeds=(7 42 773)
 
 usage() {
-  echo "usage: $0 GPU0 GPU1 [GPU2 GPU3 [GPU4 GPU5]]" >&2
-  echo "provide one GPU pair per concurrent seed; remaining seeds run in later waves" >&2
+  echo "usage: $0 --gpus LIST" >&2
+  echo "LIST is 2, 4, or 6 comma-separated GPU indices" >&2
 }
 
+if [[ ${1:-} == "--help" ]]; then
+  usage
+  exit 0
+fi
+if (( $# != 2 )) || [[ $1 != "--gpus" ]]; then
+  usage
+  exit 2
+fi
 if [[ ! -x "${python}" ]]; then
   echo "experiment Python not found at ${python}; run ${experiment_dir}/setup.sh" >&2
   exit 2
 fi
-if (( $# != 2 && $# != 4 && $# != 6 )); then
+
+IFS=',' read -r -a gpus <<< "$2"
+if (( ${#gpus[@]} != 2 && ${#gpus[@]} != 4 && ${#gpus[@]} != 6 )); then
   usage
   exit 2
 fi
-
-gpus=("$@")
 pair_count=$(( ${#gpus[@]} / 2 ))
 declare -A seen_gpus=()
 for gpu in "${gpus[@]}"; do

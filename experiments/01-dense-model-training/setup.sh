@@ -4,25 +4,25 @@ set -euo pipefail
 experiment_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repository_root="$(cd "${experiment_dir}/../.." && pwd)"
 environment_dir="${REPRESENTAX_EXPERIMENT_ENV:-${experiment_dir}/.venv}"
-bootstrap_python="${PYTHON:-python3}"
-accelerator_extra="${REPRESENTAX_JAX_EXTRA:-cuda12}"
+uv_command="${UV:-uv}"
+setup_gpu="${REPRESENTAX_SETUP_GPU:-0}"
 
-case "${accelerator_extra}" in
-  cuda12|cuda13) ;;
-  *)
-    echo "REPRESENTAX_JAX_EXTRA must be cuda12 or cuda13" >&2
-    exit 2
-    ;;
-esac
+if ! command -v "${uv_command}" >/dev/null 2>&1; then
+  echo "uv is required: https://docs.astral.sh/uv/getting-started/installation/" >&2
+  exit 2
+fi
+if ! command -v nvidia-smi >/dev/null 2>&1; then
+  echo "an NVIDIA driver is required; a system CUDA toolkit is not" >&2
+  exit 2
+fi
+driver_version="$(nvidia-smi --query-gpu=driver_version --format=csv,noheader | head -n 1)"
+if (( ${driver_version%%.*} < 525 )); then
+  echo "NVIDIA driver 525 or newer is required; found ${driver_version}" >&2
+  exit 2
+fi
 
-"${bootstrap_python}" -m venv "${environment_dir}"
-"${environment_dir}/bin/python" -m pip install --upgrade pip
-(
-  cd "${repository_root}"
-  "${environment_dir}/bin/python" -m pip install \
-    -e ".[config,hf,performance,wandb,${accelerator_extra}]" \
-    --group parity
-)
+UV_PROJECT_ENVIRONMENT="${environment_dir}" \
+  "${uv_command}" sync --project "${experiment_dir}" --locked
 
 (
   cd "${repository_root}"
@@ -37,3 +37,22 @@ print(
 )
 PY
 )
+
+CUDA_VISIBLE_DEVICES="${setup_gpu}" XLA_PYTHON_CLIENT_PREALLOCATE=false \
+  "${environment_dir}/bin/python" - <<'PY'
+import jax
+import jax.numpy as jnp
+
+value = (jnp.ones((32, 32)) @ jnp.ones((32, 32))).block_until_ready()
+print(f"JAX {jax.__version__}: {jax.devices()[0]}, smoke={float(value[0, 0])}")
+PY
+
+CUDA_VISIBLE_DEVICES="${setup_gpu}" "${environment_dir}/bin/python" - <<'PY'
+import torch
+
+value = torch.ones((32, 32), device="cuda") @ torch.ones((32, 32), device="cuda")
+print(
+    f"PyTorch {torch.__version__}: {torch.cuda.get_device_name()}, "
+    f"smoke={float(value[0, 0])}"
+)
+PY

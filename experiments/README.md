@@ -12,8 +12,9 @@ Readiness checks and acceptance sweeps live separately in
 
 ## 01 Dense model training
 
-Create the experiment-local environment. Use `REPRESENTAX_JAX_EXTRA=cuda13`
-when the machine requires the CUDA 13 JAX wheels; CUDA 12 is the default.
+Create the locked experiment-local environment with `uv`. The machine needs an
+NVIDIA driver version 525 or newer, but it does not need Conda or a system CUDA
+toolkit. JAX and PyTorch use pinned CUDA 12 wheels.
 
 ```bash
 experiments/01-dense-model-training/setup.sh
@@ -29,7 +30,7 @@ Or let the machine-level shell script schedule all three seeds. One GPU pair
 runs serially, two pairs run in two waves, and three pairs run concurrently.
 
 ```bash
-experiments/01-dense-model-training/run.sh 0 1 2 3 4 5
+experiments/01-dense-model-training/run.sh --gpus 0,1,2,3,4,5
 ```
 
 Set `REPRESENTAX_EXPERIMENT_ENV` to relocate the local virtual environment and
