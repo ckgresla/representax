@@ -1,0 +1,84 @@
+{
+  "artifact_roots": {
+    "canonical_lifecycle_v3": "/raid/representax/paper-campaign-v1/preflight/late-interaction/seed-7-v3",
+    "checkpoint_free_timing_v4": "/raid/representax/paper-campaign-v1/preflight/late-interaction/timing-v4"
+  },
+  "contract": {
+    "evaluation": "sentence-transformers/NanoBEIR-en@beb106fbcfaa599c508c667041bf8c85fd78736b:NanoMSMARCO",
+    "evaluation_batch_size": 256,
+    "evaluation_documents": 5043,
+    "evaluation_queries": 50,
+    "global_batch_size": 512,
+    "grad_cache_micro_batch_size": 8,
+    "hardware": "one NVIDIA GeForce RTX 4090 24GB, physical GPU 1",
+    "maximum_document_length": 256,
+    "maximum_query_length": 32,
+    "model_id": "lightonai/GTE-ModernColBERT-v1",
+    "model_revision": "cbbe53366e564450558f5e639dd499171f127538",
+    "objective": "asymmetric cached contrastive MaxSim, temperature 0.02",
+    "precision": "bfloat16-compute-float32-master",
+    "reference": "pylate==1.6.0",
+    "seed": 7,
+    "training": "sentence-transformers/msmarco-msmarco-MiniLM-L6-v3"
+  },
+  "diagnostic_v3": {
+    "canonical_summary": "/raid/representax/paper-campaign-v1/preflight/late-interaction/seed-7-v3/summary.json",
+    "finding": "Representax evaluation used FP32 parameters and batch 32, and its four-update bucketed run left only one clean warmed training step.",
+    "pylate_warm_document_encoding_examples_per_second": 727.6725408171426,
+    "pylate_warm_training_steps": 2,
+    "representax_over_pylate_document_encoding": 0.22543673111238338,
+    "representax_warm_document_encoding_examples_per_second": 164.044118922059,
+    "representax_warm_training_steps": 1
+  },
+  "readiness_v4": {
+    "equal_static_document_encoding": {
+      "batch_size": 256,
+      "document_length": 256,
+      "examples": 1536,
+      "pylate_warm_end_to_end_examples_per_second": 561.3230198101485,
+      "pylate_warm_encoder_examples_per_second": 717.5120830837122,
+      "representax_compilation_and_first_batch_seconds": 7.121823187917471,
+      "representax_over_pylate_end_to_end": 1.5011307172910138,
+      "representax_over_pylate_encoder": 1.6195538814114472,
+      "representax_warm_end_to_end_examples_per_second": 842.6192273595661,
+      "representax_warm_encoder_examples_per_second": 1162.049479117839,
+      "warm_batches_per_framework": 5
+    },
+    "final_trained_evaluation": {
+      "pylate_ndcg_at_10": 0.7090050565601254,
+      "pylate_recall_at_10": 0.92,
+      "pylate_warm_end_to_end_document_examples_per_second": 548.9847566571167,
+      "pylate_warm_encoder_document_examples_per_second": 706.1794429738418,
+      "representax_ndcg_at_10": 0.7144629289648505,
+      "representax_ndcg_at_10_difference": 0.0054578724047251725,
+      "representax_over_pylate_end_to_end_document_encoding": 2.3550717296530967,
+      "representax_over_pylate_encoder_document_encoding": 3.115631370379777,
+      "representax_recall_at_10": 0.92,
+      "representax_warm_end_to_end_document_examples_per_second": 1292.8984804136603,
+      "representax_warm_encoder_document_examples_per_second": 2200.1948256466185
+    },
+    "fixed_shape_training": {
+      "document_length": 256,
+      "pylate_median_step_seconds": 9.588878748938441,
+      "pylate_warm_examples_per_second": 53.496702821060936,
+      "query_length": 32,
+      "representax_compilation_and_first_step_seconds": 40.183345288038254,
+      "representax_median_step_seconds": 4.142469527199864,
+      "representax_over_pylate_warm_examples_per_second": 2.307356054620796,
+      "representax_warm_examples_per_second": 123.43594115642435,
+      "steps": 10,
+      "warm_steps_per_framework": 9
+    }
+  },
+  "result_hashes": {
+    "pylate-encoding-profile-v4.json": "a6ed125284841f725ff4b3b2c73f46340c7e8d02397b095d884fd48d08517e0c",
+    "pylate-final-evaluation-v4.json": "9269ca0dd088ee16659e64d57dd17e3a9b9188c43a8bec48c5199eed6e1c7fc2",
+    "pylate-training-profile-v4.json": "ab94879d50fa8024a6a5f1a826052347d71846e11dad1e670f8216589d01e885",
+    "representax-encoding-profile-v4.json": "2b95d15581d4d937f25a473fcc7848a9de187890d78d6c37892616bb35b4d1a0",
+    "representax-final-evaluation-v4.json": "9728ddc5c96509c4d36bdac0648592b219ad8c8b0031298ebe6a63d18bdd0f59",
+    "representax-training-profile-v4.json": "ce2878376fb788cf339abed18526ed501ea9c60945a53dc6e807ebc02e1ef202"
+  },
+  "schema_version": "representax-paper-late-interaction-preflight-v2",
+  "scope": "bounded-readiness-preflight-not-paper-result",
+  "verdict": "ready-for-bounded-paper-runs"
+}

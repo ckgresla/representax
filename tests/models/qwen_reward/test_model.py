@@ -121,3 +121,22 @@ def test_qwen_reward_loads_trains_and_exports(tmp_path: Path) -> None:
         np.asarray(score_logits(reloaded, _batch())),
         np.asarray(score_logits(updated, _batch())),
     )
+
+
+def test_qwen_reward_saves_into_prepopulated_generic_export(tmp_path: Path) -> None:
+    source = _source_checkpoint(tmp_path / "source")
+    adapter = QwenRewardCheckpointAdapter()
+    model = adapter.load(
+        source,
+        parameter_dtype=jnp.float32,
+        compute_dtype=jnp.float32,
+    )
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "config.json").write_text((source / "config.json").read_text())
+
+    adapter.save(model, target)
+
+    exported = json.loads((target / "config.json").read_text())
+    assert exported["architectures"] == ["Qwen3ForSequenceClassification"]
+    assert (target / "model.safetensors").is_file()

@@ -1,0 +1,120 @@
+#+TITLE: Outcome Reward Modeling Preflight
+
+* Scope
+This bounded paper-readiness comparison uses the pinned =Qwen/Qwen3-0.6B=
+scalar sequence-classification model, pinned UltraFeedback chosen/rejected
+pairs, and the Bradley-Terry log-sigmoid objective. Representax is compared
+against TRL 1.10.0 =RewardTrainer= on GPU 2.
+
+The lifecycle run uses seed 7, four updates, global batch 128, microbatch 4,
+32 gradient-accumulation steps, BF16 compute, maximum length 1024, and a
+midpoint checkpoint/resume after update 2. The deterministic data view has
+512 training pairs and 32 held-out pairs. Rows requiring truncation were
+excluded; observed lengths are 29--1020 tokens.
+
+* Accepted result
+The accepted comparison forces both frameworks to make one =[8, 1024]= Qwen
+call per microstep. Each optimizer update therefore processes exactly 262,144
+padded tokens in both frameworks. Compilation is retained separately from
+warmed throughput.
+
+| Measure | Representax | TRL |
+|---------+--------------+-----|
+| Warm pairs/s | 7.6965 | 6.6730 |
+| Median warm update | 16.6309 s | 19.1740 s |
+| Final held-out pairwise accuracy | 0.625 | 0.625 |
+| Initial held-out pairwise accuracy | 0.500 | 0.500 |
+
+Representax reaches =1.1534x= TRL warm throughput under equal static shapes.
+Its two-process compilation plus first-update time is 50.0726 seconds; this is
+reported but excluded from the warm statistic.
+
+Per-update losses are closely aligned:
+
+| Update | Representax | TRL |
+|--------+--------------+-----|
+|      1 |     0.740731 | 0.731193 |
+|      2 |     0.688735 | 0.684397 |
+|      3 |     0.743616 | 0.749767 |
+|      4 |     0.631849 | 0.644425 |
+
+* Diagnosis and controls
+The original =paired-v1= result reported Representax at =0.7620x= TRL. It is
+preserved as a rejected diagnostic because its training compute was not
+matched. Representax padded the complete global batch to 1024 tokens, while
+TRL padded each microbatch only to its longest sequence. Across the first
+three updates, TRL therefore processed 183,584, 177,688, and 182,064 padded
+tokens instead of 262,144. Dynamic TRL reached 10.1740 pairs/s.
+
+The controlled results separate the causes:
+
+| Control | Representax | TRL | Ratio |
+|---------+--------------+-----+-------|
+| Static 1024, accumulation 32 | 7.6910 pairs/s | 6.6664 pairs/s | 1.1537x |
+| Static 1024, accumulation 1 | 7.3240 pairs/s | 6.5854 pairs/s | 1.1122x |
+
+The direct kernel-only control runs one forward/backward call without an
+optimizer or dataloader. Both use rematerialization/gradient checkpointing and
+the same =[8, 1024]= inputs:
+
+| Component | Representax | TRL |
+|-----------+--------------+-----|
+| Qwen forward/backward microstep | 0.5169 s | 0.5845 s |
+| Qwen forward/backward pairs/s | 7.7389 | 6.8440 |
+
+The direct native Qwen kernel is =1.1308x= faster, with BF16 losses of 0.804296
+and 0.804688. Comparing accumulation 1 and 32 separately estimates the
+once-per-update optimizer cost at 0.0269 seconds for Representax and 0.0076
+seconds for TRL. The native optimizer update is slower but small and amortized
+by accumulation. The observed performance issue was padding scope, not Qwen
+kernels or gradient accumulation. Length-grouped global batches remain a
+useful future throughput optimization, but are not required for this
+equal-compute preflight.
+
+* Correctness and lifecycle
+- The pair collator processes chosen and rejected examples together, and the
+  reward task/evaluator score one concatenated batch before splitting logits.
+- Representax and TRL both stopped at update 2, saved optimizer state, resumed
+  in a fresh process, and completed update 4.
+- Initial and final held-out evaluation completed for both frameworks.
+- Representax native bundle reload preserved scores exactly.
+- Representax Hugging Face export loaded as
+  =Qwen3ForSequenceClassification= under Transformers with finite scores.
+- TRL export/reload preserved scores exactly.
+- Verified optimizer checkpoints were discarded after the resume checks;
+  final inference exports and compact evidence are retained.
+
+Two generic lifecycle defects found by the first run remain covered by focused
+tests: the Qwen reward adapter now works through the generic exporter without
+an explicit source argument, and mixed-precision native bundles rebuild FP32
+master-parameter templates before loading.
+
+* Artifacts
+- Accepted paired summary:
+  =/raid/representax/paper-outcome-reward-preflight-20260831/accepted-static-v2/summary.json=
+- Equal-static accumulation-32 controls:
+  =/raid/representax/paper-outcome-reward-preflight-20260831/controls/equal-static-accum32-v1/=
+- Equal-static accumulation-1 controls:
+  =/raid/representax/paper-outcome-reward-preflight-20260831/controls/equal-static-accum1-v1/=
+- Dynamic-reference control:
+  =/raid/representax/paper-outcome-reward-preflight-20260831/controls/dynamic-microbatch-accum32-v1/=
+- Direct Qwen kernel control:
+  =/raid/representax/paper-outcome-reward-preflight-20260831/controls/kernel-static-v1/=
+- Rejected unmatched diagnostic:
+  =/raid/representax/paper-outcome-reward-preflight-20260831/paired-v1/summary.json=
+- Deterministic data:
+  =/raid/representax/paper-outcome-reward-preflight-20260831/data/=
+- Isolated reference environment:
+  =/raid/representax/paper-outcome-reward-preflight-20260831/trl-env/=
+
+* Reproduction
+#+begin_src shell
+CUDA_VISIBLE_DEVICES=2 PYTHONPATH=src:. \
+  TOKENIZERS_PARALLELISM=false HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 \
+  python -m experiments.paper.outcome_reward pair \
+  --checkpoint /raid/representax/paper-acceptance/qwen3-reward-0.6b/export \
+  --data-directory /raid/representax/paper-outcome-reward-preflight-20260831/data \
+  --output /raid/representax/paper-outcome-reward-preflight-20260831/accepted-static-v2 \
+  --trl-python /raid/representax/paper-outcome-reward-preflight-20260831/trl-env/bin/python \
+  --steps 4 --seed 7 --gpu 2 --padding static
+#+end_src

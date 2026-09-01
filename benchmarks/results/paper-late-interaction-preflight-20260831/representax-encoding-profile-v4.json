@@ -1,0 +1,84 @@
+{
+  "batch_size": 256,
+  "embedding_dimension": 128,
+  "examples": 1536,
+  "framework": "representax",
+  "schema_version": "representax-late-interaction-encoding-profile-v1",
+  "sequence_length": 256,
+  "timings": {
+    "batch_size": 256,
+    "batch_timings": [
+      {
+        "encoder_seconds": 7.121823187917471,
+        "examples": 256,
+        "host_seconds": 0.005149738863110542,
+        "placement_seconds": 0.0009859390556812286,
+        "preprocess_seconds": 0.12021709978580475,
+        "sequence_length": 256
+      },
+      {
+        "encoder_seconds": 0.22006365656852722,
+        "examples": 256,
+        "host_seconds": 0.004786429926753044,
+        "placement_seconds": 0.000882292166352272,
+        "preprocess_seconds": 0.06798560358583927,
+        "sequence_length": 256
+      },
+      {
+        "encoder_seconds": 0.22015800699591637,
+        "examples": 256,
+        "host_seconds": 0.0053273215889930725,
+        "placement_seconds": 0.0008605718612670898,
+        "preprocess_seconds": 0.08997858688235283,
+        "sequence_length": 256
+      },
+      {
+        "encoder_seconds": 0.22033119574189186,
+        "examples": 256,
+        "host_seconds": 0.00506189838051796,
+        "placement_seconds": 0.0009187515825033188,
+        "preprocess_seconds": 0.08354578353464603,
+        "sequence_length": 256
+      },
+      {
+        "encoder_seconds": 0.22037090547382832,
+        "examples": 256,
+        "host_seconds": 0.005026539787650108,
+        "placement_seconds": 0.0008730702102184296,
+        "preprocess_seconds": 0.07928215526044369,
+        "sequence_length": 256
+      },
+      {
+        "encoder_seconds": 0.22057838551700115,
+        "examples": 256,
+        "host_seconds": 0.004968678578734398,
+        "placement_seconds": 0.0010587722063064575,
+        "preprocess_seconds": 0.06701425462961197,
+        "sequence_length": 256
+      }
+    ],
+    "batches": 6,
+    "compilation_and_first_batch_seconds": 7.121823187917471,
+    "compilation_and_first_batch_seconds_by_length": {
+      "256": 7.121823187917471
+    },
+    "compiled_sequence_lengths": [
+      256
+    ],
+    "examples_per_second_after_first_batch": 1162.049479117839,
+    "first_eager_batch_seconds": 0.0,
+    "phase_totals_seconds": {
+      "encoder_seconds": 8.223325338214636,
+      "host_seconds": 0.030320607125759125,
+      "placement_seconds": 0.005579397082328796,
+      "preprocess_seconds": 0.5080234836786985
+    },
+    "total_encoding_seconds": 8.767248826101422,
+    "warm_batches": 5,
+    "warm_encoder_examples_per_second": 1162.049479117839,
+    "warm_encoder_seconds": 1.101502150297165,
+    "warm_end_to_end_examples_per_second": 842.6192273595661,
+    "warm_end_to_end_seconds": 1.5190728604793549,
+    "warm_examples": 1280
+  }
+}

@@ -1,0 +1,70 @@
+{
+  "checkpointing": false,
+  "device": "NVIDIA GeForce RTX 4090",
+  "document_sequence_length": 256,
+  "elapsed_seconds": 82.79527201317251,
+  "export": false,
+  "framework": "representax",
+  "global_batch_size": 512,
+  "query_sequence_length": 32,
+  "schema_version": "representax-late-interaction-training-profile-v1",
+  "steady_state": {
+    "compilation_and_first_step_seconds": 40.183345288038254,
+    "examples_per_second": 123.43594115642435,
+    "measured_steps": 9.0,
+    "median_step_seconds": 4.142469527199864
+  },
+  "step_timings": [
+    {
+      "compiled": true,
+      "iteration": 1,
+      "step_seconds": 40.183345288038254
+    },
+    {
+      "compiled": false,
+      "iteration": 2,
+      "step_seconds": 4.166595054790378
+    },
+    {
+      "compiled": false,
+      "iteration": 3,
+      "step_seconds": 4.152955912053585
+    },
+    {
+      "compiled": false,
+      "iteration": 4,
+      "step_seconds": 4.180966524407268
+    },
+    {
+      "compiled": false,
+      "iteration": 5,
+      "step_seconds": 4.154153406620026
+    },
+    {
+      "compiled": false,
+      "iteration": 6,
+      "step_seconds": 4.138727428391576
+    },
+    {
+      "compiled": false,
+      "iteration": 7,
+      "step_seconds": 4.140225861221552
+    },
+    {
+      "compiled": false,
+      "iteration": 8,
+      "step_seconds": 4.136043744161725
+    },
+    {
+      "compiled": false,
+      "iteration": 9,
+      "step_seconds": 4.118966892361641
+    },
+    {
+      "compiled": false,
+      "iteration": 10,
+      "step_seconds": 4.142469527199864
+    }
+  ],
+  "steps": 10
+}

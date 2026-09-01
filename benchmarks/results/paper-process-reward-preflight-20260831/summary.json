@@ -1,0 +1,94 @@
+{
+  "schema_version": "representax-process-reward-preflight-evidence-v1",
+  "status": "pass",
+  "contract": {
+    "model": "Qwen/Qwen3-0.6B",
+    "model_revision": "c1899de289a04d12100db370d81485cdf75e47ca",
+    "dataset": "trl-lib/math_shepherd",
+    "dataset_revision": "004d0e7dc9249b4af58ce41e58b7d2fef184dade",
+    "reference": "trl==1.10.0 experimental PRMTrainer",
+    "objective": "stepwise binary cross entropy",
+    "global_batch_size": 64,
+    "micro_batch_size": 2,
+    "gradient_accumulation_steps": 32,
+    "maximum_sequence_length": 2048,
+    "preflight_execution_length": 256,
+    "steps_per_trajectory": 4,
+    "optimizer_updates": 4,
+    "seed": 7,
+    "gpu": "NVIDIA GeForce RTX 4090, physical index 3"
+  },
+  "data": {
+    "training_rows": 256,
+    "evaluation_rows": 32,
+    "training_sha256": "sha256:44300b156e5157a49d01d71ae5f45db533f804d2e7449bc3d1d2cc62d28e7324",
+    "evaluation_sha256": "sha256:034a7d4945424b106712f64ffef58069bf3ed109e98685d24876e97dfb1c1927",
+    "selection": "first source-ordered four-step rows with mixed labels and at most 256 tokens",
+    "supervision": "last separator token of each reasoning step"
+  },
+  "numerics": {
+    "scalar_binary_equivalence": "CE([-score/2, score/2], label) == BCEWithLogits(score, label)",
+    "representax_losses": [
+      0.9910134673118591,
+      0.8627083897590637,
+      0.5050444602966309,
+      0.4963756203651428
+    ],
+    "trl_losses": [0.9882, 0.8629, 0.5075, 0.4923],
+    "initial_accuracy": {
+      "representax": 0.5234375,
+      "trl": 0.5234375
+    },
+    "final_accuracy": {
+      "representax": 0.8125,
+      "trl": 0.8046875,
+      "absolute_difference": 0.0078125
+    },
+    "final_probe_maximum_absolute_logit_difference": 0.1015625
+  },
+  "systems": {
+    "representax": {
+      "compilation_and_first_step_seconds": 13.51484633423388,
+      "warm_examples_per_second": 52.724255024388164,
+      "warm_median_step_seconds": 1.2138625755906105,
+      "warm_measured_steps": 2,
+      "peak_device_bytes": 17946821376,
+      "end_to_end_seconds": 117.8329193405807
+    },
+    "trl": {
+      "compilation_seconds": 0.0,
+      "first_step_seconds": 4.092066466808319,
+      "warm_examples_per_second": 16.182609469806902,
+      "warm_median_step_seconds": 3.95035039819777,
+      "warm_measured_steps": 3,
+      "peak_device_bytes": 11725405696,
+      "end_to_end_seconds": 45.95913258753717
+    },
+    "representax_warm_throughput_ratio": 3.25808115945452,
+    "note": "Representax warm steps are faster; its full-state checkpoint flush dominates this short run's wall time."
+  },
+  "lifecycle": {
+    "representax_midpoint_resume": true,
+    "representax_native_export_reload_exact": true,
+    "trl_midpoint_resume": true,
+    "trl_state_dict_export_reload_exact": true,
+    "checkpoint_iterations": [2, 4],
+    "initial_and_final_held_out_evaluation": true
+  },
+  "artifacts": {
+    "data": "/raid/representax/paper-process-reward-preflight-20260831/data-v1",
+    "representax": "/raid/representax/paper-process-reward-preflight-20260831/paired-seed-7-v1/representax",
+    "representax_report": "/raid/representax/paper-process-reward-preflight-20260831/paired-seed-7-v1/representax.json",
+    "corrected_trl": "/raid/representax/paper-process-reward-preflight-20260831/trl-corrected-seed-7-v2",
+    "corrected_trl_report": "/raid/representax/paper-process-reward-preflight-20260831/trl-corrected-seed-7-v2.json",
+    "rejected_trl": "/raid/representax/paper-process-reward-preflight-20260831/paired-seed-7-v1/trl"
+  },
+  "failure_history": [
+    {
+      "artifact": "/raid/representax/paper-process-reward-preflight-20260831/paired-seed-7-v1/trl",
+      "cause": "The custom torch wrapper accepted arbitrary keyword arguments, so Trainer inferred model-owned loss normalization and accumulated a mean loss 32 times without dividing by 32.",
+      "symptom": "TRL losses and gradient norms were approximately 32 times the Representax values.",
+      "resolution": "Remove the arbitrary keyword parameter and reject PRMTrainer instances whose model_accepts_loss_kwargs flag is true."
+    }
+  ]
+}

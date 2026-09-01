@@ -16,6 +16,7 @@ from .batch import (
     PairwiseRewardBatch,
     PointwiseRewardBatch,
     ProcessRewardBatch,
+    concatenate_pairwise_payloads,
 )
 from .config import RewardObjective
 from .losses import bradley_terry_loss, plackett_luce_loss, pointwise_reward_loss
@@ -61,13 +62,17 @@ class PairwiseRewardTask(eqx.Module):
         *,
         key: PRNGKeyArray | None = None,
     ) -> LossOutput:
-        chosen_key = rejected_key = None
-        if key is not None:
-            chosen_key, rejected_key = jax.random.split(key)
-        chosen = _scalar_rewards(score_logits(model, batch.chosen, key=chosen_key))
-        rejected = _scalar_rewards(
-            score_logits(model, batch.rejected, key=rejected_key)
+        rows = batch.margins.shape[0]
+        rewards = _scalar_rewards(
+            score_logits(
+                model,
+                concatenate_pairwise_payloads(batch.chosen, batch.rejected),
+                key=key,
+            )
         )
+        if rewards.shape[0] != rows * 2:
+            raise ValueError("pairwise reward scorer must emit two rows per pair")
+        chosen, rejected = rewards[:rows], rewards[rows:]
         margin = chosen - rejected
         count = jnp.maximum(jnp.sum(batch.valid), 1).astype(jnp.float32)
         return LossOutput(

@@ -97,26 +97,29 @@ class QwenRewardCheckpointAdapter:
         model: QwenRewardModel,
         directory: str | Path,
         *,
-        source_checkpoint: str | Path,
+        source_checkpoint: str | Path | None = None,
     ) -> Path:
         from safetensors.numpy import save_file
 
-        source = Path(source_checkpoint)
         target = Path(directory)
         target.mkdir(parents=True, exist_ok=True)
-        for path in source.iterdir():
-            if path.name == "model.safetensors" or path.name.startswith("model-"):
-                continue
-            if path.name in {"model.safetensors.index.json", "config.json"}:
-                continue
-            destination = target / path.name
-            if path.is_dir():
-                if destination.exists():
-                    shutil.rmtree(destination)
-                shutil.copytree(path, destination)
-            elif path.is_file():
-                shutil.copy2(path, destination)
-        config = load_hf_config(source)
+        if source_checkpoint is not None:
+            source = Path(source_checkpoint)
+            for path in source.iterdir():
+                if path.name == "model.safetensors" or path.name.startswith("model-"):
+                    continue
+                if path.name in {"model.safetensors.index.json", "config.json"}:
+                    continue
+                destination = target / path.name
+                if path.is_dir():
+                    if destination.exists():
+                        shutil.rmtree(destination)
+                    shutil.copytree(path, destination)
+                elif path.is_file():
+                    shutil.copy2(path, destination)
+        config = load_hf_config(
+            target if source_checkpoint is None else Path(source_checkpoint)
+        )
         config.update(
             {
                 "architectures": ["Qwen3ForSequenceClassification"],

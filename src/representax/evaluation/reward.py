@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 import equinox as eqx
-import jax
 import jax.numpy as jnp
 import numpy as np
 from jaxtyping import Array, Bool, Float, PRNGKeyArray
@@ -18,6 +17,7 @@ from representax.tasks.reward_modeling import (
     PairwiseRewardBatch,
     PointwiseRewardBatch,
     ProcessRewardBatch,
+    concatenate_pairwise_payloads,
 )
 
 from .ranking import _flatten, _scalar_scores, ranking_metrics
@@ -72,9 +72,17 @@ class RewardEvaluator:
         key: PRNGKeyArray | None = None,
     ) -> RewardBatchOutput:
         if self.kind == "pairwise" and isinstance(batch, PairwiseRewardBatch):
-            keys = (None, None) if key is None else jax.random.split(key)
-            chosen = _scalar_scores(score_logits(model, batch.chosen, key=keys[0]))
-            rejected = _scalar_scores(score_logits(model, batch.rejected, key=keys[1]))
+            rows = batch.margins.shape[0]
+            rewards = _scalar_scores(
+                score_logits(
+                    model,
+                    concatenate_pairwise_payloads(batch.chosen, batch.rejected),
+                    key=key,
+                )
+            )
+            if rewards.shape[0] != rows * 2:
+                raise ValueError("pairwise reward scorer must emit two rows per pair")
+            chosen, rejected = rewards[:rows], rewards[rows:]
             scores = jnp.stack((chosen, rejected), axis=-1)
             targets = jnp.broadcast_to(batch.margins[:, None], scores.shape)
             valid = jnp.broadcast_to(batch.valid[:, None], scores.shape)

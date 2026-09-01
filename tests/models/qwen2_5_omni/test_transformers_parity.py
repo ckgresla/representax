@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+from importlib import import_module
 from pathlib import Path
 
 import equinox as eqx
@@ -146,7 +147,7 @@ def test_forward_and_media_gradient_parity(oracle_checkpoint):
     results = {}
     for name, actual in (
         ("hidden", hidden),
-        ("pixel_gradient", pixel_gradient),
+        ("pixel_gradient", pixel_gradient[0]),
         ("audio_gradient", audio_gradient[0]),
     ):
         result = assert_numerically_equivalent(
@@ -182,12 +183,12 @@ def test_native_tower_parity(oracle_checkpoint):
 
     with jax.default_matmul_precision("highest"):
         image_features = model.vision(
-            batch.pixel_values,
-            batch.patch_valid,
-            batch.vision_full_segment_ids,
-            batch.vision_window_segment_ids,
-            batch.vision_position_ids,
-            batch.reverse_merged_indices,
+            batch.pixel_values[0],
+            batch.patch_valid[0],
+            batch.vision_full_segment_ids[0],
+            batch.vision_window_segment_ids[0],
+            batch.vision_position_ids[0],
+            batch.reverse_merged_indices[0],
             compute_dtype=jnp.float32,
             attention_implementation="xla",
             rematerialization="full",
@@ -382,7 +383,7 @@ def test_nvidia_sentence_transformers_embedding_and_updates_match_upstream(
     for actual, expected in (
         (hidden, reference["hidden"]),
         (embedding, reference["embedding"]),
-        (pixel_gradient, reference["pixel_gradient"]),
+        (pixel_gradient[0], reference["pixel_gradient"]),
         (audio_gradient[0], reference["audio_gradient"]),
     ):
         assert_numerically_equivalent(np.asarray(actual), expected, tolerance)
@@ -544,8 +545,8 @@ def test_real_multimodal_preprocessing_matches_transformers(tmp_path):
         *reference["video_grid_thw"].tolist(),
     ]
     layout = vision_layout(grids, config.vision, patch_bucket=4096)
-    raw_pixels = np.empty_like(np.asarray(batch.pixel_values))
-    raw_pixels[layout["patch_order"]] = np.asarray(batch.pixel_values)
+    raw_pixels = np.empty_like(np.asarray(batch.pixel_values[0]))
+    raw_pixels[layout["patch_order"]] = np.asarray(batch.pixel_values[0])
     expected_pixels = np.concatenate(
         (reference["pixel_values"], reference["pixel_values_videos"])
     )
@@ -596,13 +597,37 @@ def test_real_sentence_transformers_route_prompts_are_exact() -> None:
         audio_token_count_buckets=(64,),
     )
     query = processor(("a harbor",), route=Route.QUERY)
-    prefixed_query = processor(("query: a harbor",), route=Route.GENERIC)
-    document = processor(("calm water",), route=Route.DOCUMENT)
-    prefixed_document = processor(("passage: calm water",), route=Route.GENERIC)
-    np.testing.assert_array_equal(query.input_ids, prefixed_query.input_ids)
-    np.testing.assert_array_equal(query.attention_mask, prefixed_query.attention_mask)
-    np.testing.assert_array_equal(document.input_ids, prefixed_document.input_ids)
+    document = processor(("a harbor",), route=Route.DOCUMENT)
+    np.testing.assert_array_equal(query.input_ids, document.input_ids)
+    np.testing.assert_array_equal(query.attention_mask, document.attention_mask)
+
+    sentence_config = json.loads(
+        (checkpoint / "config_sentence_transformers.json").read_text()
+    )
+    prompt = sentence_config["prompts"][sentence_config["default_prompt_name"]]
+    tokenizer_type = import_module(
+        "transformers.models.qwen2.tokenization_qwen2"
+    ).Qwen2Tokenizer
+    tokenizer = tokenizer_type.from_pretrained(checkpoint, padding_side="right")
+    rendered = tokenizer.apply_chat_template(
+        [
+            [
+                {
+                    "role": "system",
+                    "content": [{"type": "text", "text": prompt}],
+                },
+                {
+                    "role": "user",
+                    "content": [{"type": "text", "text": "a harbor"}],
+                },
+            ]
+        ],
+        chat_template="sentence_transformers",
+        add_generation_prompt=True,
+        tokenize=False,
+    )
+    expected = tokenizer(rendered, return_tensors="np")
+    valid_tokens = int(np.asarray(query.attention_mask).sum())
     np.testing.assert_array_equal(
-        document.attention_mask,
-        prefixed_document.attention_mask,
+        np.asarray(query.input_ids)[:, :valid_tokens], expected["input_ids"]
     )

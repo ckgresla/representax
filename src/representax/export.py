@@ -221,6 +221,7 @@ def load_inference_bundle(directory: str | Path) -> tuple[eqx.Module, JobConfig]
     if _sha256(model_path) != manifest["native"]["model_sha256"]:
         raise ValueError(f"native model digest differs: {model_path}")
     job = JobConfig.model_validate_json((native / "job.json").read_text())
+    from representax.precision import prepare_master_model, resolve_precision_policy
     from representax.train.job import load_model, prepare_model
 
     template, _ = load_model(
@@ -228,10 +229,15 @@ def load_inference_bundle(directory: str | Path) -> tuple[eqx.Module, JobConfig]
         key=jax.random.fold_in(jax.random.key(job.training.seed), 0),
         activation_rematerialization=job.training.activation_rematerialization,
     )
-    template, _ = prepare_model(
+    template, trainable_filter = prepare_model(
         template,
         adapter=job.training.adapter,
         key=jax.random.fold_in(jax.random.key(job.training.seed), 1),
+    )
+    template = prepare_master_model(
+        template,
+        resolve_precision_policy(job.training.precision),
+        trainable_filter=trainable_filter,
     )
     return eqx.tree_deserialise_leaves(model_path, template), job
 

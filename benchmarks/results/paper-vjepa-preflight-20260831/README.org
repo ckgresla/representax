@@ -1,0 +1,78 @@
+#+title: V-JEPA 2.1 paper-readiness preflight
+
+* Contract
+This is a bounded one-GPU readiness run, not a full pretraining or downstream
+quality claim.  It compares one architecture, V-JEPA 2.1 ViT-B/16, in native
+Representax and the official =facebookresearch/vjepa2= implementation at commit
+=204698b45b3712590f06245fbfba32d3be539812=.  Both consume the same four
+materialized SSV2 training clips, four held-out clips, official random
+initialization, 256-pixel/16-frame tensors, two mask families, AdamW schedule,
+dense objective, and =0.99925= EMA update.
+
+The pinned =jxie/something_something_v2= revision resolves and its video bytes
+decode successfully, but it exposes only =train= even though the frozen manifest
+names =validation=.  This preflight therefore uses four deterministic, disjoint
+SSV2 train-stream examples as a readiness-only holdout.  A full SSV2 validation
+source remains required before any representation-quality claim.  The gated
+ImageNet-1K probe was deliberately not run.
+
+* Results
+| Framework | Four update losses | Compile | Warm step | Warm examples/s |
+|-----------+--------------------+---------+-----------+-----------------|
+| Representax | 1.23315, 1.22300, 1.20858, 1.26404 | 44.032 s, two events | 0.1623 s | 6.1611 |
+| Meta V-JEPA 2 | 1.23311, 1.22296, 1.20827, 1.26401 | eager, 0 s | 0.7529 s | 1.3141 |
+
+The maximum paired loss difference is =0.000309= (0.0256% of the corresponding
+Meta loss).  Warm Representax throughput is =4.689x= the official eager
+implementation on the same RTX 4090.  Representax compilation includes the cold
+graph and the intentionally cache-cleared midpoint resume; it is excluded from
+warm throughput and retained in the JSON evidence.
+
+Both frameworks completed two updates, saved a midpoint checkpoint, rebuilt the
+model and optimizer, resumed to four updates, evaluated held-out representation
+geometry before and after training, and reloaded the final artifact with zero
+embedding difference.  Effective rank remained nonzero (=2.3524 -> 2.3523= for
+both implementations), and final mean feature standard deviation is =0.58022=
+for Representax and =0.58020= for Meta.  The final effective-rank difference is
+=2.2e-5= and final mean-standard-deviation difference is =2.7e-5=.  With only four held-out
+examples, condition numbers are rank-deficient diagnostics and not meaningful
+quality measures.
+
+* Correctness finding
+The first full-shape native attempt exposed a padded-mask bug absent from the
+tiny parity fixture.  Static padding inserted target token ID zero, and the
+distance-weighted context objective treated invalid padded slots as real nearest
+targets.  That produced context losses near =7.5e8=.  The loss now excludes
+invalid target positions before the nearest-target reduction.  Focused and
+official parity tests pass after the correction.  The full recipe also exposed
+that Meta averages mask-family losses rather than pooling their tokens and uses
+one mask token per frame-count stream; the native task now preserves both
+semantics.  Held-out geometry compares the EMA target encoder used by the native
+inference API with Meta's corresponding target encoder.  The rerun matches the
+Meta loss and geometry trajectories above.  The failed evidence is retained under
+=/raid/representax/paper-vjepa-preflight-20260831/run-failed-padded-mask-distance/=.
+
+* Commands
+#+begin_src text
+PYTHONPATH=src JAX_PLATFORMS=cpu python -m experiments.paper.vjepa prepare \
+  --reference /raid/representax/paper-vjepa-preflight-20260831/reference/vjepa2 \
+  --output /raid/representax/paper-vjepa-preflight-20260831/data \
+  --train-videos 4 --evaluation-videos 4 --seed 7
+
+PYTHONPATH=src CUDA_VISIBLE_DEVICES=4 python -m experiments.paper.vjepa pair \
+  --reference /raid/representax/paper-vjepa-preflight-20260831/reference/vjepa2 \
+  --data-directory /raid/representax/paper-vjepa-preflight-20260831/data \
+  --output /raid/representax/paper-vjepa-preflight-20260831/run-v5 \
+  --steps 4 --seed 7 --gpu 4
+
+pytest -q tests/experiments/test_vjepa.py tests/tasks/test_vjepa2_1.py \
+  -m 'not runtime'
+12 passed, 1 deselected
+
+pytest -q -m parity tests/tasks/test_vjepa2_1_parity.py
+4 passed
+#+end_src
+
+The complete run, checkpoints, logs, tensors, reference checkout, and exports are
+under =/raid/representax/paper-vjepa-preflight-20260831/=.  The compact machine
+report is =summary.json= in this directory.

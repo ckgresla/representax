@@ -46,6 +46,7 @@ def mask_distance_weights(
     grid_height: int,
     grid_width: int,
     offset_scale: float = 1.0,
+    target_valid: Bool[Array, "batch mask target"] | None = None,
 ) -> Float[Array, "batch mask context"]:
     """Return Eq. 3 context weights from the nearest masked tubelet.
 
@@ -77,6 +78,8 @@ def mask_distance_weights(
         jnp.square(context[..., :, None, :] - target[..., None, :, :]),
         axis=-1,
     )
+    if target_valid is not None:
+        squared = jnp.where(target_valid[..., None, :], squared, jnp.inf)
     euclidean = jnp.sqrt(jnp.min(squared, axis=-1)) * offset_scale
     softened = jnp.sqrt(euclidean)
     return jnp.reciprocal(jnp.maximum(softened, 1e-12))
@@ -107,18 +110,17 @@ def dense_prediction_loss(
     *,
     token_weights: Array | None = None,
 ) -> Float[Array, ""]:
-    """Exact valid-token-weighted L1 mean over deep-supervision features."""
+    """Average official per-mask L1 means over valid tokens and features."""
 
     error = jnp.abs(prediction.astype(jnp.float32) - target.astype(jnp.float32))
     weights = valid.astype(jnp.float32)
     if token_weights is not None:
         weights = weights * token_weights.astype(jnp.float32)
-    numerator = jnp.sum(error * weights[..., None])
-    denominator = jnp.maximum(
-        jnp.sum(valid.astype(jnp.float32)) * error.shape[-1],
-        1.0,
-    )
-    return numerator / denominator
+    numerator = jnp.sum(error * weights[..., None], axis=(0, 2, 3))
+    denominator = jnp.sum(valid.astype(jnp.float32), axis=(0, 2)) * error.shape[-1]
+    present = denominator > 0
+    per_mask = numerator / jnp.maximum(denominator, 1.0)
+    return jnp.sum(jnp.where(present, per_mask, 0.0)) / jnp.maximum(jnp.sum(present), 1)
 
 
 class VJEPA2_1Task(eqx.Module):
@@ -182,6 +184,7 @@ class VJEPA2_1Task(eqx.Module):
                 context_ids,
                 target_ids,
                 is_video=is_video,
+                mask_index=0,
                 context_valid=context_valid,
                 target_valid=target_valid,
             )
@@ -214,6 +217,7 @@ class VJEPA2_1Task(eqx.Module):
             grid_height=model.online.config.spatial_grid,
             grid_width=model.online.config.spatial_grid,
             offset_scale=offset_scale,
+            target_valid=batch.target_valid,
         )
         context_loss = dense_prediction_loss(
             predicted_context,

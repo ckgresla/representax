@@ -448,11 +448,49 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      =/raid/representax/paper-audio-text-preflight-b8-20260829/= and
      =/raid/representax/paper-audio-text-scaling-20260831/=; compact evidence is in
      =benchmarks/results/paper-audio-text-preflight-20260829/=.
-**** TODO Preflight video-text retrieval
-**** TODO Preflight late interaction against PyLate
-**** TODO Preflight outcome reward modeling against TRL
-**** TODO Preflight process reward modeling against TRL
-**** TODO Preflight V-JEPA against the official Meta implementation
+**** DONE Preflight video-text retrieval
+     The pinned LCO-Embedding-Omni-3B/MSR-VTT run passes four finite updates,
+     midpoint resume, evaluation, export, and exact inference reload in both
+     Representax and Sentence Transformers. Initial video/text embedding cosine
+     is 0.99909/0.99985 and warmed throughput is 2.8605 versus 1.4569 examples/s
+     (1.963x). The corrected processor preserves sample-row vision tensors and
+     the checkpoint's structured system prompt. Compact evidence lives in
+     =benchmarks/results/paper-video-text-preflight-20260831/=.
+**** DONE Preflight late interaction against PyLate
+     The pinned GTE-ModernColBERT/NanoMSMARCO lifecycle passes in Representax and
+     PyLate. Under equal static shapes, warmed training is 123.44 versus 53.50
+     examples/s (2.31x), encoder throughput is 1,162.05 versus 717.51 documents/s
+     (1.62x), final nDCG@10 is 0.71446 versus 0.70901, and Recall@10 is 0.92 for
+     both. The rejected 0.225x encoding result used FP32 inference and batch 32;
+     the accepted comparison uses the frozen BF16 policy and batch 256. Compact
+     evidence lives in
+     =benchmarks/results/paper-late-interaction-preflight-20260831/=.
+**** DONE Preflight outcome reward modeling against TRL
+     The pinned Qwen3-0.6B/UltraFeedback Bradley-Terry run passes four updates,
+     midpoint resume, held-out evaluation, native reload, and Hugging Face
+     export/reload in Representax and TRL. With equal =[8, 1024]= model inputs,
+     warmed throughput is 7.6965 versus 6.6730 pairs/s (1.153x), and final
+     held-out pairwise accuracy is 0.625 for both. The rejected dynamic-padding
+     comparison processed unequal padded-token counts. Compact evidence lives in
+     =benchmarks/results/paper-outcome-reward-preflight-20260831/=.
+**** DONE Preflight process reward modeling against TRL
+     The pinned Qwen3-0.6B/Math-Shepherd run passes four updates, midpoint
+     resume, held-out evaluation, export, and exact reload in Representax and
+     TRL. Final step accuracy is 0.8125 versus 0.8047 and warmed throughput is
+     52.72 versus 16.18 examples/s (3.258x). A rejected reference wrapper
+     multiplied gradients by the 32 accumulation microbatches; the corrected
+     wrapper forbids arbitrary loss-normalization arguments. Compact evidence
+     lives in =benchmarks/results/paper-process-reward-preflight-20260831/=.
+**** DONE Preflight V-JEPA against the official Meta implementation
+     The four-update V-JEPA 2.1 ViT-B/16 run matches the official Meta loss
+     trajectory within 0.000309, preserves collapse diagnostics, passes midpoint
+     resume and exact final reload, and reaches 6.161 versus 1.314 examples/s
+     (4.689x). The native task now excludes padded target IDs and matches Meta's
+     per-mask reduction and mask-token selection. The pinned SSV2 source exposes
+     only =train=, so disjoint train examples serve as a readiness holdout; a
+     real validation source remains required for the paper quality claim.
+     Compact evidence lives in
+     =benchmarks/results/paper-vjepa-preflight-20260831/=.
 **** TODO Run one unpaired LeJEPA quality trajectory
 **** TODO Probe scaling, memory boundaries, and evaluation/checkpoint overhead
 *** TODO Benchmark compile time separately from steady-state step time :research:benchmark:

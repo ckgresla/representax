@@ -7,6 +7,8 @@ import numpy as np
 import optax
 import pytest
 
+from representax.evaluation import RewardEvaluator
+from representax.models import Processor
 from representax.tasks import build_task
 from representax.tasks.reward_modeling import (
     BradleyTerryConfig,
@@ -14,6 +16,7 @@ from representax.tasks.reward_modeling import (
     ListwiseRewardConfig,
     ListwiseRewardTask,
     PairwiseRewardBatch,
+    PairwiseRewardCollator,
     PairwiseRewardConfig,
     PairwiseRewardTask,
     PlackettLuceConfig,
@@ -42,6 +45,16 @@ class RewardModel(eqx.Module):
     def logits(self, inputs: Inputs, *, key=None):
         del key
         return inputs.values @ self.weight + self.bias
+
+
+class FixedBatchRewardModel(eqx.Module):
+    expected_rows: int = eqx.field(static=True)
+
+    def logits(self, inputs: Inputs, *, key=None):
+        del key
+        if inputs.values.shape[0] != self.expected_rows:
+            raise ValueError("pairwise rewards must use one combined scorer batch")
+        return jnp.sum(inputs.values, axis=-1)
 
 
 def model(outputs: int = 1) -> RewardModel:
@@ -88,6 +101,38 @@ def test_pairwise_reward_matches_trl_formula_and_compiles() -> None:
     )
     assert int(result.state.step) == 1
     assert np.isfinite(result.metrics.loss)
+
+
+def test_pairwise_reward_collates_and_scores_one_combined_batch() -> None:
+    calls: list[list[float]] = []
+
+    def process(values, **_options):
+        rows = [float(value) for value in values]
+        calls.append(rows)
+        return Inputs(jnp.asarray(rows)[:, None])
+
+    processor = Processor(process=process, contract={"kind": "recording"})
+    batch = PairwiseRewardCollator(processor=processor)(
+        (
+            {"chosen": 3.0, "rejected": 1.0, "margin": 0.2},
+            {"chosen": 4.0, "rejected": 2.0, "margin": 0.0},
+        )
+    )
+
+    assert calls == [[3.0, 4.0, 1.0, 2.0]]
+    assert (
+        PairwiseRewardCollator(processor=processor).data_contract()["pair_layout"]
+        == "chosen-then-rejected"
+    )
+    np.testing.assert_array_equal(batch.chosen.values[:, 0], (3.0, 4.0))
+    np.testing.assert_array_equal(batch.rejected.values[:, 0], (1.0, 2.0))
+    result = PairwiseRewardTask().loss(FixedBatchRewardModel(4), batch)
+    expected = -jnp.mean(jax.nn.log_sigmoid(jnp.asarray((1.8, 2.0))))
+    np.testing.assert_allclose(result.loss, expected)
+    evaluated = RewardEvaluator(kind="pairwise").evaluate_batch(
+        FixedBatchRewardModel(4), batch
+    )
+    np.testing.assert_array_equal(evaluated.scores, ((3.0, 1.0), (4.0, 2.0)))
 
 
 def test_listwise_plackett_luce_matches_manual_probability() -> None:

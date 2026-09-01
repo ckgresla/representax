@@ -28,6 +28,41 @@ def _reshape_candidates(payload: Any, rows: int, candidates: int) -> Any:
     return jax.tree.map(reshape, payload)
 
 
+def concatenate_pairwise_payloads(chosen: Any, rejected: Any) -> Any:
+    """Combine aligned pair payloads into one scorer batch."""
+
+    def concatenate(left: Any, right: Any) -> Any:
+        if not isinstance(left, (jax.Array, np.ndarray)):
+            return left
+        if not isinstance(right, (jax.Array, np.ndarray)):
+            raise TypeError("chosen and rejected payload leaves must have equal types")
+        if left.shape[1:] != right.shape[1:]:
+            raise ValueError("chosen and rejected payload shapes must align")
+        return jnp.concatenate((left, right), axis=0)
+
+    return jax.tree.map(concatenate, chosen, rejected)
+
+
+def split_pairwise_payload(payload: Any, rows: int) -> tuple[Any, Any]:
+    """Split one scorer payload into chosen and rejected rows."""
+
+    def chosen(value: Any) -> Any:
+        if not isinstance(value, (jax.Array, np.ndarray)):
+            return value
+        if value.shape[0] != rows * 2:
+            raise ValueError("processed pair payload must contain two rows per pair")
+        return value[:rows]
+
+    def rejected(value: Any) -> Any:
+        if not isinstance(value, (jax.Array, np.ndarray)):
+            return value
+        if value.shape[0] != rows * 2:
+            raise ValueError("processed pair payload must contain two rows per pair")
+        return value[rows:]
+
+    return jax.tree.map(chosen, payload), jax.tree.map(rejected, payload)
+
+
 class PairwiseRewardBatch(eqx.Module):
     """Chosen/rejected inputs, optional preference margins, and valid rows."""
 
@@ -128,6 +163,7 @@ class PairwiseRewardCollator:
             "chosen_field": self.chosen_field,
             "rejected_field": self.rejected_field,
             "margin_field": self.margin_field,
+            "pair_layout": "chosen-then-rejected",
         }
 
     def __call__(self, examples: Sequence[Mapping[str, Any]]) -> PairwiseRewardBatch:
@@ -135,11 +171,15 @@ class PairwiseRewardCollator:
             [float(example.get(self.margin_field, 0.0)) for example in examples],
             dtype=np.float32,
         )
+        rows = len(examples)
+        payload = self.processor(
+            [example[self.chosen_field] for example in examples]
+            + [example[self.rejected_field] for example in examples]
+        )
+        chosen, rejected = split_pairwise_payload(payload, rows)
         return PairwiseRewardBatch(
-            chosen=self.processor([example[self.chosen_field] for example in examples]),
-            rejected=self.processor(
-                [example[self.rejected_field] for example in examples]
-            ),
+            chosen=chosen,
+            rejected=rejected,
             margins=jnp.asarray(margins),
             valid=jnp.ones(margins.shape, dtype=jnp.bool_),
         )
@@ -253,4 +293,6 @@ __all__ = [
     "PointwiseRewardCollator",
     "ProcessRewardBatch",
     "ProcessRewardCollator",
+    "concatenate_pairwise_payloads",
+    "split_pairwise_payload",
 ]

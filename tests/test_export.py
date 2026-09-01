@@ -17,6 +17,7 @@ from representax.config import (
     LoRAConfig,
     ModelConfig,
     OptimizationConfig,
+    PrecisionConfig,
     QuantizedLoRAConfig,
     TrainingConfig,
 )
@@ -50,6 +51,15 @@ def build_tiny_bert(*, key):
         ),
         key=key,
         rematerialization="none",
+    )
+
+
+def build_tiny_bfloat16_bert(*, key):
+    return jax.tree.map(
+        lambda value: (
+            value.astype(jax.numpy.bfloat16) if eqx.is_inexact_array(value) else value
+        ),
+        build_tiny_bert(key=key),
     )
 
 
@@ -243,6 +253,41 @@ def test_unquantized_adapter_bundle_reloads_native(tmp_path):
 
     assert restored_job == job
     _assert_array_trees_equal(native, model)
+
+
+def test_mixed_precision_full_model_bundle_reloads_master_parameters(tmp_path):
+    base_job = _job(tmp_path / "unused")
+    job = base_job.model_copy(
+        update={
+            "model": ModelConfig(target="tests.test_export.build_tiny_bfloat16_bert"),
+            "training": base_job.training.model_copy(
+                update={"precision": PrecisionConfig.bfloat16_mixed()}
+            ),
+            "export": ExportConfig(),
+        }
+    )
+    source = build_tiny_bfloat16_bert(key=jax.random.key(job.training.seed))
+    from representax.precision import prepare_master_model, resolve_precision_policy
+
+    trained = prepare_master_model(
+        source,
+        resolve_precision_policy(job.training.precision),
+    )
+    assert all(
+        leaf.dtype == jax.numpy.float32
+        for leaf in jax.tree.leaves(eqx.filter(trained, eqx.is_inexact_array))
+    )
+
+    bundle = export_inference_bundle(
+        trained,
+        job,
+        tmp_path / "mixed-precision-bundle",
+        iteration=1,
+    )
+    restored, restored_job = load_inference_bundle(bundle.path)
+
+    assert restored_job == job
+    _assert_array_trees_equal(restored, trained)
 
 
 def test_jina_v5_loads_local_hf_and_exports_exact_native_and_hf_bundles(tmp_path):

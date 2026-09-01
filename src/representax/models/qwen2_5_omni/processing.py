@@ -41,10 +41,19 @@ def _conversation(value: Any, *, text_prefix: str = "") -> list[dict[str, Any]]:
     if video is not None:
         content.append({"type": "video"})
     if text is not None:
-        content.append({"type": "text", "text": text_prefix + text})
+        content.append({"type": "text", "text": text})
     if not content:
         raise ValueError("Qwen2.5-Omni samples must contain at least one modality")
-    return [{"role": "user", "content": content}]
+    conversation = []
+    if text_prefix:
+        conversation.append(
+            {
+                "role": "system",
+                "content": [{"type": "text", "text": text_prefix}],
+            }
+        )
+    conversation.append({"role": "user", "content": content})
+    return conversation
 
 
 def _expand_placeholders(
@@ -582,7 +591,6 @@ def batch_from_processor_output(
         video_seconds_per_grid=features.get("video_second_per_grid"),
     )
 
-    vision = None
     image_pixels = np.asarray(
         features.get("pixel_values", np.empty((0, config.vision.patch_dimension))),
         dtype=np.float32,
@@ -593,41 +601,115 @@ def batch_from_processor_output(
         ),
         dtype=np.float32,
     ).reshape((-1, config.vision.patch_dimension))
-    pixels = np.concatenate((image_pixels, video_pixels), axis=0)
-    grids = [*image_grids.tolist(), *video_grids.tolist()]
-    if grids:
-        patch_count = sum(int(np.prod(grid)) for grid in grids)
-        if pixels.shape[0] != patch_count:
-            raise ValueError("pixel rows and grids describe different patch counts")
+    image_counts = [int(np.prod(grid)) for grid in image_grids]
+    video_counts = [int(np.prod(grid)) for grid in video_grids]
+    if image_pixels.shape[0] != sum(image_counts) or video_pixels.shape[0] != sum(
+        video_counts
+    ):
+        raise ValueError("pixel rows and grids describe different patch counts")
+
+    def media_rows(
+        grids: np.ndarray,
+        counts: Sequence[int],
+        pixels: np.ndarray,
+    ) -> list[tuple[list[int], np.ndarray]]:
+        boundaries = np.cumsum((0, *counts))
+        return [
+            (grid.tolist(), pixels[boundaries[index] : boundaries[index + 1]])
+            for index, grid in enumerate(grids)
+        ]
+
+    image_media = media_rows(image_grids, image_counts, image_pixels)
+    video_media = media_rows(video_grids, video_counts, video_pixels)
+    image_cursor = video_cursor = 0
+    row_media: list[tuple[list[list[int]], list[np.ndarray]]] = []
+    spatial_unit = config.vision.spatial_merge_unit
+    for row in input_ids:
+        row_grids: list[list[int]] = []
+        row_pixels: list[np.ndarray] = []
+        for token_id, media, cursor_name in (
+            (config.image_token_id, image_media, "image"),
+            (config.video_token_id, video_media, "video"),
+        ):
+            remaining = int(np.count_nonzero(row == token_id))
+            cursor = image_cursor if cursor_name == "image" else video_cursor
+            while remaining:
+                if cursor >= len(media):
+                    raise ValueError("vision placeholders exceed supplied media")
+                grid, values = media[cursor]
+                merged = int(np.prod(grid)) // spatial_unit
+                if merged > remaining:
+                    raise ValueError("vision placeholders split one media artifact")
+                row_grids.append(grid)
+                row_pixels.append(values)
+                remaining -= merged
+                cursor += 1
+            if cursor_name == "image":
+                image_cursor = cursor
+            else:
+                video_cursor = cursor
+        row_media.append((row_grids, row_pixels))
+    if image_cursor != len(image_media) or video_cursor != len(video_media):
+        raise ValueError("unused vision media remain after row alignment")
+
+    vision = None
+    maximum_patch_count = max(
+        (sum(len(values) for values in pixels) for _, pixels in row_media),
+        default=0,
+    )
+    if maximum_patch_count:
         patch_bucket = select_static_shape_bucket(
-            (patch_count,), tuple((value,) for value in patch_count_buckets)
+            (maximum_patch_count,), tuple((value,) for value in patch_count_buckets)
         )[0]
-        layout = vision_layout(grids, config.vision, patch_bucket=patch_bucket)
-        padded_pixels = np.pad(pixels, ((0, patch_bucket - patch_count), (0, 0)))
+        rows = []
+        for grids, pixel_groups in row_media:
+            patch_count = sum(len(values) for values in pixel_groups)
+            layout = vision_layout(grids, config.vision, patch_bucket=patch_bucket)
+            pixels = (
+                np.concatenate(pixel_groups)
+                if pixel_groups
+                else np.empty((0, config.vision.patch_dimension), dtype=np.float32)
+            )
+            padded = np.pad(pixels, ((0, patch_bucket - patch_count), (0, 0)))
+            rows.append(
+                {
+                    **layout,
+                    "pixel_values": padded[layout["patch_order"]],
+                }
+            )
         vision = {
-            **layout,
-            "pixel_values": padded_pixels[layout["patch_order"]],
+            name: np.stack([row[name] for row in rows])
+            for name in (
+                "pixel_values",
+                "patch_valid",
+                "full_segment_ids",
+                "window_segment_ids",
+                "position_ids",
+                "reverse_merged_indices",
+            )
         }
 
-    flattened = input_ids.reshape(-1)
     values: dict[str, Any] = {
         "input_ids": jnp.asarray(input_ids),
         "attention_mask": jnp.asarray(attention_mask),
         "position_ids": jnp.asarray(np.swapaxes(position_ids, 0, 1)),
     }
     if vision is not None:
-        visual_indices = np.concatenate(
-            (
-                np.flatnonzero(flattened == config.image_token_id),
-                np.flatnonzero(flattened == config.video_token_id),
-            )
-        ).astype(np.int32)
-        visual_count = (
-            int(vision["patch_valid"].sum()) // config.vision.spatial_merge_unit
-        )
-        visual_bucket = len(vision["reverse_merged_indices"])
-        if visual_indices.size != visual_count:
-            raise ValueError("vision placeholders and merged patches do not match")
+        visual_bucket = vision["reverse_merged_indices"].shape[1]
+        visual_indices = np.zeros((input_ids.shape[0], visual_bucket), dtype=np.int32)
+        visual_valid = np.zeros((input_ids.shape[0], visual_bucket), dtype=bool)
+        for row_index, row in enumerate(input_ids):
+            indices = np.concatenate(
+                (
+                    np.flatnonzero(row == config.image_token_id),
+                    np.flatnonzero(row == config.video_token_id),
+                )
+            ).astype(np.int32)
+            visual_count = int(vision["patch_valid"][row_index].sum()) // spatial_unit
+            if indices.size != visual_count:
+                raise ValueError("vision placeholders and merged patches do not match")
+            visual_indices[row_index, :visual_count] = indices
+            visual_valid[row_index, :visual_count] = True
         values.update(
             pixel_values=jnp.asarray(vision["pixel_values"]),
             patch_valid=jnp.asarray(vision["patch_valid"]),
@@ -635,15 +717,8 @@ def batch_from_processor_output(
             vision_window_segment_ids=jnp.asarray(vision["window_segment_ids"]),
             vision_position_ids=jnp.asarray(vision["position_ids"]),
             reverse_merged_indices=jnp.asarray(vision["reverse_merged_indices"]),
-            visual_token_indices=jnp.asarray(
-                np.pad(visual_indices, (0, visual_bucket - visual_count))
-            ),
-            visual_token_valid=jnp.asarray(
-                np.pad(
-                    np.ones((visual_count,), dtype=bool),
-                    (0, visual_bucket - visual_count),
-                )
-            ),
+            visual_token_indices=jnp.asarray(visual_indices),
+            visual_token_valid=jnp.asarray(visual_valid),
         )
     if audio is not None:
         audio_rows = np.flatnonzero(np.any(input_ids == config.audio_token_id, axis=1))
@@ -690,10 +765,14 @@ def make_qwen2_5_omni_processor(
     patch_count_buckets: Sequence[int] = (256, 1024, 4096, 8192),
     audio_chunk_count_buckets: Sequence[int] = (1, 4, 16, 64, 256),
     audio_token_count_buckets: Sequence[int] = (64, 256, 1024, 4096),
+    video_min_pixels: int = 128 * 28 * 28,
+    video_max_pixels: int = 768 * 28 * 28,
     chat_template: str = "sentence_transformers",
 ) -> Processor:
     """Load tokenizer/media artifacts into the generic Representax processor."""
 
+    if video_min_pixels <= 0 or video_max_pixels < video_min_pixels:
+        raise ValueError("video pixel bounds must be positive and ordered")
     try:
         transformers = import_module("transformers")
         image_module = import_module(
@@ -800,8 +879,8 @@ def make_qwen2_5_omni_processor(
             else _process_videos(
                 videos,
                 config,
-                min_pixels=128 * 28 * 28,
-                max_pixels=768 * 28 * 28,
+                min_pixels=video_min_pixels,
+                max_pixels=video_max_pixels,
                 image_mean=image_processor.image_mean,
                 image_std=image_processor.image_std,
             )
@@ -852,6 +931,8 @@ def make_qwen2_5_omni_processor(
             "patch_count_buckets": list(patch_count_buckets),
             "audio_chunk_count_buckets": list(audio_chunk_count_buckets),
             "audio_token_count_buckets": list(audio_token_count_buckets),
+            "video_min_pixels": video_min_pixels,
+            "video_max_pixels": video_max_pixels,
             "chat_template": chat_template,
             "padding_side": "right",
             "audio_in_video": False,

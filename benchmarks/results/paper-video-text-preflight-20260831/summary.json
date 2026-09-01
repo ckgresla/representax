@@ -1,0 +1,86 @@
+{
+  "artifacts": {
+    "data": "/raid/representax/paper-video-text-preflight-20260831-gpu0/data-v2",
+    "representax_export": "/home/ckg/representax-artifacts/paper-video-text-preflight-20260831-gpu0/run-v10/representax/final-model",
+    "representax_report": "/home/ckg/representax-artifacts/paper-video-text-preflight-20260831-gpu0/run-v10/representax.json",
+    "sentence_transformers_export": "/home/ckg/representax-artifacts/paper-video-text-preflight-20260831-gpu0/run-v10/sentence-transformers/final-model",
+    "sentence_transformers_report": "/home/ckg/representax-artifacts/paper-video-text-preflight-20260831-gpu0/run-v10/sentence-transformers.json"
+  },
+  "contract": {
+    "evaluation_dataset": "mteb/MSR-VTT",
+    "evaluation_documents": 32,
+    "evaluation_queries": 8,
+    "evaluation_revision": "4661603cee25c1fd370e5478a2953203cf37155b",
+    "global_batch_size": 2,
+    "grad_cache_micro_batch_size": 1,
+    "hardware": "one NVIDIA GeForce RTX 4090 24GB, physical GPU 0",
+    "model_id": "LCO-Embedding/LCO-Embedding-Omni-3B-2605",
+    "model_revision": "5f6b5329da5141367da30e06a9826d1322d6c9b2",
+    "reference": "sentence-transformers==5.6.1, transformers==5.6.0",
+    "seed": 7,
+    "training_dataset": "VLM2Vec/MSR-VTT:train_7k",
+    "training_revision": "947b139d0c591235a3f311e45a31a88461bad0d2",
+    "training_videos": 8,
+    "updates": 4,
+    "video_frames": 16,
+    "video_pixels_per_frame_cap": 25088
+  },
+  "input_hashes": {
+    "data_manifest_sha256": "d7d3b351b725831c046918b61f6e9c42cab261b4c27b924b9f37b785bfd2d9b0",
+    "evaluation_jsonl_sha256": "101abf231b252f3114d3b32b4c736230eec2275f9bcea45e4d1535773a715925",
+    "evaluation_video_tree_sha256": "fecafa882eaad101e2f51cae26b5fa7dd802939de21d6d74ae5e9c193961c6d6",
+    "representax_report_sha256": "04f2354433c4b8027dd174f31d3245052d889b739b4433e5ae616e921e63c406",
+    "sentence_transformers_report_sha256": "a1700333cc9ee925a38643759307735123791eb1c78aa9c8c7ac99648c9bcf59",
+    "training_jsonl_sha256": "ba7d67f7e205bfd9e1e809f4896f1a52afe2f9e14a4957d8180311c68f29d11d",
+    "training_video_tree_sha256": "e845897daf306f34d722c147324d5f10a175c3b16bec3d140d3f6e578dbf7191"
+  },
+  "lifecycle": {
+    "representax_huggingface_export_verified": true,
+    "representax_native_reload_maximum_absolute_difference": 0.0,
+    "representax_resumed_from_update": 2,
+    "sentence_transformers_reload_maximum_absolute_difference": 0.0,
+    "sentence_transformers_resumed_from_update": 2
+  },
+  "parity": {
+    "all_eight_initial_top1_results_identical": true,
+    "document_embedding_mean_cosine": 0.9998472929000854,
+    "document_embedding_minimum_cosine": 0.9998093843460083,
+    "query_embedding_mean_cosine": 0.9990876913070679,
+    "query_embedding_minimum_cosine": 0.9983502626419067
+  },
+  "quality": {
+    "representax_final_recall_at_1": 1.0,
+    "representax_initial_recall_at_1": 1.0,
+    "representax_training_losses": [
+      0.012418270111083984,
+      0.003276824951171875,
+      0.004115104675292969,
+      0.046366214752197266
+    ],
+    "sentence_transformers_final_recall_at_1": 1.0,
+    "sentence_transformers_initial_recall_at_1": 1.0,
+    "sentence_transformers_training_losses": [
+      0.012729406356811523,
+      0.0029592514038085938,
+      0.004481077194213867,
+      0.048761844635009766
+    ]
+  },
+  "schema_version": "representax-paper-video-text-preflight-v1",
+  "scope": "bounded-readiness-preflight-not-paper-result",
+  "systems": {
+    "representax_compile_and_first_step_seconds": [
+      4.31295426748693,
+      4.423448599874973
+    ],
+    "representax_median_warm_step_seconds": 0.6991802044212818,
+    "representax_to_sentence_transformers_warm_throughput": 1.9634353293094904,
+    "representax_warm_examples_per_second": 2.8604928848856916,
+    "sentence_transformers_execution": "eager",
+    "sentence_transformers_median_warm_step_seconds": 1.3626355659216642,
+    "sentence_transformers_peak_allocated_bytes": 19181454336,
+    "sentence_transformers_warm_examples_per_second": 1.456881641164969
+  },
+  "unresolved_blockers": [],
+  "verdict": "lifecycle-quality-and-warm-throughput-readiness-pass"
+}

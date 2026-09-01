@@ -9,6 +9,8 @@ from .batch import (
     PointwiseRewardCollator,
     ProcessRewardBatch,
     ProcessRewardCollator,
+    concatenate_pairwise_payloads,
+    split_pairwise_payload,
 )
 from .config import (
     BradleyTerryConfig,
@@ -47,6 +49,8 @@ __all__ = [
     "PointwiseRewardTask",
     "ProcessRewardBatch",
     "ProcessRewardCollator",
+    "concatenate_pairwise_payloads",
+    "split_pairwise_payload",
     "ProcessRewardConfig",
     "ProcessRewardLossConfig",
     "ProcessRewardTask",

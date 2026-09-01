@@ -1,0 +1,46 @@
+#+title: Process-reward preflight evidence
+
+* Result
+
+The bounded Math-Shepherd process-reward preflight passes on one RTX 4090.
+Both frameworks use the pinned Qwen3-0.6B backbone and scalar head, global batch
+64, four optimizer updates, seed 7, and the same 256 training and 32 held-out
+examples.  Every admitted trajectory has four mixed-label steps and fits the
+fixed 256-token execution shape under the frozen 2048-token maximum.
+
+The scalar score is supervised directly by binary cross entropy in Representax.
+TRL =PRMTrainer= receives the exactly equivalent two-class logits
+=[-score/2, score/2]= at the final separator token of every step.
+
+| Metric | Representax | TRL 1.10.0 |
+|-
+| Initial held-out step accuracy | 0.5234375 | 0.5234375 |
+| Final held-out step accuracy | 0.8125000 | 0.8046875 |
+| Loss trajectory | 0.9910, 0.8627, 0.5050, 0.4964 | 0.9882, 0.8629, 0.5075, 0.4923 |
+| Warm examples/s | 52.7243 | 16.1826 |
+| Warm median step seconds | 1.2139 | 3.9504 |
+| Compilation plus first execution | 13.5148 s | n/a; eager execution |
+| Peak allocated device bytes | 17,946,821,376 | 11,725,405,696 |
+
+Representax is 3.258x faster after compilation.  Its complete preflight takes
+longer because asynchronous full-model and optimizer checkpoint flushes dominate
+this four-update run.  Checkpoint overhead remains assigned to the later systems
+overhead probe; it does not change the warmed training result.
+
+Both sides perform initial/final held-out evaluation, save update 2, resume to
+update 4, export, reload, and reproduce their exported probe logits exactly.
+
+* Artifacts
+
+- Data: =/raid/representax/paper-process-reward-preflight-20260831/data-v1/=
+- Representax: =/raid/representax/paper-process-reward-preflight-20260831/paired-seed-7-v1/representax/=
+- Corrected TRL: =/raid/representax/paper-process-reward-preflight-20260831/trl-corrected-seed-7-v2/=
+- Rejected TRL accumulation run: =/raid/representax/paper-process-reward-preflight-20260831/paired-seed-7-v1/trl/=
+
+The rejected run treated the wrapper as though it normalized
+=num_items_in_batch=.  That multiplied the reported loss and pre-clipping
+gradient by the 32 accumulation microbatches.  The wrapper no longer accepts
+arbitrary loss keywords, and the runner rejects this Trainer inference if it
+ever recurs.
+
+Machine-readable values and fingerprints are in =summary.json=.

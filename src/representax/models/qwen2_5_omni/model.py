@@ -31,14 +31,14 @@ class Qwen2_5OmniBatch(eqx.Module):
     attention_mask: Bool[Array, "batch sequence"] | Int[Array, "batch sequence"]
     position_ids: Int[Array, "batch position sequence"] | None = None
 
-    pixel_values: Float[Array, "patch pixel"] | None = None
-    patch_valid: Bool[Array, " patch"] | None = None
-    vision_full_segment_ids: Int[Array, " patch"] | None = None
-    vision_window_segment_ids: Int[Array, " patch"] | None = None
-    vision_position_ids: Int[Array, "patch coordinate"] | None = None
-    reverse_merged_indices: Int[Array, " merged"] | None = None
-    visual_token_indices: Int[Array, " visual"] | None = None
-    visual_token_valid: Bool[Array, " visual"] | None = None
+    pixel_values: Float[Array, "batch patch pixel"] | None = None
+    patch_valid: Bool[Array, "batch patch"] | None = None
+    vision_full_segment_ids: Int[Array, "batch patch"] | None = None
+    vision_window_segment_ids: Int[Array, "batch patch"] | None = None
+    vision_position_ids: Int[Array, "batch patch coordinate"] | None = None
+    reverse_merged_indices: Int[Array, "batch merged"] | None = None
+    visual_token_indices: Int[Array, "batch visual"] | None = None
+    visual_token_valid: Bool[Array, "batch visual"] | None = None
 
     input_features: Float[Array, "batch chunk mel feature"] | None = None
     audio_feature_valid: Bool[Array, "batch chunk feature"] | None = None
@@ -79,6 +79,11 @@ class Qwen2_5OmniBatch(eqx.Module):
                 raise ValueError("vision layout arrays require pixel_values")
         elif any(value is None for value in vision_values):
             raise ValueError("pixel_values require the complete vision layout")
+        elif self.pixel_values.shape[0] != self.batch_size or any(
+            value is not None and value.shape[0] != self.batch_size
+            for value in vision_values
+        ):
+            raise ValueError("vision layout arrays must be row-major")
 
         audio_values = (
             self.audio_feature_valid,
@@ -224,22 +229,44 @@ class Qwen2_5OmniEncoder(eqx.Module):
             assert inputs.reverse_merged_indices is not None
             assert inputs.visual_token_indices is not None
             assert inputs.visual_token_valid is not None
-            visual = self.vision(
+
+            def encode_vision(
+                pixel_values,
+                patch_valid,
+                full_segment_ids,
+                window_segment_ids,
+                position_ids,
+                reverse_merged_indices,
+            ):
+                return self.vision(
+                    pixel_values,
+                    patch_valid,
+                    full_segment_ids,
+                    window_segment_ids,
+                    position_ids,
+                    reverse_merged_indices,
+                    compute_dtype=compute_dtype,
+                    attention_implementation=self.attention_implementation,
+                    rematerialization=self.rematerialization,
+                )
+
+            visual = jax.vmap(encode_vision)(
                 inputs.pixel_values,
                 inputs.patch_valid,
                 inputs.vision_full_segment_ids,
                 inputs.vision_window_segment_ids,
                 inputs.vision_position_ids,
                 inputs.reverse_merged_indices,
-                compute_dtype=compute_dtype,
-                attention_implementation=self.attention_implementation,
-                rematerialization=self.rematerialization,
+            )
+            sequence_offsets = (
+                jnp.arange(inputs.batch_size, dtype=jnp.int32)
+                * inputs.input_ids.shape[1]
             )
             hidden = replace_tokens(
                 hidden,
-                visual.astype(hidden.dtype),
-                inputs.visual_token_indices,
-                inputs.visual_token_valid,
+                visual.astype(hidden.dtype).reshape((-1, visual.shape[-1])),
+                (inputs.visual_token_indices + sequence_offsets[:, None]).reshape(-1),
+                inputs.visual_token_valid.reshape(-1),
             )
 
         if inputs.input_features is not None:

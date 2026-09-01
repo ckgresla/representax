@@ -34,6 +34,8 @@ def load_qwen2_5_omni(
     patch_count_buckets: Sequence[int] = (256, 1024, 4096, 8192),
     audio_chunk_count_buckets: Sequence[int] = (1, 4, 16, 64, 256),
     audio_token_count_buckets: Sequence[int] = (64, 256, 1024, 4096),
+    video_min_pixels: int = 128 * 28 * 28,
+    video_max_pixels: int = 768 * 28 * 28,
     **adapter_options,
 ) -> tuple[Qwen2_5OmniEncoder, Processor]:
     """Resolve one immutable checkpoint and construct model plus processor once."""
@@ -65,6 +67,8 @@ def load_qwen2_5_omni(
         patch_count_buckets=patch_count_buckets,
         audio_chunk_count_buckets=audio_chunk_count_buckets,
         audio_token_count_buckets=audio_token_count_buckets,
+        video_min_pixels=video_min_pixels,
+        video_max_pixels=video_max_pixels,
     )
     return model, processor
 
