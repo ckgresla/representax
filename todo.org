@@ -373,7 +373,23 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
    =/raid/representax/paper-campaign-v1/preflight/packing/20260828/= and compact
    evidence under =benchmarks/results/paper-packing-preflight-20260828/=.
 *** NEXT Benchmark quality, throughput, feasible workload, utilization, and model coverage :research:benchmark:
-**** TODO Repeat seed-7 MPNet/MS MARCO with the default reference collator
+**** DONE Repeat seed-7 MPNet/MS MARCO with the default reference collator
+     The accepted fair-padding run uses Representax length buckets and Sentence
+     Transformers' standard dynamic collator. Across the identical warmed
+     update window 131--255, Representax sustains 348.31 examples/s versus
+     275.61 examples/s (1.264x). Including native compilation and first use,
+     training throughput is 275.13 versus 247.63 examples/s (1.111x), with a
+     measured compilation break-even at approximately 260 updates.
+
+     Shared Representax evaluation of both exported artifacts reports final
+     NanoMSMARCO nDCG@10 of 0.58205 versus 0.57943 (+0.00262), and final train
+     losses of 3.97169 versus 3.97004. Both exports reload and evaluate
+     successfully. Peak live allocation is 7.519 GiB for JAX versus 7.021 GiB
+     allocated and 11.011 GiB reserved for PyTorch. The run captures Representax
+     commit =913cc82e2bb131cd6ff19708776190cbf5696aa9= and Sentence Transformers
+     commit =7d3eb16a65f62045226e08082ade63cbc71c97a4=. Complete evidence lives under
+     =/raid/representax/paper-campaign-v1/runs/dense-realistic/seed-7-dynamic-padding-20260901/=.
+
      The first detached launch was rejected before its first update because
      source provenance was read at summary time rather than captured at process
      start. Its preserved tree is
@@ -383,12 +399,10 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      =dea91a608e742588de4bd69dbdc49d9a7954ac61= before worker creation.
      Artifacts, raw metrics, logs, exports and shared offline evaluation belong under
      =/raid/representax/paper-campaign-v1/runs/dense-realistic/seed-7/=.
-     The completed fixed-padding run sustains 348.37 examples/s versus 132.37
+     That earlier fixed-padding run sustains 348.37 examples/s versus 132.37
      for Sentence Transformers (2.632x). It remains a valid controlled systems
      result, but the reference runner forced every training batch to length 256
-     instead of using Sentence Transformers' standard dynamic collator. Repeat
-     seed 7 with the standard collator before launching seeds 42 and 773. The
-     corrected summary must compare identical warmed update indices.
+     instead of using Sentence Transformers' standard dynamic collator.
 
      In the controlled run, final losses are 3.97107 and 3.97059. Shared
      Representax evaluation reports NanoMSMARCO nDCG@10 of 0.58315 and 0.59008,
