@@ -2,18 +2,63 @@
 name = "representax-paper-experiments"
 version = "0.0.0"
 requires-python = ">=3.13,<3.14"
-dependencies = [
-    "accelerate==1.14.0",
+dependencies = []
+
+[dependency-groups]
+native = [
     "representax[config,hf,performance,wandb,cuda12]",
+]
+sentence-transformers = [
+    "accelerate==1.14.0",
     "sentence-transformers==5.6.1",
+]
+reward = [
+    "trl==1.10.0",
+]
+lejepa = [
+    "lejepa",
+    "stable-pretraining",
+]
+vjepa = [
+    "einops==0.8.2",
+    "timm==1.0.29",
     "torch==2.11.0",
+    "torchvision==0.26.0",
+]
+main = [
+    { include-group = "native" },
+    { include-group = "sentence-transformers" },
+    { include-group = "reward" },
+    { include-group = "lejepa" },
+    { include-group = "vjepa" },
+]
+late-interaction = [
+    "pylate==1.6.0",
+    "torch==2.11.0",
+    "torchvision==0.26.0",
+]
+
+[tool.uv]
+default-groups = ["main"]
+conflicts = [
+    [
+        { group = "native" },
+        { group = "late-interaction" },
+    ],
+    [
+        { group = "sentence-transformers" },
+        { group = "late-interaction" },
+    ],
 ]
 
 [tool.uv.sources]
 # Installs this checkout editably, equivalent to:
 # pip install -e "..[config,hf,performance,wandb,cuda12]"
 representax = { path = "..", editable = true }
+lejepa = { git = "https://github.com/galilai-group/lejepa", rev = "c293d291ca87cd4fddee9d3fffe4e914c7272052" }
+stable-pretraining = { git = "https://github.com/galilai-group/stable-pretraining", rev = "9aa93f8b6153eebb73f57d4853ccf8a13d848310" }
 torch = { index = "pytorch-cu128" }
+torchvision = { index = "pytorch-cu128" }
 
 [[tool.uv.index]]
 name = "pytorch-cu128"

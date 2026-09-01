@@ -10,9 +10,11 @@ import pytest
 from benchmarks.dense_retrieval import (
     MODEL_SPECS,
     _aggregate,
+    _framework_cache_chunk_size,
     _paired_steady_state_summary,
     _reference_steady_state_summary,
     _representax_worker_flags,
+    _sentence_transformers_worker_flags,
     _shared_worker_flags,
     _three_run_interval,
     _time_to_quality_summary,
@@ -96,6 +98,49 @@ def test_pair_worker_flags_preserve_representax_sequence_buckets():
         "32",
         "--sequence-length-bucket",
         "128",
+    ]
+
+
+def test_framework_cache_chunks_can_be_tuned_independently():
+    arguments = argparse.Namespace(
+        cache_chunk_size=32,
+        representax_cache_chunk_size=64,
+        sentence_transformers_cache_chunk_size=128,
+    )
+
+    assert _framework_cache_chunk_size(arguments, "representax") == 64
+    assert _framework_cache_chunk_size(arguments, "sentence-transformers") == 128
+
+
+def test_framework_cache_chunks_fall_back_to_shared_value():
+    arguments = argparse.Namespace(
+        cache_chunk_size=32,
+        representax_cache_chunk_size=None,
+        sentence_transformers_cache_chunk_size=None,
+    )
+
+    assert _framework_cache_chunk_size(arguments, "representax") == 32
+    assert _framework_cache_chunk_size(arguments, "sentence-transformers") == 32
+
+
+def test_sentence_transformers_worker_flags_preserve_execution_tuning():
+    arguments = argparse.Namespace(
+        sentence_transformers_data_threads=4,
+        sentence_transformers_prefetch_buffer_size=8,
+        sentence_transformers_persistent_workers=True,
+        sentence_transformers_torch_compile=True,
+        sentence_transformers_torch_compile_backend="inductor",
+    )
+
+    assert _sentence_transformers_worker_flags(arguments) == [
+        "--sentence-transformers-data-threads",
+        "4",
+        "--sentence-transformers-prefetch-buffer-size",
+        "8",
+        "--sentence-transformers-torch-compile-backend",
+        "inductor",
+        "--sentence-transformers-persistent-workers",
+        "--sentence-transformers-torch-compile",
     ]
 
 

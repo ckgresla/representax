@@ -6,12 +6,17 @@ launch native and reference workers, but they are not the paper's public
 experiment commands. Serious runs live in the numbered directories directly
 under `experiments/`.
 
-Install one environment for native and reference runs:
+Create the shared locked environments and pinned source checkouts:
 
 ```bash
-python -m pip install -e ".[config,hf,test,performance,wandb]" \
-  --group static --group parity
+experiments/setup.sh
 ```
+
+Native, Sentence Transformers, TRL, LeJEPA, stable-pretraining, and V-JEPA use
+`experiments/.venv`. PyLate uses `experiments/.venv-late-interaction` because
+its pinned release requires an older Sentence Transformers and Transformers
+stack. Both environments come from `experiments/pyproject.toml` and the same
+`experiments/uv.lock`.
 
 Every Representax training job enters through `representax.train.run_job`.
 Reference frameworks are launched as isolated Python subprocesses so paired

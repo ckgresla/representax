@@ -961,6 +961,9 @@ def _sentence_transformers_report(
     evaluation_every_steps: int | None,
     data_threads: int,
     prefetch_buffer_size: int,
+    persistent_workers: bool,
+    torch_compile: bool,
+    torch_compile_backend: str,
     seed: int,
     world_size: int,
     mixed_precision: bool,
@@ -1008,7 +1011,12 @@ def _sentence_transformers_report(
             f"launched world size {process_world_size} differs from {world_size}"
         )
     is_main = rank == 0
-    del data_threads, prefetch_buffer_size
+    if data_threads < 0:
+        raise ValueError("Sentence Transformers data threads cannot be negative")
+    if data_threads == 0 and persistent_workers:
+        raise ValueError("persistent workers require at least one data thread")
+    if data_threads > 0 and prefetch_buffer_size <= 0:
+        raise ValueError("Sentence Transformers prefetch buffer must be positive")
     checkpoint = _checkpoint(spec)
     evaluation_data = _evaluation_data(data_directory)
     training_path = _artifact_path(
@@ -1054,9 +1062,13 @@ def _sentence_transformers_report(
         disable_tqdm=True,
         save_strategy="no",
         dataloader_drop_last=True,
-        dataloader_num_workers=0,
+        dataloader_num_workers=data_threads,
+        dataloader_prefetch_factor=(prefetch_buffer_size if data_threads > 0 else None),
+        dataloader_persistent_workers=persistent_workers,
         dataloader_pin_memory=True,
         ddp_find_unused_parameters=True,
+        torch_compile=torch_compile,
+        torch_compile_backend=(torch_compile_backend if torch_compile else None),
         batch_sampler=sequential_sentence_transformers_batches,
         seed=seed,
         data_seed=seed,
@@ -1277,6 +1289,12 @@ def _sentence_transformers_report(
         "steps": steps,
         "maximum_length": maximum_length,
         "cache_chunk_size": cache_chunk_size,
+        "data_threads": data_threads,
+        "prefetch_buffer_size": (prefetch_buffer_size if data_threads > 0 else None),
+        "persistent_workers": persistent_workers,
+        "torch_compile": torch_compile,
+        "torch_compile_backend": (torch_compile_backend if torch_compile else None),
+        "optimizer_implementation": str(arguments.optim),
         "seed": seed,
         "world_size": world_size,
         "mixed_precision": mixed_precision,
@@ -1323,11 +1341,9 @@ def _worker(arguments: argparse.Namespace) -> None:
         "batch_size": arguments.batch_size,
         "steps": arguments.steps,
         "maximum_length": arguments.maximum_length,
-        "cache_chunk_size": arguments.cache_chunk_size,
+        "cache_chunk_size": _framework_cache_chunk_size(arguments, arguments.framework),
         "evaluation_batch_size": arguments.evaluation_batch_size,
         "evaluation_every_steps": arguments.evaluation_every_steps,
-        "data_threads": arguments.data_threads,
-        "prefetch_buffer_size": arguments.prefetch_buffer_size,
         "seed": arguments.seed,
         "world_size": arguments.world_size,
         "mixed_precision": arguments.mixed_precision,
@@ -1361,6 +1377,8 @@ def _worker(arguments: argparse.Namespace) -> None:
             packing=arguments.packing,
             packing_query_shape=packing_query_shape,
             packing_document_shape=packing_document_shape,
+            data_threads=arguments.data_threads,
+            prefetch_buffer_size=arguments.prefetch_buffer_size,
             **kwargs,
         )
     else:
@@ -1368,7 +1386,17 @@ def _worker(arguments: argparse.Namespace) -> None:
             raise ValueError("packing is a Representax worker option")
         if arguments.sequence_length_bucket:
             raise ValueError("sequence length buckets are a Representax worker option")
-        report = _sentence_transformers_report(spec, **kwargs)
+        report = _sentence_transformers_report(
+            spec,
+            data_threads=arguments.sentence_transformers_data_threads,
+            prefetch_buffer_size=(arguments.sentence_transformers_prefetch_buffer_size),
+            persistent_workers=(arguments.sentence_transformers_persistent_workers),
+            torch_compile=arguments.sentence_transformers_torch_compile,
+            torch_compile_backend=(
+                arguments.sentence_transformers_torch_compile_backend
+            ),
+            **kwargs,
+        )
     if report is not None:
         if arguments.framework == "representax":
             _atomic_json(arguments.report, report)
@@ -1621,12 +1649,40 @@ def _shared_worker_flags(arguments: argparse.Namespace) -> list[str]:
     return flags
 
 
+def _framework_cache_chunk_size(
+    arguments: argparse.Namespace,
+    framework: str,
+) -> int | None:
+    override = getattr(
+        arguments,
+        framework.replace("-", "_") + "_cache_chunk_size",
+        None,
+    )
+    return arguments.cache_chunk_size if override is None else override
+
+
 def _representax_worker_flags(arguments: argparse.Namespace) -> list[str]:
     return [
         flag
         for bucket in arguments.sequence_length_bucket or ()
         for flag in ("--sequence-length-bucket", str(bucket))
     ]
+
+
+def _sentence_transformers_worker_flags(arguments: argparse.Namespace) -> list[str]:
+    flags = [
+        "--sentence-transformers-data-threads",
+        str(arguments.sentence_transformers_data_threads),
+        "--sentence-transformers-prefetch-buffer-size",
+        str(arguments.sentence_transformers_prefetch_buffer_size),
+        "--sentence-transformers-torch-compile-backend",
+        arguments.sentence_transformers_torch_compile_backend,
+    ]
+    if arguments.sentence_transformers_persistent_workers:
+        flags.append("--sentence-transformers-persistent-workers")
+    if arguments.sentence_transformers_torch_compile:
+        flags.append("--sentence-transformers-torch-compile")
+    return flags
 
 
 def _pair(arguments: argparse.Namespace) -> None:
@@ -1684,6 +1740,21 @@ def _pair(arguments: argparse.Namespace) -> None:
         )
     if arguments.cache_chunk_size is not None:
         common.extend(("--cache-chunk-size", str(arguments.cache_chunk_size)))
+    if arguments.representax_cache_chunk_size is not None:
+        common.extend(
+            (
+                "--representax-cache-chunk-size",
+                str(arguments.representax_cache_chunk_size),
+            )
+        )
+    if arguments.sentence_transformers_cache_chunk_size is not None:
+        common.extend(
+            (
+                "--sentence-transformers-cache-chunk-size",
+                str(arguments.sentence_transformers_cache_chunk_size),
+            )
+        )
+    common.extend(_sentence_transformers_worker_flags(arguments))
     common.extend(_shared_worker_flags(arguments))
     representax_only = _representax_worker_flags(arguments)
     commands = [
@@ -1823,11 +1894,23 @@ def _pair(arguments: argparse.Namespace) -> None:
             "batch_size": arguments.batch_size,
             "steps": arguments.steps,
             "maximum_length": arguments.maximum_length,
-            "cache_chunk_size": arguments.cache_chunk_size,
+            "cache_chunk_size": {
+                "representax": native["cache_chunk_size"],
+                "sentence_transformers": oracle["cache_chunk_size"],
+            },
             "seed": arguments.seed,
             "evaluation_every_steps": arguments.evaluation_every_steps,
             "representax_data_threads": arguments.data_threads,
             "representax_prefetch_buffer_size": arguments.prefetch_buffer_size,
+            "sentence_transformers_data_threads": oracle["data_threads"],
+            "sentence_transformers_prefetch_buffer_size": oracle[
+                "prefetch_buffer_size"
+            ],
+            "sentence_transformers_persistent_workers": oracle["persistent_workers"],
+            "sentence_transformers_torch_compile": oracle["torch_compile"],
+            "sentence_transformers_torch_compile_backend": oracle[
+                "torch_compile_backend"
+            ],
             "optimizer": "AdamW",
             "learning_rate": 2e-5,
             "precision": (
@@ -1992,6 +2075,21 @@ def _curve(arguments: argparse.Namespace) -> None:
     ]
     if arguments.cache_chunk_size is not None:
         command.extend(("--cache-chunk-size", str(arguments.cache_chunk_size)))
+    if arguments.representax_cache_chunk_size is not None:
+        command.extend(
+            (
+                "--representax-cache-chunk-size",
+                str(arguments.representax_cache_chunk_size),
+            )
+        )
+    if arguments.sentence_transformers_cache_chunk_size is not None:
+        command.extend(
+            (
+                "--sentence-transformers-cache-chunk-size",
+                str(arguments.sentence_transformers_cache_chunk_size),
+            )
+        )
+    command.extend(_sentence_transformers_worker_flags(arguments))
     command.extend(_shared_worker_flags(arguments))
     subprocess.run(
         command,
@@ -2024,10 +2122,30 @@ def _worker_arguments(
     parser.add_argument("--packing-query-shape", type=int, nargs=2)
     parser.add_argument("--packing-document-shape", type=int, nargs=2)
     parser.add_argument("--cache-chunk-size", type=int)
+    parser.add_argument("--representax-cache-chunk-size", type=int)
+    parser.add_argument("--sentence-transformers-cache-chunk-size", type=int)
     parser.add_argument("--evaluation-batch-size", type=int, default=128)
     parser.add_argument("--evaluation-every-steps", type=int)
     parser.add_argument("--data-threads", type=int, default=4)
     parser.add_argument("--prefetch-buffer-size", type=int, default=8)
+    parser.add_argument("--sentence-transformers-data-threads", type=int, default=0)
+    parser.add_argument(
+        "--sentence-transformers-prefetch-buffer-size",
+        type=int,
+        default=8,
+    )
+    parser.add_argument(
+        "--sentence-transformers-persistent-workers",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--sentence-transformers-torch-compile",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--sentence-transformers-torch-compile-backend",
+        default="inductor",
+    )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--world-size", type=int, default=1)
     parser.add_argument("--mixed-precision", action="store_true")

@@ -16,9 +16,15 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-OFFICIAL_REFERENCE = Path("/home/ckg/representax-references/lejepa")
+REFERENCE_ROOT = Path(
+    os.environ.get(
+        "REPRESENTAX_REFERENCE_ROOT",
+        Path(__file__).resolve().parents[1] / ".references",
+    )
+).expanduser()
+OFFICIAL_REFERENCE = REFERENCE_ROOT / "lejepa"
 OFFICIAL_COMMIT = "c293d291ca87cd4fddee9d3fffe4e914c7272052"
-STABLE_REFERENCE = Path("/home/ckg/representax-references/stable-pretraining")
+STABLE_REFERENCE = REFERENCE_ROOT / "stable-pretraining"
 STABLE_COMMIT = "9aa93f8b6153eebb73f57d4853ccf8a13d848310"
 DEFAULT_IMAGENET_ROOT = Path("/raid/datasets/imagenet")
 IMAGENET_VALIDATION_PROVENANCE = (
