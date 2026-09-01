@@ -30,7 +30,7 @@ def test_launcher_executes_directly() -> None:
         text=True,
     )
 
-    assert "{tune,run}" in result.stdout
+    assert "{tune,confirm-compile,run}" in result.stdout
 
 
 def test_candidate_commands_keep_the_scientific_contract_fixed(tmp_path: Path) -> None:
@@ -70,6 +70,25 @@ def test_projected_rate_preserves_cold_overhead() -> None:
 
     assert experiment["_projected_rate"](report, target_steps=256) == pytest.approx(
         2016.4923076923078
+    )
+
+
+def test_each_tuning_candidate_uses_an_isolated_inductor_cache(tmp_path: Path) -> None:
+    experiment = _experiment()
+    candidate = experiment["Candidate"](
+        "sentence-transformers",
+        128,
+        4,
+        8,
+        persistent_workers=True,
+        torch_compile=True,
+    )
+
+    environment = experiment["_environment"](candidate, 1, tmp_path)
+
+    assert environment["CUDA_VISIBLE_DEVICES"] == "1"
+    assert environment["TORCHINDUCTOR_CACHE_DIR"] == str(
+        tmp_path / "torchinductor-cache"
     )
 
 

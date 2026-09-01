@@ -1453,6 +1453,9 @@ def _run_processes(
                 "JAX_DEFAULT_MATMUL_PRECISION": "highest",
                 "XLA_PYTHON_CLIENT_PREALLOCATE": "false",
                 "JAX_COMPILATION_CACHE_DIR": str(log_path.parent.parent / "jax-cache"),
+                "TORCHINDUCTOR_CACHE_DIR": str(
+                    log_path.parent.parent / "torchinductor-cache"
+                ),
             }
         )
         if name == "representax":

@@ -166,6 +166,7 @@ def _environment(candidate: Candidate, gpu: int, directory: Path) -> dict[str, s
             "PYTHONUNBUFFERED": "1",
             "JAX_DEFAULT_MATMUL_PRECISION": "highest",
             "JAX_COMPILATION_CACHE_DIR": str(directory / "jax-cache"),
+            "TORCHINDUCTOR_CACHE_DIR": str(directory / "torchinductor-cache"),
         }
     )
     if candidate.framework == "representax":
@@ -401,6 +402,62 @@ def _tune(arguments: argparse.Namespace) -> None:
     print(json.dumps(document["winners"], indent=2, sort_keys=True))
 
 
+def _confirm_compile(arguments: argparse.Namespace) -> None:
+    tuning_root = arguments.artifact_root.expanduser().resolve() / "tuning"
+    summary_path = tuning_root / "summary.json"
+    document = json.loads(summary_path.read_text(encoding="utf-8"))
+    root = tuning_root / "compile-confirmation"
+    root.mkdir(parents=True, exist_ok=False)
+    candidates = (
+        Candidate(
+            "sentence-transformers",
+            128,
+            0,
+            8,
+            torch_compile=True,
+        ),
+        Candidate(
+            "sentence-transformers",
+            128,
+            4,
+            8,
+            persistent_workers=True,
+            torch_compile=True,
+        ),
+    )
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [
+            executor.submit(
+                _run_candidate,
+                candidate,
+                gpu=gpu,
+                root=root,
+                checkpoint=arguments.checkpoint,
+                data=arguments.data,
+                seed=arguments.seed,
+                steps=arguments.steps,
+            )
+            for candidate, gpu in zip(candidates, arguments.gpus, strict=True)
+        ]
+        confirmations = [future.result() for future in futures]
+    eager = [
+        result
+        for result in document["candidates"]["sentence-transformers"]
+        if not result["candidate"]["torch_compile"]
+    ]
+    winner = _best(eager + confirmations)
+    document["compile_confirmation"] = {
+        "source_commits": _source_commits(),
+        "isolated_torchinductor_caches": True,
+        "candidates": confirmations,
+    }
+    document["winners"]["sentence-transformers"] = winner["candidate"]
+    temporary = summary_path.with_suffix(".json.tmp")
+    temporary.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n")
+    os.replace(temporary, summary_path)
+    print(json.dumps(document["winners"], indent=2, sort_keys=True))
+
+
 def _final_command(arguments: argparse.Namespace) -> list[str]:
     tuning = json.loads(
         (
@@ -464,6 +521,13 @@ def _parser() -> argparse.ArgumentParser:
     tune.add_argument("--gpus", type=int, nargs=2, required=True)
     tune.add_argument("--seed", type=int, default=7)
     tune.add_argument("--steps", type=int, default=16)
+    confirm = commands.add_parser(
+        "confirm-compile",
+        help="repeat compiled reference candidates with isolated cold caches",
+    )
+    confirm.add_argument("--gpus", type=int, nargs=2, required=True)
+    confirm.add_argument("--seed", type=int, default=7)
+    confirm.add_argument("--steps", type=int, default=16)
     run = commands.add_parser("run", help="run the selected full matched pair")
     run.add_argument("--gpus", type=int, nargs=2, required=True)
     run.add_argument("--seed", type=int, choices=QUALITY_SEEDS, default=7)
@@ -476,6 +540,8 @@ def main() -> None:
         raise ValueError("the two frameworks require distinct GPUs")
     if arguments.command == "tune":
         _tune(arguments)
+    elif arguments.command == "confirm-compile":
+        _confirm_compile(arguments)
     else:
         _run(arguments)
 
