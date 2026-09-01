@@ -1555,6 +1555,10 @@ def _representax_worker_flags(arguments: argparse.Namespace) -> list[str]:
 
 def _pair(arguments: argparse.Namespace) -> None:
     spec = _model_spec(arguments)
+    source_commits = {
+        "representax": _git_head(),
+        "sentence-transformers": reference_source("sentence-transformers").commit,
+    }
     if arguments.world_size != 1:
         raise ValueError(
             "pair launches one isolated GPU per framework; use workers for "
@@ -1732,12 +1736,7 @@ def _pair(arguments: argparse.Namespace) -> None:
     summary = {
         "schema_version": "representax-dense-retrieval-comparison-v1",
         "contract": {
-            "source_commits": {
-                "representax": _git_head(),
-                "sentence-transformers": reference_source(
-                    "sentence-transformers"
-                ).commit,
-            },
+            "source_commits": source_commits,
             "model": spec.name,
             "model_id": spec.model_id,
             "revision": spec.revision,
