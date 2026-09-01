@@ -15,11 +15,13 @@ DEFAULT_MANIFEST = (
     / "configs"
     / "paper-multimodal-jepa-v1.json"
 )
+REFERENCE_MANIFEST = DEFAULT_MANIFEST.with_name("paper-references-v1.json")
 EXPECTED_WORKLOADS = (
     "image-text-retrieval",
     "audio-text-retrieval",
     "video-text-retrieval",
     "vjepa2-1-video-representation",
+    "lejepa-image-representation",
 )
 
 
@@ -45,18 +47,21 @@ def validate_manifest(document: Mapping[str, Any]) -> tuple[str, ...]:
     models = _objects(document.get("models"), "models")
     datasets = _objects(document.get("datasets"), "datasets")
     references = _objects(
-        {
-            name: {"version": version}
-            for name, version in _objects_or_scalars(
-                document.get("references"), "references"
-            ).items()
-        },
+        json.loads(REFERENCE_MANIFEST.read_text(encoding="utf-8")).get("references"),
         "references",
     )
     for name, artifact in (*models.items(), *datasets.items()):
-        _sha(artifact.get("revision"), f"{name} revision")
+        revision = artifact.get("revision")
+        if revision is not None:
+            _sha(revision, f"{name} revision")
         if not artifact.get("license"):
             raise ValueError(f"{name} requires a license disclosure")
+    _sha(models["lejepa-vit-l16"].get("paper_revision"), "LeJEPA paper revision")
+    ssv2 = datasets["ssv2"]
+    mirror = _objects({"preflight": ssv2.get("preflight_mirror")}, "preflight mirror")
+    _sha(mirror["preflight"].get("revision"), "ssv2 preflight mirror revision")
+    if not ssv2.get("download_page") or not ssv2.get("labels"):
+        raise ValueError("SSV2 requires its authoritative videos and labels")
     workloads = document.get("workloads")
     if not isinstance(workloads, Sequence):
         raise TypeError("workloads must be an ordered array")
@@ -74,13 +79,9 @@ def validate_manifest(document: Mapping[str, Any]) -> tuple[str, ...]:
             raise ValueError(f"{workload['name']} references an unknown framework")
     if models["vjepa2-1-vit-b16"].get("initialization") != "random":
         raise ValueError("V-JEPA systems comparison must start from random init")
+    if models["lejepa-vit-l16"].get("initialization") != "random":
+        raise ValueError("LeJEPA systems comparison must start from random init")
     return names
-
-
-def _objects_or_scalars(value: Any, name: str) -> Mapping[str, Any]:
-    if not isinstance(value, Mapping):
-        raise TypeError(f"{name} must be an object")
-    return value
 
 
 def load_and_validate(path: Path = DEFAULT_MANIFEST) -> tuple[str, ...]:

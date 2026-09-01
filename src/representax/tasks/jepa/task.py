@@ -15,6 +15,7 @@ from .losses import invariance_loss, sigreg_loss
 
 class LeJEPATask(eqx.Module):
     regularization_weight: float = eqx.field(static=True, default=0.02)
+    global_views: int = eqx.field(static=True, default=2)
     knots: int = eqx.field(static=True, default=17)
     slices: int = eqx.field(static=True, default=256)
     max_frequency: float = eqx.field(static=True, default=3.0)
@@ -35,12 +36,17 @@ class LeJEPATask(eqx.Module):
                 return value
             return value.reshape((shape[0] * shape[1], *value.shape[2:]))
 
-        values = encode_fn(
-            model,
-            jax.tree.map(flatten, batch.views),
-            route=self.route,
-            key=key,
-        )
+        flattened = jax.tree.map(flatten, batch.views)
+        project = getattr(model, "project", None)
+        if callable(project):
+            values = project(flattened, key=key)
+        else:
+            values = encode_fn(
+                model,
+                flattened,
+                route=self.route,
+                key=key,
+            )
         return values.reshape((shape[0], shape[1], values.shape[-1]))
 
     def loss_from_representations(
@@ -55,7 +61,11 @@ class LeJEPATask(eqx.Module):
             (projections.shape[-1], self.slices),
             dtype=jnp.float32,
         )
-        invariance = invariance_loss(projections, batch.valid)
+        invariance = invariance_loss(
+            projections,
+            batch.valid,
+            global_views=self.global_views,
+        )
         regularization = sigreg_loss(
             projections.astype(jnp.float32),
             batch.valid,

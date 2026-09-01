@@ -7,12 +7,25 @@ from jaxtyping import Array, Bool, Float
 def invariance_loss(
     projections: Float[Array, "batch view dimension"],
     valid: Bool[Array, "batch view"],
+    *,
+    global_views: int,
 ) -> Float[Array, ""]:
+    if global_views <= 0 or global_views > projections.shape[1]:
+        raise ValueError("global_views must select a non-empty prefix of views")
     weights = valid.astype(jnp.float32)
-    mean = jnp.sum(projections * weights[..., None], axis=1, keepdims=True)
-    mean = mean / jnp.maximum(jnp.sum(weights, axis=1, keepdims=True), 1.0)[..., None]
-    errors = jnp.mean(jnp.square(projections - mean), axis=-1)
-    return jnp.sum(jnp.where(valid, errors, 0.0)) / jnp.maximum(jnp.sum(weights), 1.0)
+    global_weights = weights[:, :global_views]
+    center = jnp.sum(
+        projections[:, :global_views] * global_weights[..., None],
+        axis=1,
+        keepdims=True,
+    )
+    center = center / jnp.maximum(
+        jnp.sum(global_weights, axis=1, keepdims=True), 1.0
+    )[..., None]
+    errors = jnp.mean(jnp.square(projections - center), axis=-1)
+    return jnp.sum(jnp.where(valid, errors, 0.0)) / jnp.maximum(
+        jnp.sum(weights), 1.0
+    )
 
 
 def sigreg_loss(

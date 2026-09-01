@@ -1,0 +1,9 @@
+{
+  "schema_version": "representax-bert-scaling-rejection-v1",
+  "status": "rejected_discovery_evidence",
+  "accepted_campaign_evidence": false,
+  "reason": "STS-B cosine regression did not exercise the frozen MS MARCO dense-retrieval workload, held-out retrieval evaluator, or native export/reload evaluation parity",
+  "artifact_root": "/home/ckg/representax-artifacts/bert-scaling-ladder-20260831",
+  "replacement": "../bert-scaling-ladder-msmarco-20260831/summary.json",
+  "note": "The original payload is preserved as rejected-discovery-observations.json."
+}

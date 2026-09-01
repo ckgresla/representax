@@ -26,8 +26,13 @@ def test_frozen_vjepa_contract() -> None:
     assert contract.reference_config == (
         "configs/train_2_1/vitb16/pretrain-256px-16f.yaml"
     )
-    assert contract.dataset["repo_id"] == "jxie/something_something_v2"
-    assert contract.dataset["revision"] == "86851581ad645fbce86488d474604ea2021ab3cc"
+    assert contract.dataset["source"] == "qualcomm-something-something-v2"
+    assert contract.dataset["evaluate_split"] == "validation"
+    assert contract.dataset["preflight_mirror"] == {
+        "repo_id": "jxie/something_something_v2",
+        "revision": "86851581ad645fbce86488d474604ea2021ab3cc",
+        "available_split": "train",
+    }
     assert contract.global_batch_size == 128
     assert contract.video_frames == 16
     assert contract.image_resolution == 256

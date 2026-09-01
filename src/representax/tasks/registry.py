@@ -537,6 +537,7 @@ def _build_lejepa_task(task: TaskConfig, loss: LossConfig) -> LeJEPATask:
         raise TypeError("LeJEPA requires LeJEPAConfig")
     return LeJEPATask(
         regularization_weight=loss.regularization_weight,
+        global_views=loss.global_views,
         knots=loss.knots,
         slices=loss.slices,
         max_frequency=loss.max_frequency,

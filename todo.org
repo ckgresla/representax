@@ -20,9 +20,10 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   Semantics-preserving automatic execution planning belongs to the separate
   Profilax paper below. Keep exactly one =NEXT= item across the repository.
   Arbitrary sharding/FSDP, mixed precision, unified AnyModality execution, the
-  multimodal family matrix, late interaction, cross/reranking, reward, LeJEPA,
-  distributed evaluation, W&B reporting, and V-JEPA 2.1 are implemented. V-JEPA
-  2.1 remains a distinct paper comparison; sparse retrieval is deliberately
+  multimodal family matrix, late interaction, cross/reranking, reward, the
+  LeJEPA objective, distributed evaluation, W&B reporting, and V-JEPA 2.1 are
+  implemented. The canonical LeJEPA image recipe is frozen as a bounded
+  ImageNet-1K comparison. V-JEPA 2.1 remains a distinct paper comparison; sparse retrieval is deliberately
   deferred. Freeze only the finite experimental panel, then run the long paired
   evidence campaign; do not pull general development into it.
 
@@ -44,7 +45,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      the same work or enabling larger models, batches or inputs; efficient FSDP
      and arbitrary sharding are first-class capacity evidence. Compilation is
      disclosed separately and excluded from the primary systems verdict. The
-     eight shared sections compare against the relevant maintained incumbent:
+     nine shared sections compare against the relevant maintained incumbent:
      Sentence Transformers where it implements the workload, PyLate for late
      interaction, and task-specific maintained references for reward modeling
      and V-JEPA rather than forcing every claim through one framework.
@@ -94,26 +95,41 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
        Transformers when PyLate is the maintained task-specific incumbent.
      - Reward modeling: matched pointwise, pairwise, listwise and process-reward
        workloads against maintained reward-modeling references.
+     - LeJEPA: ImageNet-1K multi-crop representation learning against the
+       =stable-pretraining= training stack, with the paper's exact objective and
+       frozen-backbone k-NN and linear probes.
      - V-JEPA: matched video representation learning against the maintained Meta
        reference, with representation quality and collapse diagnostics alongside
        systems evidence.
 
 **** Maintained systems comparables
      Freeze each oracle in an isolated repository-only environment and record its
-     release plus exact commit in every benchmark manifest.
+     release plus exact commit in every benchmark artifact. The singular source
+     inventory is =benchmarks/configs/paper-references-v1.json=; each reference
+     result points to a content-addressed runtime-provenance record.
      - Sentence Transformers: [[https://github.com/huggingface/sentence-transformers][huggingface/sentence-transformers]], the dense,
        similarity, pair-classification, cross-encoder and multimodal reference.
-       The current Representax oracle is =5.6.1=; evaluate the released =6.0.0=
+       The current Representax oracle is =5.6.1= at
+       =7d3eb16a65f62045226e08082ade63cbc71c97a4=; evaluate the released =6.0.0=
        before freezing the paper environment rather than silently mixing both.
-     - PyLate: [[https://github.com/lightonai/pylate][lightonai/pylate]] =1.6.0=, the maintained ColBERT-style
+     - PyLate: [[https://github.com/lightonai/pylate][lightonai/pylate]] =1.6.0= at
+       =346ea2b9c273256919809ac35b3a055970780c9c=, the maintained ColBERT-style
        late-interaction training, MaxSim and retrieval reference.
-     - TRL: [[https://github.com/huggingface/trl][huggingface/trl]] =1.10.0=, the maintained pairwise
+     - TRL: [[https://github.com/huggingface/trl][huggingface/trl]] =1.10.0= at
+       =a7be897f5c8d7b52161f9f8a47d8e6242456b898=, the maintained pairwise
        =RewardTrainer= reference. Add separate task-specific references only for
        listwise, pointwise or process objectives that TRL does not implement.
      - V-JEPA 2: [[https://github.com/facebookresearch/vjepa2][facebookresearch/vjepa2]] at commit
        =204698b45b3712590f06245fbfba32d3be539812=, the official PyTorch code for
        V-JEPA 2, V-JEPA 2-AC and V-JEPA 2.1. Pin a released commit if the project
        cuts a version before the campaign.
+     - LeJEPA: use [[https://github.com/galilai-group/stable-pretraining][galilai-group/stable-pretraining]] at
+       =9aa93f8b6153eebb73f57d4853ccf8a13d848310= as the maintained systems
+       stack and [[https://github.com/galilai-group/lejepa][galilai-group/lejepa]] at
+       =c293d291ca87cd4fddee9d3fffe4e914c7272052= as the paper-code source.
+       The current stable-pretraining helper uses a different loss weighting and
+       flattened SIGReg reduction, so the paired runner must state and implement
+       the paper equation explicitly in both frameworks.
 
 **** Dense-retrieval data settings
      Do not reduce dense retrieval to one MS MARCO recipe. Freeze this compact
@@ -227,7 +243,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      image/video tensor parity, a disk-to-model lifecycle, evaluator execution,
      and physical two-/four-device DDP/FSDP trajectory equivalence. Large-model
      quality and systems measurements remain paper-campaign work.
-*** DONE Freeze the remaining experiment manifests [8/8] [100%] :research:models:
+*** DONE Freeze the remaining experiment manifests [9/9] [100%] :research:models:
    The sections, maintained references, semantic evaluation panel and dense data
    panel above are already frozen. Finish only the unresolved manifest cells in
    this dependency order; do not reopen the scientific matrix while implementing
@@ -296,13 +312,27 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      measurements from the full paired runs; do not maintain a separate
      acceptance-status inventory.
 **** DONE Freeze the campaign matrix
-     Expand the frozen workload contracts into the final seed, hardware and
-     repetition matrix and lock manifests before launching long runs. Keep this
-     measured panel distinct from the broader 25-model compatibility table.
-     The locked campaign is =benchmarks/configs/paper-campaign-v1.json=: paired
-     seeds 7/42/773, timing extracted from the full training trajectories, selected
-     1/2/4-GPU scaling probes, a conditional 4B cell, and run artifacts under
-     =/raid=. Derive runtime and storage estimates from measured pilots.
+     =benchmarks/configs/paper-campaign-v1.json= pins paired seeds 7/42/773,
+     timing from full trajectories, bounded epoch or update budgets for every
+     row, quarter-trajectory evaluation, separate lifecycle checkpoint probes,
+     final artifact export and Representax as the shared quality evaluator.
+     The seed-7 MPNet/MS MARCO row uses 256 updates at global batch 2,048 on one
+     GPU per framework, consumes 524,288 unique pairs from the 669,531-row pinned
+     shard without repetition, and evaluates at updates 0/64/128/192/256.
+**** DONE Freeze the promoted LeJEPA ImageNet-1K comparison
+     The manifests pin ViT-L/16, global batch 16 over two GPUs, two global and
+     six local views, 10,000 bounded updates, frozen-backbone k-NN and linear
+     probes, and stable-pretraining commit
+     =9aa93f8b6153eebb73f57d4853ccf8a13d848310=. The upstream 100-epoch recipe
+     remains context, not a reproduction claim: the measured batch-16 canary
+     projects it to 8,007,300 updates and 14,034.8 logical GPU-hours on this host.
+     Three finite updates pass at batches 1, 8 and 16; batch 16 sustains 5.10
+     images/s with about 3.97 GB peak HBM per GPU. Compact evidence lives in
+     =benchmarks/results/lejepa-vit-l-capacity-20260831/=.
+     Official validation provenance is resolved: all 50,000 local images match
+     the official devkit filename-to-synset mapping and are byte-identical to
+     the canonical validation archive. Reproducible evidence lives in
+     =benchmarks/results/imagenet-validation-provenance-20260831/=.
 *** DONE Publish the verified 25-model compatibility table :research:models:
    Select 25 relevant checkpoints across the native families and four
    modalities. Treat this as an evidence audit, not 25 bespoke implementations:
@@ -342,7 +372,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
    lives under
    =/raid/representax/paper-campaign-v1/preflight/packing/20260828/= and compact
    evidence under =benchmarks/results/paper-packing-preflight-20260828/=.
-*** TODO Benchmark quality, throughput, feasible workload, utilization, and model coverage :research:benchmark:
+*** NEXT Benchmark quality, throughput, feasible workload, utilization, and model coverage :research:benchmark:
 **** DONE Run the paired dense-retrieval campaign preflight
      Run 64 updates of the frozen MPNet/MS MARCO exact-GradCache workload at
      global batch 2048 and length 256 in Representax and Sentence Transformers
@@ -357,9 +387,18 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      was invalidated because DDP omitted GradCache's data-axis activation
      annotations. The complete corrected paired trajectory reaches 243.26
      examples/s versus 152.80 examples/s for Sentence Transformers, a 1.592x
-     throughput advantage. Select the full update count from measured learning
-     curves and the campaign compute budget; measure allocator-live JAX memory
-     before making a memory claim.
+     throughput advantage. The bounded full trajectory is now frozen at 256
+     updates; measure allocator-live JAX memory before making a memory claim.
+     The final one-GPU launch canary at global batch 2,048 and GradCache chunk
+     32 passes under
+     =/raid/representax/paper-campaign-v1/preflight/dense-realistic-single-gpu-capacity-20260831/=.
+     Its only warmed Representax interval is 342.51 examples/s versus 130.70 for
+     Sentence Transformers, a 2.621x readiness ratio. Two bucket signatures
+     compile in 81.8 and 119.6 seconds; retain those cold costs separately from
+     the serious trajectory. The eight-update export smoke under
+     =/raid/representax/paper-campaign-v1/preflight/shared-offline-pair-smoke-v3-20260831/=
+     also proves that the shared Representax evaluator reloads both final
+     artifacts and emits identical metric names.
 **** DONE Add opt-in timing and accelerator telemetry to the canonical job log
      =logging.timing= records startup, every completed training step, non-padding
      text-token and example throughput, evaluation phases, and export through the
@@ -486,13 +525,57 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      trajectory within 0.000309, preserves collapse diagnostics, passes midpoint
      resume and exact final reload, and reaches 6.161 versus 1.314 examples/s
      (4.689x). The native task now excludes padded target IDs and matches Meta's
-     per-mask reduction and mask-token selection. The pinned SSV2 source exposes
-     only =train=, so disjoint train examples serve as a readiness holdout; a
-     real validation source remains required for the paper quality claim.
+     per-mask reduction and mask-token selection. The bounded preflight mirror
+     exposes only =train=, so disjoint train examples serve as a readiness
+     holdout. The authoritative Qualcomm SSV2 package, including validation
+     videos and labels, is now pinned in the multimodal manifest and remains to
+     be materialized for the paper quality run.
      Compact evidence lives in
      =benchmarks/results/paper-vjepa-preflight-20260831/=.
-**** TODO Run one unpaired LeJEPA quality trajectory
-**** TODO Probe scaling, memory boundaries, and evaluation/checkpoint overhead
+**** DONE Accept Natural Questions and MIRACL real-data lifecycles
+     Natural Questions with MPNet and MIRACL Arabic, English, Hindi and Japanese
+     with Jina v5 Small each pass two real-data updates, midpoint checkpoint and
+     resume, start/end canonical information-retrieval evaluation, final export,
+     reload, and exact exported-artifact metric reproduction. The four-query
+     subsets prove execution only, not quality. Compact evidence lives in
+     =benchmarks/results/paper-nq-miracl-acceptance-20260831/=.
+**** DONE Accept the controlled BERT scaling ladder through the 1B gate
+     The controlled 30M, 110M, 500M and 1B BERT encoders each pass three real
+     MS MARCO MNR updates through =run_job=, checkpoint/resume, configured MS
+     MARCO and Natural Questions evaluation, export/reload, exact parameter
+     digest reproduction and exact same-topology exported evaluation. Every row
+     uses FP32 master parameters with BF16 compute. The 1B row establishes the
+     gate for a separate four-GPU 4B capacity canary; no 4B allocation has yet
+     occurred. Compact evidence lives in
+     =benchmarks/results/bert-scaling-ladder-msmarco-20260831/=.
+**** DONE Accept canonical LeJEPA bounded lifecycle on ImageNet-1K against stable-pretraining
+     Use two global and six local views, the paper's convex loss weighting and
+     per-view SIGReg, a distinct projector used only for training, and frozen
+     backbone features for evaluation. The previous two-view toy acceptance
+     incorrectly centered over all views; that test could not reveal the error
+     because all views were global. The corrected eight-view objective matches
+     the exact paper value and projection gradient against the PyTorch oracle;
+     both workers load the same 28,168,576-parameter ViT-S/16 initialization.
+     Real ImageNet-1K images pass native and reference updates, exact native
+     checkpoint/optimizer restore, cursor/RNG resume, export/reload, k-NN,
+     linear probing and exact reloaded-evaluator reproduction. This is bounded
+     lifecycle readiness, not an ImageNet quality trajectory. Compact evidence
+     lives in =benchmarks/results/lejepa-acceptance-20260831/=; the promoted
+     ViT-L/16 capacity and schedule remain in the separate manifest-freeze item
+     above. Official validation provenance is accepted separately in
+     =benchmarks/results/imagenet-validation-provenance-20260831/=.
+**** TODO Evaluate both frameworks' exported artifacts through Representax
+     Use one task-specific Representax offline evaluator and identical held-out
+     examples for the two final artifacts in every paired row. Framework-native
+     evaluators may remain diagnostic; they are not the paper's quality
+     denominator. The MPNet/MS MARCO runner now exports both artifacts and loads
+     both through the same Representax NanoMSMARCO evaluator; extend that exact
+     contract to the remaining task-specific runners as their serious runs begin.
+**** TODO Probe resource-constrained sharding and capacity for the appendix
+     On this six-by-24-GB topology, report which model, batch and sequence
+     combinations replicated, FSDP and hybrid sharding make feasible. Promote
+     this from an appendix only if the 1B/4B boundary produces a clear result.
+**** TODO Measure evaluation and checkpoint overhead separately from training steps
 *** TODO Benchmark compile time separately from steady-state step time :research:benchmark:
 *** TODO Benchmark direct MNR and GradCache at equal scientific semantics :research:benchmark:
    Include an explicit distributed-direct-MNR contract: either lower the full

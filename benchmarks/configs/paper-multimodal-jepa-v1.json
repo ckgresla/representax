@@ -17,6 +17,16 @@
       "license": "mit",
       "config": "configs/train_2_1/vitb16/pretrain-256px-16f.yaml",
       "initialization": "random"
+    },
+    "lejepa-vit-l16": {
+      "source": "galilai-group/stable-pretraining",
+      "revision": "9aa93f8b6153eebb73f57d4853ccf8a13d848310",
+      "license": "mit",
+      "paper_source": "galilai-group/lejepa",
+      "paper_revision": "c293d291ca87cd4fddee9d3fffe4e914c7272052",
+      "paper_license": "cc-by-nc-4.0",
+      "architecture": "vit-large-patch16-224",
+      "initialization": "random"
     }
   },
   "datasets": {
@@ -58,11 +68,22 @@
       "license": "upstream-unspecified"
     },
     "ssv2": {
-      "repo_id": "jxie/something_something_v2",
-      "revision": "86851581ad645fbce86488d474604ea2021ab3cc",
+      "source": "qualcomm-something-something-v2",
+      "download_page": "https://www.qualcomm.com/developer/software/something-something-v-2-dataset/downloads",
+      "instructions": "https://www.qualcomm.com/content/dam/qcomm-martech/dm-assets/documents/20bn-something-something_download_instructions_-_091622-v2.pdf",
+      "video_parts": [
+        "https://apigwx-aws.qualcomm.com/qsc/public/v1/api/download/software/dataset/AIDataset/Something-Something-V2/20bn-something-something-v2-00",
+        "https://apigwx-aws.qualcomm.com/qsc/public/v1/api/download/software/dataset/AIDataset/Something-Something-V2/20bn-something-something-v2-01"
+      ],
+      "labels": "https://apigwx-aws.qualcomm.com/qsc/public/v1/api/download/software/dataset/AIDataset/Something-Something-V2/20bn-something-something-download-package-labels.zip",
       "train_split": "train",
       "evaluate_split": "validation",
-      "license": "upstream-restricted"
+      "license": "qualcomm-research-license",
+      "preflight_mirror": {
+        "repo_id": "jxie/something_something_v2",
+        "revision": "86851581ad645fbce86488d474604ea2021ab3cc",
+        "available_split": "train"
+      }
     },
     "imagenet-1k": {
       "repo_id": "ILSVRC/imagenet-1k",
@@ -71,10 +92,6 @@
       "evaluate_split": "validation",
       "license": "gated-upstream-terms"
     }
-  },
-  "references": {
-    "sentence-transformers": "5.6.1",
-    "vjepa2": "204698b45b3712590f06245fbfba32d3be539812"
   },
   "workloads": [
     {
@@ -106,6 +123,15 @@
       "secondary_evaluate": "imagenet-1k",
       "reference": "vjepa2",
       "scope": "matched-system-campaign-not-full-pretraining-reproduction"
+    },
+    {
+      "name": "lejepa-image-representation",
+      "model": "lejepa-vit-l16",
+      "train": "imagenet-1k",
+      "evaluate": "imagenet-1k",
+      "metrics": ["knn-top1", "linear-probe-top1"],
+      "reference": "stable-pretraining",
+      "scope": "bounded-exposure-campaign-not-100-epoch-reproduction"
     }
   ]
 }

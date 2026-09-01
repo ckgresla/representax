@@ -32,7 +32,29 @@ def test_campaign_locks_every_workload() -> None:
     assert campaign["conditional_cells"]["bert-4b"]["gate"] == (
         "bert-1b-pilot-feasible"
     )
-    assert all("updates" not in record for record in workloads.values())
-    assert all("evaluation_every" not in record for record in workloads.values())
+    assert campaign["common_training"]["evaluation_progress"] == [
+        0.0,
+        0.25,
+        0.5,
+        0.75,
+        1.0,
+    ]
+    assert campaign["common_training"]["lifecycle_checkpoint_progress"] == [
+        0.5,
+        1.0,
+    ]
+    assert campaign["common_training"]["final_quality_evaluator"] == "representax"
+    assert all(record["training_budget"]["value"] > 0 for record in workloads.values())
     assert all(len(record["frameworks"]) == 2 for record in workloads.values())
     assert workloads["dense-multilingual"]["languages"] == ["ar", "en", "hi", "ja"]
+    assert workloads["dense-realistic"]["training_budget"] == {
+        "unit": "updates",
+        "value": 256,
+    }
+    assert workloads["dense-realistic"]["evaluation_steps"] == [0, 64, 128, 192, 256]
+    assert workloads["dense-realistic"]["world_size"] == 1
+    assert workloads["lejepa-image-representation"]["training_budget"] == {
+        "unit": "updates",
+        "value": 10_000,
+    }
+    assert workloads["lejepa-image-representation"]["world_size"] == 2

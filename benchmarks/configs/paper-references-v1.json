@@ -1,0 +1,36 @@
+{
+  "schema_version": "representax-paper-references-v1",
+  "references": {
+    "sentence-transformers": {
+      "repository": "https://github.com/huggingface/sentence-transformers",
+      "release": "5.6.1",
+      "commit": "7d3eb16a65f62045226e08082ade63cbc71c97a4",
+      "distribution": "sentence-transformers"
+    },
+    "pylate": {
+      "repository": "https://github.com/lightonai/pylate",
+      "release": "1.6.0",
+      "commit": "346ea2b9c273256919809ac35b3a055970780c9c",
+      "distribution": "pylate"
+    },
+    "trl": {
+      "repository": "https://github.com/huggingface/trl",
+      "release": "1.10.0",
+      "commit": "a7be897f5c8d7b52161f9f8a47d8e6242456b898",
+      "distribution": "trl"
+    },
+    "vjepa2": {
+      "repository": "https://github.com/facebookresearch/vjepa2",
+      "commit": "204698b45b3712590f06245fbfba32d3be539812"
+    },
+    "stable-pretraining": {
+      "repository": "https://github.com/galilai-group/stable-pretraining",
+      "commit": "9aa93f8b6153eebb73f57d4853ccf8a13d848310",
+      "distribution": "stable-pretraining"
+    },
+    "lejepa-paper": {
+      "repository": "https://github.com/galilai-group/lejepa",
+      "commit": "c293d291ca87cd4fddee9d3fffe4e914c7272052"
+    }
+  }
+}

@@ -111,11 +111,6 @@
       "license": "hub-card-unspecified"
     }
   },
-  "references": {
-    "sentence-transformers": "5.6.1",
-    "pylate": "1.6.0",
-    "trl": "1.10.0"
-  },
   "workloads": [
     {
       "name": "dense-realistic",

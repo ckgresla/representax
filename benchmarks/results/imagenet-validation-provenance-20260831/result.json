@@ -1,0 +1,63 @@
+{
+  "canonical_mapping": {
+    "class_id_to_synset_sha256": "33cac7974cc0bb3935c6fca46b93729c29a6481fa635e92f5f0852859aecd361",
+    "classes": 1000,
+    "filename_to_synset_tsv_sha256": "b5b25a74f93140f3e3febc504cd1e77411d38604e61da4801e2cde971771ba54",
+    "images_per_class": 50,
+    "rows": 50000
+  },
+  "local_dataset": {
+    "archive": {
+      "bytes": 6744924160,
+      "md5": "29b22e2961454d5413ddabcf34fc5622",
+      "sha256": "c7e06a6c0baccf06d8dbeb6577d71efff84673a5dbdd50633ab44f8ea0456ae0"
+    },
+    "archive_member_count": 50000,
+    "class_count": 1000,
+    "exact_filename_set": true,
+    "exact_parent_synset_assignments": true,
+    "image_bytes_total": 6706560319,
+    "image_content_manifest_sha256": "12c5bc17eb80a04dddb6ddc2957254171111d905c4b9c4e71e7963784764cb87",
+    "image_count": 50000,
+    "images_per_class_max": 50,
+    "images_per_class_min": 50,
+    "local_files_byte_identical_to_archive": true,
+    "validation_archive": "/raid/datasets/imagenet/ILSVRC2012_img_val.tar",
+    "validation_root": "/raid/datasets/imagenet/val"
+  },
+  "official_quality_eval_admissible": true,
+  "schema_version": "representax-imagenet-validation-provenance-v1",
+  "sources": {
+    "credentials_accessed": false,
+    "independent_checksum_reference": {
+      "commit": "8fb87713a24951e639c494b0f2a8a81b5f8e33a6",
+      "devkit_md5": "fa75699e90414af021442c21a62c3abf",
+      "project": "torchvision",
+      "source_sha256": "afa033ca33efe53930c5c9d7a26419caee1c134a0888761d5415e4157f04ff2d",
+      "source_url": "https://github.com/pytorch/vision/blob/8fb87713a24951e639c494b0f2a8a81b5f8e33a6/torchvision/datasets/imagenet.py",
+      "tag": "v0.28.0",
+      "validation_archive_md5": "29b22e2961454d5413ddabcf34fc5622"
+    },
+    "official_devkit": {
+      "access": "public HTTPS download without authentication",
+      "archive": {
+        "bytes": 2568145,
+        "md5": "fa75699e90414af021442c21a62c3abf",
+        "sha256": "b59243268c0d266621fd587d2018f69e906fb22875aca0e295b48cafaa927953"
+      },
+      "license_file": "ILSVRC2012_devkit_t12/COPYING",
+      "license_sha256": "5f4d5e6ba018a1c22c12bcb5d7d9c42c5ffe9672ab0165491203a4111a0b4463",
+      "members_sha256": {
+        "ILSVRC2012_devkit_t12/COPYING": "5f4d5e6ba018a1c22c12bcb5d7d9c42c5ffe9672ab0165491203a4111a0b4463",
+        "ILSVRC2012_devkit_t12/data/ILSVRC2012_validation_ground_truth.txt": "88d44095bd81cb785618db8e72eeb025fa1f646adf359d9b0efbf625244e0df3",
+        "ILSVRC2012_devkit_t12/data/meta.mat": "e159ee2fe4bcc4d03e7429e7ff35e6ec553b2a901018b559f400a2b0ae117a30",
+        "ILSVRC2012_devkit_t12/readme.txt": "5172745470d3c087804f037ef18a21973e8dbaa96535334f23e2a42256ff2f72"
+      },
+      "publisher": "ImageNet Project",
+      "release": "ILSVRC2012_devkit_t12",
+      "url": "https://image-net.org/data/ILSVRC/2012/ILSVRC2012_devkit_t12.tar.gz"
+    },
+    "redistributed_images_or_devkit": false
+  },
+  "status": "pass"
+}

@@ -16,6 +16,7 @@ def test_frozen_multimodal_and_jepa_panel() -> None:
         "audio-text-retrieval",
         "video-text-retrieval",
         "vjepa2-1-video-representation",
+        "lejepa-image-representation",
     )
     document = json.loads(DEFAULT_MANIFEST.read_text(encoding="utf-8"))
     workloads = {row["name"]: row for row in document["workloads"]}

@@ -49,6 +49,7 @@ def test_lejepa_builds_and_trains_with_the_ordinary_step() -> None:
         LeJEPAConfig(knots=9, slices=16, regularization_weight=0.1),
     )
     assert isinstance(task, LeJEPATask)
+    assert task.global_views == 2
     batch = JEPABatch(
         views=Inputs(
             jnp.asarray(
@@ -82,7 +83,7 @@ def test_lejepa_builds_and_trains_with_the_ordinary_step() -> None:
     assert np.isfinite(result.metrics.loss)
 
 
-def test_invariance_uses_each_samples_valid_view_mean() -> None:
+def test_invariance_uses_only_global_views_for_each_samples_center() -> None:
     projections = jnp.asarray(
         (
             ((1.0, 2.0), (3.0, 4.0), (99.0, 99.0)),
@@ -90,7 +91,34 @@ def test_invariance_uses_each_samples_valid_view_mean() -> None:
         )
     )
     valid = jnp.asarray(((True, True, False), (True, True, True)))
-    np.testing.assert_allclose(invariance_loss(projections, valid), 2.0)
+    np.testing.assert_allclose(
+        invariance_loss(projections, valid, global_views=2),
+        2.6,
+    )
+
+
+def test_invariance_matches_the_official_global_center_formula() -> None:
+    projections = jnp.arange(3 * 8 * 5, dtype=jnp.float32).reshape(3, 8, 5) / 20
+
+    def native(values):
+        return invariance_loss(
+            values,
+            jnp.ones((3, 8), dtype=jnp.bool_),
+            global_views=2,
+        )
+
+    expected = jnp.mean(
+        jnp.square(projections - jnp.mean(projections[:, :2], axis=1, keepdims=True))
+    )
+    value, gradient = jax.value_and_grad(native)(projections)
+    expected_value, expected_gradient = jax.value_and_grad(
+        lambda values: jnp.mean(
+            jnp.square(values - jnp.mean(values[:, :2], axis=1, keepdims=True))
+        )
+    )(projections)
+    np.testing.assert_allclose(value, expected)
+    np.testing.assert_allclose(value, expected_value)
+    np.testing.assert_allclose(gradient, expected_gradient, atol=1e-7)
 
 
 def test_sigreg_is_finite_and_differentiable() -> None:

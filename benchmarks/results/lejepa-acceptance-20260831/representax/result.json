@@ -1,0 +1,322 @@
+{
+  "checkpoint_reload": {
+    "checkpoint_fingerprint": "sha256:5de50653fe66303f0849e4d6a41d0206492d02d23a5ecfb02a1c3e11ef81f2a7",
+    "data_fingerprint": "sha256:566253d05806d0a11bdbd1270e5f1b12ca9bb0f3fee20707eff4d8990840de56",
+    "iteration": 1,
+    "model_state_exact": true,
+    "optimizer_state_exact": true,
+    "path": "/raid/representax/paper-campaign-v1/preflight/lejepa-acceptance-20260831/representax/run/checkpoints/1",
+    "resumable_next_update": 2,
+    "resume_probe": {
+      "data_cursor_restored": true,
+      "executed": true,
+      "from_iteration": 1,
+      "loss": 0.14158527553081512,
+      "numeric_finite": true,
+      "optimizer_step_after": 2,
+      "persisted": false,
+      "rng_restored": true,
+      "skipped_update": false,
+      "update_global_norm": 1.8661760091781616
+    },
+    "scientific_fingerprint": "sha256:e4050e8bb6984f26fede0a16b4cddc59fac5a3aae313e2180f70f328b2f1d4de"
+  },
+  "data": {
+    "acceptance_scope": "readiness-only deterministic disjoint subsets of real ImageNet-1K train",
+    "files": {
+      "evaluation.jsonl": "sha256:f8abcb9e1fb87010f9d54c08aa6208a9231d9acb244fa4f0d715ce7425de4c76",
+      "train.jsonl": "sha256:6c1fd18bdf2d05fa96790172ee044be0db8157445984c34af760d071d3ec1766"
+    },
+    "imagenet": {
+      "access": "available",
+      "bounded_classes": 10,
+      "class_index": "/raid/datasets/imagenet/imagenet_class_index.json",
+      "class_index_sha256": "sha256:a1e7a966a1f601d39e4b43e119b3e7dd4a2ad3ea08cf69847cbaf021013767bc",
+      "classes_in_source": 1000,
+      "official_validation": {
+        "accepted_for_quality": false,
+        "blocker": "official ILSVRC2012 validation labeling provenance is not materialized with the devkit ground-truth contract",
+        "devkit_paths_observed": [],
+        "ground_truth_files_observed": [],
+        "policy": "ignore val paths and use disjoint train subsets for readiness only",
+        "validation_class_directories_observed": 1000,
+        "validation_directory_observed": true
+      },
+      "quality_claim_allowed": false,
+      "root": "/raid/datasets/imagenet",
+      "selected_classes": [
+        {
+          "label": 0,
+          "name": "tench",
+          "synset": "n01440764"
+        },
+        {
+          "label": 1,
+          "name": "goldfish",
+          "synset": "n01443537"
+        },
+        {
+          "label": 2,
+          "name": "great_white_shark",
+          "synset": "n01484850"
+        },
+        {
+          "label": 3,
+          "name": "tiger_shark",
+          "synset": "n01491361"
+        },
+        {
+          "label": 4,
+          "name": "hammerhead",
+          "synset": "n01494475"
+        },
+        {
+          "label": 5,
+          "name": "electric_ray",
+          "synset": "n01496331"
+        },
+        {
+          "label": 6,
+          "name": "stingray",
+          "synset": "n01498041"
+        },
+        {
+          "label": 7,
+          "name": "cock",
+          "synset": "n01514668"
+        },
+        {
+          "label": 8,
+          "name": "hen",
+          "synset": "n01514859"
+        },
+        {
+          "label": 9,
+          "name": "ostrich",
+          "synset": "n01518878"
+        }
+      ],
+      "source": "local extracted ILSVRC2012 train classes"
+    },
+    "reference_contract": {
+      "backbone": "timm/vit_base_patch16_224",
+      "depth": 12,
+      "drop_path_rate": 0.1,
+      "evaluation_representation": "concatenated CLS from final two blocks followed by LayerNorm",
+      "global_views": 2,
+      "heads": 12,
+      "hidden_size": 768,
+      "image_size": 224,
+      "local_image_size": 98,
+      "local_views": 6,
+      "mlp_ratio": 4.0,
+      "official_commit": "c293d291ca87cd4fddee9d3fffe4e914c7272052",
+      "patch_size": 16,
+      "projector": "training-only MLP",
+      "regularization_weight": 0.02,
+      "sigreg_knots": 17,
+      "sigreg_max_frequency": 3.0,
+      "sigreg_slices": 1024,
+      "stable_pretraining_commit": "9aa93f8b6153eebb73f57d4853ccf8a13d848310"
+    },
+    "rows": {
+      "evaluation": 70,
+      "evaluation_splits": {
+        "0": 30,
+        "1": 20,
+        "2": 20
+      },
+      "training": 70,
+      "unique_source_images": 70
+    },
+    "schema_version": "representax-lejepa-imagenet1k-inputs-v1",
+    "status": "accepted"
+  },
+  "devices": {
+    "jax": [
+      {
+        "bytes_in_use": 1107757568,
+        "bytes_limit": 22725564223,
+        "device_kind": "NVIDIA GeForce RTX 4090",
+        "logical_id": 0,
+        "peak_bytes_in_use": 1255145472
+      },
+      {
+        "bytes_in_use": 255487488,
+        "bytes_limit": 22725564223,
+        "device_kind": "NVIDIA GeForce RTX 4090",
+        "logical_id": 1,
+        "peak_bytes_in_use": 523924224
+      }
+    ],
+    "physical_gpu_indices": [
+      4,
+      5
+    ]
+  },
+  "elapsed_seconds": 16.658885657787323,
+  "evaluation": {
+    "batches": 35,
+    "checkpoint_metrics": {
+      "valid/jepa_representation/condition_number": 411.9317625518197,
+      "valid/jepa_representation/effective_rank": 24.17867634720916,
+      "valid/jepa_representation/feature_std_mean": 0.7936114670465381,
+      "valid/jepa_representation/feature_std_min": 0.24839386301436214,
+      "valid/jepa_representation/knn_accuracy": 0.25,
+      "valid/jepa_representation/linear_probe_accuracy": 0.35,
+      "valid/jepa_representation/linear_probe_f1_macro": 0.24666666666666667,
+      "valid/jepa_representation/linear_probe_selected_inverse_regularization": 0.01,
+      "valid/jepa_representation/linear_probe_validation_accuracy": 0.2
+    },
+    "compilation_seconds": 0.0,
+    "configured_on_end": false,
+    "configured_on_start": false,
+    "duration_seconds": 1.325794292613864,
+    "examples": 70,
+    "invocation": "manual because evaluation.on_start/on_end are false",
+    "metrics": {
+      "valid/jepa_representation/condition_number": 411.9317625518197,
+      "valid/jepa_representation/effective_rank": 24.17867634720916,
+      "valid/jepa_representation/feature_std_mean": 0.7936114670465381,
+      "valid/jepa_representation/feature_std_min": 0.24839386301436214,
+      "valid/jepa_representation/knn_accuracy": 0.25,
+      "valid/jepa_representation/linear_probe_accuracy": 0.35,
+      "valid/jepa_representation/linear_probe_f1_macro": 0.24666666666666667,
+      "valid/jepa_representation/linear_probe_selected_inverse_regularization": 0.01,
+      "valid/jepa_representation/linear_probe_validation_accuracy": 0.2
+    },
+    "metrics_reproduced_exactly": true,
+    "source": "reloaded native inference bundle"
+  },
+  "model": {
+    "canary_architecture": {
+      "depth": 12,
+      "heads": 6,
+      "hidden_size": 384,
+      "image_size": 224,
+      "local_image_size": 98,
+      "mlp_ratio": 4.0,
+      "patch_size": 16,
+      "projection_dimension": 512
+    },
+    "canary_profile": "timm/vit_small_patch16_224",
+    "evaluation_output": "frozen normalized concatenation of final two backbone CLS states, 768 dimensions",
+    "initial_parameter_digest": "sha256:7cbb37b2403f17650c3ffa1464b843483effcd7fcc25bc124b068eca14ff5432",
+    "initial_parameters_shared_with_torch": true,
+    "parameter_count": 28168576,
+    "parameter_count_after_export_reload": 28168576,
+    "parameter_count_after_reload": 28168576,
+    "parameter_count_before_reload": 28168576,
+    "quality_trajectory_parity_claimed": false,
+    "serious_supported_profile": {
+      "architecture": {
+        "depth": 24,
+        "heads": 16,
+        "hidden_size": 1024,
+        "image_size": 224,
+        "local_image_size": 98,
+        "mlp_ratio": 4.0,
+        "patch_size": 16,
+        "projection_dimension": 512
+      },
+      "name": "paper ViT-L/16 304M-class backbone"
+    },
+    "shared_initialization": {
+      "architecture": "timm/vit_small_patch16_224",
+      "architecture_parameters": {
+        "depth": 12,
+        "heads": 6,
+        "hidden_size": 384,
+        "image_size": 224,
+        "local_image_size": 98,
+        "mlp_ratio": 4.0,
+        "patch_size": 16,
+        "projection_dimension": 512
+      },
+      "directions_fingerprint": "sha256:008371f3cc90765ac07c5b1aa21f6f09a39799155947a67e397361e5b92879f1",
+      "directions_shape": [
+        512,
+        1024
+      ],
+      "evaluation_norm": "LayerNorm(768, eps=1e-6)",
+      "file": "/raid/representax/paper-campaign-v1/preflight/lejepa-acceptance-20260831/shared-initialization.pt",
+      "file_sha256": "sha256:dea6ae5746b7df9f22372ef1276bd28dea7f9d3512d1286b556475c744a39dd6",
+      "official_commit": "c293d291ca87cd4fddee9d3fffe4e914c7272052",
+      "parameter_count": 28168576,
+      "parameter_fingerprint": "sha256:fc4eccf2d80fe4376112e913a1b3accfb8b210f07f7dfd8aeee6abe9df447f95",
+      "projector": "stable-pretraining 384->512->2048->2048->512",
+      "schema_version": "representax-lejepa-shared-initialization-v1",
+      "seed": 17,
+      "stable_pretraining_commit": "9aa93f8b6153eebb73f57d4853ccf8a13d848310",
+      "state_fingerprint": "sha256:95fc77be54599599a4edda5f5d36a65a3b4ec5ee46a95bd5a7e896d2413bdd82",
+      "status": "accepted",
+      "timm_version": "1.0.22"
+    },
+    "training_output": "canonical projection MLP, 512 dimensions"
+  },
+  "native_export_reload": {
+    "complete_marker": "/raid/representax/paper-campaign-v1/preflight/lejepa-acceptance-20260831/representax/run/final-model/REPRESENTAX_COMPLETE",
+    "manifest": "/raid/representax/paper-campaign-v1/preflight/lejepa-acceptance-20260831/representax/run/final-model/manifest.json",
+    "metrics_reproduced_exactly": true,
+    "model_state_reproduced_exactly": true,
+    "path": "/raid/representax/paper-campaign-v1/preflight/lejepa-acceptance-20260831/representax/run/final-model"
+  },
+  "reference_contract": {
+    "backbone": "timm/vit_base_patch16_224",
+    "depth": 12,
+    "drop_path_rate": 0.1,
+    "evaluation_representation": "concatenated CLS from final two blocks followed by LayerNorm",
+    "global_views": 2,
+    "heads": 12,
+    "hidden_size": 768,
+    "image_size": 224,
+    "local_image_size": 98,
+    "local_views": 6,
+    "mlp_ratio": 4.0,
+    "official_commit": "c293d291ca87cd4fddee9d3fffe4e914c7272052",
+    "patch_size": 16,
+    "projector": "training-only MLP",
+    "regularization_weight": 0.02,
+    "sigreg_knots": 17,
+    "sigreg_max_frequency": 3.0,
+    "sigreg_slices": 1024,
+    "stable_pretraining_commit": "9aa93f8b6153eebb73f57d4853ccf8a13d848310"
+  },
+  "schema_version": "representax-lejepa-imagenet1k-canary-v1",
+  "scope": "one-update one-evaluation lifecycle readiness on disjoint ImageNet train subsets; not model quality or official ImageNet validation",
+  "stable_pretraining_reference": {
+    "architecture_match": true,
+    "correction": "the pinned stable_pretraining.methods.LeJEPA computes invariance + lambda * SIGReg, while the pinned paper formula used here is (1 - lambda) * invariance + lambda * SIGReg; its default projector is retained, but the experiment owns the corrected objective and the separate last-two-CLS evaluation path; the stable Imagenette recipe uses 96px local crops while the paper README specifies 98px and is authoritative here",
+    "objective_match": true,
+    "pinned_helper_used_as_result": false,
+    "policy": "run the pinned stable-pretraining MLP and timm backbone through the experiment-owned exact paper objective",
+    "status": "experiment-owned-runner-required"
+  },
+  "status": "accepted",
+  "training": {
+    "compile_and_first_update_seconds": 3.3842864371836185,
+    "global_views": 2,
+    "invariance": 0.14839695394039154,
+    "local_views": 6,
+    "loss": 0.16257886588573456,
+    "numeric_finite": true,
+    "objective": "(1-lambda)*invariance + lambda*per-view-SIGReg",
+    "pre_update_objective": {
+      "deterministic_drop_path_disabled": true,
+      "invariance": 0.1523171365261078,
+      "loss": 0.16652408242225647,
+      "sigreg": 0.8626636266708374,
+      "slices": 1024
+    },
+    "real_imagenet_examples": 2,
+    "real_imagenet_source_images": [
+      "/raid/datasets/imagenet/train/n01440764/n01440764_10026.JPEG",
+      "/raid/datasets/imagenet/train/n01440764/n01440764_10027.JPEG"
+    ],
+    "sigreg": 0.8574924468994141,
+    "skipped_update": false,
+    "update_global_norm": 2.6493730545043945,
+    "updates": 1,
+    "views_per_example": 8
+  }
+}

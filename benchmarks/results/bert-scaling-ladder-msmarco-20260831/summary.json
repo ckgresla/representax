@@ -1,0 +1,101 @@
+{
+  "schema_version": "representax-bert-scaling-compact-evidence-v1",
+  "status": "accepted_bounded_execution",
+  "quality_claim": false,
+  "artifact_root": "/home/ckg/representax-artifacts/bert-scaling-ladder-msmarco-20260831-v3",
+  "precision_recipe": {
+    "model_parameter_dtype": "float32",
+    "model_compute_dtype": "bfloat16",
+    "training_policy": "bfloat16_mixed",
+    "configured_evaluation_policy": "bfloat16_mixed",
+    "exported_evaluation_policy": "bfloat16_mixed"
+  },
+  "data": {
+    "msmarco_training_rows": 8,
+    "msmarco_evaluation_queries": 4,
+    "msmarco_evaluation_documents": 16,
+    "nq_confirmation_queries": 4,
+    "nq_confirmation_documents": 4,
+    "input_manifest_sha256": "sha256:9cfb97e6ffe8c9a3fd662c8f31c74b0fa18db475b0d6d513759f236282ff639f"
+  },
+  "rows": [
+    {
+      "size": "bert-30m",
+      "parameters": 29811072,
+      "physical_gpu_indices": [2],
+      "losses": [0.5895605087280273, 0.7030296325683594, 0.629155158996582],
+      "compile_first_update_seconds": 2.151567455381155,
+      "resume_compile_update_seconds": 1.907890196889639,
+      "steady_update_seconds": 0.01444072462618351,
+      "training_peak_hbm_bytes": [891513856],
+      "msmarco_ndcg_at_10": 0.875,
+      "nq_ndcg_at_10": 1.0,
+      "configured_vs_parity_topology_max_absolute_difference": 0.0,
+      "export_reload_metric_max_absolute_error": 0.0,
+      "native_parameter_digest_equal": true,
+      "result_sha256": "sha256:0daf9df99178573b504e241c2f37893ce5a8e747706a411e3b2ee1443c7f053d"
+    },
+    {
+      "size": "bert-110m",
+      "parameters": 109482240,
+      "physical_gpu_indices": [2],
+      "losses": [0.6287803649902344, 0.6887836456298828, 0.7338666915893555],
+      "compile_first_update_seconds": 2.225432800129056,
+      "resume_compile_update_seconds": 1.8930196035653353,
+      "steady_update_seconds": 0.02185443975031376,
+      "training_peak_hbm_bytes": [3593992192],
+      "msmarco_ndcg_at_10": 0.7654015779112127,
+      "nq_ndcg_at_10": 0.9077324383928644,
+      "configured_vs_parity_topology_max_absolute_difference": 0.0,
+      "export_reload_metric_max_absolute_error": 0.0,
+      "native_parameter_digest_equal": true,
+      "result_sha256": "sha256:9307097a224756b573154b82093736f918a57713e9e6fa58df5e4b9878a58158"
+    },
+    {
+      "size": "bert-500m",
+      "parameters": 486296576,
+      "physical_gpu_indices": [2, 3],
+      "losses": [0.8043031692504883, 0.5840206146240234, 0.6955442428588867],
+      "compile_first_update_seconds": 3.2518166061490774,
+      "resume_compile_update_seconds": 2.821485882624984,
+      "steady_update_seconds": 0.9002509266138077,
+      "training_peak_hbm_bytes": [4539774720, 4538411520],
+      "msmarco_ndcg_at_10": 0.2725237054954673,
+      "nq_ndcg_at_10": 0.9077324383928644,
+      "configured_vs_parity_topology_max_absolute_difference": 0.0,
+      "export_reload_metric_max_absolute_error": 0.0,
+      "native_parameter_digest_equal": true,
+      "result_sha256": "sha256:42791cb92cc70c4c89a4bd1a42e9fb7dd4964f70738243e6080a74b0e228a6b9"
+    },
+    {
+      "size": "bert-1b",
+      "parameters": 985885440,
+      "physical_gpu_indices": [2, 3],
+      "losses": [0.536064624786377, 0.664212703704834, 0.7296237945556641],
+      "compile_first_update_seconds": 22.79648989997804,
+      "resume_compile_update_seconds": 3.7113135550171137,
+      "steady_update_seconds": 1.7675738725811243,
+      "training_peak_hbm_bytes": [9048459264, 9327650304],
+      "msmarco_ndcg_at_10": 0.5767118467809718,
+      "nq_ndcg_at_10": 0.7654015779112127,
+      "configured_vs_parity_topology_max_absolute_difference": 0.002991292336523399,
+      "export_reload_metric_max_absolute_error": 0.0,
+      "native_parameter_digest_equal": true,
+      "result_sha256": "sha256:55b4c919090a6fff4599ec11d20d9c25cfbd450d85d10736a318d2ff7944a3c4"
+    }
+  ],
+  "bert_4b": {
+    "status": "admitted_pending_four_gpu_canary",
+    "allocated": false,
+    "physical_gpu_indices": [2, 3, 4, 5],
+    "required_compiled_updates": 1,
+    "one_b_observed_peak_bytes_per_device": 9327650304,
+    "projected_peak_bytes_per_device": 19760597796,
+    "admission_limit_bytes_per_device": 21893637734,
+    "feasibility_sha256": "sha256:9eaf90fb4a2ce3f325ca3c56ab8c5a7d7fc6940648139434c7200dc542b4ddf4"
+  },
+  "rejected_predecessors": [
+    "/home/ckg/representax-artifacts/bert-scaling-ladder-20260831",
+    "/home/ckg/representax-artifacts/bert-scaling-ladder-msmarco-20260831-v2"
+  ]
+}

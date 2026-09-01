@@ -58,6 +58,16 @@ def test_pair_worker_flags_preserve_precision_and_telemetry():
     assert _shared_worker_flags(arguments) == ["--mixed-precision", "--telemetry"]
 
 
+def test_pair_worker_flags_enable_shared_export_and_offline_evaluation():
+    arguments = argparse.Namespace(
+        mixed_precision=True,
+        telemetry=False,
+        export=True,
+    )
+
+    assert _shared_worker_flags(arguments) == ["--mixed-precision", "--export"]
+
+
 def test_pair_worker_flags_preserve_representax_sequence_buckets():
     arguments = argparse.Namespace(sequence_length_bucket=[16, 32, 128])
 

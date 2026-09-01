@@ -17,6 +17,8 @@ from typing import Any
 
 import numpy as np
 
+from experiments.paper.provenance import reference_source, write_reference_result
+
 ROOT = Path(__file__).resolve().parents[2]
 CAMPAIGN_MANIFEST = ROOT / "benchmarks/configs/paper-campaign-v1.json"
 TEXT_REWARD_MANIFEST = ROOT / "benchmarks/configs/paper-text-reward-v1.json"
@@ -61,6 +63,9 @@ def frozen_contract() -> FrozenContract:
     if panel_row["reference"] != "trl":
         raise ValueError("unexpected process-reward reference")
     model = panel["models"][panel_row["model"]]
+    reference = reference_source(panel_row["reference"])
+    if reference.release is None:
+        raise ValueError("the process-reward reference requires a release")
     dataset = panel["datasets"][panel_row["train"][0]]
     return FrozenContract(
         model_id=model["repo_id"],
@@ -70,7 +75,7 @@ def frozen_contract() -> FrozenContract:
         batch_size=int(campaign_row["global_batch"]),
         maximum_length=int(campaign_row["maximum_sequence_length"]),
         objective=str(panel_row["objective"]),
-        reference_version=str(panel["references"][panel_row["reference"]]),
+        reference_version=reference.release,
     )
 
 
@@ -919,7 +924,10 @@ def _worker(arguments: argparse.Namespace) -> None:
         steps=arguments.steps,
         seed=arguments.seed,
     )
-    _write_json(arguments.report, report)
+    if arguments.framework == "representax":
+        _write_json(arguments.report, report)
+    else:
+        write_reference_result(arguments.report, report, reference="trl")
 
 
 def _run_process(

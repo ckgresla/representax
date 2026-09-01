@@ -19,6 +19,8 @@ from typing import Any
 
 import numpy as np
 
+from experiments.paper.provenance import reference_source, write_reference_result
+
 ROOT = Path(__file__).resolve().parents[2]
 CAMPAIGN_MANIFEST = ROOT / "benchmarks/configs/paper-campaign-v1.json"
 MULTIMODAL_MANIFEST = ROOT / "benchmarks/configs/paper-multimodal-jepa-v1.json"
@@ -66,12 +68,15 @@ def frozen_contract() -> FrozenContract:
     if panel_row["reference"] != "sentence-transformers":
         raise ValueError("the frozen video-text reference changed")
     model = panel["models"][panel_row["model"]]
+    reference = reference_source(panel_row["reference"])
+    if reference.release is None:
+        raise ValueError("the video-text reference requires a release")
     return FrozenContract(
         model_id=model["repo_id"],
         model_revision=model["revision"],
         train_dataset=panel["datasets"][panel_row["train"]],
         evaluation_dataset=panel["datasets"][panel_row["evaluate"]],
-        reference_version=panel["references"][panel_row["reference"]],
+        reference_version=reference.release,
         global_batch_size=int(campaign_row["global_batch"]),
         video_frames=int(campaign_row["video_frames"]),
     )
@@ -1109,7 +1114,14 @@ def _worker(arguments: argparse.Namespace) -> None:
         seed=arguments.seed,
         batch_size=arguments.batch_size,
     )
-    _write_json(arguments.report, report)
+    if arguments.framework == "representax":
+        _write_json(arguments.report, report)
+    else:
+        report = write_reference_result(
+            arguments.report,
+            report,
+            reference="sentence-transformers",
+        )
     print(json.dumps(report, indent=2, sort_keys=True))
 
 

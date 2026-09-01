@@ -12,6 +12,7 @@ from typing import Any
 DEFAULT_MANIFEST = (
     Path(__file__).parents[1] / "benchmarks" / "configs" / "paper-text-reward-v1.json"
 )
+REFERENCE_MANIFEST = DEFAULT_MANIFEST.with_name("paper-references-v1.json")
 
 
 def _mapping(value: Any, name: str) -> Mapping[str, Any]:
@@ -35,7 +36,10 @@ def validate_manifest(document: Mapping[str, Any]) -> tuple[str, ...]:
         raise ValueError("unsupported paper text/reward schema")
     models = _mapping(document.get("models"), "models")
     datasets = _mapping(document.get("datasets"), "datasets")
-    references = _mapping(document.get("references"), "references")
+    references = _mapping(
+        json.loads(REFERENCE_MANIFEST.read_text(encoding="utf-8")).get("references"),
+        "references",
+    )
     workloads = document.get("workloads")
     if not isinstance(workloads, Sequence):
         raise TypeError("workloads must be an ordered array")
@@ -78,7 +82,10 @@ def validate_manifest(document: Mapping[str, Any]) -> tuple[str, ...]:
                 raise ValueError(
                     f"{name} references unknown datasets {sorted(unknown)}"
                 )
-        if workload.get("reference") not in references:
+        reference = workload.get("reference")
+        if not isinstance(reference, str):
+            raise ValueError(f"{name} requires a reference framework")
+        if reference not in references:
             raise ValueError(f"{name} references an unknown framework")
     return tuple(names)
 

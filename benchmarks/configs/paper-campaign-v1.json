@@ -28,7 +28,11 @@
     "gradient_clip_norm": 1.0,
     "schedule": "linear-warmup-cosine-decay",
     "warmup_ratio": 0.06,
-    "checkpoint_policy": "initial-best-final-and-evaluation-curve-metrics",
+    "evaluation_progress": [0.0, 0.25, 0.5, 0.75, 1.0],
+    "primary_pair_checkpointing": "disabled-and-measured-separately",
+    "lifecycle_checkpoint_progress": [0.5, 1.0],
+    "final_export": true,
+    "final_quality_evaluator": "representax",
     "paired_framework_data_order": true
   },
   "storage": {
@@ -48,6 +52,7 @@
   "workloads": [
     {
       "name": "dense-scaling",
+      "training_budget": {"unit": "updates-per-model", "value": 256},
       "global_batch": 2048,
       "maximum_sequence_length": 256,
       "models": ["bert-30m", "bert-110m", "bert-500m", "bert-1b", "bert-4b"],
@@ -55,18 +60,25 @@
     },
     {
       "name": "dense-realistic",
+      "training_budget": {"unit": "updates", "value": 256},
+      "evaluation_steps": [0, 64, 128, 192, 256],
+      "world_size": 1,
       "global_batch": 2048,
       "maximum_sequence_length": 256,
+      "sequence_length_buckets": [16, 32, 64, 128, 256],
+      "grad_cache_chunk_size": 32,
       "frameworks": ["representax", "sentence-transformers"]
     },
     {
       "name": "dense-natural-questions",
+      "training_budget": {"unit": "updates", "value": 256},
       "global_batch": 2048,
       "maximum_sequence_length": 256,
       "frameworks": ["representax", "sentence-transformers"]
     },
     {
       "name": "dense-multilingual",
+      "training_budget": {"unit": "updates-per-language", "value": 256},
       "global_batch": 1024,
       "maximum_sequence_length": 256,
       "languages": ["ar", "en", "hi", "ja"],
@@ -74,24 +86,28 @@
     },
     {
       "name": "semantic-similarity",
+      "training_budget": {"unit": "epochs", "value": 4},
       "global_batch": 256,
       "maximum_sequence_length": 128,
       "frameworks": ["representax", "sentence-transformers"]
     },
     {
       "name": "pair-classification",
+      "training_budget": {"unit": "epochs", "value": 4},
       "global_batch": 256,
       "maximum_sequence_length": 128,
       "frameworks": ["representax", "sentence-transformers"]
     },
     {
       "name": "cross-encoder-reranking",
+      "training_budget": {"unit": "updates", "value": 1000},
       "global_batch": 128,
       "maximum_sequence_length": 512,
       "frameworks": ["representax", "sentence-transformers"]
     },
     {
       "name": "late-interaction",
+      "training_budget": {"unit": "updates", "value": 1000},
       "global_batch": 512,
       "maximum_query_length": 32,
       "maximum_document_length": 256,
@@ -99,40 +115,57 @@
     },
     {
       "name": "pairwise-outcome-reward",
+      "training_budget": {"unit": "updates", "value": 512},
       "global_batch": 128,
       "maximum_sequence_length": 1024,
       "frameworks": ["representax", "trl"]
     },
     {
       "name": "process-reward",
+      "training_budget": {"unit": "updates", "value": 512},
       "global_batch": 64,
       "maximum_sequence_length": 2048,
       "frameworks": ["representax", "trl"]
     },
     {
       "name": "image-text-retrieval",
+      "training_budget": {"unit": "epochs", "value": 1},
       "global_batch": 512,
       "image_shape": [3, 224, 224],
       "frameworks": ["representax", "sentence-transformers"]
     },
     {
       "name": "audio-text-retrieval",
+      "training_budget": {"unit": "epochs", "value": 1},
       "global_batch": 256,
       "audio_seconds": 10,
       "frameworks": ["representax", "sentence-transformers"]
     },
     {
       "name": "video-text-retrieval",
+      "training_budget": {"unit": "epochs", "value": 5},
       "global_batch": 128,
       "video_frames": 16,
       "frameworks": ["representax", "sentence-transformers"]
     },
     {
       "name": "vjepa2-1-video-representation",
+      "training_budget": {"unit": "updates", "value": 1000},
       "global_batch": 128,
       "video_frames": 16,
       "image_resolution": 256,
       "frameworks": ["representax", "facebookresearch-vjepa2"]
+    },
+    {
+      "name": "lejepa-image-representation",
+      "training_budget": {"unit": "updates", "value": 10000},
+      "upstream_context": {"unit": "epochs", "value": 100},
+      "global_batch": 16,
+      "image_resolution": 224,
+      "global_views": 2,
+      "local_views": 6,
+      "world_size": 2,
+      "frameworks": ["representax", "stable-pretraining"]
     }
   ]
 }

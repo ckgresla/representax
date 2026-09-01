@@ -1,0 +1,51 @@
+{
+  "schema_version": "representax-lejepa-vit-l16-capacity-summary-v1",
+  "status": "accepted",
+  "scope": "training-only capacity and steady-throughput; not ImageNet quality",
+  "hardware": {
+    "gpus": [0, 1],
+    "accelerator": "NVIDIA GeForce RTX 4090 24GB",
+    "topology": "two-device FSDP over model axis"
+  },
+  "model": {
+    "name": "LeJEPA ViT-L/16",
+    "parameters": 310134784,
+    "parameter_dtype": "float32",
+    "compute_dtype": "bfloat16",
+    "activation_rematerialization": "full"
+  },
+  "measurements": [
+    {
+      "global_batch_size": 1,
+      "compile_and_first_update_seconds": 17.06084218248725,
+      "median_steady_step_seconds": 0.31172131188213825,
+      "median_steady_examples_per_second": 3.231053773994141,
+      "peak_hbm_bytes_per_device": [3287872256, 3287871744],
+      "full_result_sha256": "sha256:c9aa6a7af52f0426919b797d70d665c28aea83f5947c9fd89dcf15b7bbb26e70"
+    },
+    {
+      "global_batch_size": 8,
+      "compile_and_first_update_seconds": 23.06847593188286,
+      "median_steady_step_seconds": 1.6371741676703095,
+      "median_steady_examples_per_second": 4.91176634084805,
+      "peak_hbm_bytes_per_device": [3506053888, 3506053376],
+      "full_result_sha256": "sha256:1884071667c1307a1f092637157eafbf3633009b33d133445a7570ef51fa0147"
+    },
+    {
+      "global_batch_size": 16,
+      "compile_and_first_update_seconds": 21.66408263705671,
+      "median_steady_step_seconds": 3.154943694360554,
+      "median_steady_examples_per_second": 5.099479789172765,
+      "peak_hbm_bytes_per_device": [3973172480, 3973171968],
+      "full_result_sha256": "sha256:6e0b512f1d9774f18be528d36740e6624fa539cd27aaed6474674dc389c883bf"
+    }
+  ],
+  "canonical_100_epoch_projection_at_batch_16": {
+    "scope": "steady-training-only; excludes compilation, evaluation and checkpoints",
+    "updates": 8007300,
+    "wall_hours": 7017.383512181463,
+    "logical_gpu_hours": 14034.767024362925,
+    "campaign_decision": "retain as upstream context; use a separately declared bounded exposure for this paper"
+  },
+  "full_artifact_root": "/raid/representax/paper-campaign-v1/preflight/lejepa-vit-l-capacity-20260831"
+}

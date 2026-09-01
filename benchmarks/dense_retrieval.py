@@ -18,13 +18,17 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, TextIO
 
+from experiments.paper.provenance import reference_source, write_reference_result
+
 TRAIN_DATASET_ID = "sentence-transformers/msmarco-msmarco-MiniLM-L6-v3"
 TRAIN_DATASET_REVISION = "0d54352548089199bde15ad7e06efe895dc80b56"
 TRAIN_DATASET_FILE = "triplet-all/train-00000-of-00039.parquet"
 EVALUATION_DATASET_ID = "sentence-transformers/NanoBEIR-en"
 EVALUATION_DATASET_REVISION = "beb106fbcfaa599c508c667041bf8c85fd78736b"
 EVALUATION_SUBSET = "NanoMSMARCO"
-ORACLE_VERSION = "5.6.1"
+ORACLE_VERSION = reference_source("sentence-transformers").release
+if ORACLE_VERSION is None:  # pragma: no cover - frozen manifest invariant
+    raise ValueError("the Sentence Transformers reference requires a release")
 TRANSFORMERS_VERSION = "5.6.0"
 THREE_RUN_95_PERCENT_T_CRITICAL = 4.302652729911275
 
@@ -82,6 +86,31 @@ def _sha256(path: Path) -> str:
         for block in iter(lambda: stream.read(8 * 1024 * 1024), b""):
             digest.update(block)
     return "sha256:" + digest.hexdigest()
+
+
+def _directory_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    files = tuple(sorted(item for item in path.rglob("*") if item.is_file()))
+    if not files:
+        raise ValueError(f"artifact directory contains no files: {path}")
+    for item in files:
+        relative = item.relative_to(path).as_posix().encode()
+        digest.update(len(relative).to_bytes(8, "big"))
+        digest.update(relative)
+        with item.open("rb") as stream:
+            for block in iter(lambda: stream.read(8 * 1024 * 1024), b""):
+                digest.update(block)
+    return "sha256:" + digest.hexdigest()
+
+
+def _git_head() -> str:
+    return subprocess.run(
+        ("git", "rev-parse", "HEAD"),
+        cwd=Path(__file__).resolve().parents[1],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
 
 
 def _atomic_json(path: Path, document: Mapping[str, Any]) -> None:
@@ -745,6 +774,114 @@ def _oracle_retrieval_metrics(
     return metrics, duration
 
 
+def _representax_offline_metrics(
+    model: Any,
+    processor: Any,
+    data: RetrievalEvaluationData,
+    *,
+    batch_size: int,
+    iteration: int,
+) -> dict[str, Any]:
+    from experiments.paper.dense_retrieval import (
+        RetrievalEvaluationCollator,
+        evaluation_rows,
+    )
+
+    from representax.config import PrecisionConfig
+    from representax.evaluation import InformationRetrievalEvaluator
+    from representax.precision import resolve_precision_policy
+    from representax.train.evaluation import EvaluationRunner
+
+    rows = evaluation_rows(data.queries, data.documents, batch_size=batch_size)
+    collate = RetrievalEvaluationCollator(processor)
+    batches = tuple(
+        collate(rows[start : start + batch_size])
+        for start in range(0, len(rows), batch_size)
+    )
+    evaluator = InformationRetrievalEvaluator(
+        name=EVALUATION_SUBSET,
+        relevant_documents=data.relevant_documents,
+        score_functions=("cosine",),
+        main_score_function="cosine",
+        accuracy_at_k=(1, 3, 5, 10),
+        precision_recall_at_k=(1, 3, 5, 10, 100),
+        mrr_at_k=(10,),
+        ndcg_at_k=(10,),
+        map_at_k=(100,),
+    )
+    result = EvaluationRunner(
+        evaluator,
+        precision=resolve_precision_policy(PrecisionConfig.bfloat16_mixed()),
+    ).run(model, batches, iteration=iteration)
+    return {
+        "metrics": {name: float(value) for name, value in result.metrics.items()},
+        "examples": result.examples,
+        "batches": result.batches,
+        "duration_seconds": result.duration_seconds,
+        "compilation_seconds": result.compilation_seconds,
+    }
+
+
+def _offline_evaluate(arguments: argparse.Namespace) -> None:
+    import gc
+
+    import jax
+
+    artifact = arguments.artifact.expanduser().resolve()
+    if not artifact.is_dir():
+        raise FileNotFoundError(f"exported artifact does not exist: {artifact}")
+    if arguments.artifact_kind == "representax":
+        from representax import load_inference_bundle
+        from representax.train.job import load_model
+
+        model, job = load_inference_bundle(artifact)
+        initial_model, processor = load_model(
+            job.model,
+            key=jax.random.key(0),
+            activation_rematerialization=job.training.activation_rematerialization,
+        )
+        del initial_model
+        gc.collect()
+    else:
+        from representax.models import SentenceEncoder
+
+        model, processor = SentenceEncoder.load_from_hf(
+            artifact,
+            local_files_only=True,
+            parameter_dtype="float32",
+            compute_dtype="bfloat16",
+            sequence_length_buckets=(arguments.maximum_length,),
+        )
+    if processor is None:
+        raise RuntimeError("exported dense model did not provide a processor")
+    data = _evaluation_data(arguments.data_directory.expanduser().resolve())
+    evaluation = _representax_offline_metrics(
+        model,
+        processor,
+        data,
+        batch_size=arguments.evaluation_batch_size,
+        iteration=arguments.iteration,
+    )
+    result = {
+        "schema_version": "representax-dense-retrieval-offline-evaluation-v1",
+        "status": "accepted",
+        "evaluated_by": "representax",
+        "artifact_kind": arguments.artifact_kind,
+        "artifact": str(artifact),
+        "artifact_sha256": _directory_sha256(artifact),
+        "data_manifest": str(
+            (arguments.data_directory / "manifest.json").resolve()
+        ),
+        "data_manifest_sha256": _sha256(arguments.data_directory / "manifest.json"),
+        "maximum_length": arguments.maximum_length,
+        "evaluation_batch_size": arguments.evaluation_batch_size,
+        "iteration": arguments.iteration,
+        **evaluation,
+    }
+    _atomic_json(arguments.output.expanduser().resolve(), result)
+    print(json.dumps(result["metrics"], indent=2, sort_keys=True))
+
+
 def _sentence_transformers_report(
     spec: ModelSpec,
     *,
@@ -793,8 +930,8 @@ def _sentence_transformers_report(
         raise RuntimeError(f"expected transformers=={TRANSFORMERS_VERSION}")
     if any(value is not None for value in (checkpoint_every, stop_after)):
         raise ValueError("reference preflight does not use checkpoint pause controls")
-    if resume or export:
-        raise ValueError("reference preflight does not use Representax lifecycle flags")
+    if resume:
+        raise ValueError("reference worker does not use Representax resume controls")
     if batch_size % world_size:
         raise ValueError("global batch size must be divisible by world size")
     process_world_size = int(os.environ.get("WORLD_SIZE", "1"))
@@ -1060,6 +1197,15 @@ def _sentence_transformers_report(
             raise AssertionError("final periodic retrieval evaluation is missing")
         final = evaluation_history[-1]["metrics"]
         final_seconds = evaluation_history[-1]["evaluation_seconds"]
+    exported_checkpoint = None
+    export_seconds = 0.0
+    if export:
+        export_started = time.perf_counter()
+        export_path = run_directory / "final-model"
+        model.save_pretrained(str(export_path), safe_serialization=True)
+        torch.cuda.synchronize()
+        export_seconds = time.perf_counter() - export_started
+        exported_checkpoint = str(export_path.resolve())
     return {
         "schema_version": "representax-dense-retrieval-worker-v1",
         "framework": "sentence-transformers",
@@ -1076,6 +1222,8 @@ def _sentence_transformers_report(
         "seed": seed,
         "world_size": world_size,
         "mixed_precision": mixed_precision,
+        "exported_checkpoint": exported_checkpoint,
+        "export_seconds": export_seconds,
         "model_and_data_seconds": model_and_data_seconds,
         "training_seconds": training_seconds,
         "training_compute_seconds": training_compute_seconds,
@@ -1164,7 +1312,14 @@ def _worker(arguments: argparse.Namespace) -> None:
             raise ValueError("sequence length buckets are a Representax worker option")
         report = _sentence_transformers_report(spec, **kwargs)
     if report is not None:
-        _atomic_json(arguments.report, report)
+        if arguments.framework == "representax":
+            _atomic_json(arguments.report, report)
+        else:
+            write_reference_result(
+                arguments.report,
+                report,
+                reference="sentence-transformers",
+            )
 
 
 def _device_stats(index: int) -> tuple[int, int]:
@@ -1385,6 +1540,8 @@ def _shared_worker_flags(arguments: argparse.Namespace) -> list[str]:
         flags.append("--mixed-precision")
     if arguments.telemetry:
         flags.append("--telemetry")
+    if getattr(arguments, "export", False):
+        flags.append("--export")
     return flags
 
 
@@ -1409,10 +1566,9 @@ def _pair(arguments: argparse.Namespace) -> None:
             for value in (arguments.checkpoint_every, arguments.stop_after)
         )
         or arguments.resume
-        or arguments.export
     ):
         raise ValueError(
-            "pair does not apply Representax-only checkpoint or export controls"
+            "pair does not apply Representax-only checkpoint or resume controls"
         )
     result_directory = arguments.result_directory.expanduser().resolve()
     result_directory.mkdir(parents=True, exist_ok=False)
@@ -1486,6 +1642,73 @@ def _pair(arguments: argparse.Namespace) -> None:
         tolerance=spec.initial_metric_tolerance,
     )
     metric = f"valid/{EVALUATION_SUBSET}/cosine_ndcg@10"
+    shared_offline_evaluation = None
+    final_native_metrics = native["final_evaluation"]
+    final_oracle_metrics = oracle["final_evaluation"]
+    if arguments.export:
+        artifacts = {
+            "representax": native["exported_bundle"],
+            "sentence-transformers": oracle["exported_checkpoint"],
+        }
+        if any(value is None for value in artifacts.values()):
+            raise RuntimeError("paired export did not publish both final artifacts")
+        offline_directory = result_directory / "offline-evaluation"
+        offline_reports = {
+            name: offline_directory / f"{name}.json" for name in artifacts
+        }
+        offline_commands = [
+            (
+                f"{name}-offline",
+                gpu,
+                [
+                    sys.executable,
+                    "-m",
+                    "benchmarks.dense_retrieval",
+                    "offline-evaluate",
+                    "--artifact-kind",
+                    name,
+                    "--artifact",
+                    str(artifacts[name]),
+                    "--data-directory",
+                    str(arguments.data_directory.resolve()),
+                    "--maximum-length",
+                    str(arguments.maximum_length),
+                    "--evaluation-batch-size",
+                    str(arguments.evaluation_batch_size),
+                    "--iteration",
+                    str(arguments.steps),
+                    "--output",
+                    str(offline_reports[name]),
+                ],
+                result_directory / "logs" / f"{name}-offline.log",
+            )
+            for name, gpu in (
+                ("representax", arguments.representax_gpu),
+                ("sentence-transformers", arguments.sentence_transformers_gpu),
+            )
+        ]
+        offline_processes = _run_processes(offline_commands)
+        offline = {
+            name: json.loads(path.read_text())
+            for name, path in offline_reports.items()
+        }
+        final_native_metrics = offline["representax"]["metrics"]
+        final_oracle_metrics = offline["sentence-transformers"]["metrics"]
+        if final_native_metrics.keys() != final_oracle_metrics.keys():
+            raise RuntimeError(
+                "shared offline evaluator emitted different metric names"
+            )
+        shared_offline_evaluation = {
+            "quality_denominator": "representax-offline-evaluator",
+            "representax": {
+                **offline["representax"],
+                **offline_processes["representax-offline"],
+            },
+            "sentence_transformers": {
+                **offline["sentence-transformers"],
+                **offline_processes["sentence-transformers-offline"],
+            },
+        }
     native_sustained_rate = native["steady_state_examples_per_second"]
     oracle_rate = (
         oracle["steady_state_examples_per_second"]
@@ -1509,6 +1732,12 @@ def _pair(arguments: argparse.Namespace) -> None:
     summary = {
         "schema_version": "representax-dense-retrieval-comparison-v1",
         "contract": {
+            "source_commits": {
+                "representax": _git_head(),
+                "sentence-transformers": reference_source(
+                    "sentence-transformers"
+                ).commit,
+            },
             "model": spec.name,
             "model_id": spec.model_id,
             "revision": spec.revision,
@@ -1539,6 +1768,7 @@ def _pair(arguments: argparse.Namespace) -> None:
             **oracle,
             **process["sentence-transformers"],
         },
+        "shared_offline_evaluation": shared_offline_evaluation,
         "comparison": {
             "amortized_training_speedup": (
                 native["amortized_examples_per_second"] / oracle_rate
@@ -1549,10 +1779,15 @@ def _pair(arguments: argparse.Namespace) -> None:
             "maximum_initial_metric_absolute_difference": (
                 maximum_initial_metric_difference
             ),
-            "representax_final_ndcg@10": native["final_evaluation"][metric],
-            "sentence_transformers_final_ndcg@10": oracle["final_evaluation"][metric],
+            "quality_denominator": (
+                "representax-offline-evaluator"
+                if shared_offline_evaluation is not None
+                else "framework-worker-diagnostic"
+            ),
+            "representax_final_ndcg@10": final_native_metrics[metric],
+            "sentence_transformers_final_ndcg@10": final_oracle_metrics[metric],
             "final_ndcg@10_difference": (
-                native["final_evaluation"][metric] - oracle["final_evaluation"][metric]
+                final_native_metrics[metric] - final_oracle_metrics[metric]
             ),
         },
     }
@@ -1749,6 +1984,18 @@ def _parser() -> argparse.ArgumentParser:
     aggregate = commands.add_parser("aggregate")
     aggregate.add_argument("--summary", type=Path, action="append", required=True)
     aggregate.add_argument("--output", type=Path, required=True)
+    offline = commands.add_parser("offline-evaluate")
+    offline.add_argument(
+        "--artifact-kind",
+        choices=("representax", "sentence-transformers"),
+        required=True,
+    )
+    offline.add_argument("--artifact", type=Path, required=True)
+    offline.add_argument("--data-directory", type=Path, required=True)
+    offline.add_argument("--maximum-length", type=int, required=True)
+    offline.add_argument("--evaluation-batch-size", type=int, required=True)
+    offline.add_argument("--iteration", type=int, required=True)
+    offline.add_argument("--output", type=Path, required=True)
     return parser
 
 
@@ -1762,8 +2009,10 @@ def main() -> None:
         _pair(arguments)
     elif arguments.command == "curve":
         _curve(arguments)
-    else:
+    elif arguments.command == "aggregate":
         _aggregate(arguments)
+    else:
+        _offline_evaluate(arguments)
 
 
 if __name__ == "__main__":

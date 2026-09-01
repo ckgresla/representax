@@ -1,0 +1,72 @@
+#+title: NQ and MIRACL bounded real-data acceptance - 2026-08-31
+
+* Scope
+
+This is an operational acceptance gate for the Natural Questions and MIRACL
+paper rows. It is not a model-quality benchmark. Each row executes exactly two
+training updates through =representax.train.run_job=, stops after update 1,
+restores the complete Orbax state, runs the configured canonical information
+retrieval evaluator on start and end, exports the final native inference
+bundle, reloads it, and reruns that same evaluator over the exported model.
+
+All generated data, checkpoints, logs, and exports live below
+=/home/ckg/representax-artifacts/nq-miracl-acceptance-20260831/=. No artifact
+was written under =/raid=. The NQ source checkpoint was read from an existing
+immutable Hugging Face snapshot under =/raid/.cache=; the Jina snapshot was
+resolved into the acceptance root's Hugging Face cache.
+
+* Frozen contracts
+
+| row | model revision | training data revision | evaluation data revision |
+|-----+----------------+------------------------+--------------------------|
+| NQ | =all-mpnet-base-v2@e8c3b32edf5434bc2275fc9bab85f82640a19130= | =natural-questions@f9e894e1081e206e577b4eaa9ee6de2b06ae6f17= | =mteb/nq@b84726e65fd226125cf7c0cbeeb5c214d49e8187= |
+| MIRACL | =jina-embeddings-v5-omni-small-retrieval@12949877f0092093f366c6450340011320152a05= | =miracl@5be20db9509754dadad47689368639fcec739c00= plus =miracl-corpus@d921ec7e349ce0d28daf30b2da9da5ee698bef0d= | same pinned sources, dev split |
+
+The data manifests record SHA-256 hashes for every fully downloaded source and
+for each inspected immutable corpus prefix.
+
+* Bounded data
+
+Natural Questions used the first 8 real train pairs and 4 test queries with
+positive qrels present in a 4 MiB byte range of the pinned corpus. That prefix
+contained 7,040 complete documents; only the four selected positives were
+materialized for evaluation.
+
+MIRACL used two real train pairs and one real dev query/document per language
+for Arabic, English, Hindi, and Japanese. Corpus reads were capped at a 16 MiB
+compressed range per language and stopped after 2, 3,110, 130, and 549
+documents respectively. The resulting acceptance data contains 8 train pairs
+and 4 evaluation queries/documents.
+
+* Results
+
+| row | physical GPU | losses at updates 1, 2 | resumed | evaluator events | export metric parity |
+|-----+--------------+-------------------------+---------+------------------+----------------------|
+| NQ | 0 | =6.67572021484375e-06=, =0.001125335693359375= | yes | 2 | exact |
+| MIRACL | 1 | =0.3466041088104248=, =0.7076723575592041= | yes | 2 | exact |
+
+Both midpoint checkpoints exist at =run/checkpoints/1=. Both final bundles
+were independently reconstructed from =run/final-model= and evaluated through
+=InformationRetrievalEvaluator= via =EvaluationRunner=. Every exported metric
+matched the final =run_job= evaluation event within the enforced =1e-7=
+tolerance.
+
+The tiny four-document evaluations report perfect Recall@10/100 and nDCG@10.
+Those values only prove evaluator and artifact lifecycle execution: with one
+positive per query and three cross-row negatives they do not support a quality
+claim.
+
+* Commands
+
+#+begin_src sh
+python -m pytest -q tests/experiments/test_nq_miracl_acceptance.py
+
+PYTHONPATH=src CUDA_VISIBLE_DEVICES=0 XLA_PYTHON_CLIENT_PREALLOCATE=false \
+  python -m experiments.paper.nq_miracl_acceptance nq \
+  --artifact-root /home/ckg/representax-artifacts/nq-miracl-acceptance-20260831 \
+  --checkpoint /raid/.cache/huggingface/models--sentence-transformers--all-mpnet-base-v2/snapshots/e8c3b32edf5434bc2275fc9bab85f82640a19130
+
+PYTHONPATH=src CUDA_VISIBLE_DEVICES=1 XLA_PYTHON_CLIENT_PREALLOCATE=false \
+  python -m experiments.paper.nq_miracl_acceptance miracl \
+  --artifact-root /home/ckg/representax-artifacts/nq-miracl-acceptance-20260831
+#+end_src

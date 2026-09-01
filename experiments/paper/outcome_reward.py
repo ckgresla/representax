@@ -21,6 +21,8 @@ from typing import Any, Literal, cast
 
 import numpy as np
 
+from experiments.paper.provenance import reference_source, write_reference_result
+
 ROOT = Path(__file__).resolve().parents[2]
 CAMPAIGN_MANIFEST = ROOT / "benchmarks/configs/paper-campaign-v1.json"
 TEXT_REWARD_MANIFEST = ROOT / "benchmarks/configs/paper-text-reward-v1.json"
@@ -63,6 +65,9 @@ def frozen_contract() -> FrozenContract:
     if panel_row["reference"] != "trl":
         raise ValueError("unexpected outcome-reward reference")
     model = panel["models"][panel_row["model"]]
+    reference = reference_source(panel_row["reference"])
+    if reference.release is None:
+        raise ValueError("the outcome-reward reference requires a release")
     dataset = panel["datasets"][panel_row["train"][0]]
     if panel_row["train"] != panel_row["evaluate"]:
         raise ValueError("outcome-reward training and evaluation datasets differ")
@@ -74,7 +79,7 @@ def frozen_contract() -> FrozenContract:
         global_batch_size=int(campaign_row["global_batch"]),
         maximum_length=int(campaign_row["maximum_sequence_length"]),
         objective=panel_row["objective"],
-        reference_version=panel["references"][panel_row["reference"]],
+        reference_version=reference.release,
     )
 
 
@@ -1374,7 +1379,10 @@ def _worker(arguments: argparse.Namespace) -> None:
             seed=arguments.seed,
             padding=arguments.padding,
         )
-    _write_json(arguments.report, report)
+    if arguments.framework == "representax":
+        _write_json(arguments.report, report)
+    else:
+        write_reference_result(arguments.report, report, reference="trl")
 
 
 def _probe_worker(arguments: argparse.Namespace) -> None:
@@ -1392,7 +1400,10 @@ def _probe_worker(arguments: argparse.Namespace) -> None:
         report = _representax_probe_worker(**options)
     else:
         report = _trl_probe_worker(**options)
-    _write_json(arguments.report, report)
+    if arguments.framework == "representax":
+        _write_json(arguments.report, report)
+    else:
+        report = write_reference_result(arguments.report, report, reference="trl")
     print(json.dumps(report, indent=2, sort_keys=True))
 
 
@@ -1407,7 +1418,10 @@ def _kernel_worker(arguments: argparse.Namespace) -> None:
         report = _representax_kernel_worker(**options)
     else:
         report = _trl_kernel_worker(**options)
-    _write_json(arguments.report, report)
+    if arguments.framework == "representax":
+        _write_json(arguments.report, report)
+    else:
+        report = write_reference_result(arguments.report, report, reference="trl")
     print(json.dumps(report, indent=2, sort_keys=True))
 
 

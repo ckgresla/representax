@@ -14,6 +14,7 @@ class JEPAConfig(TaskConfig):
 class LeJEPAConfig(LossConfig):
     kind: Literal["lejepa"] = "lejepa"
     regularization_weight: float = Field(default=0.02, ge=0.0, le=1.0)
+    global_views: PositiveInt = 2
     knots: int = Field(default=17, ge=2)
     slices: PositiveInt = 256
     max_frequency: PositiveFloat = 3.0

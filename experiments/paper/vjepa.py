@@ -20,6 +20,8 @@ from typing import Any
 
 import numpy as np
 
+from experiments.paper.provenance import reference_source, write_reference_result
+
 ROOT = Path(__file__).resolve().parents[2]
 CAMPAIGN_MANIFEST = ROOT / "benchmarks/configs/paper-campaign-v1.json"
 PANEL_MANIFEST = ROOT / "benchmarks/configs/paper-multimodal-jepa-v1.json"
@@ -79,11 +81,11 @@ def frozen_contract() -> FrozenContract:
     if panel_row["reference"] != "vjepa2":
         raise ValueError("the frozen V-JEPA reference changed")
     model = panel["models"][panel_row["model"]]
-    reference = panel["references"][panel_row["reference"]]
-    if model["revision"] != reference:
+    reference = reference_source(panel_row["reference"])
+    if model["revision"] != reference.commit:
         raise ValueError("the V-JEPA model and reference revisions diverged")
     return FrozenContract(
-        reference_commit=reference,
+        reference_commit=reference.commit,
         reference_config=model["config"],
         dataset=panel["datasets"][panel_row["train"]],
         global_batch_size=int(campaign_row["global_batch"]),
@@ -215,9 +217,10 @@ def _materialize_split(
     import datasets
 
     contract = frozen_contract()
+    mirror = contract.dataset["preflight_mirror"]
     source: Any = datasets.load_dataset(
-        contract.dataset["repo_id"],
-        revision=contract.dataset["revision"],
+        mirror["repo_id"],
+        revision=mirror["revision"],
         split=split,
         streaming=True,
     ).cast_column("video", datasets.Video(decode=False))
@@ -377,8 +380,8 @@ def prepare_data(
     import datasets
 
     available_splits = datasets.get_dataset_split_names(
-        contract.dataset["repo_id"],
-        revision=contract.dataset["revision"],
+        contract.dataset["preflight_mirror"]["repo_id"],
+        revision=contract.dataset["preflight_mirror"]["revision"],
     )
     requested_evaluation_split = str(contract.dataset["evaluate_split"])
     if requested_evaluation_split in available_splits:
@@ -391,7 +394,7 @@ def prepare_data(
         split_deviation = {
             "requested": requested_evaluation_split,
             "actual": evaluation_split,
-            "reason": "pinned Hugging Face revision exposes only the train split",
+            "reason": "the pinned preflight mirror exposes only the train split",
             "policy": "disjoint deterministic SSV2 holdout for readiness only",
         }
     train = _materialize_split(
@@ -1059,7 +1062,15 @@ def _worker(arguments: argparse.Namespace) -> None:
             steps=arguments.steps,
             seed=arguments.seed,
         )
-    _write_json(arguments.report, report)
+    if arguments.framework == "representax":
+        _write_json(arguments.report, report)
+    else:
+        report = write_reference_result(
+            arguments.report,
+            report,
+            reference="vjepa2",
+            checkout=arguments.reference,
+        )
     print(json.dumps(report, indent=2, sort_keys=True))
 
 
