@@ -10,6 +10,7 @@ import pytest
 from benchmarks.dense_retrieval import (
     MODEL_SPECS,
     _aggregate,
+    _paired_steady_state_summary,
     _reference_steady_state_summary,
     _representax_worker_flags,
     _shared_worker_flags,
@@ -189,6 +190,49 @@ def test_reference_steady_state_summary_excludes_delayed_compilation(tmp_path):
     (run / "metrics.jsonl").write_text("".join(json.dumps(row) + "\n" for row in rows))
 
     assert _reference_steady_state_summary(run) == pytest.approx((0.8, 4, 128))
+
+
+def test_paired_steady_state_uses_identical_warmed_iterations(tmp_path):
+    native = tmp_path / "native"
+    reference = tmp_path / "reference"
+    native.mkdir()
+    reference.mkdir()
+    native_rows = []
+    reference_rows = []
+    for iteration in range(1, 11):
+        native_metrics = {
+            "perf/step_seconds": iteration / 100.0,
+            "perf/examples": 32,
+        }
+        if iteration in (1, 4):
+            native_metrics["perf/compilation_and_first_step_seconds"] = 2.0
+        native_rows.append(
+            {
+                "event": "training_step",
+                "iteration": iteration,
+                "metrics": native_metrics,
+            }
+        )
+        reference_rows.append(
+            {
+                "event": "training_step",
+                "iteration": iteration,
+                "metrics": {
+                    "perf/step_seconds": iteration / 50.0,
+                    "perf/examples": 32,
+                },
+            }
+        )
+    (native / "metrics.jsonl").write_text(
+        "".join(json.dumps(row) + "\n" for row in native_rows)
+    )
+    (reference / "metrics.jsonl").write_text(
+        "".join(json.dumps(row) + "\n" for row in reference_rows)
+    )
+
+    assert _paired_steady_state_summary(native, reference) == pytest.approx(
+        (0.34, 0.68, 4, 128, 7, 10)
+    )
 
 
 def test_dense_retrieval_aggregate_sorts_and_fingerprints_three_seeds(tmp_path):

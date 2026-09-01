@@ -322,6 +322,65 @@ def _reference_steady_state_summary(run_directory: Path) -> tuple[float, int, in
         ) from error
 
 
+def _paired_steady_state_summary(
+    representax_directory: Path,
+    reference_directory: Path,
+) -> tuple[float, float, int, int, int, int]:
+    def rows(
+        directory: Path,
+        *,
+        exclude_compilation: bool,
+    ) -> dict[int, tuple[float, int]]:
+        result = {}
+        with (directory / "metrics.jsonl").open() as stream:
+            for line in stream:
+                row = json.loads(line)
+                if row.get("event") != "training_step":
+                    continue
+                metrics = row["metrics"]
+                if exclude_compilation and metrics.get(
+                    "perf/compilation_and_first_step_seconds"
+                ) is not None:
+                    continue
+                step_seconds = metrics.get("perf/step_seconds")
+                if step_seconds is None:
+                    continue
+                result[int(row["iteration"])] = (
+                    float(step_seconds),
+                    int(metrics["perf/examples"]),
+                )
+        return result
+
+    native = rows(representax_directory, exclude_compilation=True)
+    reference = rows(reference_directory, exclude_compilation=False)
+    iterations = sorted(native.keys() & reference.keys())
+    if len(iterations) >= 8:
+        iterations = iterations[len(iterations) // 2 :]
+    if not iterations:
+        raise ValueError("paired run did not report matching warmed training steps")
+    native_seconds = 0.0
+    reference_seconds = 0.0
+    examples = 0
+    for iteration in iterations:
+        native_duration, native_examples = native[iteration]
+        reference_duration, reference_examples = reference[iteration]
+        if native_examples != reference_examples:
+            raise ValueError(
+                f"paired update {iteration} processed different example counts"
+            )
+        native_seconds += native_duration
+        reference_seconds += reference_duration
+        examples += native_examples
+    return (
+        native_seconds,
+        reference_seconds,
+        len(iterations),
+        examples,
+        iterations[0],
+        iterations[-1],
+    )
+
+
 def _final_training_loss(run_directory: Path) -> float:
     final_loss: float | None = None
     with (run_directory / "metrics.jsonl").open() as stream:
@@ -638,6 +697,7 @@ def _representax_report(
     steady_state_seconds, steady_state_step_count, steady_state_examples = (
         _training_steady_state_summary(run_directory)
     )
+    device_memory = jax.devices()[0].memory_stats() or {}
     exported_bundle = None
     if result.inference_bundle is not None:
         _, restored_job = load_inference_bundle(result.inference_bundle)
@@ -687,6 +747,10 @@ def _representax_report(
         "final_evaluation_compilation_seconds": final_compile_seconds,
         "evaluation_history": evaluation_history,
         "maximum_host_rss_bytes": _maximum_host_rss_bytes(),
+        "jax_allocator_bytes_limit": device_memory.get("bytes_limit"),
+        "jax_allocator_bytes_in_use": device_memory.get("bytes_in_use"),
+        "jax_allocator_peak_bytes_in_use": device_memory.get("peak_bytes_in_use"),
+        "jax_allocator_peak_pool_bytes": device_memory.get("peak_pool_bytes"),
     }
 
 
@@ -957,14 +1021,6 @@ def _sentence_transformers_report(
     training_data = datasets.Dataset(_training_table(training_path, required_rows))
     model_and_data_seconds = time.perf_counter() - load_started
 
-    class FixedLengthCollator(SentenceTransformerDataCollator):
-        def __call__(self, features: list[dict[str, Any]]) -> dict[str, Any]:
-            return _pad_features(
-                super().__call__(features),
-                maximum_length,
-                model.tokenizer.pad_token_id,
-            )
-
     loss = (
         MultipleNegativesRankingLoss(model, scale=20.0)
         if cache_chunk_size is None
@@ -1081,7 +1137,7 @@ def _sentence_transformers_report(
         args=arguments,
         train_dataset=training_data,
         loss=loss,
-        data_collator=FixedLengthCollator(
+        data_collator=SentenceTransformerDataCollator(
             preprocess_fn=model.tokenize,
             valid_label_columns=[],
         ),
@@ -1713,20 +1769,21 @@ def _pair(arguments: argparse.Namespace) -> None:
                 **offline_processes["sentence-transformers-offline"],
             },
         }
-    native_sustained_rate = native["steady_state_examples_per_second"]
-    oracle_rate = (
-        oracle["steady_state_examples_per_second"]
-        if oracle["steady_state_examples_per_second"] is not None
-        else oracle["amortized_examples_per_second"]
+    (
+        native_steady_seconds,
+        oracle_steady_seconds,
+        paired_steady_steps,
+        paired_steady_examples,
+        paired_steady_start,
+        paired_steady_end,
+    ) = _paired_steady_state_summary(
+        result_directory / "runs" / "representax",
+        result_directory / "runs" / "sentence-transformers",
     )
-    native_step_seconds = (
-        native["steady_state_seconds"] / native["steady_state_step_count"]
-    )
-    oracle_step_seconds = (
-        oracle["steady_state_seconds"] / oracle["steady_state_step_count"]
-        if oracle["steady_state_seconds"] is not None
-        else oracle["training_compute_seconds"] / arguments.steps
-    )
+    native_sustained_rate = paired_steady_examples / native_steady_seconds
+    oracle_rate = paired_steady_examples / oracle_steady_seconds
+    native_step_seconds = native_steady_seconds / paired_steady_steps
+    oracle_step_seconds = oracle_steady_seconds / paired_steady_steps
     seconds_saved_per_step = oracle_step_seconds - native_step_seconds
     compilation_break_even_steps = (
         native["compilation_and_first_use_seconds"] / seconds_saved_per_step
@@ -1770,9 +1827,17 @@ def _pair(arguments: argparse.Namespace) -> None:
         "shared_offline_evaluation": shared_offline_evaluation,
         "comparison": {
             "amortized_training_speedup": (
-                native["amortized_examples_per_second"] / oracle_rate
+                native["amortized_examples_per_second"]
+                / oracle["amortized_examples_per_second"]
             ),
             "sustained_training_speedup": native_sustained_rate / oracle_rate,
+            "representax_sustained_examples_per_second": native_sustained_rate,
+            "sentence_transformers_sustained_examples_per_second": oracle_rate,
+            "paired_steady_state_steps": paired_steady_steps,
+            "paired_steady_state_iterations": [
+                paired_steady_start,
+                paired_steady_end,
+            ],
             "compilation_break_even_steps": compilation_break_even_steps,
             "initial_metric_parity": True,
             "maximum_initial_metric_absolute_difference": (

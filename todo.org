@@ -373,7 +373,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
    =/raid/representax/paper-campaign-v1/preflight/packing/20260828/= and compact
    evidence under =benchmarks/results/paper-packing-preflight-20260828/=.
 *** NEXT Benchmark quality, throughput, feasible workload, utilization, and model coverage :research:benchmark:
-**** TODO Complete and inspect the seed-7 MPNet/MS MARCO serious trajectory
+**** TODO Repeat seed-7 MPNet/MS MARCO with the default reference collator
      The first detached launch was rejected before its first update because
      source provenance was read at summary time rather than captured at process
      start. Its preserved tree is
@@ -383,8 +383,25 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      =dea91a608e742588de4bd69dbdc49d9a7954ac61= before worker creation.
      Artifacts, raw metrics, logs, exports and shared offline evaluation belong under
      =/raid/representax/paper-campaign-v1/runs/dense-realistic/seed-7/=.
-     Inspect the complete quality trajectory, runtime, storage and event
-     overhead before launching seeds 42 and 773.
+     The completed fixed-padding run sustains 348.37 examples/s versus 132.37
+     for Sentence Transformers (2.632x). It remains a valid controlled systems
+     result, but the reference runner forced every training batch to length 256
+     instead of using Sentence Transformers' standard dynamic collator. Repeat
+     seed 7 with the standard collator before launching seeds 42 and 773. The
+     corrected summary must compare identical warmed update indices.
+
+     In the controlled run, final losses are 3.97107 and 3.97059. Shared
+     Representax evaluation reports NanoMSMARCO nDCG@10 of 0.58315 and 0.59008,
+     a -0.00693 absolute seed-7 difference. These remain diagnostics rather than
+     accepted default-reference paper values.
+
+     The NVML peak was XLA's preallocated pool, not live model memory. A current
+     allocator-instrumented replay measures 7.515 GiB peak live JAX allocation,
+     versus 7.059 GiB PyTorch allocated and 9.066 GiB reserved. During the final
+     quarter of the serious run, Representax averages 99.2% GPU utilization and
+     365.9 W. Batch 4,096 improves native throughput only 0.9%; GradCache chunk
+     64 improves it only 0.4%. Keep the frozen batch 2,048, chunk 32 operating
+     point rather than optimizing for memory occupancy.
 **** DONE Run the paired dense-retrieval campaign preflight
      Run 64 updates of the frozen MPNet/MS MARCO exact-GradCache workload at
      global batch 2048 and length 256 in Representax and Sentence Transformers
@@ -444,13 +461,27 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      scanned stack and manual dropout-attention path.
      Length bucketing preserves
      the scientific examples and objective while reducing padding, reaching
-     495.4 examples/s, or 2.823x the isolated reference. Five cold bucket
+     495.4 examples/s, or 2.823x the fixed-256 isolated reference. Retain this as
+     a controlled padding ablation, not a default-framework claim. Five cold bucket
      compilations cost 72.1 seconds and amortize after approximately 612
      updates under the earlier scanned implementation. Corrected fixed-shape
      evidence lives under
      =/raid/representax/paper-campaign-v1/preflight/direct-mnr/seed-7-fixed256-optimized-v4/=;
      optimized lifecycle evidence lives under
      =/raid/representax/paper-campaign-v1/preflight/direct-mnr/mpnet-optimized-lifecycle-20260828/=.
+     A current allocator-instrumented fixed-256 replay confirms 222.15 examples/s
+     and 12.004 GiB peak live JAX allocation at direct batch 32, versus 175.76
+     examples/s and 11.787 GiB peak allocated for Sentence Transformers: a
+     1.264x direct speedup with nearly identical memory. Both systems trained four
+     direct updates at batch 64; Sentence Transformers then OOMed during the
+     remaining evaluation lifecycle, while all four native rows were first-use
+     bucket compilations and therefore supplied no warm summary. Batch 32 remains
+     the largest complete matched direct lifecycle point.
+     The fair default direct comparison uses native bucketing and Sentence
+     Transformers' standard dynamic collator. Across identical warmed updates
+     15--24 it reaches 456.99 versus 397.27 examples/s (1.150x), with 7.260 GiB
+     peak live JAX allocation versus 5.755 GiB PyTorch allocated and 8.016 GiB
+     reserved. The 24-update quality values are only a systems diagnostic.
 **** DONE Preflight semantic similarity and pair classification
      Both frozen MPNet workloads now use global batch 256 as eight exact
      batch-32 gradient-accumulation microbatches. Semantic similarity passes
