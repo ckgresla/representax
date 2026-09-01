@@ -27,6 +27,13 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   deferred. Freeze only the finite experimental panel, then run the long paired
   evidence campaign; do not pull general development into it.
 
+  Keep each paper experiment under an enumerated repository directory such as
+  =experiments/01-dense-model-training/run.py=. That one public launcher owns
+  the frozen configuration, native and pinned-reference dispatch, shared
+  Representax evaluation, aggregation, and artifact naming while reusing the
+  production training and evaluation implementations. Write durable outputs to
+  the matching directory under =/raid/representax-paper/=.
+
 *** DONE Define measurable monotonic-improvement gates over existing trainers :research:
    This is a paper-protocol decision, not an implementation backlog. Freeze a
    small set of shared training workloads that execute in Representax and a
@@ -416,6 +423,28 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      365.9 W. Batch 4,096 improves native throughput only 0.9%; GradCache chunk
      64 improves it only 0.4%. Keep the frozen batch 2,048, chunk 32 operating
      point rather than optimizing for memory occupancy.
+**** DONE Complete the three-seed MPNet/MS MARCO serious result
+     Seeds 7, 42 and 773 all complete the frozen 256-update exact-GradCache
+     pair, export both final artifacts, and pass the shared Representax
+     NanoMSMARCO evaluator. Across matched warmed updates, Representax achieves
+     a 1.249x mean throughput improvement with a three-run 95% Student-t
+     interval of [1.178x, 1.320x]. Including native compilation and first use,
+     the mean improvement is 1.106x with interval [1.067x, 1.144x]. Every
+     observed systems result favors Representax.
+
+     The mean final nDCG@10 difference is +0.00262 with interval
+     [-0.01897, +0.02420]. Its sign changes across seeds, supporting comparable
+     quality rather than a systematic gain or loss. The aggregate records and
+     fingerprints each input and its exact source commits. Seed 7 used
+     =913cc82e2bb131cd6ff19708776190cbf5696aa9=; seeds 42 and 773 used
+     =ec50f99f24906041467928ae781fde175b0d7e0d=. Their only repository
+     difference is this roadmap result record.
+
+     The public reproducer is =experiments/01-dense-model-training/run.py=.
+     Canonical evidence and =three-seed-summary.json= live under
+     =/raid/representax-paper/01-dense-model-training/=. The three completed raw
+     trees are linked there without copying their model exports; future runs
+     write to that directory directly.
 **** DONE Run the paired dense-retrieval campaign preflight
      Run 64 updates of the frozen MPNet/MS MARCO exact-GradCache workload at
      global batch 2048 and length 256 in Representax and Sentence Transformers

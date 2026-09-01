@@ -338,9 +338,11 @@ def _paired_steady_state_summary(
                 if row.get("event") != "training_step":
                     continue
                 metrics = row["metrics"]
-                if exclude_compilation and metrics.get(
-                    "perf/compilation_and_first_step_seconds"
-                ) is not None:
+                if (
+                    exclude_compilation
+                    and metrics.get("perf/compilation_and_first_step_seconds")
+                    is not None
+                ):
                     continue
                 step_seconds = metrics.get("perf/step_seconds")
                 if step_seconds is None:
@@ -933,9 +935,7 @@ def _offline_evaluate(arguments: argparse.Namespace) -> None:
         "artifact_kind": arguments.artifact_kind,
         "artifact": str(artifact),
         "artifact_sha256": _directory_sha256(artifact),
-        "data_manifest": str(
-            (arguments.data_directory / "manifest.json").resolve()
-        ),
+        "data_manifest": str((arguments.data_directory / "manifest.json").resolve()),
         "data_manifest_sha256": _sha256(arguments.data_directory / "manifest.json"),
         "maximum_length": arguments.maximum_length,
         "evaluation_batch_size": arguments.evaluation_batch_size,
@@ -1534,12 +1534,14 @@ def _aggregate(arguments: argparse.Namespace) -> None:
         raise ValueError("provide exactly three paired summary files")
     summaries = [json.loads(path.read_text()) for path in paths]
     contracts = []
+    source_commits = []
     seeds = []
     for summary in summaries:
         if summary.get("schema_version") != "representax-dense-retrieval-comparison-v1":
             raise ValueError("aggregate input is not a dense-retrieval comparison")
         contract = dict(summary["contract"])
         seeds.append(int(contract.pop("seed")))
+        source_commits.append(dict(contract.pop("source_commits", {})))
         contracts.append(contract)
         if not summary["comparison"]["initial_metric_parity"]:
             raise ValueError("aggregate input did not pass initial metric parity")
@@ -1548,17 +1550,32 @@ def _aggregate(arguments: argparse.Namespace) -> None:
     if contracts[1:] != contracts[:-1]:
         raise ValueError("aggregate scientific and execution contracts differ")
 
-    ordered = sorted(zip(seeds, paths, summaries, strict=True))
+    ordered = sorted(zip(seeds, paths, summaries, source_commits, strict=True))
     metrics = {
         "sustained_training_speedup": lambda row: row["comparison"][
             "sustained_training_speedup"
         ],
-        "representax_steady_state_examples_per_second": lambda row: row["representax"][
-            "steady_state_examples_per_second"
+        "representax_sustained_examples_per_second": lambda row: row["comparison"][
+            "representax_sustained_examples_per_second"
         ],
-        "sentence_transformers_examples_per_second": lambda row: row[
+        "sentence_transformers_sustained_examples_per_second": lambda row: row[
+            "comparison"
+        ]["sentence_transformers_sustained_examples_per_second"],
+        "amortized_training_speedup": lambda row: row["comparison"][
+            "amortized_training_speedup"
+        ],
+        "representax_amortized_examples_per_second": lambda row: row["representax"][
+            "amortized_examples_per_second"
+        ],
+        "sentence_transformers_amortized_examples_per_second": lambda row: row[
             "sentence_transformers"
         ]["amortized_examples_per_second"],
+        "representax_final_ndcg@10": lambda row: row["comparison"][
+            "representax_final_ndcg@10"
+        ],
+        "sentence_transformers_final_ndcg@10": lambda row: row["comparison"][
+            "sentence_transformers_final_ndcg@10"
+        ],
         "final_ndcg@10_difference": lambda row: row["comparison"][
             "final_ndcg@10_difference"
         ],
@@ -1569,19 +1586,20 @@ def _aggregate(arguments: argparse.Namespace) -> None:
     aggregate = {
         "schema_version": "representax-dense-retrieval-three-run-aggregate-v1",
         "contract": contracts[0],
-        "seeds": [seed for seed, _, _ in ordered],
+        "seeds": [seed for seed, _, _, _ in ordered],
         "inputs": [
             {
                 "seed": seed,
                 "path": str(path),
                 "sha256": _sha256(path),
+                "source_commits": commits,
             }
-            for seed, path, _ in ordered
+            for seed, path, _, commits in ordered
         ],
         "all_initial_metrics_match": True,
         "metrics": {
             name: _three_run_interval(
-                [float(select(summary)) for _, _, summary in ordered]
+                [float(select(summary)) for _, _, summary, _ in ordered]
             )
             for name, select in metrics.items()
         },
@@ -1749,8 +1767,7 @@ def _pair(arguments: argparse.Namespace) -> None:
         ]
         offline_processes = _run_processes(offline_commands)
         offline = {
-            name: json.loads(path.read_text())
-            for name, path in offline_reports.items()
+            name: json.loads(path.read_text()) for name, path in offline_reports.items()
         }
         final_native_metrics = offline["representax"]["metrics"]
         final_oracle_metrics = offline["sentence-transformers"]["metrics"]

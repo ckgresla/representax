@@ -24,14 +24,31 @@ from benchmarks.dense_retrieval import (
 def _summary(seed: int, speedup: float) -> dict:
     return {
         "schema_version": "representax-dense-retrieval-comparison-v1",
-        "contract": {"model": "tiny", "batch_size": 8, "seed": seed},
+        "contract": {
+            "model": "tiny",
+            "batch_size": 8,
+            "seed": seed,
+            "source_commits": {
+                "representax": f"representax-{seed}",
+                "sentence-transformers": "sentence-transformers-pinned",
+            },
+        },
         "representax": {
             "steady_state_examples_per_second": 100.0 * speedup,
+            "amortized_examples_per_second": 90.0 * speedup,
         },
-        "sentence_transformers": {"amortized_examples_per_second": 100.0},
+        "sentence_transformers": {
+            "steady_state_examples_per_second": 100.0,
+            "amortized_examples_per_second": 90.0,
+        },
         "comparison": {
             "initial_metric_parity": True,
             "sustained_training_speedup": speedup,
+            "representax_sustained_examples_per_second": 100.0 * speedup,
+            "sentence_transformers_sustained_examples_per_second": 100.0,
+            "amortized_training_speedup": speedup,
+            "representax_final_ndcg@10": 0.5 + seed / 1_000.0,
+            "sentence_transformers_final_ndcg@10": 0.5,
             "final_ndcg@10_difference": seed / 1_000.0,
             "compilation_break_even_steps": 200.0 + seed,
         },
@@ -249,6 +266,11 @@ def test_dense_retrieval_aggregate_sorts_and_fingerprints_three_seeds(tmp_path):
     assert aggregate["contract"] == {"model": "tiny", "batch_size": 8}
     assert aggregate["metrics"]["sustained_training_speedup"]["mean"] == 1.2
     assert all(item["sha256"].startswith("sha256:") for item in aggregate["inputs"])
+    assert [item["source_commits"]["representax"] for item in aggregate["inputs"]] == [
+        "representax-17",
+        "representax-42",
+        "representax-73",
+    ]
 
 
 def test_dense_retrieval_aggregate_rejects_contract_drift(tmp_path):
