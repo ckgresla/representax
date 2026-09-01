@@ -34,7 +34,9 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   production training and evaluation implementations. Write durable outputs to
   the matching directory under =/raid/representax-paper/=. Keep lifecycle,
   compatibility, and bounded readiness runners under =experiments/preflights/=
-  rather than mixing them with serious experiment entrypoints.
+  rather than mixing them with serious experiment entrypoints. Keep machine
+  scheduling and experiment-local environment installation in flat shell files
+  beside each numbered experiment's Python launcher.
 
 *** DONE Define measurable monotonic-improvement gates over existing trainers :research:
    This is a paper-protocol decision, not an implementation backlog. Freeze a

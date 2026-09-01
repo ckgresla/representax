@@ -67,6 +67,8 @@ def _run_command(
     checkpoint: Path,
     data: Path,
 ) -> list[str]:
+    if gpus[0] == gpus[1]:
+        raise ValueError("the paired frameworks require distinct GPUs")
     return [
         *_benchmark_command("pair"),
         *_common_arguments(seed, checkpoint, data),
@@ -98,36 +100,6 @@ def _execute(command: list[str]) -> None:
     )
 
 
-def _campaign(arguments: argparse.Namespace) -> None:
-    if len(arguments.gpus) != 2 * len(QUALITY_SEEDS):
-        raise ValueError("campaign requires exactly six GPU indices")
-    processes = []
-    for index, seed in enumerate(QUALITY_SEEDS):
-        gpus = tuple(arguments.gpus[2 * index : 2 * index + 2])
-        command = _run_command(
-            seed,
-            gpus,
-            arguments.artifact_root,
-            arguments.checkpoint,
-            arguments.data,
-        )
-        print(" ".join(command), flush=True)
-        processes.append(
-            subprocess.Popen(command, cwd=REPOSITORY_ROOT)  # noqa: S603
-        )
-    try:
-        return_codes = [process.wait() for process in processes]
-    except BaseException:
-        for process in processes:
-            process.terminate()
-        for process in processes:
-            process.wait()
-        raise
-    if any(return_codes):
-        raise RuntimeError(f"paired campaign failed with return codes {return_codes}")
-    _execute(_aggregate_command(arguments.artifact_root))
-
-
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -146,12 +118,10 @@ def _parser() -> argparse.ArgumentParser:
     run.add_argument("--seed", type=int, choices=QUALITY_SEEDS, required=True)
     run.add_argument("--gpus", type=int, nargs=2, required=True)
 
-    commands.add_parser("aggregate", help="aggregate the three accepted seeds")
-    campaign = commands.add_parser(
-        "campaign",
-        help="run all three pairs concurrently, then aggregate",
+    commands.add_parser(
+        "aggregate",
+        help="combine runs/seed-{7,42,773}/summary.json",
     )
-    campaign.add_argument("--gpus", type=int, nargs=6, required=True)
     return parser
 
 
@@ -167,10 +137,8 @@ def main() -> None:
                 arguments.data,
             )
         )
-    elif arguments.command == "aggregate":
-        _execute(_aggregate_command(arguments.artifact_root))
     else:
-        _campaign(arguments)
+        _execute(_aggregate_command(arguments.artifact_root))
 
 
 if __name__ == "__main__":

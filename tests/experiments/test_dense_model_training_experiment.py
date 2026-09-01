@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import runpy
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -10,6 +11,8 @@ import pytest
 SCRIPT = (
     Path(__file__).parents[2] / "experiments" / "01-dense-model-training" / "run.py"
 )
+SHELL_RUNNER = SCRIPT.with_name("run.sh")
+SETUP = SCRIPT.with_name("setup.sh")
 
 
 def _experiment() -> dict:
@@ -73,11 +76,79 @@ def test_public_cli_only_exposes_paired_experiment_commands() -> None:
     help_text = parser.format_help()
     arguments = parser.parse_args(["run", "--seed", "773", "--gpus", "2", "3"])
 
-    assert "{run,aggregate,campaign}" in help_text
+    assert "{run,aggregate}" in help_text
     with pytest.raises(SystemExit):
         parser.parse_args(["train"])
     with pytest.raises(SystemExit):
         parser.parse_args(["evaluate"])
+    with pytest.raises(SystemExit):
+        parser.parse_args(["campaign"])
     assert arguments.command == "run"
     assert arguments.seed == 773
     assert arguments.gpus == [2, 3]
+
+
+def test_shell_files_are_syntactically_valid() -> None:
+    for script in (SHELL_RUNNER, SETUP):
+        subprocess.run(("bash", "-n", script), check=True)
+
+
+@pytest.mark.parametrize(
+    ("gpus", "expected"),
+    [
+        (
+            ("0", "1"),
+            {
+                "run --seed 7 --gpus 0 1",
+                "run --seed 42 --gpus 0 1",
+                "run --seed 773 --gpus 0 1",
+            },
+        ),
+        (
+            ("0", "1", "2", "3"),
+            {
+                "run --seed 7 --gpus 0 1",
+                "run --seed 42 --gpus 2 3",
+                "run --seed 773 --gpus 0 1",
+            },
+        ),
+        (
+            ("0", "1", "2", "3", "4", "5"),
+            {
+                "run --seed 7 --gpus 0 1",
+                "run --seed 42 --gpus 2 3",
+                "run --seed 773 --gpus 4 5",
+            },
+        ),
+    ],
+)
+def test_shell_runner_schedules_seed_pairs_in_waves(
+    tmp_path: Path,
+    gpus: tuple[str, ...],
+    expected: set[str],
+) -> None:
+    calls = tmp_path / "calls"
+    fake_python = tmp_path / "python"
+    fake_python.write_text(
+        '#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "${CALLS}"\n',
+        encoding="utf-8",
+    )
+    fake_python.chmod(0o755)
+
+    subprocess.run(
+        (SHELL_RUNNER, *gpus),
+        check=True,
+        env={
+            "CALLS": str(calls),
+            "PATH": "/usr/bin:/bin",
+            "REPRESENTAX_EXPERIMENT_PYTHON": str(fake_python),
+        },
+    )
+
+    invocations = calls.read_text(encoding="utf-8").splitlines()
+    assert len(invocations) == 4
+    assert invocations[3].endswith("run.py aggregate")
+    assert {
+        row.partition("run.py ")[2]
+        for row in invocations[:3]
+    } == expected
