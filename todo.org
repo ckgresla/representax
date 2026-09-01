@@ -373,6 +373,13 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
    =/raid/representax/paper-campaign-v1/preflight/packing/20260828/= and compact
    evidence under =benchmarks/results/paper-packing-preflight-20260828/=.
 *** NEXT Benchmark quality, throughput, feasible workload, utilization, and model coverage :research:benchmark:
+**** TODO Complete and inspect the seed-7 MPNet/MS MARCO serious trajectory
+     Launched the frozen 256-update pair from Representax commit
+     =2afe562137af4fb5088d2403c9f330ac02ac5312= on GPUs 0 and 1. Artifacts,
+     raw metrics, logs, exports and shared offline evaluation belong under
+     =/raid/representax/paper-campaign-v1/runs/dense-realistic/seed-7/=.
+     Inspect the complete quality trajectory, runtime, storage and event
+     overhead before launching seeds 42 and 773.
 **** DONE Run the paired dense-retrieval campaign preflight
      Run 64 updates of the frozen MPNet/MS MARCO exact-GradCache workload at
      global batch 2048 and length 256 in Representax and Sentence Transformers
