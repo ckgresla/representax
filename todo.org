@@ -378,9 +378,10 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      source provenance was read at summary time rather than captured at process
      start. Its preserved tree is
      =/raid/representax/paper-campaign-v1/runs/dense-realistic/seed-7-rejected-late-source-capture/=.
-     Relaunch the frozen 256-update pair on GPUs 0 and 1 after accepting the
-     startup-capture fix. Artifacts, raw metrics, logs, exports and shared
-     offline evaluation belong under
+     The corrected frozen 256-update pair was launched on GPUs 0 and 1 after
+     accepting the startup-capture fix. It captured Representax commit
+     =dea91a608e742588de4bd69dbdc49d9a7954ac61= before worker creation.
+     Artifacts, raw metrics, logs, exports and shared offline evaluation belong under
      =/raid/representax/paper-campaign-v1/runs/dense-realistic/seed-7/=.
      Inspect the complete quality trajectory, runtime, storage and event
      overhead before launching seeds 42 and 773.
