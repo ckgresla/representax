@@ -69,7 +69,9 @@ def test_reference_versions_and_sources_match_the_frozen_manifest() -> None:
         f"sentence-transformers=={manifest['sentence-transformers']['release']}"
         in groups["sentence-transformers"]
     )
+    assert "peft==0.19.1" in groups["sentence-transformers"]
     assert f"pylate=={manifest['pylate']['release']}" in groups["late-interaction"]
+    assert "representax" in groups["late-interaction"]
     assert f"trl=={manifest['trl']['release']}" in groups["reward"]
     sources = environment["tool"]["uv"]["sources"]
     assert sources["lejepa"]["rev"] == manifest["lejepa-paper"]["commit"]

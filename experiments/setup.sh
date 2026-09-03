@@ -118,6 +118,7 @@ for name, directory in {
     print(f"source {name} at {evidence['commit']}")
 
 importlib.import_module("sentence_transformers")
+importlib.import_module("peft")
 trl = importlib.import_module("trl")
 assert trl.RewardConfig and trl.RewardTrainer
 prm = importlib.import_module("trl.experimental.prm")
@@ -138,8 +139,10 @@ from importlib import import_module
 from importlib.metadata import version
 
 from experiments.preflights.provenance import installed_reference_provenance
+from representax.evaluation.retrieval import information_retrieval_metrics
 
 evidence = installed_reference_provenance("pylate")
+assert information_retrieval_metrics
 assert version("sentence-transformers") == "5.3.0"
 assert version("transformers") == "5.3.0"
 for module in ("pylate.losses", "pylate.models", "pylate.scores", "pylate.utils"):

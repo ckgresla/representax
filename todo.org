@@ -654,6 +654,40 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      ViT-L/16 capacity and schedule remain in the separate manifest-freeze item
      above. Official validation provenance is accepted separately in
      =benchmarks/results/imagenet-validation-provenance-20260831/=.
+**** DONE Complete the seed-7 30-step promotion screen
+     Run the seven remaining paired workloads for 30 updates on one RTX 4090
+     per worker. The primary systems comparison excludes native compilation
+     rows and explicit device-input idle, and uses CUDA-synchronized reference
+     optimizer-step timing. Native full-loop throughput and input idle remain
+     visible rather than being discarded. These are promotion screens, not
+     convergence or final paper evidence.
+
+     | Workload             | Representax active ex/s | Reference ex/s | Ratio | Representax full-loop ex/s | Input idle | Final metric: Representax / reference |
+     |----------------------+--------------------------+----------------+-------+-----------------------------+------------+----------------------------------------|
+     | Cross-encoder        |                   607.95 |         460.86 | 1.32x |                      469.28 |      22.8% | 0.61163 / 0.61163                      |
+     | Late interaction     |                   130.08 |          54.86 | 2.37x |                      125.32 |       3.7% | 0.69788 / 0.70712                      |
+     | Outcome reward       |                     7.85 |           6.65 | 1.18x |                        7.85 |       0.0% | 0.59375 / 0.62500                      |
+     | Process reward       |                    55.51 |          15.25 | 3.64x |                       52.93 |       4.6% | 0.85938 / 0.88281                      |
+     | Image-text retrieval |                   271.73 |         104.68 | 2.60x |                      110.28 |      59.4% | 0.77757 / 0.77711                      |
+     | Audio-text retrieval |                     2.69 |           1.82 | 1.48x |                        2.69 |       0.0% | 0.86879 / 0.85685                      |
+     | Video-text retrieval |                     3.59 |           1.52 | 2.36x |                        3.50 |       2.5% | 1.00000 / 1.00000                      |
+
+     The metrics are TREC DL 2019 nDCG@10, NanoMSMARCO nDCG@10,
+     UltraFeedback pair accuracy, Math Shepherd step accuracy, Flickr30k
+     nDCG@10, AudioCaps nDCG@10 and MSR-VTT nDCG@10, respectively. The
+     eight-query video panel checks execution only. Outcome-reward scalar heads
+     have framework-native seeded initialization, so its 30-step quality delta
+     is not a parameter-identical comparison. Image-text compute is green, but
+     its 59.4% native input-idle share must be fixed before the serious run.
+
+     All rows pass checkpoint, export and inference-reload acceptance. The
+     sweep exposed and fixed an undeclared =peft= dependency in the shared
+     reference environment and a video reload probe that incorrectly scaled to
+     the full training batch and exhausted memory after training. Exact reports,
+     component paths, timing inputs and Sentence Transformers, PyLate and TRL
+     commits are recorded in
+     =/raid/representax-paper/seed-7-30-step-screen/summary.json=; the rendered
+     table is =/raid/representax-paper/seed-7-30-step-screen/results.md=.
 **** TODO Evaluate both frameworks' exported artifacts through Representax
      Use one task-specific Representax offline evaluator and identical held-out
      examples for the two final artifacts in every paired row. Framework-native

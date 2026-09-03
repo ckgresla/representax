@@ -10,6 +10,8 @@ native = [
 ]
 sentence-transformers = [
     "accelerate==1.14.0",
+    "ir-datasets==0.5.11",
+    "peft==0.19.1",
     "sentence-transformers==5.6.1",
 ]
 reward = [
@@ -34,6 +36,7 @@ main = [
 ]
 late-interaction = [
     "pylate==1.6.0",
+    "representax",
     "torch==2.11.0",
     "torchvision==0.26.0",
 ]

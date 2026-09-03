@@ -20,6 +20,7 @@ from typing import Any
 import numpy as np
 
 from experiments.preflights.provenance import reference_source, write_reference_result
+from experiments.preflights.timing import CudaStepTimer, warm_step_summary
 
 ROOT = Path(__file__).resolve().parents[2]
 CAMPAIGN_MANIFEST = ROOT / "benchmarks/configs/paper-campaign-v1.json"
@@ -684,7 +685,9 @@ def _representax_worker(
         video_min_pixels=VIDEO_PIXELS,
         video_max_pixels=VIDEO_PIXELS,
     )
-    probe_rows = _read_jsonl(data_directory / "train.jsonl")[:batch_size]
+    probe_rows = _read_jsonl(data_directory / "train.jsonl")[
+        : min(batch_size, PREFLIGHT_BATCH_SIZE)
+    ]
     probe = VideoTextRetrievalCollator(
         processor=processor,
         root_directory=data_directory,
@@ -849,23 +852,6 @@ class _StopAtMidpoint:
         return StopAtMidpointCallback()
 
 
-class _StepTimer:
-    @staticmethod
-    def build(durations: list[float]) -> Any:
-        from transformers import TrainerCallback
-
-        class StepTimerCallback(TrainerCallback):
-            started = 0.0
-
-            def on_step_begin(self, *_: Any, **__: Any) -> None:
-                self.started = time.perf_counter()
-
-            def on_step_end(self, *_: Any, **__: Any) -> None:
-                durations.append(time.perf_counter() - self.started)
-
-        return StepTimerCallback()
-
-
 def _sentence_transformers_worker(
     *,
     checkpoint: Path,
@@ -988,14 +974,15 @@ def _sentence_transformers_worker(
         data_seed=seed,
         prompts=training_prompt,
     )
-    durations: list[float] = []
-    midpoint_callback = _StopAtMidpoint.build(steps // 2)
+    midpoint_step = steps // 2
+    timer = CudaStepTimer()
+    midpoint_callback = _StopAtMidpoint.build(midpoint_step)
     trainer = PreflightTrainer(
         model=model,
         args=arguments,
         train_dataset=train_dataset,
         loss=loss,
-        callbacks=[midpoint_callback, _StepTimer.build(durations)],
+        callbacks=[midpoint_callback, timer.callback()],
     )
     torch.cuda.reset_peak_memory_stats()
     started = time.perf_counter()
@@ -1065,7 +1052,11 @@ def _sentence_transformers_worker(
     reload_difference = float(np.max(np.abs(expected - actual)))
     if not np.array_equal(expected, actual) or not np.all(np.isfinite(midpoint_probe)):
         raise RuntimeError("Sentence Transformers checkpoint or export reload failed")
-    warmed = durations[1:]
+    warmed = warm_step_summary(
+        timer.rows,
+        batch_size=batch_size,
+        excluded_steps=(1, midpoint_step + 1),
+    )
     return {
         "schema_version": "representax-video-text-worker-v1",
         "framework": "sentence-transformers",
@@ -1079,9 +1070,9 @@ def _sentence_transformers_worker(
         "timing": {
             "execution": "eager",
             "compilation_and_first_step_seconds": [],
-            "warmed_steps": len(warmed),
-            "median_warmed_step_seconds": statistics.median(warmed),
-            "warmed_examples_per_second": batch_size * len(warmed) / sum(warmed),
+            "warmed_steps": warmed["measured_steps"],
+            "median_warmed_step_seconds": warmed["median_step_seconds"],
+            "warmed_examples_per_second": warmed["examples_per_second"],
         },
         "initial_evaluation_seconds": initial_evaluation_seconds,
         "final_evaluation_seconds": final_evaluation_seconds,

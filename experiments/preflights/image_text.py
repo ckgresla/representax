@@ -22,6 +22,7 @@ from typing import Any
 import numpy as np
 
 from experiments.preflights.provenance import reference_source, write_reference_result
+from experiments.preflights.timing import CudaStepTimer, warm_step_summary
 
 ROOT = Path(__file__).resolve().parents[2]
 CAMPAIGN_MANIFEST = ROOT / "benchmarks/configs/paper-campaign-v1.json"
@@ -821,11 +822,13 @@ def _sentence_transformers_worker(
         seed=seed,
         data_seed=seed,
     )
+    timer = CudaStepTimer()
     trainer = SentenceTransformerTrainer(
         model=model,
         args=arguments,
         train_dataset=train_dataset,
         loss=loss,
+        callbacks=[timer.callback()],
     )
     torch.cuda.reset_peak_memory_stats()
     started = time.perf_counter()
@@ -870,6 +873,10 @@ def _sentence_transformers_worker(
         "grad_cache_micro_batch_size": GRAD_CACHE_MICRO_BATCH,
         "training_seconds": training_seconds,
         "examples_per_second": contract.global_batch_size * steps / training_seconds,
+        "steady_state": warm_step_summary(
+            timer.rows,
+            batch_size=contract.global_batch_size,
+        ),
         "initial_evaluation_seconds": initial_evaluation_seconds,
         "final_evaluation_seconds": final_evaluation_seconds,
         "initial_evaluation": initial_evaluation,
