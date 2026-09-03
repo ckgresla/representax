@@ -18,6 +18,7 @@ from representax.models.bert import (
     BertEncoder,
     bert_weight_names,
 )
+from representax.models.bert.checkpoint import _checkpoint_name_map
 
 
 def tiny_config() -> BertConfig:
@@ -129,8 +130,14 @@ def test_checkpoint_mapping_round_trips_the_depth_major_tree():
     config = tiny_config()
     model = BertEncoder.init(config, key=jax.random.key(3))
     adapter = BertCheckpointAdapter(rematerialization="none")
+    first_layer = model.tower.layers.layer(0)
+    assert first_layer.attention.query.weight_layout == "input_output"
     state = adapter.state_dict(model)
     assert set(state) == bert_weight_names(config)
+    np.testing.assert_array_equal(
+        state["encoder.layer.0.attention.self.query.weight"],
+        first_layer.attention.query.output_major().weight,
+    )
 
     restored = adapter.from_state_dict(config, state)
     expected = jax.tree.leaves(eqx.filter(model, eqx.is_array))
@@ -145,6 +152,23 @@ def test_checkpoint_mapping_round_trips_the_depth_major_tree():
     ][:-1]
     with pytest.raises(ValueError, match="expected"):
         adapter.from_state_dict(config, broken)
+
+
+def test_checkpoint_mapping_accepts_legacy_layer_norm_names():
+    config = tiny_config()
+    canonical = bert_weight_names(config)
+    available = frozenset(
+        name.replace(".LayerNorm.weight", ".LayerNorm.gamma").replace(
+            ".LayerNorm.bias", ".LayerNorm.beta"
+        )
+        for name in canonical
+    )
+
+    mapping = _checkpoint_name_map(config, available)
+
+    assert mapping["embeddings.LayerNorm.weight"] == "embeddings.LayerNorm.gamma"
+    assert mapping["embeddings.LayerNorm.bias"] == "embeddings.LayerNorm.beta"
+    assert mapping["pooler.dense.weight"] == "pooler.dense.weight"
 
 
 def test_native_bert_accepts_input_embeddings_and_differentiates_them():

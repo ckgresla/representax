@@ -13,7 +13,11 @@ import jax.numpy as jnp
 import numpy as np
 
 from representax.core import EncoderMetadata, Modality, Route
-from representax.integrations.huggingface import load_hf_config, load_safetensor_subset
+from representax.integrations.huggingface import (
+    load_hf_config,
+    load_safetensor_subset,
+    safetensor_names,
+)
 from representax.models.components import AttentionImplementation, LayerNorm, Linear
 from representax.planning import RematerializationPolicy
 
@@ -64,6 +68,22 @@ def bert_weight_names(config: BertConfig) -> frozenset[str]:
             }
         )
     return frozenset(names)
+
+
+def _checkpoint_name_map(
+    config: BertConfig,
+    available: frozenset[str],
+) -> dict[str, str]:
+    mapping = {}
+    for name in bert_weight_names(config):
+        source = name
+        if source not in available and ".LayerNorm." in name:
+            suffix = ".gamma" if name.endswith(".weight") else ".beta"
+            source = name.rsplit(".", 1)[0] + suffix
+        if source not in available:
+            raise KeyError(f"BERT checkpoint is missing {name}")
+        mapping[name] = source
+    return mapping
 
 
 def _array(
@@ -139,29 +159,29 @@ class BertCheckpointAdapter:
             prefix = f"encoder.layer.{index}."
             layers.append(
                 BertLayer(
-                    attention=BertSelfAttention(
-                        query=_linear(
+                    attention=BertSelfAttention.from_projections(
+                        _linear(
                             state_dict,
                             prefix + "attention.self.query",
                             input_size=hidden,
                             output_size=hidden,
                             dtype=parameter_dtype,
                         ),
-                        key=_linear(
+                        _linear(
                             state_dict,
                             prefix + "attention.self.key",
                             input_size=hidden,
                             output_size=hidden,
                             dtype=parameter_dtype,
                         ),
-                        value=_linear(
+                        _linear(
                             state_dict,
                             prefix + "attention.self.value",
                             input_size=hidden,
                             output_size=hidden,
                             dtype=parameter_dtype,
                         ),
-                        output=_linear(
+                        _linear(
                             state_dict,
                             prefix + "attention.output.dense",
                             input_size=hidden,
@@ -259,11 +279,13 @@ class BertCheckpointAdapter:
     ) -> BertEncoder:
         values = load_hf_config(checkpoint)
         config = BertConfig.from_hf_config(values)
-        state = load_safetensor_subset(
+        names = _checkpoint_name_map(config, safetensor_names(checkpoint))
+        loaded = load_safetensor_subset(
             checkpoint,
-            bert_weight_names(config),
+            frozenset(names.values()),
             dtype=parameter_dtype,
         )
+        state = {name: loaded[source] for name, source in names.items()}
         return self.from_state_dict(
             config,
             state,
@@ -301,7 +323,7 @@ class BertCheckpointAdapter:
             for name, linear in linears.items():
                 if linear.bias is None:
                     raise ValueError("native BERT tree is missing an upstream bias")
-                state[prefix + name + ".weight"] = linear.weight
+                state[prefix + name + ".weight"] = linear.output_major().weight
                 state[prefix + name + ".bias"] = linear.bias
             norms = {
                 "attention.output.LayerNorm": layer.attention_norm,

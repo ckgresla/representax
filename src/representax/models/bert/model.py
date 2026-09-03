@@ -147,10 +147,84 @@ class BertEmbeddings(eqx.Module):
 
 
 class BertSelfAttention(eqx.Module):
-    query: Linear
-    key: Linear
-    value: Linear
+    qkv: Linear
     output: Linear
+
+    def projection(self, index: int) -> Linear:
+        """Expose one Hugging Face Q/K/V projection without changing storage."""
+
+        if index not in (0, 1, 2):
+            raise IndexError(index)
+        output_size = (
+            self.qkv.bias.shape[0] // 3
+            if self.qkv.bias is not None
+            else (
+                self.qkv.weight.shape[-1] // 3
+                if self.qkv.weight_layout == "input_output"
+                else self.qkv.weight.shape[0] // 3
+            )
+        )
+        start = index * output_size
+        stop = start + output_size
+        weight = (
+            self.qkv.weight[:, start:stop]
+            if self.qkv.weight_layout == "input_output"
+            else self.qkv.weight[start:stop]
+        )
+        bias = None if self.qkv.bias is None else self.qkv.bias[start:stop]
+        return Linear(
+            weight=weight,
+            bias=bias,
+            weight_layout=self.qkv.weight_layout,
+        )
+
+    @property
+    def query(self) -> Linear:
+        return self.projection(0)
+
+    @property
+    def key(self) -> Linear:
+        return self.projection(1)
+
+    @property
+    def value(self) -> Linear:
+        return self.projection(2)
+
+    @classmethod
+    def from_projections(
+        cls,
+        query: Linear,
+        key: Linear,
+        value: Linear,
+        output: Linear,
+    ) -> BertSelfAttention:
+        """Fuse canonical Q/K/V tensors into one compute projection."""
+
+        projections = (query, key, value)
+        layouts = {projection.weight_layout for projection in projections}
+        if len(layouts) != 1:
+            raise ValueError("BERT Q/K/V projections must use one weight layout")
+        if any(projection.bias is None for projection in projections):
+            raise ValueError("BERT Q/K/V projections require biases")
+        layout = query.weight_layout
+        weight_axis = 1 if layout == "input_output" else 0
+        return cls(
+            qkv=Linear(
+                weight=jnp.concatenate(
+                    tuple(projection.weight for projection in projections),
+                    axis=weight_axis,
+                ),
+                bias=jnp.concatenate(
+                    tuple(
+                        projection.bias
+                        for projection in projections
+                        if projection.bias is not None
+                    )
+                ),
+                weight_layout=layout,
+            ),
+            output=output,
+        )
 
     @classmethod
     def init(
@@ -168,11 +242,11 @@ class BertSelfAttention(eqx.Module):
             "dtype": dtype,
             "bias": True,
         }
-        return cls(
-            query=Linear.init(key=keys[0], **arguments),
-            key=Linear.init(key=keys[1], **arguments),
-            value=Linear.init(key=keys[2], **arguments),
-            output=Linear.init(key=keys[3], **arguments),
+        return cls.from_projections(
+            Linear.init(key=keys[0], **arguments),
+            Linear.init(key=keys[1], **arguments),
+            Linear.init(key=keys[2], **arguments),
+            Linear.init(key=keys[3], **arguments),
         )
 
     def __call__(
@@ -186,20 +260,18 @@ class BertSelfAttention(eqx.Module):
     ) -> Float[Array, "batch sequence hidden"]:
         batch, sequence, _ = hidden.shape
 
-        def project(
-            projection: Linear,
-        ) -> Float[Array, "batch sequence heads head"]:
-            return projection(hidden).reshape(
-                batch,
-                sequence,
-                config.num_attention_heads,
-                config.head_dimension,
-            )
-
+        qkv = self.qkv(hidden).reshape(
+            batch,
+            sequence,
+            3,
+            config.num_attention_heads,
+            config.head_dimension,
+        )
+        query, key, value = (qkv[:, :, index] for index in range(3))
         attended = dot_product_attention(
-            project(self.query),
-            project(self.key),
-            project(self.value),
+            query,
+            key,
+            value,
             attention_mask=attention_mask[:, None, None, :],
             dropout_probability=config.attention_dropout_probability,
             dropout_key=probability_key,
@@ -327,7 +399,17 @@ class BertLayerStack(eqx.Module):
     def from_layers(cls, layers: tuple[BertLayer, ...]) -> BertLayerStack:
         if not layers:
             return cls(blocks=None, depth=0)
-        blocks = jax.tree.map(lambda *values: jnp.stack(values), *layers)
+        compute_layers = tuple(
+            jax.tree.map(
+                lambda value: (
+                    value.input_major() if isinstance(value, Linear) else value
+                ),
+                layer,
+                is_leaf=lambda value: isinstance(value, Linear),
+            )
+            for layer in layers
+        )
+        blocks = jax.tree.map(lambda *values: jnp.stack(values), *compute_layers)
         return cls(blocks=blocks, depth=len(layers))
 
     def layer(self, index: int) -> BertLayer:

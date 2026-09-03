@@ -132,29 +132,29 @@ class DistilBertCheckpointAdapter:
             prefix = f"transformer.layer.{index}."
             layers.append(
                 BertLayer(
-                    attention=BertSelfAttention(
-                        query=_linear(
+                    attention=BertSelfAttention.from_projections(
+                        _linear(
                             state_dict,
                             prefix + "attention.q_lin",
                             input_size=hidden,
                             output_size=hidden,
                             dtype=parameter_dtype,
                         ),
-                        key=_linear(
+                        _linear(
                             state_dict,
                             prefix + "attention.k_lin",
                             input_size=hidden,
                             output_size=hidden,
                             dtype=parameter_dtype,
                         ),
-                        value=_linear(
+                        _linear(
                             state_dict,
                             prefix + "attention.v_lin",
                             input_size=hidden,
                             output_size=hidden,
                             dtype=parameter_dtype,
                         ),
-                        output=_linear(
+                        _linear(
                             state_dict,
                             prefix + "attention.out_lin",
                             input_size=hidden,
@@ -275,7 +275,7 @@ class DistilBertCheckpointAdapter:
                 "ffn.lin2": layer.mlp.output,
             }
             for name, linear in linears.items():
-                state[prefix + name + ".weight"] = linear.weight
+                state[prefix + name + ".weight"] = linear.output_major().weight
                 state[prefix + name + ".bias"] = _required_bias(linear)
             norms = {
                 "sa_layer_norm": layer.attention_norm,
