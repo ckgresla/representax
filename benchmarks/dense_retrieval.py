@@ -40,7 +40,7 @@ class ModelSpec:
     name: str
     model_id: str
     revision: str
-    native_target: str = "representax.integrations.load_sentence_transformer_encoder"
+    native_target: str = "representax.models:SentenceEncoder.load_from_hf"
     initial_metric_tolerance: float = 1e-6
     checkpoint: Path | None = None
 
@@ -56,6 +56,15 @@ MODEL_SPECS = {
         model_id="sentence-transformers/all-mpnet-base-v2",
         revision="e8c3b32edf5434bc2275fc9bab85f82640a19130",
         initial_metric_tolerance=5e-3,
+    ),
+    "modernbert": ModelSpec(
+        name="modernbert",
+        model_id="jhu-clsp/ettin-encoder-150m",
+        revision="45d08642849e5c5701b162671ac811b7654bfd9f",
+        native_target=(
+            "experiments.preflights.dense_retrieval:load_raw_modernbert_encoder"
+        ),
+        initial_metric_tolerance=2.5e-2,
     ),
     "modernvbert": ModelSpec(
         name="modernvbert",
@@ -78,6 +87,12 @@ def _checkpoint(spec: ModelSpec) -> Path:
     if spec.checkpoint is None:  # pragma: no cover - established by _model_spec
         raise AssertionError("benchmark model spec requires a local checkpoint")
     return spec.checkpoint
+
+
+def _native_model_target(spec: ModelSpec, *, packing: bool) -> str:
+    if packing:
+        return "experiments.preflights.padding:load_packed_mpnet_sentence_encoder"
+    return spec.native_target
 
 
 def _sha256(path: Path) -> str:
@@ -456,6 +471,7 @@ def _representax_report(
     maximum_length: int,
     sequence_length_buckets: tuple[int, ...],
     cache_chunk_size: int | None,
+    grad_cache_implementation: str,
     evaluation_batch_size: int,
     evaluation_every_steps: int | None,
     data_threads: int,
@@ -473,6 +489,7 @@ def _representax_report(
     packing_document_shape: tuple[int, int] | None,
 ) -> dict[str, Any]:
     import jax
+    import jax.numpy as jnp
     from experiments.preflights.dense_retrieval import (
         evaluation_rows,
         event_metrics,
@@ -540,10 +557,8 @@ def _representax_report(
         "parameter_dtype": "float32",
         "compute_dtype": "bfloat16" if mixed_precision else "float32",
     }
+    model_target = _native_model_target(spec, packing=packing)
     if packing:
-        model_target = (
-            "experiments.preflights.padding:load_packed_mpnet_sentence_encoder"
-        )
         model_parameters.update(
             {
                 "maximum_batch_size": max(batch_size, evaluation_batch_size),
@@ -559,7 +574,6 @@ def _representax_report(
                 }
             )
     else:
-        model_target = "representax.models:SentenceEncoder.load_from_hf"
         model_parameters["sequence_length_buckets"] = sequence_length_buckets
 
     job = JobConfig(
@@ -603,7 +617,10 @@ def _representax_report(
             grad_cache=(
                 None
                 if cache_chunk_size is None
-                else GradCacheConfig(micro_batch_size=cache_chunk_size)
+                else GradCacheConfig(
+                    micro_batch_size=cache_chunk_size,
+                    implementation=grad_cache_implementation,
+                )
             ),
             activation_rematerialization="none",
             donate_buffers=True,
@@ -702,6 +719,11 @@ def _representax_report(
         _training_steady_state_summary(run_directory)
     )
     device_memory = jax.devices()[0].memory_stats() or {}
+    parameter_count = sum(
+        int(value.size)
+        for value in jax.tree.leaves(result.state.model)
+        if hasattr(value, "dtype") and jnp.issubdtype(value.dtype, jnp.inexact)
+    )
     exported_bundle = None
     if result.inference_bundle is not None:
         _, restored_job = load_inference_bundle(result.inference_bundle)
@@ -715,6 +737,7 @@ def _representax_report(
         "model": spec.name,
         "model_id": spec.model_id,
         "revision": spec.revision,
+        "parameter_count": parameter_count,
         "batch_size": batch_size,
         "steps": steps,
         "maximum_length": maximum_length,
@@ -723,6 +746,7 @@ def _representax_report(
         "packing_query_shape": packing_query_shape,
         "packing_document_shape": packing_document_shape,
         "cache_chunk_size": cache_chunk_size,
+        "grad_cache_implementation": grad_cache_implementation,
         "seed": seed,
         "world_size": world_size,
         "mixed_precision": mixed_precision,
@@ -964,6 +988,8 @@ def _sentence_transformers_report(
     persistent_workers: bool,
     torch_compile: bool,
     torch_compile_backend: str,
+    fixed_query_length: int | None,
+    fixed_document_length: int | None,
     seed: int,
     world_size: int,
     mixed_precision: bool,
@@ -1017,6 +1043,15 @@ def _sentence_transformers_report(
         raise ValueError("persistent workers require at least one data thread")
     if data_threads > 0 and prefetch_buffer_size <= 0:
         raise ValueError("Sentence Transformers prefetch buffer must be positive")
+    if (fixed_query_length is None) != (fixed_document_length is None):
+        raise ValueError("fixed query and document lengths must be specified together")
+    if fixed_query_length is not None and (
+        fixed_query_length <= 0
+        or fixed_document_length is None
+        or fixed_document_length <= 0
+        or max(fixed_query_length, fixed_document_length) > maximum_length
+    ):
+        raise ValueError("fixed text lengths must be within the maximum length")
     checkpoint = _checkpoint(spec)
     evaluation_data = _evaluation_data(data_directory)
     training_path = _artifact_path(
@@ -1026,6 +1061,7 @@ def _sentence_transformers_report(
     )
     load_started = time.perf_counter()
     model = SentenceTransformer(str(checkpoint), local_files_only=True)
+    parameter_count = sum(parameter.numel() for parameter in model.parameters())
     model.max_seq_length = maximum_length
     required_rows = batch_size * steps
     training_data = datasets.Dataset(_training_table(training_path, required_rows))
@@ -1146,15 +1182,52 @@ def _sentence_transformers_report(
             return control
 
     callback = PeriodicRetrievalCallback()
+    data_collator = SentenceTransformerDataCollator(
+        preprocess_fn=model.tokenize,
+        valid_label_columns=[],
+    )
+    if fixed_query_length is not None:
+        import torch.nn.functional as functional
+
+        dynamic_collator = data_collator
+        pad_token_id = int(model.tokenizer.pad_token_id or 0)
+
+        def fixed_shape_collator(features: list[dict[str, Any]]) -> dict[str, Any]:
+            batch = dynamic_collator(features)
+            for column, target_length in (
+                ("query", fixed_query_length),
+                ("positive", fixed_document_length),
+            ):
+                assert target_length is not None
+                for suffix in ("input_ids", "attention_mask", "token_type_ids"):
+                    name = f"{column}_{suffix}"
+                    if name not in batch:
+                        continue
+                    value = batch[name]
+                    padding = target_length - int(value.shape[1])
+                    if padding < 0:
+                        raise ValueError(
+                            f"{column} length {value.shape[1]} exceeds fixed "
+                            f"length {target_length}"
+                        )
+                    if padding:
+                        batch[name] = functional.pad(
+                            value,
+                            (0, padding),
+                            value=(pad_token_id if suffix == "input_ids" else 0),
+                        )
+            return batch
+
+        # SentenceTransformers reads collator metadata while constructing the loader.
+        fixed_shape_collator.__dict__.update(vars(dynamic_collator))
+        data_collator = fixed_shape_collator
+
     trainer = RecordingTrainer(
         model=model,
         args=arguments,
         train_dataset=training_data,
         loss=loss,
-        data_collator=SentenceTransformerDataCollator(
-            preprocess_fn=model.tokenize,
-            valid_label_columns=[],
-        ),
+        data_collator=data_collator,
     )
     callback.trainer = trainer
     metrics_stream = None
@@ -1197,9 +1270,10 @@ def _sentence_transformers_report(
         class ReferenceTimingCallback(TrainerCallback):
             started: float | None = None
 
-            def on_step_begin(
+            def on_train_begin(
                 self, args: Any, state: Any, control: Any, **kwargs: Any
             ) -> Any:
+                torch.cuda.synchronize()
                 self.started = time.perf_counter()
                 return control
 
@@ -1209,7 +1283,10 @@ def _sentence_transformers_report(
                 if self.started is None:
                     raise AssertionError("reference step timer did not start")
                 iteration = int(state.global_step)
-                duration = time.perf_counter() - self.started
+                torch.cuda.synchronize()
+                completed_at = time.perf_counter()
+                duration = completed_at - self.started
+                self.started = completed_at
                 current_iteration["value"] = iteration
                 if trainer.final_train_loss is None:
                     raise AssertionError("reference trainer loss is unavailable")
@@ -1285,6 +1362,7 @@ def _sentence_transformers_report(
         "model": spec.name,
         "model_id": spec.model_id,
         "revision": spec.revision,
+        "parameter_count": parameter_count,
         "batch_size": batch_size,
         "steps": steps,
         "maximum_length": maximum_length,
@@ -1294,6 +1372,8 @@ def _sentence_transformers_report(
         "persistent_workers": persistent_workers,
         "torch_compile": torch_compile,
         "torch_compile_backend": (torch_compile_backend if torch_compile else None),
+        "fixed_query_length": fixed_query_length,
+        "fixed_document_length": fixed_document_length,
         "optimizer_implementation": str(arguments.optim),
         "seed": seed,
         "world_size": world_size,
@@ -1374,6 +1454,7 @@ def _worker(arguments: argparse.Namespace) -> None:
         report = _representax_report(
             spec,
             sequence_length_buckets=buckets,
+            grad_cache_implementation=arguments.grad_cache_implementation,
             packing=arguments.packing,
             packing_query_shape=packing_query_shape,
             packing_document_shape=packing_document_shape,
@@ -1395,6 +1476,8 @@ def _worker(arguments: argparse.Namespace) -> None:
             torch_compile_backend=(
                 arguments.sentence_transformers_torch_compile_backend
             ),
+            fixed_query_length=arguments.sentence_transformers_query_length,
+            fixed_document_length=arguments.sentence_transformers_document_length,
             **kwargs,
         )
     if report is not None:
@@ -1452,9 +1535,13 @@ def _run_processes(
                 "PYTHONUNBUFFERED": "1",
                 "JAX_DEFAULT_MATMUL_PRECISION": "highest",
                 "XLA_PYTHON_CLIENT_PREALLOCATE": "false",
-                "JAX_COMPILATION_CACHE_DIR": str(log_path.parent.parent / "jax-cache"),
-                "TORCHINDUCTOR_CACHE_DIR": str(
-                    log_path.parent.parent / "torchinductor-cache"
+                "JAX_COMPILATION_CACHE_DIR": os.environ.get(
+                    "REPRESENTAX_JAX_CACHE_DIR",
+                    str(log_path.parent.parent / "jax-cache"),
+                ),
+                "TORCHINDUCTOR_CACHE_DIR": os.environ.get(
+                    "REPRESENTAX_TORCHINDUCTOR_CACHE_DIR",
+                    str(log_path.parent.parent / "torchinductor-cache"),
                 ),
             }
         )
@@ -1616,6 +1703,18 @@ def _aggregate(arguments: argparse.Namespace) -> None:
             "compilation_break_even_steps"
         ],
     }
+    aggregated_metrics = {}
+    for name, select in metrics.items():
+        values = [select(summary) for _, _, summary, _ in ordered]
+        available = [value is not None for value in values]
+        if not any(available):
+            continue
+        if not all(available):
+            raise ValueError(f"aggregate metric availability differs: {name}")
+        aggregated_metrics[name] = _three_run_interval(
+            [float(value) for value in values]
+        )
+
     aggregate = {
         "schema_version": "representax-dense-retrieval-three-run-aggregate-v1",
         "contract": contracts[0],
@@ -1630,12 +1729,7 @@ def _aggregate(arguments: argparse.Namespace) -> None:
             for seed, path, _, commits in ordered
         ],
         "all_initial_metrics_match": True,
-        "metrics": {
-            name: _three_run_interval(
-                [float(select(summary)) for _, _, summary, _ in ordered]
-            )
-            for name, select in metrics.items()
-        },
+        "metrics": aggregated_metrics,
     }
     _atomic_json(arguments.output.expanduser().resolve(), aggregate)
     print(json.dumps(aggregate["metrics"], indent=2, sort_keys=True))
@@ -1665,11 +1759,15 @@ def _framework_cache_chunk_size(
 
 
 def _representax_worker_flags(arguments: argparse.Namespace) -> list[str]:
-    return [
+    flags = [
         flag
         for bucket in arguments.sequence_length_bucket or ()
         for flag in ("--sequence-length-bucket", str(bucket))
     ]
+    implementation = getattr(arguments, "grad_cache_implementation", "rematerialized")
+    if implementation != "rematerialized":
+        flags.extend(("--grad-cache-implementation", implementation))
+    return flags
 
 
 def _sentence_transformers_worker_flags(arguments: argparse.Namespace) -> list[str]:
@@ -1685,6 +1783,21 @@ def _sentence_transformers_worker_flags(arguments: argparse.Namespace) -> list[s
         flags.append("--sentence-transformers-persistent-workers")
     if arguments.sentence_transformers_torch_compile:
         flags.append("--sentence-transformers-torch-compile")
+    query_length = getattr(arguments, "sentence_transformers_query_length", None)
+    document_length = getattr(
+        arguments,
+        "sentence_transformers_document_length",
+        None,
+    )
+    if query_length is not None:
+        flags.extend(
+            (
+                "--sentence-transformers-query-length",
+                str(query_length),
+                "--sentence-transformers-document-length",
+                str(document_length),
+            )
+        )
     return flags
 
 
@@ -1788,6 +1901,12 @@ def _pair(arguments: argparse.Namespace) -> None:
     process = _run_processes(commands)
     native = json.loads(reports["representax"].read_text())
     oracle = json.loads(reports["sentence-transformers"].read_text())
+    if native["parameter_count"] != oracle["parameter_count"]:
+        raise RuntimeError(
+            "paired model parameter counts differ: "
+            f"Representax={native['parameter_count']}, "
+            f"Sentence Transformers={oracle['parameter_count']}"
+        )
     if native["mixed_precision"] != oracle["mixed_precision"]:
         raise ValueError("paired workers used different precision policies")
     maximum_initial_metric_difference = _initial_metric_parity(
@@ -1923,6 +2042,7 @@ def _pair(arguments: argparse.Namespace) -> None:
             ),
             "loss": "cosine MNR scale=20 asymmetric",
             "initial_metric_absolute_tolerance": spec.initial_metric_tolerance,
+            "parameter_count": native["parameter_count"],
         },
         "representax": {**native, **process["representax"]},
         "sentence_transformers": {
@@ -1945,6 +2065,7 @@ def _pair(arguments: argparse.Namespace) -> None:
             ],
             "compilation_break_even_steps": compilation_break_even_steps,
             "initial_metric_parity": True,
+            "parameter_count_match": True,
             "maximum_initial_metric_absolute_difference": (
                 maximum_initial_metric_difference
             ),
@@ -2127,6 +2248,12 @@ def _worker_arguments(
     parser.add_argument("--cache-chunk-size", type=int)
     parser.add_argument("--representax-cache-chunk-size", type=int)
     parser.add_argument("--sentence-transformers-cache-chunk-size", type=int)
+    parser.add_argument(
+        "--grad-cache-implementation",
+        choices=("rematerialized", "custom_vjp"),
+        default="rematerialized",
+        help="Representax GradCache backward schedule",
+    )
     parser.add_argument("--evaluation-batch-size", type=int, default=128)
     parser.add_argument("--evaluation-every-steps", type=int)
     parser.add_argument("--data-threads", type=int, default=4)
@@ -2149,6 +2276,8 @@ def _worker_arguments(
         "--sentence-transformers-torch-compile-backend",
         default="inductor",
     )
+    parser.add_argument("--sentence-transformers-query-length", type=int)
+    parser.add_argument("--sentence-transformers-document-length", type=int)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--world-size", type=int, default=1)
     parser.add_argument("--mixed-precision", action="store_true")

@@ -78,6 +78,12 @@ def precision_context(policy: PrecisionPolicy) -> Iterator[None]:
         _ACTIVE_PRECISION.reset(token)
 
 
+def active_precision_policy() -> PrecisionPolicy | None:
+    """Return the policy captured by the current traced computation."""
+
+    return _ACTIVE_PRECISION.get()
+
+
 def cast_floating_tree(tree: TreeT, dtype: jnp.dtype) -> TreeT:
     """Cast only floating or complex array leaves in an arbitrary PyTree."""
 
@@ -325,6 +331,7 @@ __all__ = [
     "PrecisionPolicy",
     "active_compute_dtype",
     "active_model_for_compute",
+    "active_precision_policy",
     "accumulated_values",
     "activation_inputs",
     "cast_floating_tree",

@@ -15,6 +15,7 @@ from representax.config import PrecisionConfig
 from representax.core import BUILTIN_MODALITIES, EncoderMetadata, Route, encode
 from representax.models import DenseEncoder
 from representax.precision import (
+    active_compute_dtype,
     model_for_compute,
     precision_context,
     resolve_precision_policy,
@@ -47,6 +48,34 @@ class _IdentityEncoder(eqx.Module):
     ) -> jax.Array:
         del route, key
         return inputs * self.scale
+
+
+class _PrecisionCheckingEncoder(eqx.Module):
+    weight: jax.Array
+    metadata: EncoderMetadata
+
+    def __init__(self) -> None:
+        self.weight = jnp.eye(4, dtype=jnp.float32)
+        self.metadata = EncoderMetadata(
+            model_id="representax/test-precision-checking",
+            revision="1",
+            output_dimension=4,
+            routes=frozenset(Route),
+            modalities=BUILTIN_MODALITIES,
+        )
+
+    def encode(
+        self,
+        inputs: jax.Array,
+        *,
+        route: Route,
+        key: jax.Array | None = None,
+    ) -> jax.Array:
+        del route, key
+        dtype = active_compute_dtype(jnp.float32)
+        if dtype != jnp.dtype(jnp.bfloat16):
+            raise RuntimeError("encoder was traced outside the BF16 precision context")
+        return inputs.astype(dtype) @ self.weight.astype(dtype)
 
 
 def _inexact_dtypes(tree: Any) -> set[jnp.dtype]:
@@ -223,7 +252,8 @@ def test_bfloat16_gradient_accumulation_matches_full_batch_update():
     )
 
 
-def test_bfloat16_grad_cache_matches_direct_update():
+@pytest.mark.parametrize("implementation", ["rematerialized", "custom_vjp"])
+def test_bfloat16_grad_cache_matches_direct_update(implementation: str):
     policy = resolve_precision_policy(PrecisionConfig.bfloat16_mixed())
     model = DenseEncoder(4, 3, key=jax.random.key(7), normalize=False)
     optimizer = optax.adamw(1e-3, weight_decay=0.0)
@@ -240,11 +270,32 @@ def test_bfloat16_grad_cache_matches_direct_update():
         task,
         optimizer,
         max_grad_norm=None,
-        execution=GradCache(query_chunk_size=2, document_chunk_size=2),
+        execution=GradCache(
+            query_chunk_size=2,
+            document_chunk_size=2,
+            implementation=implementation,
+        ),
         precision=policy,
     )(state, batch, None)
 
     _assert_bfloat16_equivalent(cached, direct)
+
+
+def test_custom_vjp_grad_cache_backward_preserves_precision_context():
+    policy = resolve_precision_policy(PrecisionConfig.bfloat16_mixed())
+    model = _PrecisionCheckingEncoder()
+    optimizer = optax.adamw(1e-3, weight_decay=0.0)
+    state = init_train_state(model, optimizer, precision=policy)
+
+    result = build_train_step(
+        MNRTask(scale=5.0),
+        optimizer,
+        max_grad_norm=None,
+        execution=GradCache(query_chunk_size=2, implementation="custom_vjp"),
+        precision=policy,
+    )(state, _retrieval_batch(), None)
+
+    assert bool(result.metrics.numeric_finite)
 
 
 def test_float8_step_emulation_keeps_master_state_finite_and_fp32():

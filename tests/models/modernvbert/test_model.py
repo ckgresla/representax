@@ -173,6 +173,7 @@ def test_text_depth_lowers_to_one_scan_with_explicit_rematerialization():
     )
     scan = _text_scan(full, batch)
     assert scan.params["length"] == tiny_config().num_hidden_layers - 1
+    assert len(scan.outvars) == 1
     remat_equations = scan.params["jaxpr"].jaxpr.eqns
     assert [equation.primitive.name for equation in remat_equations] == ["remat2"]
     assert (

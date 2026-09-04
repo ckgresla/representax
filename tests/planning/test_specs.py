@@ -310,6 +310,7 @@ def test_parameter_roles_project_domain_config_without_parallel_trees():
     training_execution = execution["training"]
     assert isinstance(training_execution, dict)
     assert training_execution["grad_cache"] == {
+        "implementation": "rematerialized",
         "micro_batch_size": 8,
         "query_micro_batch_size": None,
         "document_micro_batch_size": None,
@@ -381,6 +382,7 @@ def test_structured_task_loss_and_grad_cache_build_runtime_objects():
     task = build_task(RetrievalConfig(), loss)
     loss_execution = build_loss_execution(
         GradCacheConfig(
+            implementation="custom_vjp",
             micro_batch_size=4,
             document_micro_batch_size=8,
             loss_row_chunk_size=2,
@@ -395,6 +397,7 @@ def test_structured_task_loss_and_grad_cache_build_runtime_objects():
     assert loss_execution.query_chunk_size == 4
     assert loss_execution.resolved_document_chunk_size == 8
     assert loss_execution.resolved_loss_row_chunk_size == 2
+    assert loss_execution.implementation == "custom_vjp"
 
 
 def test_loss_modifiers_round_trip_and_build_as_scientific_job_config():

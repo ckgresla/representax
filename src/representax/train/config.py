@@ -26,6 +26,7 @@ def build_loss_execution(
             document_chunk_size=config.resolved_document_micro_batch_size,
             loss_row_chunk_size=config.resolved_loss_row_chunk_size,
             score_chunk_size=config.resolved_score_micro_batch_size,
+            implementation=config.implementation,
         )
     if isinstance(mega_batch_mining, MegaBatchMiningConfig):
         return MegaBatchMining(

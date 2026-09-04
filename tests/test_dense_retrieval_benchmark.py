@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 from benchmarks.dense_retrieval import (
     MODEL_SPECS,
+    _native_model_target,
     _aggregate,
     _framework_cache_chunk_size,
     _paired_steady_state_summary,
@@ -89,7 +90,10 @@ def test_pair_worker_flags_enable_shared_export_and_offline_evaluation():
 
 
 def test_pair_worker_flags_preserve_representax_sequence_buckets():
-    arguments = argparse.Namespace(sequence_length_bucket=[16, 32, 128])
+    arguments = argparse.Namespace(
+        sequence_length_bucket=[16, 32, 128],
+        grad_cache_implementation="custom_vjp",
+    )
 
     assert _representax_worker_flags(arguments) == [
         "--sequence-length-bucket",
@@ -98,6 +102,8 @@ def test_pair_worker_flags_preserve_representax_sequence_buckets():
         "32",
         "--sequence-length-bucket",
         "128",
+        "--grad-cache-implementation",
+        "custom_vjp",
     ]
 
 
@@ -130,6 +136,8 @@ def test_sentence_transformers_worker_flags_preserve_execution_tuning():
         sentence_transformers_persistent_workers=True,
         sentence_transformers_torch_compile=True,
         sentence_transformers_torch_compile_backend="inductor",
+        sentence_transformers_query_length=16,
+        sentence_transformers_document_length=128,
     )
 
     assert _sentence_transformers_worker_flags(arguments) == [
@@ -141,12 +149,27 @@ def test_sentence_transformers_worker_flags_preserve_execution_tuning():
         "inductor",
         "--sentence-transformers-persistent-workers",
         "--sentence-transformers-torch-compile",
+        "--sentence-transformers-query-length",
+        "16",
+        "--sentence-transformers-document-length",
+        "128",
     ]
 
 
 def test_mpnet_mixed_precision_uses_a_metric_level_parity_tolerance():
     assert MODEL_SPECS["mpnet"].initial_metric_tolerance == 5e-3
 
+
+def test_native_model_target_honors_each_model_spec():
+    assert _native_model_target(MODEL_SPECS["modernbert"], packing=False) == (
+        "experiments.preflights.dense_retrieval:load_raw_modernbert_encoder"
+    )
+    assert _native_model_target(MODEL_SPECS["modernvbert"], packing=False) == (
+        "representax.integrations.load_modernvbert_text_encoder"
+    )
+    assert _native_model_target(MODEL_SPECS["mpnet"], packing=False) == (
+        "representax.models:SentenceEncoder.load_from_hf"
+    )
 
 def test_compile_summary_counts_every_executable_first_use(tmp_path):
     run = tmp_path / "run"
@@ -316,6 +339,23 @@ def test_dense_retrieval_aggregate_sorts_and_fingerprints_three_seeds(tmp_path):
         "representax-42",
         "representax-73",
     ]
+
+
+def test_dense_retrieval_aggregate_omits_unavailable_break_even(tmp_path):
+    summaries = [
+        _write_summary(tmp_path / f"seed-{seed}.json", seed, 1.1)
+        for seed in (17, 42, 73)
+    ]
+    for path in summaries:
+        summary = json.loads(path.read_text())
+        summary["comparison"]["compilation_break_even_steps"] = None
+        path.write_text(json.dumps(summary))
+
+    output = tmp_path / "aggregate.json"
+    _aggregate(argparse.Namespace(summary=summaries, output=output))
+
+    aggregate = json.loads(output.read_text())
+    assert "compilation_break_even_steps" not in aggregate["metrics"]
 
 
 def test_dense_retrieval_aggregate_rejects_contract_drift(tmp_path):

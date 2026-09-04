@@ -491,6 +491,10 @@ class BatchConfig(FrozenConfig):
 class GradCacheConfig(FrozenConfig):
     """Memory bounds for exact cached differentiation of representation losses."""
 
+    implementation: Literal["rematerialized", "custom_vjp"] = Field(
+        default="rematerialized",
+        description="Encoder backward schedule used for chunk replay.",
+    )
     micro_batch_size: PositiveInt = Field(
         description="Default number of examples encoded by each replayed forward pass."
     )

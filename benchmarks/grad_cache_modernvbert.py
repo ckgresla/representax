@@ -36,6 +36,18 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=1729)
     parser.add_argument("--learning-rate", type=float, default=0.0)
     parser.add_argument("--max-gradient-norm", type=float)
+    parser.add_argument(
+        "--compute-dtype",
+        choices=("float32", "bfloat16"),
+        default="float32",
+    )
+    parser.add_argument("--repeat-sample", action="store_true")
+    parser.add_argument("--torch-compile", action="store_true")
+    parser.add_argument(
+        "--grad-cache-implementation",
+        choices=("rematerialized", "custom_vjp"),
+        default="rematerialized",
+    )
     parser.add_argument("--updated-text-weights", type=Path)
     parser.add_argument("--text-gradients", type=Path)
     parser.add_argument(
@@ -101,15 +113,19 @@ class _ProcessMemorySampler:
 
 def _inputs(arguments: argparse.Namespace, vocabulary_size: int) -> dict[str, Any]:
     generator = np.random.default_rng(arguments.seed)
-    shape = (arguments.batch_size, arguments.sequence_length)
+    generated_batch_size = 1 if arguments.repeat_sample else arguments.batch_size
+    shape = (generated_batch_size, arguments.sequence_length)
+    query = generator.integers(1, vocabulary_size, size=shape, dtype=np.int32)
+    document = generator.integers(1, vocabulary_size, size=shape, dtype=np.int32)
+    if arguments.repeat_sample:
+        query = np.repeat(query, arguments.batch_size, axis=0)
+        document = np.repeat(document, arguments.batch_size, axis=0)
     return {
-        "query_input_ids": generator.integers(
-            1, vocabulary_size, size=shape, dtype=np.int32
+        "query_input_ids": query,
+        "document_input_ids": document,
+        "attention_mask": np.ones(
+            (arguments.batch_size, arguments.sequence_length), dtype=np.int32
         ),
-        "document_input_ids": generator.integers(
-            1, vocabulary_size, size=shape, dtype=np.int32
-        ),
-        "attention_mask": np.ones(shape, dtype=np.int32),
     }
 
 
@@ -129,7 +145,8 @@ def _workload_fingerprints(
         "checkpoint_revision": arguments.checkpoint.name,
         "objective": "diagonal-cosine-mnr",
         "pooling": "attention-mask-mean-then-l2-normalize",
-        "precision": "float32-highest-no-tf32",
+        "precision": arguments.compute_dtype,
+        "repeat_sample": arguments.repeat_sample,
         "scale": 20.0,
         "seed": arguments.seed,
         "sequence_length": arguments.sequence_length,
@@ -151,15 +168,24 @@ def _array_tree_bytes(tree: Any) -> int:
     )
 
 
+def _canonical_text_name(name: str) -> str:
+    name = name.removeprefix("_orig_mod.")
+    if not name.startswith("text_model."):
+        name = f"text_model.{name}"
+    return f"model.{name}"
+
+
 def _representax(arguments: argparse.Namespace) -> dict[str, Any]:
     import jax
     import jax.numpy as jnp
     import optax
 
+    from representax.config import PrecisionConfig
     from representax.models.modernvbert import (
         ModernVBERTTextBatch,
         ModernVBERTTextCheckpointAdapter,
     )
+    from representax.precision import resolve_precision_policy
     from representax.tasks.retrieval import MNRTask, retrieval_batch
     from representax.train import GradCache, build_train_step, make_train_state
 
@@ -170,14 +196,20 @@ def _representax(arguments: argparse.Namespace) -> dict[str, Any]:
     text_config = config.get("text_config", config)
     arrays = _inputs(arguments, int(text_config["vocab_size"]))
     fingerprints = _workload_fingerprints(arguments, arrays)
+    compute_dtype = jnp.dtype(arguments.compute_dtype)
+    precision = resolve_precision_policy(
+        PrecisionConfig.bfloat16_mixed()
+        if arguments.compute_dtype == "bfloat16"
+        else PrecisionConfig()
+    )
 
     setup_started = time.perf_counter()
     cpu = jax.devices("cpu")[0]
     with jax.default_device(cpu):
-        model = ModernVBERTTextCheckpointAdapter().load(
+        model = ModernVBERTTextCheckpointAdapter(weight_prefix="").load(
             arguments.checkpoint,
             parameter_dtype=jnp.float32,
-            compute_dtype=jnp.float32,
+            compute_dtype=compute_dtype,
             rematerialization=arguments.rematerialization,
         )
         optimizer = optax.adamw(
@@ -218,6 +250,7 @@ def _representax(arguments: argparse.Namespace) -> dict[str, Any]:
             query_chunk_size=arguments.chunk_size,
             document_chunk_size=arguments.chunk_size,
             loss_row_chunk_size=arguments.chunk_size,
+            implementation=arguments.grad_cache_implementation,
         )
     )
     step = build_train_step(
@@ -226,6 +259,7 @@ def _representax(arguments: argparse.Namespace) -> dict[str, Any]:
         max_grad_norm=arguments.max_gradient_norm,
         execution=execution,
         donate_state=True,
+        precision=precision,
     )
     jax.block_until_ready(state)
     resident_bytes = {
@@ -309,7 +343,7 @@ def _representax(arguments: argparse.Namespace) -> dict[str, Any]:
         ),
         "precision_policy": {
             "parameters": "float32",
-            "compute": "float32",
+            "compute": arguments.compute_dtype,
             "objective": "float32",
             "float32_matmul": "highest",
             "xla_python_client_preallocate": os.environ.get(
@@ -327,7 +361,7 @@ def _sentence_transformers(arguments: argparse.Namespace) -> dict[str, Any]:
     from sentence_transformers.sentence_transformer.losses import (
         CachedMultipleNegativesRankingLoss,
     )
-    from transformers import ModernVBertModel
+    from transformers import AutoModel
 
     torch.set_float32_matmul_precision("highest")
     torch.backends.cuda.matmul.allow_tf32 = False
@@ -362,11 +396,13 @@ def _sentence_transformers(arguments: argparse.Namespace) -> dict[str, Any]:
 
     setup_started = time.perf_counter()
     transformers.utils.logging.disable_progress_bar()
-    base = ModernVBertModel.from_pretrained(
+    base = AutoModel.from_pretrained(
         arguments.checkpoint,
         dtype=torch.float32,
         local_files_only=True,
     ).to(device)
+    if arguments.torch_compile:
+        base = torch.compile(base, backend="inductor")
     model = Encoder(base)
     model.train()
     loss_function = CachedMultipleNegativesRankingLoss(
@@ -401,7 +437,12 @@ def _sentence_transformers(arguments: argparse.Namespace) -> dict[str, Any]:
 
     def update() -> tuple[float, float]:
         optimizer.zero_grad(set_to_none=True)
-        loss = loss_function(features, labels)
+        with torch.autocast(
+            device_type="cuda",
+            dtype=torch.bfloat16,
+            enabled=arguments.compute_dtype == "bfloat16",
+        ):
+            loss = loss_function(features, labels)
         loss.backward()
         norm = torch.nn.utils.get_total_norm(
             [
@@ -458,9 +499,8 @@ def _sentence_transformers(arguments: argparse.Namespace) -> dict[str, Any]:
         from safetensors.torch import save_file
 
         text_names = {
-            f"model.{name}": value.detach().cpu().contiguous()
+            _canonical_text_name(name): value.detach().cpu().contiguous()
             for name, value in base.state_dict().items()
-            if name.startswith("text_model.")
         }
         arguments.updated_text_weights.parent.mkdir(parents=True, exist_ok=True)
         save_file(text_names, arguments.updated_text_weights)
@@ -470,9 +510,9 @@ def _sentence_transformers(arguments: argparse.Namespace) -> dict[str, Any]:
         from safetensors.torch import save_file
 
         text_gradients = {
-            f"model.{name}": parameter.grad.detach().cpu().contiguous()
+            _canonical_text_name(name): parameter.grad.detach().cpu().contiguous()
             for name, parameter in base.named_parameters()
-            if name.startswith("text_model.") and parameter.grad is not None
+            if parameter.grad is not None
         }
         arguments.text_gradients.parent.mkdir(parents=True, exist_ok=True)
         save_file(text_gradients, arguments.text_gradients)
@@ -495,7 +535,7 @@ def _sentence_transformers(arguments: argparse.Namespace) -> dict[str, Any]:
         ),
         "precision_policy": {
             "parameters": "float32",
-            "compute": "float32",
+            "compute": arguments.compute_dtype,
             "objective": "float32",
             "float32_matmul": torch.get_float32_matmul_precision(),
             "cuda_matmul_allow_tf32": torch.backends.cuda.matmul.allow_tf32,
@@ -551,6 +591,10 @@ def main() -> None:
             "warmup_steps": arguments.warmup_steps,
             "measured_steps": arguments.measured_steps,
             "seed": arguments.seed,
+            "compute_dtype": arguments.compute_dtype,
+            "repeat_sample": arguments.repeat_sample,
+            "torch_compile": arguments.torch_compile,
+            "grad_cache_implementation": arguments.grad_cache_implementation,
             "learning_rate": arguments.learning_rate,
             "max_gradient_norm": arguments.max_gradient_norm,
             "optimizer_updates": (

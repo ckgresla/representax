@@ -502,23 +502,66 @@ class ModernVBERTTextTower(eqx.Module):
         attention_implementation: AttentionImplementation,
         rematerialization: RematerializationPolicy,
     ) -> Float[Array, "batch sequence hidden"]:
-        return self.all_hidden_states(
+        hidden, attention_mask, position_ids = self._execution_inputs(
             batch,
             compute_dtype=compute_dtype,
-            attention_implementation=attention_implementation,
-            rematerialization=rematerialization,
-        )[-1]
+        )
+        if self.layers.first_block is None:
+            return self.final_norm(hidden)
 
-    def all_hidden_states(
+        def apply_first_layer(
+            carry: Float[Array, "batch sequence hidden"],
+            layer: _ModernVBERTTextScanBlock,
+        ) -> Float[Array, "batch sequence hidden"]:
+            return self._apply_block(
+                carry,
+                layer,
+                carry,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                attention_implementation=attention_implementation,
+            )
+
+        hidden = rematerialize(
+            apply_first_layer,
+            rematerialization,
+        )(hidden, self.layers.first_block)
+        if self.layers.blocks is not None:
+            if self.layers.attention_norms is None:  # pragma: no cover
+                raise AssertionError("post-zero layers require attention norms")
+
+            def apply_layer(
+                carry: Float[Array, "batch sequence hidden"],
+                values: tuple[_ModernVBERTTextScanBlock, LayerNorm],
+            ) -> tuple[Float[Array, "batch sequence hidden"], None]:
+                layer, attention_norm = values
+                output = self._apply_block(
+                    carry,
+                    layer,
+                    attention_norm(carry),
+                    attention_mask=attention_mask,
+                    position_ids=position_ids,
+                    attention_implementation=attention_implementation,
+                )
+                return output, None
+
+            hidden, _ = jax.lax.scan(
+                rematerialize(apply_layer, rematerialization),
+                hidden,
+                (self.layers.blocks, self.layers.attention_norms),
+            )
+        return self.final_norm(hidden)
+
+    def _execution_inputs(
         self,
         batch: ModernVBERTTextBatch,
         *,
         compute_dtype: jnp.dtype,
-        attention_implementation: AttentionImplementation,
-        rematerialization: RematerializationPolicy,
-    ) -> Float[Array, "layer batch sequence hidden"]:
-        """Return embedding output followed by every encoder-layer output."""
-
+    ) -> tuple[
+        Float[Array, "batch sequence hidden"],
+        Bool[Array, "batch sequence"],
+        Int[Array, "batch sequence"],
+    ]:
         if batch.input_ids is not None:
             hidden = self.token_embeddings(batch.input_ids)
         elif batch.inputs_embeds is not None:
@@ -542,30 +585,56 @@ class ModernVBERTTextTower(eqx.Module):
             position_ids = jnp.broadcast_to(batch.position_ids, (batch_size, sequence))
         else:
             position_ids = batch.position_ids
-        hidden = self.embedding_norm(hidden)
+        return self.embedding_norm(hidden), attention_mask, position_ids
+
+    def _apply_block(
+        self,
+        carry: Float[Array, "batch sequence hidden"],
+        layer: _ModernVBERTTextScanBlock,
+        attention_input: Float[Array, "batch sequence hidden"],
+        *,
+        attention_mask: Bool[Array, "batch sequence"],
+        position_ids: Int[Array, "batch sequence"],
+        attention_implementation: AttentionImplementation,
+    ) -> Float[Array, "batch sequence hidden"]:
+        output = carry + layer.attention(
+            attention_input,
+            config=self.config,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            sliding_attention=layer.sliding_attention,
+            implementation=attention_implementation,
+        )
+        return output + layer.mlp(layer.mlp_norm(output))
+
+    def all_hidden_states(
+        self,
+        batch: ModernVBERTTextBatch,
+        *,
+        compute_dtype: jnp.dtype,
+        attention_implementation: AttentionImplementation,
+        rematerialization: RematerializationPolicy,
+    ) -> Float[Array, "layer batch sequence hidden"]:
+        """Return embedding output followed by every encoder-layer output."""
+
+        hidden, attention_mask, position_ids = self._execution_inputs(
+            batch,
+            compute_dtype=compute_dtype,
+        )
         initial_hidden = hidden
         if self.layers.first_block is not None:
-
-            def apply_block(
-                carry: Float[Array, "batch sequence hidden"],
-                layer: _ModernVBERTTextScanBlock,
-                attention_input: Float[Array, "batch sequence hidden"],
-            ) -> Float[Array, "batch sequence hidden"]:
-                output = carry + layer.attention(
-                    attention_input,
-                    config=self.config,
-                    attention_mask=attention_mask,
-                    position_ids=position_ids,
-                    sliding_attention=layer.sliding_attention,
-                    implementation=attention_implementation,
-                )
-                return output + layer.mlp(layer.mlp_norm(output))
-
             def apply_first_layer(
                 carry: Float[Array, "batch sequence hidden"],
                 layer: _ModernVBERTTextScanBlock,
             ) -> Float[Array, "batch sequence hidden"]:
-                return apply_block(carry, layer, carry)
+                return self._apply_block(
+                    carry,
+                    layer,
+                    carry,
+                    attention_mask=attention_mask,
+                    position_ids=position_ids,
+                    attention_implementation=attention_implementation,
+                )
 
             first_output = rematerialize(
                 apply_first_layer,
@@ -580,7 +649,14 @@ class ModernVBERTTextTower(eqx.Module):
                 Float[Array, "batch sequence hidden"],
             ]:
                 layer, attention_norm = values
-                output = apply_block(carry, layer, attention_norm(carry))
+                output = self._apply_block(
+                    carry,
+                    layer,
+                    attention_norm(carry),
+                    attention_mask=attention_mask,
+                    position_ids=position_ids,
+                    attention_implementation=attention_implementation,
+                )
                 return output, output
 
             if self.layers.blocks is None:
@@ -662,7 +738,10 @@ class ModernVBERTTextEncoder(eqx.Module):
     def hidden_states(
         self,
         inputs: ModernVBERTTextBatch,
+        *,
+        key: PRNGKeyArray | None = None,
     ) -> Float[Array, "batch sequence hidden"]:
+        del key
         if not isinstance(inputs, ModernVBERTTextBatch):
             raise TypeError("ModernVBERT text inputs must be ModernVBERTTextBatch")
         return self.tower(
