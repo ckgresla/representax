@@ -95,6 +95,24 @@ def _rotary_frequencies(
     return jnp.cos(embedding), jnp.sin(embedding)
 
 
+def _position_embeddings(
+    config: ModernVBERTTextConfig,
+    position_ids: Int[Array, "#batch sequence"],
+) -> tuple[Any, Any]:
+    full = _rotary_frequencies(
+        config.head_dimension,
+        config.full_attention_rope_theta,
+        position_ids,
+    )
+    if config.full_attention_rope_theta == config.sliding_attention_rope_theta:
+        return full, full
+    return full, _rotary_frequencies(
+        config.head_dimension,
+        config.sliding_attention_rope_theta,
+        position_ids,
+    )
+
+
 def _rotate_half(
     value: Float[Array, "*batch head"],
 ) -> Float[Array, "*batch head"]:
@@ -173,6 +191,7 @@ class FusedSelfAttention(eqx.Module):
         position_ids: Int[Array, "#batch sequence"],
         sliding_attention: Bool[Array, ""],
         implementation: AttentionImplementation,
+        position_embeddings: tuple[Any, Any] | None = None,
     ) -> Float[Array, "batch sequence hidden"]:
         batch, sequence, _ = hidden.shape
         qkv = self.qkv(hidden).reshape(
@@ -184,6 +203,10 @@ class FusedSelfAttention(eqx.Module):
         )
         query, key, value = (qkv[:, :, index] for index in range(3))
 
+        if position_embeddings is None:
+            position_embeddings = _position_embeddings(config, position_ids)
+        full_position_embeddings, sliding_position_embeddings = position_embeddings
+
         def attend(
             operands: tuple[
                 Float[Array, "batch sequence heads head"],
@@ -191,15 +214,11 @@ class FusedSelfAttention(eqx.Module):
                 Float[Array, "batch sequence heads head"],
             ],
             *,
-            theta: float,
+            rotary: tuple[Any, Any],
             local_radius: int | None,
         ) -> Float[Array, "batch sequence heads head"]:
             branch_query, branch_key, branch_value = operands
-            cosine, sine = _rotary_frequencies(
-                config.head_dimension,
-                theta,
-                position_ids,
-            )
+            cosine, sine = rotary
             cosine = cosine[:, :, None, :]
             sine = sine[:, :, None, :]
             branch_query = _apply_rope(branch_query, cosine, sine)
@@ -214,20 +233,32 @@ class FusedSelfAttention(eqx.Module):
             )
 
         operands = (query, key, value)
-        attended = jax.lax.cond(
-            sliding_attention,
-            lambda values: attend(
-                values,
-                theta=config.sliding_attention_rope_theta,
-                local_radius=config.local_attention // 2,
-            ),
-            lambda values: attend(
-                values,
-                theta=config.full_attention_rope_theta,
+        local_radius = config.local_attention // 2
+        if (
+            sequence <= local_radius + 1
+            and config.full_attention_rope_theta
+            == config.sliding_attention_rope_theta
+        ):
+            attended = attend(
+                operands,
+                rotary=full_position_embeddings,
                 local_radius=None,
-            ),
-            operands,
-        )
+            )
+        else:
+            attended = jax.lax.cond(
+                sliding_attention,
+                lambda values: attend(
+                    values,
+                    rotary=sliding_position_embeddings,
+                    local_radius=local_radius,
+                ),
+                lambda values: attend(
+                    values,
+                    rotary=full_position_embeddings,
+                    local_radius=None,
+                ),
+                operands,
+            )
         return self.output(attended.reshape(batch, sequence, config.hidden_size))
 
 
@@ -369,6 +400,16 @@ class ModernVBERTTextLayerStack(eqx.Module):
             raise ValueError("ModernVBERT layer zero must omit attention_norm")
         if any(block.attention_norm is None for block in blocks[1:]):
             raise ValueError("ModernVBERT layers after zero require attention_norm")
+        compute_blocks = tuple(
+            jax.tree.map(
+                lambda value: (
+                    value.input_major() if isinstance(value, Linear) else value
+                ),
+                block,
+                is_leaf=lambda value: isinstance(value, Linear),
+            )
+            for block in blocks
+        )
         scan_blocks = tuple(
             _ModernVBERTTextScanBlock(
                 attention=block.attention,
@@ -376,7 +417,7 @@ class ModernVBERTTextLayerStack(eqx.Module):
                 mlp=block.mlp,
                 sliding_attention=block.sliding_attention,
             )
-            for block in blocks
+            for block in compute_blocks
         )
         first_block = scan_blocks[0]
         remaining_blocks = scan_blocks[1:]
@@ -385,7 +426,7 @@ class ModernVBERTTextLayerStack(eqx.Module):
             if not remaining_blocks
             else jax.tree.map(lambda *leaves: jnp.stack(leaves), *remaining_blocks)
         )
-        norms = tuple(block.attention_norm for block in blocks[1:])
+        norms = tuple(block.attention_norm for block in compute_blocks[1:])
         stacked_norms = (
             None
             if not norms
@@ -501,11 +542,13 @@ class ModernVBERTTextTower(eqx.Module):
         compute_dtype: jnp.dtype,
         attention_implementation: AttentionImplementation,
         rematerialization: RematerializationPolicy,
+        unroll_layers: bool = True,
     ) -> Float[Array, "batch sequence hidden"]:
         hidden, attention_mask, position_ids = self._execution_inputs(
             batch,
             compute_dtype=compute_dtype,
         )
+        position_embeddings = _position_embeddings(self.config, position_ids)
         if self.layers.first_block is None:
             return self.final_norm(hidden)
 
@@ -519,6 +562,7 @@ class ModernVBERTTextTower(eqx.Module):
                 carry,
                 attention_mask=attention_mask,
                 position_ids=position_ids,
+                position_embeddings=position_embeddings,
                 attention_implementation=attention_implementation,
             )
 
@@ -541,6 +585,7 @@ class ModernVBERTTextTower(eqx.Module):
                     attention_norm(carry),
                     attention_mask=attention_mask,
                     position_ids=position_ids,
+                    position_embeddings=position_embeddings,
                     attention_implementation=attention_implementation,
                 )
                 return output, None
@@ -549,6 +594,7 @@ class ModernVBERTTextTower(eqx.Module):
                 rematerialize(apply_layer, rematerialization),
                 hidden,
                 (self.layers.blocks, self.layers.attention_norms),
+                unroll=self.layers.depth - 1 if unroll_layers else 1,
             )
         return self.final_norm(hidden)
 
@@ -560,7 +606,7 @@ class ModernVBERTTextTower(eqx.Module):
     ) -> tuple[
         Float[Array, "batch sequence hidden"],
         Bool[Array, "batch sequence"],
-        Int[Array, "batch sequence"],
+        Int[Array, "#batch sequence"],
     ]:
         if batch.input_ids is not None:
             hidden = self.token_embeddings(batch.input_ids)
@@ -570,7 +616,7 @@ class ModernVBERTTextTower(eqx.Module):
             raise AssertionError("token inputs must be present")
         hidden = hidden.astype(compute_dtype)
         attention_mask = batch.attention_mask.astype(bool)
-        batch_size, sequence, _ = hidden.shape
+        _, sequence, _ = hidden.shape
         if hidden.shape[-1] != self.config.hidden_size:
             raise ValueError(
                 "input embedding dimension does not match ModernVBERT hidden_size"
@@ -578,11 +624,7 @@ class ModernVBERTTextTower(eqx.Module):
         if sequence > self.config.max_position_embeddings:
             raise ValueError("input sequence exceeds max_position_embeddings")
         if batch.position_ids is None:
-            position_ids = jnp.broadcast_to(
-                jnp.arange(sequence)[None, :], (batch_size, sequence)
-            )
-        elif batch.position_ids.shape[0] == 1 and batch_size != 1:
-            position_ids = jnp.broadcast_to(batch.position_ids, (batch_size, sequence))
+            position_ids = jnp.arange(sequence)[None, :]
         else:
             position_ids = batch.position_ids
         return self.embedding_norm(hidden), attention_mask, position_ids
@@ -594,7 +636,8 @@ class ModernVBERTTextTower(eqx.Module):
         attention_input: Float[Array, "batch sequence hidden"],
         *,
         attention_mask: Bool[Array, "batch sequence"],
-        position_ids: Int[Array, "batch sequence"],
+        position_ids: Int[Array, "#batch sequence"],
+        position_embeddings: tuple[Any, Any],
         attention_implementation: AttentionImplementation,
     ) -> Float[Array, "batch sequence hidden"]:
         output = carry + layer.attention(
@@ -604,6 +647,7 @@ class ModernVBERTTextTower(eqx.Module):
             position_ids=position_ids,
             sliding_attention=layer.sliding_attention,
             implementation=attention_implementation,
+            position_embeddings=position_embeddings,
         )
         return output + layer.mlp(layer.mlp_norm(output))
 
@@ -614,6 +658,7 @@ class ModernVBERTTextTower(eqx.Module):
         compute_dtype: jnp.dtype,
         attention_implementation: AttentionImplementation,
         rematerialization: RematerializationPolicy,
+        unroll_layers: bool = True,
     ) -> Float[Array, "layer batch sequence hidden"]:
         """Return embedding output followed by every encoder-layer output."""
 
@@ -621,6 +666,7 @@ class ModernVBERTTextTower(eqx.Module):
             batch,
             compute_dtype=compute_dtype,
         )
+        position_embeddings = _position_embeddings(self.config, position_ids)
         initial_hidden = hidden
         if self.layers.first_block is not None:
             def apply_first_layer(
@@ -633,6 +679,7 @@ class ModernVBERTTextTower(eqx.Module):
                     carry,
                     attention_mask=attention_mask,
                     position_ids=position_ids,
+                    position_embeddings=position_embeddings,
                     attention_implementation=attention_implementation,
                 )
 
@@ -655,6 +702,7 @@ class ModernVBERTTextTower(eqx.Module):
                     attention_norm(carry),
                     attention_mask=attention_mask,
                     position_ids=position_ids,
+                    position_embeddings=position_embeddings,
                     attention_implementation=attention_implementation,
                 )
                 return output, output
@@ -669,6 +717,7 @@ class ModernVBERTTextTower(eqx.Module):
                     executed_layer,
                     first_output,
                     (self.layers.blocks, self.layers.attention_norms),
+                    unroll=self.layers.depth - 1 if unroll_layers else 1,
                 )
                 layer_outputs = jnp.concatenate(
                     (first_output[None, ...], remaining_outputs),
@@ -691,6 +740,7 @@ class ModernVBERTTextEncoder(eqx.Module):
     compute_dtype: Any = eqx.field(static=True)
     attention_implementation: AttentionImplementation = eqx.field(static=True)
     rematerialization: RematerializationPolicy = eqx.field(static=True)
+    unroll_layers: bool = eqx.field(static=True, default=True)
 
     @classmethod
     def init(
@@ -749,6 +799,7 @@ class ModernVBERTTextEncoder(eqx.Module):
             compute_dtype=active_compute_dtype(self.compute_dtype),
             attention_implementation=self.attention_implementation,
             rematerialization=self.rematerialization,
+            unroll_layers=self.unroll_layers,
         )
 
     def hidden_states_by_layer(
@@ -767,6 +818,7 @@ class ModernVBERTTextEncoder(eqx.Module):
             compute_dtype=active_compute_dtype(self.compute_dtype),
             attention_implementation=self.attention_implementation,
             rematerialization=self.rematerialization,
+            unroll_layers=self.unroll_layers,
         )
 
     def encode(

@@ -324,11 +324,14 @@ class ModernVBERTTextCheckpointAdapter:
             prefix = f"tower.layers.{index}."
             native.update(
                 {
-                    prefix + "attention.qkv.weight": layer.attention.qkv.weight,
-                    prefix + "attention.output.weight": layer.attention.output.weight,
+                    prefix
+                    + "attention.qkv.weight": layer.attention.qkv.output_major().weight,
+                    prefix
+                    + "attention.output.weight": layer.attention.output.output_major().weight,
                     prefix + "mlp_norm.weight": layer.mlp_norm.weight,
-                    prefix + "mlp.input.weight": layer.mlp.input.weight,
-                    prefix + "mlp.output.weight": layer.mlp.output.weight,
+                    prefix + "mlp.input.weight": layer.mlp.input.output_major().weight,
+                    prefix
+                    + "mlp.output.weight": layer.mlp.output.output_major().weight,
                 }
             )
             if index > 0:

@@ -22,6 +22,7 @@ SOURCE_CHECKPOINT = Path(
 CHECKPOINT = ARTIFACT_ROOT / "checkpoints/ettin-encoder-150m"
 DATA = Path("/raid/representax/data/dense-retrieval-msmarco-v1")
 SEEDS = (17, 42, 73)
+REPRESENTAX_BUCKETS = (16, 64, 80, 96, 112, 128)
 TRAJECTORY_ROOT = ARTIFACT_ROOT / "real-trajectory-30-step" / "seed-17"
 PADDING_ABLATION_ROOT = ARTIFACT_ROOT / "padding-ablation-30-step" / "seed-17"
 
@@ -76,15 +77,15 @@ def _pair_command(seed: int, gpus: tuple[int, int]) -> list[str]:
         "128",
         "--representax-cache-chunk-size",
         "64",
-        "--sentence-transformers-cache-chunk-size",
+        "--representax-query-cache-chunk-size",
         "128",
-        "--sequence-length-bucket",
-        "16",
-        "--sequence-length-bucket",
-        "32",
-        "--sequence-length-bucket",
+        "--representax-document-cache-chunk-size",
         "64",
-        "--sequence-length-bucket",
+        "--representax-loss-row-chunk-size",
+        "64",
+        "--grad-cache-implementation",
+        "custom_vjp",
+        "--sentence-transformers-cache-chunk-size",
         "128",
         "--data-threads",
         "4",
@@ -99,6 +100,11 @@ def _pair_command(seed: int, gpus: tuple[int, int]) -> list[str]:
         str(seed),
         "--result-directory",
         str(ARTIFACT_ROOT / "runs" / f"seed-{seed}"),
+        *(
+            flag
+            for bucket in REPRESENTAX_BUCKETS
+            for flag in ("--sequence-length-bucket", str(bucket))
+        ),
         "--representax-gpu",
         str(gpus[0]),
         "--sentence-transformers-gpu",
@@ -128,7 +134,7 @@ def _trajectory_command(
     name: str,
     output: Path,
     *,
-    sequence_length_buckets: tuple[int, ...] = (16, 32, 64, 128),
+    sequence_length_buckets: tuple[int, ...] = REPRESENTAX_BUCKETS,
     fixed_lengths: tuple[int, int] | None = None,
 ) -> list[str]:
     command = [
@@ -176,6 +182,12 @@ def _trajectory_command(
                 "4",
                 "--prefetch-buffer-size",
                 "8",
+                "--representax-query-cache-chunk-size",
+                "128",
+                "--representax-document-cache-chunk-size",
+                "64",
+                "--representax-loss-row-chunk-size",
+                "64",
             )
         )
         for bucket in sequence_length_buckets:

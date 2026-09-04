@@ -129,6 +129,27 @@ def test_framework_cache_chunks_fall_back_to_shared_value():
     assert _framework_cache_chunk_size(arguments, "sentence-transformers") == 32
 
 
+def test_representax_worker_flags_preserve_asymmetric_grad_cache_chunks():
+    arguments = argparse.Namespace(
+        sequence_length_bucket=None,
+        grad_cache_implementation="custom_vjp",
+        representax_query_cache_chunk_size=128,
+        representax_document_cache_chunk_size=64,
+        representax_loss_row_chunk_size=128,
+    )
+
+    assert _representax_worker_flags(arguments) == [
+        "--grad-cache-implementation",
+        "custom_vjp",
+        "--representax-query-cache-chunk-size",
+        "128",
+        "--representax-document-cache-chunk-size",
+        "64",
+        "--representax-loss-row-chunk-size",
+        "128",
+    ]
+
+
 def test_sentence_transformers_worker_flags_preserve_execution_tuning():
     arguments = argparse.Namespace(
         sentence_transformers_data_threads=4,

@@ -42,6 +42,48 @@ The runs were produced from Representax commit
 loader changes, and Sentence Transformers commit
 `7d3eb16a65f62045226e08082ade63cbc71c97a4`.
 
+## Accepted pipeline optimization
+
+A September 4 follow-up retained the same checkpoint, MS MARCO data, batch 128,
+BF16 compute, FP32 parameters, AdamW objective, and 30-update measurement. The
+accepted Representax path uses custom-VJP GradCache with query chunk 128,
+document and loss chunks 64, sequence buckets 16/64/80/96/112/128, and fully
+unrolled ModernBERT layers.
+
+| Representax stage | Warm ex/s | Ratio to eager ST |
+|---|---:|---:|
+| Original real-data custom VJP | 361.08 | 0.922x |
+| Finer sequence buckets | 393.16 | 1.004x |
+| Input-major scanned weights | 398.33 | 1.017x |
+| Query chunk 128 | 415.26 | 1.060x |
+| Shared RoPE tables and broadcast positions | 425.01 | 1.085x |
+| Short-query attention fast path, 100-step sample | 431.80 | 1.102x |
+| Full layer unrolling, accepted six buckets | 599.14 | 1.530x |
+| Full layer unrolling, eight-token buckets | 561.09 | 1.433x |
+
+The comparison references remain 391.69 examples/s for eager Sentence
+Transformers and 667.90 examples/s with TorchInductor. The accepted path is
+therefore 1.530x faster than eager and 0.897x as fast as Inductor. On the fixed
+query-16/document-128 shape, full unrolling alone improved 382.68 to 542.42
+examples/s, or 1.417x, and reduced allocator-live memory from approximately
+12.6 GB to 9.37 GB. Unrolling three layers at a time reached only 368.85
+examples/s and was rejected.
+
+The accepted run observed four compiled training signatures. Their first uses
+took 535.63 seconds in total and remain recorded, but are excluded from the
+warm rate because compilation amortizes over a long training job. Finer
+eight-token buckets reduced padding but lowered warm throughput and required
+seven signatures, so the launcher retains the simpler six-bucket policy.
+
+Tests compare compact and fully unrolled forwards and complete parameter
+gradients directly. The 30-step accepted run ended at loss 4.12199 versus
+4.17523 for eager Sentence Transformers; this one short trajectory is a
+systems result, not a replicated quality claim. Artifacts are under
+`/raid/representax-paper/09-modernbert-dense-retrieval/optimization/`.
+
+The original three-seed table above is retained as historical evidence for the
+pre-optimization implementation. The current launcher uses the accepted recipe.
+
 ## Fixed-shape GradCache control
 
 A deterministic query/document token pair was repeated across every row of a

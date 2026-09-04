@@ -471,6 +471,9 @@ def _representax_report(
     maximum_length: int,
     sequence_length_buckets: tuple[int, ...],
     cache_chunk_size: int | None,
+    query_cache_chunk_size: int | None,
+    document_cache_chunk_size: int | None,
+    loss_row_chunk_size: int | None,
     grad_cache_implementation: str,
     evaluation_batch_size: int,
     evaluation_every_steps: int | None,
@@ -619,6 +622,9 @@ def _representax_report(
                 if cache_chunk_size is None
                 else GradCacheConfig(
                     micro_batch_size=cache_chunk_size,
+                    query_micro_batch_size=query_cache_chunk_size,
+                    document_micro_batch_size=document_cache_chunk_size,
+                    loss_row_chunk_size=loss_row_chunk_size,
                     implementation=grad_cache_implementation,
                 )
             ),
@@ -746,6 +752,9 @@ def _representax_report(
         "packing_query_shape": packing_query_shape,
         "packing_document_shape": packing_document_shape,
         "cache_chunk_size": cache_chunk_size,
+        "query_cache_chunk_size": query_cache_chunk_size,
+        "document_cache_chunk_size": document_cache_chunk_size,
+        "loss_row_chunk_size": loss_row_chunk_size,
         "grad_cache_implementation": grad_cache_implementation,
         "seed": seed,
         "world_size": world_size,
@@ -1454,6 +1463,11 @@ def _worker(arguments: argparse.Namespace) -> None:
         report = _representax_report(
             spec,
             sequence_length_buckets=buckets,
+            query_cache_chunk_size=arguments.representax_query_cache_chunk_size,
+            document_cache_chunk_size=(
+                arguments.representax_document_cache_chunk_size
+            ),
+            loss_row_chunk_size=arguments.representax_loss_row_chunk_size,
             grad_cache_implementation=arguments.grad_cache_implementation,
             packing=arguments.packing,
             packing_query_shape=packing_query_shape,
@@ -1767,6 +1781,14 @@ def _representax_worker_flags(arguments: argparse.Namespace) -> list[str]:
     implementation = getattr(arguments, "grad_cache_implementation", "rematerialized")
     if implementation != "rematerialized":
         flags.extend(("--grad-cache-implementation", implementation))
+    for name in (
+        "query_cache_chunk_size",
+        "document_cache_chunk_size",
+        "loss_row_chunk_size",
+    ):
+        value = getattr(arguments, f"representax_{name}", None)
+        if value is not None:
+            flags.extend((f"--representax-{name.replace('_', '-')}", str(value)))
     return flags
 
 
@@ -2213,6 +2235,7 @@ def _curve(arguments: argparse.Namespace) -> None:
                 str(arguments.sentence_transformers_cache_chunk_size),
             )
         )
+    command.extend(_representax_worker_flags(arguments))
     command.extend(_sentence_transformers_worker_flags(arguments))
     command.extend(_shared_worker_flags(arguments))
     subprocess.run(
@@ -2248,6 +2271,9 @@ def _worker_arguments(
     parser.add_argument("--cache-chunk-size", type=int)
     parser.add_argument("--representax-cache-chunk-size", type=int)
     parser.add_argument("--sentence-transformers-cache-chunk-size", type=int)
+    parser.add_argument("--representax-query-cache-chunk-size", type=int)
+    parser.add_argument("--representax-document-cache-chunk-size", type=int)
+    parser.add_argument("--representax-loss-row-chunk-size", type=int)
     parser.add_argument(
         "--grad-cache-implementation",
         choices=("rematerialized", "custom_vjp"),
