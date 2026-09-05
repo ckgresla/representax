@@ -1,0 +1,49 @@
+{
+  "files": {
+    "1_Pooling/config.json": {
+      "bytes": 190,
+      "sha256": "sha256:a37f83ada23e7887be6b88f4998927dbeac0038af301553c7cd5461413bf1a56"
+    },
+    "config.json": {
+      "bytes": 571,
+      "sha256": "sha256:d46a3e04ded82bba22528424480697d394eeda6a27484e08c5bb2bdf5906cfa0"
+    },
+    "config_sentence_transformers.json": {
+      "bytes": 116,
+      "sha256": "sha256:061ca9d39661d6c6d6de5ba27f79a1cd5770ea247f8d46412a68a498dc5ac9f3"
+    },
+    "model.safetensors": {
+      "bytes": 437971872,
+      "sha256": "sha256:78c0197b6159d92658e319bc1d72e4c73a9a03dd03815e70e555c5ef05615658"
+    },
+    "modules.json": {
+      "bytes": 349,
+      "sha256": "sha256:84e40c8e006c9b1d6c122e02cba9b02458120b5fb0c87b746c41e0207cf642cf"
+    },
+    "sentence_bert_config.json": {
+      "bytes": 53,
+      "sha256": "sha256:cabfacded9272091a06ff595a46ef027a76ddf4ac9e77d0fcf11c605748f1667"
+    },
+    "special_tokens_map.json": {
+      "bytes": 239,
+      "sha256": "sha256:9ef40e9c160511bf3f46ceb71f1471dafa1e9473d5120bb816c36b2efa75f8ba"
+    },
+    "tokenizer.json": {
+      "bytes": 466021,
+      "sha256": "sha256:b8be2c30ba5dd723a6d5ee26d013da103d5408d92ddcb23747622f9e48f1d842"
+    },
+    "tokenizer_config.json": {
+      "bytes": 363,
+      "sha256": "sha256:67f2ff7e223518e729869bb3a70f0caf8368fe549383fc11cfe2dfb42fffc268"
+    },
+    "vocab.txt": {
+      "bytes": 231536,
+      "sha256": "sha256:dbd90cb94e2247bd4d4ccaecbf616d2290e66691d7d5e5bb81f063c2d0649ada"
+    }
+  },
+  "model": {
+    "id": "sentence-transformers/all-mpnet-base-v2",
+    "revision": "e8c3b32edf5434bc2275fc9bab85f82640a19130"
+  },
+  "schema_version": "representax-model-files-v1"
+}

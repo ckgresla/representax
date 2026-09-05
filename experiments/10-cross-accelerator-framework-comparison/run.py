@@ -28,6 +28,9 @@ LEARNING_RATE = 2e-5
 WARMUP_RATIO = 0.06
 REPRESENTAX_CHUNK_SIZE = 32
 REFERENCE_CHUNK_SIZE = 128
+EXPERIMENT_DIRECTORY = Path(__file__).resolve().parent
+DATA_MANIFEST = EXPERIMENT_DIRECTORY / "data-manifest.json"
+MODEL_MANIFEST = EXPERIMENT_DIRECTORY / "model-manifest.json"
 
 Variant = Literal[
     "representax-local",
@@ -85,10 +88,15 @@ def _contract(
     return {
         "schema_version": "representax-cross-accelerator-dense-v1",
         "variant": variant,
-        "model": {"id": MODEL_ID, "revision": MODEL_REVISION},
+        "model": {
+            "id": MODEL_ID,
+            "revision": MODEL_REVISION,
+            "manifest_sha256": _sha256(MODEL_MANIFEST),
+        },
         "data": {
             "id": DATASET_ID,
             "revision": DATASET_REVISION,
+            "manifest_sha256": _sha256(DATA_MANIFEST),
             "order_seed": seed,
             "duplicate_queries": 0,
             "duplicate_positives": 0,
@@ -130,11 +138,28 @@ def _contract(
 
 def _training_path(data: Path, seed: int) -> Path:
     path = data / f"seed-{seed}.parquet"
-    manifest = json.loads((data / "manifest.json").read_text())
+    manifest_path = data / "manifest.json"
+    if _sha256(manifest_path) != _sha256(DATA_MANIFEST):
+        raise ValueError(f"prepared data manifest changed: {manifest_path}")
+    manifest = json.loads(manifest_path.read_text())
     record = manifest["seed_files"][str(seed)]
     if _sha256(path) != record["sha256"]:
         raise ValueError(f"prepared training data hash changed: {path}")
     return path
+
+
+def _verify_checkpoint(checkpoint: Path) -> None:
+    manifest = json.loads(MODEL_MANIFEST.read_text())
+    if manifest["model"] != {"id": MODEL_ID, "revision": MODEL_REVISION}:
+        raise ValueError("tracked model manifest does not match the frozen model")
+    for relative, expected in manifest["files"].items():
+        path = checkpoint / relative
+        if not path.is_file():
+            raise FileNotFoundError(f"checkpoint file is missing: {path}")
+        if path.stat().st_size != expected["bytes"]:
+            raise ValueError(f"checkpoint file size changed: {path}")
+        if _sha256(path) != expected["sha256"]:
+            raise ValueError(f"checkpoint file hash changed: {path}")
 
 
 def _prepare_data(output: Path, checkpoint: Path, rows: int) -> None:
@@ -768,6 +793,7 @@ def main(arguments: Sequence[str] | None = None) -> None:
         os.environ["CUDA_VISIBLE_DEVICES"] = str(parsed.gpu)
     elif parsed.gpu is not None:
         raise ValueError("TPU runs do not accept --gpu")
+    _verify_checkpoint(parsed.checkpoint)
     if parsed.command == "representax":
         _representax(
             checkpoint=parsed.checkpoint,

@@ -135,6 +135,39 @@ def test_reference_helpers_are_self_contained(tmp_path: Path) -> None:
     assert module._FixedPairCollator(object()).valid_label_columns == []
 
 
+def test_checkpoint_files_are_content_addressed(monkeypatch, tmp_path: Path) -> None:
+    module = _module()
+    checkpoint = tmp_path / "checkpoint"
+    checkpoint.mkdir()
+    weight = checkpoint / "weight.bin"
+    weight.write_bytes(b"weights")
+    manifest = tmp_path / "model-manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "model": {"id": module.MODEL_ID, "revision": module.MODEL_REVISION},
+                "files": {
+                    "weight.bin": {
+                        "bytes": weight.stat().st_size,
+                        "sha256": module._sha256(weight),
+                    }
+                },
+            }
+        )
+    )
+    monkeypatch.setattr(module, "MODEL_MANIFEST", manifest)
+
+    module._verify_checkpoint(checkpoint)
+    weight.write_bytes(b"changed")
+
+    try:
+        module._verify_checkpoint(checkpoint)
+    except ValueError as error:
+        assert "hash changed" in str(error)
+    else:
+        raise AssertionError("changed checkpoint was accepted")
+
+
 def test_tracked_data_manifest_matches_the_frozen_contract() -> None:
     module = _module()
     path = (
