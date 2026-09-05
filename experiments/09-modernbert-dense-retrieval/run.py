@@ -22,7 +22,7 @@ SOURCE_CHECKPOINT = Path(
 CHECKPOINT = ARTIFACT_ROOT / "checkpoints/ettin-encoder-150m"
 DATA = Path("/raid/representax/data/dense-retrieval-msmarco-v1")
 SEEDS = (17, 42, 73)
-REPRESENTAX_BUCKETS = (16, 64, 80, 96, 112, 128)
+REPRESENTAX_BUCKETS = (16, 96, 128)
 TRAJECTORY_ROOT = ARTIFACT_ROOT / "real-trajectory-30-step" / "seed-17"
 PADDING_ABLATION_ROOT = ARTIFACT_ROOT / "padding-ablation-30-step" / "seed-17"
 
@@ -249,8 +249,8 @@ def _parallel_workers(
             environment["CUDA_VISIBLE_DEVICES"] = str(gpu)
             framework = command[command.index("--framework") + 1]
             if framework == "representax":
-                environment["REPRESENTAX_JAX_CACHE_DIR"] = str(
-                    output / "cache" / f"jax-{name}"
+                environment["JAX_COMPILATION_CACHE_DIR"] = str(
+                    ARTIFACT_ROOT / "cache" / "jax"
                 )
             elif "--sentence-transformers-torch-compile" in command:
                 environment["TORCHINDUCTOR_CACHE_DIR"] = str(
@@ -329,7 +329,7 @@ def _run(gpus: tuple[int, ...]) -> None:
         raise FileNotFoundError(f"prepared data not found: {DATA}")
 
     environment = os.environ.copy()
-    environment["REPRESENTAX_JAX_CACHE_DIR"] = str(ARTIFACT_ROOT / "cache/jax")
+    environment["JAX_COMPILATION_CACHE_DIR"] = str(ARTIFACT_ROOT / "cache/jax")
     environment["REPRESENTAX_TORCHINDUCTOR_CACHE_DIR"] = str(
         ARTIFACT_ROOT / "cache/torchinductor"
     )

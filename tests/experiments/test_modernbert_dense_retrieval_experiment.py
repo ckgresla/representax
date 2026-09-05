@@ -33,6 +33,11 @@ def test_trajectory_commands_share_the_scientific_recipe(tmp_path: Path) -> None
         assert "--mixed-precision" in command
 
     assert "custom_vjp" in commands["custom-vjp"]
+    assert [
+        commands["custom-vjp"][index + 1]
+        for index, value in enumerate(commands["custom-vjp"])
+        if value == "--sequence-length-bucket"
+    ] == ["16", "96", "128"]
     assert "rematerialized" in commands["rematerialized"]
     assert "--sentence-transformers-torch-compile" not in commands["st-eager"]
     assert "--sentence-transformers-torch-compile" in commands["st-inductor"]

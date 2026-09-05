@@ -152,6 +152,7 @@ def test_native_encoder_is_jittable_differentiable_and_normalized():
 
 
 def _text_scan(model, batch):
+    model = replace(model, unroll_layers=False)
     program = jax.make_jaxpr(lambda candidate: candidate.hidden_states(batch))(model)
     scans = [
         equation for equation in program.jaxpr.eqns if equation.primitive.name == "scan"
@@ -260,6 +261,10 @@ def test_unrolled_forward_matches_scanned_hidden_states_and_gradients():
     )
 
     compact = replace(model, unroll_layers=False)
+    unrolled_program = jax.make_jaxpr(
+        lambda candidate: candidate.hidden_states(batch)
+    )(model)
+    assert "cond[" not in str(unrolled_program)
     actual_hidden = model.hidden_states(batch)
     expected_hidden = compact.hidden_states(batch)
     np.testing.assert_allclose(actual_hidden, expected_hidden, rtol=1e-6, atol=1e-6)

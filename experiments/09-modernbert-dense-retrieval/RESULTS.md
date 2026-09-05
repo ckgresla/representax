@@ -10,7 +10,8 @@ evidence because the prepared MS MARCO source is duplicate-heavy.
 - Parameters: 149,014,272 in both frameworks
 - Training: cosine MNR, BF16 compute with FP32 parameters, batch 128,
   100 updates, maximum length 128
-- Representax: GradCache chunk 64 and length buckets 16/32/64/128
+- Representax: custom-VJP GradCache with query chunk 128, document and loss
+  chunks 64, and length buckets 16/96/128
 - Sentence Transformers: GradCache chunk 128 and TorchInductor
 - Seeds and GPU pairs: 17 on 0/1, 42 on 2/3, 73 on 4/5
 - Evaluation: NanoMSMARCO before and after training
@@ -47,7 +48,7 @@ loader changes, and Sentence Transformers commit
 A September 4 follow-up retained the same checkpoint, MS MARCO data, batch 128,
 BF16 compute, FP32 parameters, AdamW objective, and 30-update measurement. The
 accepted Representax path uses custom-VJP GradCache with query chunk 128,
-document and loss chunks 64, sequence buckets 16/64/80/96/112/128, and fully
+document and loss chunks 64, sequence buckets 16/96/128, and statically
 unrolled ModernBERT layers.
 
 | Representax stage | Warm ex/s | Ratio to eager ST |
@@ -61,26 +62,41 @@ unrolled ModernBERT layers.
 | Full layer unrolling with that candidate | 599.14 | 1.530x |
 | Full layer unrolling, simplified accepted path | 582.82 | 1.488x |
 | Full layer unrolling, eight-token buckets | 561.09 | 1.433x |
+| Static attention schedule, two effective shapes | 618.67 | 1.579x |
 
 The comparison references remain 391.69 examples/s for eager Sentence
 Transformers and 667.90 examples/s with TorchInductor. The accepted path is
-therefore 1.488x faster than eager and 0.873x as fast as Inductor. On the fixed
+therefore 1.579x faster than eager and 0.926x as fast as Inductor. On the fixed
 query-16/document-128 shape, full unrolling alone improved 382.68 to 542.42
 examples/s, or 1.417x, and reduced allocator-live memory from approximately
-12.6 GB to 9.37 GB. Unrolling three layers at a time reached only 368.85
-examples/s and was rejected.
+12.6 GB to 9.37 GB. Partial unrolling was rejected: factors three and seven
+compiled in 36.44 and 47.89 seconds but reached only 384.06 and 379.11
+examples/s.
 
-The accepted simplified run observed four compiled training signatures. Their
-first uses took 866.80 seconds in total and remain recorded, but are excluded
-from the warm rate because compilation amortizes over a long training job. Finer
-eight-token buckets reduced padding but lowered warm throughput and required
-seven signatures, so the launcher retains the simpler six-bucket policy.
+The earlier six-bucket run observed four compiled training signatures. Their
+first uses took 866.80 seconds in total. HLO inspection found that dynamic
+full-versus-sliding attention choices duplicated both branches in every
+unrolled layer: its optimized training graph contained 132 conditionals, 1,414
+dots, and 61,204 lines. Static layer choices removed the conditionals and cut
+the graph to 1,062 dots and 40,477 lines, reducing an identical cold signature
+from 221.52 to 145.20 seconds without lowering warm throughput.
+
+The final bucket policy groups the document lengths into 96 and 128 while
+queries use length 16. A fresh 30-update process compiled those two effective
+signatures in 143.63 and 136.41 seconds; compilation plus first execution was
+287.51 seconds in total. Warm throughput was 618.67 examples/s and final loss
+was 4.13711. An exact second process reported persistent-cache hits for both
+signatures, reduced compilation plus first execution to 21.60 seconds, and
+reproduced 620.02 examples/s. Forcing 16 compiler threads increased the
+identical 128-token cold compile from 143.63 to 152.18 seconds and was rejected.
+The launcher therefore uses XLA defaults and sets `JAX_COMPILATION_CACHE_DIR`
+directly.
 
 Tests compare compact and fully unrolled forwards and complete parameter
-gradients directly. The 30-step accepted run ended at loss 4.14618 versus
-4.17523 for eager Sentence Transformers; this one short trajectory is a
-systems result, not a replicated quality claim. Artifacts are under
-`/raid/representax-paper/09-modernbert-dense-retrieval/optimization/no-short-attention-20260904-01/`.
+gradients directly. The latest 30-step run ended at loss 4.13711 versus 4.17523
+for eager Sentence Transformers; this one short trajectory is a systems result,
+not a replicated quality claim. Artifacts are under
+`/raid/representax-paper/09-modernbert-dense-retrieval/optimization/compile-reduced-20260905-01/`.
 
 An exact short-sequence attention shortcut measured 599.14 examples/s in the
 fully unrolled program, but was removed because its 2.8% gain did not justify

@@ -189,7 +189,7 @@ class FusedSelfAttention(eqx.Module):
         config: ModernVBERTTextConfig,
         attention_mask: Bool[Array, "batch sequence"],
         position_ids: Int[Array, "#batch sequence"],
-        sliding_attention: Bool[Array, ""],
+        sliding_attention: bool | Bool[Array, ""],
         implementation: AttentionImplementation,
         position_embeddings: tuple[Any, Any] | None = None,
     ) -> Float[Array, "batch sequence hidden"]:
@@ -234,20 +234,32 @@ class FusedSelfAttention(eqx.Module):
 
         operands = (query, key, value)
         local_radius = config.local_attention // 2
-        attended = jax.lax.cond(
-            sliding_attention,
-            lambda values: attend(
-                values,
-                rotary=sliding_position_embeddings,
-                local_radius=local_radius,
-            ),
-            lambda values: attend(
-                values,
-                rotary=full_position_embeddings,
-                local_radius=None,
-            ),
-            operands,
-        )
+        if isinstance(sliding_attention, bool):
+            rotary = (
+                sliding_position_embeddings
+                if sliding_attention
+                else full_position_embeddings
+            )
+            attended = attend(
+                operands,
+                rotary=rotary,
+                local_radius=local_radius if sliding_attention else None,
+            )
+        else:
+            attended = jax.lax.cond(
+                sliding_attention,
+                lambda values: attend(
+                    values,
+                    rotary=sliding_position_embeddings,
+                    local_radius=local_radius,
+                ),
+                lambda values: attend(
+                    values,
+                    rotary=full_position_embeddings,
+                    local_radius=None,
+                ),
+                operands,
+            )
         return self.output(attended.reshape(batch, sequence, config.hidden_size))
 
 
@@ -540,6 +552,7 @@ class ModernVBERTTextTower(eqx.Module):
         position_embeddings = _position_embeddings(self.config, position_ids)
         if self.layers.first_block is None:
             return self.final_norm(hidden)
+        first_sliding_attention = self.config.layer_types[0] == "sliding_attention"
 
         def apply_first_layer(
             carry: Float[Array, "batch sequence hidden"],
@@ -553,6 +566,7 @@ class ModernVBERTTextTower(eqx.Module):
                 position_ids=position_ids,
                 position_embeddings=position_embeddings,
                 attention_implementation=attention_implementation,
+                sliding_attention=first_sliding_attention,
             )
 
         hidden = rematerialize(
@@ -566,6 +580,8 @@ class ModernVBERTTextTower(eqx.Module):
             def apply_layer(
                 carry: Float[Array, "batch sequence hidden"],
                 values: tuple[_ModernVBERTTextScanBlock, LayerNorm],
+                *,
+                sliding_attention: bool | None = None,
             ) -> tuple[Float[Array, "batch sequence hidden"], None]:
                 layer, attention_norm = values
                 output = self._apply_block(
@@ -576,15 +592,37 @@ class ModernVBERTTextTower(eqx.Module):
                     position_ids=position_ids,
                     position_embeddings=position_embeddings,
                     attention_implementation=attention_implementation,
+                    sliding_attention=sliding_attention,
                 )
                 return output, None
 
-            hidden, _ = jax.lax.scan(
-                rematerialize(apply_layer, rematerialization),
-                hidden,
-                (self.layers.blocks, self.layers.attention_norms),
-                unroll=self.layers.depth - 1 if unroll_layers else 1,
-            )
+            if unroll_layers:
+                for offset in range(self.layers.depth - 1):
+                    layer = jax.tree.map(
+                        lambda leaf: leaf[offset],
+                        self.layers.blocks,
+                    )
+                    attention_norm = jax.tree.map(
+                        lambda leaf: leaf[offset],
+                        self.layers.attention_norms,
+                    )
+                    sliding_attention = (
+                        self.config.layer_types[offset + 1] == "sliding_attention"
+                    )
+                    hidden, _ = rematerialize(
+                        lambda carry, values: apply_layer(
+                            carry,
+                            values,
+                            sliding_attention=sliding_attention,
+                        ),
+                        rematerialization,
+                    )(hidden, (layer, attention_norm))
+            else:
+                hidden, _ = jax.lax.scan(
+                    rematerialize(apply_layer, rematerialization),
+                    hidden,
+                    (self.layers.blocks, self.layers.attention_norms),
+                )
         return self.final_norm(hidden)
 
     def _execution_inputs(
@@ -628,13 +666,18 @@ class ModernVBERTTextTower(eqx.Module):
         position_ids: Int[Array, "#batch sequence"],
         position_embeddings: tuple[Any, Any],
         attention_implementation: AttentionImplementation,
+        sliding_attention: bool | None = None,
     ) -> Float[Array, "batch sequence hidden"]:
         output = carry + layer.attention(
             attention_input,
             config=self.config,
             attention_mask=attention_mask,
             position_ids=position_ids,
-            sliding_attention=layer.sliding_attention,
+            sliding_attention=(
+                layer.sliding_attention
+                if sliding_attention is None
+                else sliding_attention
+            ),
             implementation=attention_implementation,
             position_embeddings=position_embeddings,
         )
@@ -658,6 +701,7 @@ class ModernVBERTTextTower(eqx.Module):
         position_embeddings = _position_embeddings(self.config, position_ids)
         initial_hidden = hidden
         if self.layers.first_block is not None:
+
             def apply_first_layer(
                 carry: Float[Array, "batch sequence hidden"],
                 layer: _ModernVBERTTextScanBlock,
