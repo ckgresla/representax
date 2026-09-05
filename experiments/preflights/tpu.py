@@ -410,7 +410,7 @@ def _git_revision() -> str | None:
     return result.stdout.strip() if result.returncode == 0 else None
 
 
-def run(output: Path, *, steps: int, device_count: int) -> dict[str, Any]:
+def _run(output: Path, *, steps: int, device_count: int) -> dict[str, Any]:
     if jax.process_count() != 1:
         raise RuntimeError("the Colab acceptance runner supports one host process")
     visible = len(jax.devices())
@@ -479,6 +479,7 @@ def run(output: Path, *, steps: int, device_count: int) -> dict[str, Any]:
             "jax": jax.__version__,
             "jaxlib": _package_version("jaxlib"),
             "libtpu": _package_version("libtpu"),
+            "matmul_precision": "highest",
             "process_count": jax.process_count(),
             "process_index": jax.process_index(),
             "visible_device_count": visible,
@@ -498,6 +499,12 @@ def run(output: Path, *, steps: int, device_count: int) -> dict[str, Any]:
         json.dumps(result, indent=2, sort_keys=True) + "\n"
     )
     return result
+
+
+def run(output: Path, *, steps: int, device_count: int) -> dict[str, Any]:
+    # TPU reduction layouts need full FP32 matmuls for the strict parity gate.
+    with jax.default_matmul_precision("highest"):
+        return _run(output, steps=steps, device_count=device_count)
 
 
 def main() -> None:
