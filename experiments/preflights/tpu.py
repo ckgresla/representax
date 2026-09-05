@@ -178,7 +178,13 @@ def _data(task: Literal["pairwise", "retrieval"]) -> DataConfig:
     )
 
 
-def _job(variant: Variant, *, device_count: int, steps: int) -> JobConfig:
+def _job(
+    variant: Variant,
+    *,
+    device_count: int,
+    steps: int,
+    global_batch_size: int = TOY_BATCH_SIZE,
+) -> JobConfig:
     if variant.sharding == "single":
         mesh = MeshConfig()
         sharding: DDPConfig | FSDPConfig = DDPConfig()
@@ -196,10 +202,10 @@ def _job(variant: Variant, *, device_count: int, steps: int) -> JobConfig:
         )
         data_replicas = 1
     accumulation = variant.gradient_accumulation_steps
-    micro_batch_size = TOY_BATCH_SIZE // (data_replicas * accumulation)
-    if micro_batch_size * data_replicas * accumulation != TOY_BATCH_SIZE:
+    micro_batch_size = global_batch_size // (data_replicas * accumulation)
+    if micro_batch_size * data_replicas * accumulation != global_batch_size:
         raise ValueError(
-            f"toy batch {TOY_BATCH_SIZE} is not divisible by "
+            f"toy batch {global_batch_size} is not divisible by "
             f"{data_replicas} replicas and {accumulation} accumulation steps"
         )
     task = PairwiseConfig() if variant.task == "pairwise" else RetrievalConfig()
@@ -212,7 +218,7 @@ def _job(variant: Variant, *, device_count: int, steps: int) -> JobConfig:
         None
         if variant.grad_cache is None
         else GradCacheConfig(
-            micro_batch_size=4,
+            micro_batch_size=min(4, micro_batch_size),
             implementation=variant.grad_cache,
         )
     )
@@ -242,7 +248,7 @@ def _job(variant: Variant, *, device_count: int, steps: int) -> JobConfig:
         ),
         data=data,
         training=TrainingConfig(
-            global_batch_size=TOY_BATCH_SIZE,
+            global_batch_size=global_batch_size,
             max_steps=steps,
             seed=7,
             mesh=mesh,

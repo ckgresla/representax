@@ -4,6 +4,7 @@ import jax
 import pytest
 from experiments.preflights.tpu import (
     TOY_BATCH_SIZE,
+    Variant,
     _available_variants,
     _job,
     run,
@@ -40,6 +41,25 @@ def test_tpu_acceptance_jobs_preserve_global_batch() -> None:
         assert job.checkpointing is not None
         assert job.evaluation is not None
         assert job.export.enabled is True
+
+
+def test_tpu_ddp_grad_cache_accepts_a_larger_global_batch() -> None:
+    job = _job(
+        Variant(
+            "retrieval-grad-cache-ddp",
+            "retrieval",
+            grad_cache="rematerialized",
+            sharding="ddp",
+        ),
+        device_count=4,
+        steps=6,
+        global_batch_size=64,
+    )
+
+    assert job.training.global_batch_size == 64
+    assert job.training.batch.micro_batch_size == 16
+    assert job.training.grad_cache is not None
+    assert job.training.grad_cache.micro_batch_size == 4
 
 
 def test_single_device_acceptance_omits_distributed_variants() -> None:

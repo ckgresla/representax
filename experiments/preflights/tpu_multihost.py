@@ -9,6 +9,7 @@ import statistics
 import time
 from collections.abc import Sequence
 from functools import partial
+from pathlib import Path
 from typing import Any
 
 INPUT_DIMENSION = 1024
@@ -292,6 +293,74 @@ def jax_dense(*, steps: int, global_batch_size: int) -> None:
         )
 
 
+def representax_dense(
+    *, output: Path, steps: int, global_batch_size: int
+) -> None:
+    jax = _jax_initialize(True)
+
+    from experiments.preflights.tpu import (
+        MAPPER,
+        Variant,
+        _job,
+        identity,
+        resolve_toy_records,
+    )
+    from representax.config import ExportConfig
+    from representax.train import run_job
+
+    if global_batch_size % jax.device_count():
+        raise ValueError("global batch must be divisible by the global device count")
+    variant = Variant(
+        "retrieval-grad-cache-ddp",
+        "retrieval",
+        grad_cache="rematerialized",
+        sharding="ddp",
+    )
+    job = _job(
+        variant,
+        device_count=jax.device_count(),
+        steps=steps,
+        global_batch_size=global_batch_size,
+    ).model_copy(
+        update={
+            "checkpointing": None,
+            "evaluation": None,
+            "export": ExportConfig(enabled=False),
+        }
+    )
+    run_directory = output.expanduser().resolve() / f"process-{jax.process_index()}"
+    result = run_job(
+        job,
+        run_directory,
+        resolvers={"memory": resolve_toy_records},
+        mappers={MAPPER: identity},
+    )
+    if jax.process_index() != 0:
+        return
+    rows = [
+        json.loads(line)
+        for line in (run_directory / "metrics.jsonl").read_text().splitlines()
+    ]
+    training = [row for row in rows if row["event"] == "training_step"]
+    warm_rates = [
+        float(row["metrics"]["perf/examples_per_second"])
+        for row in training
+        if "perf/examples_per_second" in row["metrics"]
+    ]
+    _emit(
+        "summary",
+        framework="representax",
+        process_count=jax.process_count(),
+        device_count=jax.device_count(),
+        steps=result.completed_iterations,
+        global_batch_size=global_batch_size,
+        first_loss=float(training[0]["metrics"]["train/loss"]),
+        final_loss=float(training[-1]["metrics"]["train/loss"]),
+        median_examples_per_second=statistics.median(warm_rates),
+        run_directory=str(run_directory),
+    )
+
+
 def _torch_worker(index: int, steps: int, global_batch_size: int) -> None:
     del index
     import torch
@@ -393,6 +462,10 @@ def main(arguments: Sequence[str] | None = None) -> None:
         dense = commands.add_parser(name)
         dense.add_argument("--steps", type=int, default=STEPS)
         dense.add_argument("--global-batch-size", type=int, default=GLOBAL_BATCH_SIZE)
+    representax = commands.add_parser("representax-dense")
+    representax.add_argument("--output", type=Path, required=True)
+    representax.add_argument("--steps", type=int, default=STEPS)
+    representax.add_argument("--global-batch-size", type=int, default=256)
     parsed = parser.parse_args(arguments)
     if parsed.command == "topology":
         jax_topology(
@@ -403,6 +476,12 @@ def main(arguments: Sequence[str] | None = None) -> None:
         )
     elif parsed.command == "jax-dense":
         jax_dense(steps=parsed.steps, global_batch_size=parsed.global_batch_size)
+    elif parsed.command == "representax-dense":
+        representax_dense(
+            output=parsed.output,
+            steps=parsed.steps,
+            global_batch_size=parsed.global_batch_size,
+        )
     else:
         torch_dense(steps=parsed.steps, global_batch_size=parsed.global_batch_size)
 
