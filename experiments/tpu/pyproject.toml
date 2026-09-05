@@ -1,0 +1,10 @@
+[project]
+name = "representax-tpu-experiments"
+version = "0.0.0"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "representax[tpu]",
+]
+
+[tool.uv.sources]
+representax = { path = "../..", editable = true }

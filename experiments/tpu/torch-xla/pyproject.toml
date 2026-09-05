@@ -1,0 +1,10 @@
+[project]
+name = "representax-tpu-torch-reference"
+version = "0.0.0"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "numpy>=2",
+    "sentence-transformers==5.6.1",
+    "torch==2.9.0",
+    "torch_xla[tpu]==2.9.0",
+]
