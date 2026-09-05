@@ -26,7 +26,7 @@ UV_PROJECT_ENVIRONMENT="${torch_environment}" \
   "${uv_command}" sync \
     --project "${torch_project_dir}" \
     --locked \
-    --python 3.12
+    --python /usr/bin/python3.10
 
 "${jax_environment}/bin/python" -c \
   'import jax; print(f"JAX {jax.__version__}")'
