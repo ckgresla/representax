@@ -2,7 +2,13 @@ from __future__ import annotations
 
 import jax
 import pytest
-from experiments.preflights.tpu import TOY_BATCH_SIZE, _job, run, variants
+from experiments.preflights.tpu import (
+    TOY_BATCH_SIZE,
+    _available_variants,
+    _job,
+    run,
+    variants,
+)
 
 
 def test_tpu_acceptance_matrix_covers_core_training_paths() -> None:
@@ -34,6 +40,14 @@ def test_tpu_acceptance_jobs_preserve_global_batch() -> None:
         assert job.checkpointing is not None
         assert job.evaluation is not None
         assert job.export.enabled is True
+
+
+def test_single_device_acceptance_omits_distributed_variants() -> None:
+    rows = _available_variants(1)
+
+    assert len(rows) == 6
+    assert all(variant.sharding == "single" for variant in rows)
+    assert _available_variants(2) == variants()
 
 
 @pytest.mark.runtime

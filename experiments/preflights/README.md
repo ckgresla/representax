@@ -50,8 +50,9 @@ python -m experiments.preflights.tpu \
 ```
 
 The matrix covers FP32 and BF16 training, gradient accumulation, both GradCache
-schedules, DDP, FSDP, midpoint checkpoint/resume, evaluation, inference export,
-exact reload, and `logging.accelerator` through LibTPU. It emits a single archive
-containing `summary.json` and every canonical run artifact. Free Colab permits
-interactive notebook execution; it must not be converted into an SSH or remote
-worker service.
+schedules, midpoint checkpoint/resume, evaluation, inference export, exact
+reload, and `logging.accelerator` through LibTPU. DDP and FSDP run when Colab
+exposes at least two JAX devices; otherwise the evidence records them as
+unavailable. It emits a single archive containing `summary.json` and every
+canonical run artifact. Free Colab permits interactive notebook execution; it
+must not be converted into an SSH or remote worker service.

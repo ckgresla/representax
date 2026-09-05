@@ -151,10 +151,18 @@ def variants() -> tuple[Variant, ...]:
     )
 
 
+def _available_variants(device_count: int) -> tuple[Variant, ...]:
+    return tuple(
+        variant
+        for variant in variants()
+        if device_count > 1 or variant.sharding == "single"
+    )
+
+
 def _data(task: Literal["pairwise", "retrieval"]) -> DataConfig:
     return DataConfig(
         distribution=mix(
-            source("memory://representax-tpu-toy-v1", map=identity),
+            source("memory://representax-tpu-toy-v1", map=MAPPER),
             shuffle=False,
             seed=7,
         ),
@@ -417,7 +425,11 @@ def run(output: Path, *, steps: int, device_count: int) -> dict[str, Any]:
     output.mkdir(parents=True, exist_ok=False)
     reports: dict[str, dict[str, Any]] = {}
     vectors: dict[str, np.ndarray] = {}
-    for variant in variants():
+    available_variants = _available_variants(device_count)
+    skipped_variants = tuple(
+        variant.name for variant in variants() if variant not in available_variants
+    )
+    for variant in available_variants:
         report, vector = _run_variant(
             variant,
             output=output,
@@ -444,6 +456,8 @@ def run(output: Path, *, steps: int, device_count: int) -> dict[str, Any]:
         baseline_name = f"{group}-direct"
         baseline = vectors[baseline_name]
         for candidate_name in candidates:
+            if candidate_name not in vectors:
+                continue
             candidate = vectors[candidate_name]
             relative_l2 = _relative_l2(candidate, baseline)
             cosine = _cosine(candidate, baseline)
@@ -475,6 +489,9 @@ def run(output: Path, *, steps: int, device_count: int) -> dict[str, Any]:
             "colab_backend_version": os.environ.get("COLAB_BACKEND_VERSION"),
         },
         "variants": reports,
+        "skipped_variants": {
+            name: "requires at least two JAX devices" for name in skipped_variants
+        },
         "parity": parity,
     }
     (output / "summary.json").write_text(
