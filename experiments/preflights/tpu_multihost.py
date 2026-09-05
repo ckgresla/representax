@@ -481,6 +481,7 @@ def _sentence_transformers_worker(
 
     import sentence_transformers
     import torch_xla
+    import torch_xla.core.xla_model as xm
     import torch_xla.runtime as xr
     from datasets import Dataset
     from sentence_transformers import (
@@ -499,7 +500,7 @@ def _sentence_transformers_worker(
     loss = losses.MultipleNegativesRankingLoss(
         model,
         scale=20.0,
-        gather_across_devices=True,
+        gather_across_devices=False,
     )
     train_dataset = Dataset.from_dict(
         _sentence_pairs(global_batch_size * max(steps, 1))
@@ -511,6 +512,7 @@ def _sentence_transformers_worker(
         learning_rate=2e-5,
         lr_scheduler_type="constant",
         warmup_steps=0,
+        optim="adamw_torch",
         weight_decay=0.0,
         adam_beta1=0.9,
         adam_beta2=0.999,
@@ -541,6 +543,12 @@ def _sentence_transformers_worker(
     result = trainer.train()
     torch_xla.sync(wait=True)
     elapsed = time.perf_counter() - started
+    parameter_probe = next(model.parameters()).detach().reshape(-1)[:1]
+    gathered_probes = xm.all_gather(parameter_probe)
+    torch_xla.sync(wait=True)
+    parameter_probe_spread = float(
+        (gathered_probes.max() - gathered_probes.min()).cpu()
+    )
     losses = [
         float(row["loss"])
         for row in trainer.state.log_history
@@ -551,6 +559,7 @@ def _sentence_transformers_worker(
             "summary",
             framework="sentence-transformers-pytorch-xla",
             sentence_transformers_version=sentence_transformers.__version__,
+            distributed_type=str(trainer.accelerator.state.distributed_type),
             model=SENTENCE_TRANSFORMER_MODEL,
             model_revision=SENTENCE_TRANSFORMER_REVISION,
             parameter_count=sum(parameter.numel() for parameter in model.parameters()),
@@ -561,6 +570,7 @@ def _sentence_transformers_worker(
             global_batch_size=global_batch_size,
             first_loss=losses[0] if losses else None,
             final_loss=losses[-1] if losses else None,
+            parameter_probe_spread=parameter_probe_spread,
             training_seconds=elapsed,
             train_samples_per_second=float(
                 result.metrics.get("train_samples_per_second", 0.0)
