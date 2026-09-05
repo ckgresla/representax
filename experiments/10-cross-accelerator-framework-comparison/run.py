@@ -115,7 +115,14 @@ def _contract(
         "execution": {
             "platform": platform,
             "representax_grad_cache_chunk": REPRESENTAX_CHUNK_SIZE,
-            "sentence_transformers_grad_cache_chunk": REFERENCE_CHUNK_SIZE,
+            "sentence_transformers_loss": (
+                "multiple_negatives_ranking"
+                if platform == "tpu"
+                else "cached_multiple_negatives_ranking"
+            ),
+            "sentence_transformers_grad_cache_chunk": (
+                None if platform == "tpu" else REFERENCE_CHUNK_SIZE
+            ),
             "torch_compile": torch_compile,
         },
     }
@@ -489,6 +496,7 @@ def _sentence_transformers_worker(
     )
     from sentence_transformers.sentence_transformer.losses import (
         CachedMultipleNegativesRankingLoss,
+        MultipleNegativesRankingLoss,
     )
     from transformers import TrainerCallback
 
@@ -535,13 +543,20 @@ def _sentence_transformers_worker(
     model.max_seq_length = DOCUMENT_LENGTH
     collator = _FixedPairCollator(model.tokenizer)
     table = datasets.Dataset.from_list(_training_rows(Path(data)))
-    loss = CachedMultipleNegativesRankingLoss(
-        model,
-        scale=20.0,
-        mini_batch_size=REFERENCE_CHUNK_SIZE,
-        gather_across_devices=False,
-        show_progress_bar=False,
-    )
+    if platform == "tpu":
+        loss = MultipleNegativesRankingLoss(
+            model,
+            scale=20.0,
+            gather_across_devices=False,
+        )
+    else:
+        loss = CachedMultipleNegativesRankingLoss(
+            model,
+            scale=20.0,
+            mini_batch_size=REFERENCE_CHUNK_SIZE,
+            gather_across_devices=False,
+            show_progress_bar=False,
+        )
     arguments = SentenceTransformerTrainingArguments(
         output_dir=str(run_directory / "checkpoints"),
         per_device_train_batch_size=local_batch_size,

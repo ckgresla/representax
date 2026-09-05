@@ -97,6 +97,32 @@ def test_gpu_reference_control_records_inductor_without_changing_science() -> No
     assert inductor["execution"]["torch_compile"]
 
 
+def test_tpu_reference_uses_the_supported_uncached_loss() -> None:
+    module = _module()
+    gpu = module._contract(
+        seed=7,
+        variant="sentence-transformers-local",
+        steps=20,
+        platform="gpu",
+    )
+    tpu = module._contract(
+        seed=7,
+        variant="sentence-transformers-local",
+        steps=20,
+        platform="tpu",
+    )
+
+    assert gpu["training"] == tpu["training"]
+    assert gpu["execution"]["sentence_transformers_loss"] == (
+        "cached_multiple_negatives_ranking"
+    )
+    assert tpu["execution"]["sentence_transformers_loss"] == (
+        "multiple_negatives_ranking"
+    )
+    assert gpu["execution"]["sentence_transformers_grad_cache_chunk"] == 128
+    assert tpu["execution"]["sentence_transformers_grad_cache_chunk"] is None
+
+
 def test_reference_helpers_are_self_contained(tmp_path: Path) -> None:
     module = _module()
     path = tmp_path / "pairs.parquet"
