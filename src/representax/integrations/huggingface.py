@@ -173,3 +173,30 @@ def load_safetensor_subset(
                 for name in shard_names:
                     result[name] = jnp.asarray(handle.get_tensor(name), dtype=dtype)
     return result
+
+
+def safetensor_names(checkpoint: str | Path) -> frozenset[str]:
+    """Return tensor names from a local single- or multi-shard checkpoint."""
+
+    checkpoint_path = Path(checkpoint)
+    index_path = checkpoint_path / "model.safetensors.index.json"
+    if index_path.is_file():
+        value = json.loads(index_path.read_text(encoding="utf-8"))
+        weight_map = value.get("weight_map")
+        if not isinstance(weight_map, Mapping):
+            raise ValueError("checkpoint index must contain a weight_map object")
+        return frozenset(str(name) for name in weight_map)
+
+    path = checkpoint_path / "model.safetensors"
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"no model.safetensors or model.safetensors.index.json in {checkpoint}"
+        )
+    try:
+        from safetensors import safe_open
+    except ImportError as error:  # pragma: no cover - broken installation
+        raise ImportError(
+            "safetensors is required for checkpoint loading; reinstall representax"
+        ) from error
+    with safe_open(path, framework="np") as handle:
+        return frozenset(handle.keys())
