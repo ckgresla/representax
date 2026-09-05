@@ -22,11 +22,12 @@ runs. PyTorch/XLA performs the corresponding setup through PJRT and
 
 ```bash
 experiments/tpu/.venv-jax/bin/python \
-  experiments/preflights/tpu_multihost.py topology --distributed --scope both
+  -m experiments.preflights.tpu_multihost \
+  topology --distributed --scope both
 
 experiments/tpu/.venv-jax/bin/python \
-  experiments/preflights/tpu_multihost.py jax-dense
+  -m experiments.preflights.tpu_multihost jax-dense
 
 PJRT_DEVICE=TPU experiments/tpu/.venv-torch-xla/bin/python \
-  experiments/preflights/tpu_multihost.py torch-dense
+  -m experiments.preflights.tpu_multihost torch-dense
 ```

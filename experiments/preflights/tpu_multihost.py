@@ -300,10 +300,11 @@ def representax_dense(
 
     from experiments.preflights.tpu import (
         MAPPER,
+        ToySource,
         Variant,
         _job,
+        _record,
         identity,
-        resolve_toy_records,
     )
     from representax.config import ExportConfig
     from representax.train import run_job
@@ -329,10 +330,17 @@ def representax_dense(
         }
     )
     run_directory = output.expanduser().resolve() / f"process-{jax.process_index()}"
+    records = ToySource(
+        tuple(_record(index) for index in range(global_batch_size * steps))
+    )
+
+    def resolve_records(_: Any) -> ToySource:
+        return records
+
     result = run_job(
         job,
         run_directory,
-        resolvers={"memory": resolve_toy_records},
+        resolvers={"memory": resolve_records},
         mappers={MAPPER: identity},
     )
     if jax.process_index() != 0:
