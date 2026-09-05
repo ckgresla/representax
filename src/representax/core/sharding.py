@@ -60,6 +60,17 @@ def activation_sharding(
         _ACTIVE.reset(token)
 
 
+@contextmanager
+def suspend_activation_sharding() -> Iterator[None]:
+    """Temporarily trace one device-local subproblem without global annotations."""
+
+    token = _ACTIVE.set(None)
+    try:
+        yield
+    finally:
+        _ACTIVE.reset(token)
+
+
 def activation_out_sharding(rank: int) -> NamedSharding | None:
     """Return the active batch-leading layout, or no annotation locally."""
 

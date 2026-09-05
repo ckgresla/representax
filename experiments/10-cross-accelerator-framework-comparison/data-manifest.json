@@ -1,0 +1,78 @@
+{
+  "dataset": {
+    "id": "sentence-transformers/msmarco-msmarco-MiniLM-L6-v3",
+    "revision": "0d54352548089199bde15ad7e06efe895dc80b56"
+  },
+  "model_tokenizer": {
+    "id": "sentence-transformers/all-mpnet-base-v2",
+    "revision": "e8c3b32edf5434bc2275fc9bab85f82640a19130"
+  },
+  "schema_version": "representax-unique-msmarco-v1",
+  "seed_files": {
+    "1234": {
+      "file": "seed-1234.parquet",
+      "rows": 65536,
+      "sha256": "sha256:1a4ae3f10e35bf01c5d7166c8dd8b98aec62c19c74fa52bcc182f661c0b3ef27"
+    },
+    "2026": {
+      "file": "seed-2026.parquet",
+      "rows": 65536,
+      "sha256": "sha256:5e98fc2c457ccc58bd524bfb9eb41b371582d717766b644da37365086ac3e942"
+    },
+    "42": {
+      "file": "seed-42.parquet",
+      "rows": 65536,
+      "sha256": "sha256:40283b05d9fc77e50b339fd9344c700ba7df3d7808e41d081464407f005e8456"
+    },
+    "7": {
+      "file": "seed-7.parquet",
+      "rows": 65536,
+      "sha256": "sha256:99ac32948e9074a78d93ada0c7098480b7346c50ea062d8fe27dd4b1e4ce9239"
+    },
+    "773": {
+      "file": "seed-773.parquet",
+      "rows": 65536,
+      "sha256": "sha256:27bf1be3a3f297420adcdfee3808a59c1ef80e4675a534191f2c01cbca8b1b26"
+    }
+  },
+  "selection": {
+    "document_length_at_most": 256,
+    "order": "first eligible source occurrence",
+    "query_length_at_most": 32,
+    "rows": 65536,
+    "unique_positive": true,
+    "unique_query": true
+  },
+  "source_files": [
+    {
+      "bytes": 108845211,
+      "file": "triplet-all/train-00000-of-00039.parquet",
+      "sha256": "sha256:e00986bed2e4e5914691f6d03271322cd3615abc70583a569937281f3459b84a"
+    },
+    {
+      "bytes": 109092943,
+      "file": "triplet-all/train-00001-of-00039.parquet",
+      "sha256": "sha256:5b229d84a809d4b53f3c0008432bc27a8f4181ce2b7793a55bafed1f1ebc9914"
+    },
+    {
+      "bytes": 109820108,
+      "file": "triplet-all/train-00002-of-00039.parquet",
+      "sha256": "sha256:c3ee9ace9169301dd0451c82272625afc072a0afc8f9dd0dab150086dab8d847"
+    },
+    {
+      "bytes": 109374674,
+      "file": "triplet-all/train-00003-of-00039.parquet",
+      "sha256": "sha256:55bd73b1b3cc2523ef4758b3286123a04daed8d83a8f0f040421ada12a97b68d"
+    },
+    {
+      "bytes": 109439350,
+      "file": "triplet-all/train-00004-of-00039.parquet",
+      "sha256": "sha256:2876b3dc1de6f4ef4c841d8022bcc2b33b1b924d33a713949b7efc525ee4e5ca"
+    },
+    {
+      "bytes": 109296423,
+      "file": "triplet-all/train-00005-of-00039.parquet",
+      "sha256": "sha256:72264eb4a1d97b6d6538d6ea77f1cd2c51065e76f449c3158d65e56ea60a2cf8"
+    }
+  ]
+}

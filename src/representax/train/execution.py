@@ -16,6 +16,8 @@ class ExecutionContext:
     """Named collective axes available while evaluating a loss."""
 
     data_axis_name: str | None = None
+    data_mesh: Any | None = None
+    data_partition_axis: str | None = None
 
 
 _LOCAL_EXECUTION_CONTEXT = ExecutionContext()

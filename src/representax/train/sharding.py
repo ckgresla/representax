@@ -521,7 +521,10 @@ def _build_train_step_from_sharding_plan(
         optimizer,
         max_grad_norm=max_grad_norm,
         execution=execution,
-        context=ExecutionContext(),
+        context=ExecutionContext(
+            data_mesh=plan.mesh,
+            data_partition_axis=plan.data_axis_name,
+        ),
         gradient_accumulation_steps=gradient_accumulation_steps,
         accumulation_split_sharding=(
             NamedSharding(plan.mesh, P(None, plan.data_axis_name))

@@ -9,6 +9,8 @@ from typing import Any, Literal, cast
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+from jax.sharding import Mesh, NamedSharding
+from jax.sharding import PartitionSpec as P
 from jaxtyping import Array, Float, PRNGKeyArray
 
 from representax.core import (
@@ -25,6 +27,7 @@ from representax.core.sharding import (
     batch_to_scan,
     constrain_activation,
     scan_to_batch,
+    suspend_activation_sharding,
 )
 from representax.precision import (
     PrecisionPolicy,
@@ -434,6 +437,139 @@ def _gather_retrieval_rows(
     )
 
 
+def _device_local_mnr_output(
+    task: MNRTask,
+    batch: RetrievalBatch,
+    queries: Any,
+    documents: Any,
+    *,
+    group_count: int,
+    mesh: Mesh,
+    partition_axis: str,
+    row_chunk_size: int,
+) -> LossOutput:
+    query_count = int(queries.shape[0])
+    document_count = int(documents.shape[0])
+    if query_count % group_count or document_count % group_count:
+        raise ValueError(
+            "device-local MNR rows must divide evenly across data replicas"
+        )
+    local_queries = query_count // group_count
+    local_documents = document_count // group_count
+    query_groups = jax.lax.reshape(
+        queries,
+        (group_count, local_queries, *queries.shape[1:]),
+        out_sharding=NamedSharding(
+            mesh,
+            P(partition_axis, None, *([None] * (queries.ndim - 1))),
+        ),
+    )
+    document_groups = jax.lax.reshape(
+        documents,
+        (group_count, local_documents, *documents.shape[1:]),
+        out_sharding=NamedSharding(
+            mesh,
+            P(partition_axis, None, *([None] * (documents.ndim - 1))),
+        ),
+    )
+    diagonal = jnp.eye(group_count, dtype=jnp.bool_)[:, None, :, None]
+    positive_mask = jnp.any(
+        jax.lax.reshape(
+            batch.positive_mask,
+            (group_count, local_queries, group_count, local_documents),
+            out_sharding=NamedSharding(
+                mesh,
+                P(partition_axis, None, None, None),
+            ),
+        )
+        & diagonal,
+        axis=2,
+    )
+    positive_weights = (
+        None
+        if batch.positive_weights is None
+        else jnp.sum(
+            jax.lax.reshape(
+                batch.positive_weights,
+                (group_count, local_queries, group_count, local_documents),
+                out_sharding=NamedSharding(
+                    mesh,
+                    P(partition_axis, None, None, None),
+                ),
+            )
+            * diagonal,
+            axis=2,
+        )
+    )
+    query_valid = jax.lax.reshape(
+        batch.query_valid,
+        (group_count, local_queries),
+        out_sharding=NamedSharding(mesh, P(partition_axis, None)),
+    )
+    document_valid = jax.lax.reshape(
+        batch.document_valid,
+        (group_count, local_documents),
+        out_sharding=NamedSharding(mesh, P(partition_axis, None)),
+    )
+
+    def local_output(
+        local_query: Array,
+        local_document: Array,
+        local_positive_mask: Array,
+        local_positive_weights: Array | None,
+        local_query_valid: Array,
+        local_document_valid: Array,
+    ) -> LossOutput:
+        local_batch = RetrievalBatch(
+            query=local_query,
+            document=local_document,
+            positive_mask=local_positive_mask,
+            positive_weights=local_positive_weights,
+            query_valid=local_query_valid,
+            document_valid=local_document_valid,
+        )
+        return task.loss_from_embeddings(
+            local_query,
+            local_document,
+            local_batch,
+            row_chunk_size=min(row_chunk_size, local_queries),
+        )
+
+    with suspend_activation_sharding():
+        if positive_weights is None:
+            grouped = jax.vmap(
+                lambda query, document, mask, query_is_valid, document_is_valid: (
+                    local_output(
+                        query,
+                        document,
+                        mask,
+                        None,
+                        query_is_valid,
+                        document_is_valid,
+                    )
+                )
+            )(
+                query_groups,
+                document_groups,
+                positive_mask,
+                query_valid,
+                document_valid,
+            )
+        else:
+            grouped = jax.vmap(local_output)(
+                query_groups,
+                document_groups,
+                positive_mask,
+                positive_weights,
+                query_valid,
+                document_valid,
+            )
+    return LossOutput(
+        loss=jnp.mean(grouped.loss),
+        metrics=jax.tree.map(lambda value: jnp.mean(value, axis=0), grouped.metrics),
+    )
+
+
 @dataclass(frozen=True)
 class GradCache:
     """Bound encoder and score-row memory without changing loss semantics."""
@@ -708,12 +844,30 @@ class GradCache:
                 axis_name=axis_name,
             )
         if modifier is None:
-            output = base_task.loss_from_embeddings(
-                queries,
-                documents,
-                batch,
-                row_chunk_size=self.resolved_loss_row_chunk_size,
-            )
+            if (
+                base_task.negative_scope == "local"
+                and context.data_mesh is not None
+                and context.data_partition_axis is not None
+            ):
+                output = _device_local_mnr_output(
+                    base_task,
+                    batch,
+                    queries,
+                    documents,
+                    group_count=int(
+                        context.data_mesh.shape[context.data_partition_axis]
+                    ),
+                    mesh=context.data_mesh,
+                    partition_axis=context.data_partition_axis,
+                    row_chunk_size=self.resolved_loss_row_chunk_size,
+                )
+            else:
+                output = base_task.loss_from_embeddings(
+                    queries,
+                    documents,
+                    batch,
+                    row_chunk_size=self.resolved_loss_row_chunk_size,
+                )
         else:
             output = modifier.loss_from_representations(
                 (queries, documents),
