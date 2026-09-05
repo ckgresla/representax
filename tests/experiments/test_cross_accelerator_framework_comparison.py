@@ -6,6 +6,9 @@ import importlib.util
 import json
 from pathlib import Path
 
+import pyarrow as pa
+import pyarrow.parquet as pq
+
 
 def _module():
     path = (
@@ -92,6 +95,18 @@ def test_gpu_reference_control_records_inductor_without_changing_science() -> No
     assert eager["data"] == inductor["data"]
     assert not eager["execution"]["torch_compile"]
     assert inductor["execution"]["torch_compile"]
+
+
+def test_reference_helpers_are_self_contained(tmp_path: Path) -> None:
+    module = _module()
+    path = tmp_path / "pairs.parquet"
+    pq.write_table(
+        pa.table({"query": ["q"], "positive": ["p"], "ignored": [1]}),
+        path,
+    )
+
+    assert module._training_rows(path) == [{"query": "q", "positive": "p"}]
+    assert module._FixedPairCollator(object()).valid_label_columns == []
 
 
 def test_tracked_data_manifest_matches_the_frozen_contract() -> None:

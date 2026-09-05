@@ -1,4 +1,4 @@
-"""Run the paper's matched dense-retrieval comparison on one TPU slice."""
+"""Run the paper's matched dense-retrieval comparison on GPU or TPU."""
 
 from __future__ import annotations
 
@@ -253,7 +253,7 @@ def _prepare_data(output: Path, checkpoint: Path, rows: int) -> None:
 def _training_rows(path: Path) -> list[dict[str, str]]:
     import pyarrow.parquet as parquet
 
-    table = parquet.read_table(path, columns=("query", "positive"))
+    table = parquet.read_table(path, columns=["query", "positive"])
     return table.to_pylist()
 
 
@@ -427,6 +427,7 @@ def _representax(
 class _FixedPairCollator:
     def __init__(self, tokenizer: Any) -> None:
         self.tokenizer = tokenizer
+        self.valid_label_columns: list[str] = []
         self.valid_tokens = 0
 
     def __call__(self, features: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
@@ -445,6 +446,28 @@ class _FixedPairCollator:
         return output
 
 
+def _sequential_sentence_transformers_batches(
+    dataset: Any,
+    batch_size: int,
+    drop_last: bool,
+    valid_label_columns: list[str] | None = None,
+    generator: Any = None,
+    seed: int = 0,
+) -> Any:
+    """Preserve the prepared seed file's exact row order."""
+    del generator
+    from sentence_transformers.base.sampler import DefaultBatchSampler
+    from torch.utils.data import SequentialSampler
+
+    return DefaultBatchSampler(
+        SequentialSampler(dataset),
+        batch_size=batch_size,
+        drop_last=drop_last,
+        valid_label_columns=valid_label_columns,
+        seed=seed,
+    )
+
+
 def _sentence_transformers_worker(
     index: int,
     checkpoint: str,
@@ -459,13 +482,14 @@ def _sentence_transformers_worker(
     import datasets
     import sentence_transformers
     import torch
-    from benchmarks.samplers import sequential_sentence_transformers_batches
     from sentence_transformers import (
         SentenceTransformer,
         SentenceTransformerTrainer,
         SentenceTransformerTrainingArguments,
     )
-    from sentence_transformers.losses import CachedMultipleNegativesRankingLoss
+    from sentence_transformers.sentence_transformer.losses import (
+        CachedMultipleNegativesRankingLoss,
+    )
     from transformers import TrainerCallback
 
     if platform == "tpu":
@@ -542,7 +566,7 @@ def _sentence_transformers_worker(
         dataloader_pin_memory=False,
         torch_compile=torch_compile,
         torch_compile_backend="inductor" if torch_compile else None,
-        batch_sampler=sequential_sentence_transformers_batches,
+        batch_sampler=_sequential_sentence_transformers_batches,
         seed=seed,
         data_seed=seed,
     )
@@ -615,7 +639,7 @@ def _sentence_transformers_worker(
         train_dataset=table,
         loss=loss,
         data_collator=collator,
-        callbacks=(recorder,),
+        callbacks=[recorder],
     )
     recorder.trainer = trainer
     trainer.train()
