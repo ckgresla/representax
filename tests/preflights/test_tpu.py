@@ -10,6 +10,7 @@ from experiments.preflights.tpu import (
     run,
     variants,
 )
+from experiments.preflights.tpu_multihost import _sentence_pairs
 
 
 def test_tpu_acceptance_matrix_covers_core_training_paths() -> None:
@@ -68,6 +69,18 @@ def test_single_device_acceptance_omits_distributed_variants() -> None:
     assert len(rows) == 6
     assert all(variant.sharding == "single" for variant in rows)
     assert _available_variants(2) == variants()
+
+
+def test_sentence_transformers_tpu_pairs_are_unique_and_aligned() -> None:
+    pairs = _sentence_pairs(32)
+
+    assert len(pairs["anchor"]) == len(pairs["positive"]) == 32
+    assert len(set(pairs["anchor"])) == len(set(pairs["positive"])) == 32
+    for index, (anchor, positive) in enumerate(
+        zip(pairs["anchor"], pairs["positive"], strict=True)
+    ):
+        assert str(index) in anchor
+        assert str(index) in positive
 
 
 @pytest.mark.runtime

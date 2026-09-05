@@ -30,4 +30,12 @@ experiments/tpu/.venv-jax/bin/python \
 
 PJRT_DEVICE=TPU experiments/tpu/.venv-torch-xla/bin/python \
   -m experiments.preflights.tpu_multihost torch-dense
+
+PJRT_DEVICE=TPU experiments/tpu/.venv-torch-xla/bin/python \
+  -m experiments.preflights.tpu_multihost sentence-transformers-dense \
+  --output /tmp/representax-sentence-transformers-tpu
 ```
+
+The final command runs the official `SentenceTransformerTrainer` with a pinned
+tiny BERT checkpoint and `MultipleNegativesRankingLoss` on the entire TPU slice.
+It is an integration canary, not a paper throughput measurement.

@@ -17,6 +17,10 @@ OUTPUT_DIMENSION = 256
 GLOBAL_BATCH_SIZE = 8192
 LEARNING_RATE = 1e-3
 STEPS = 20
+SENTENCE_TRANSFORMER_MODEL = "sentence-transformers-testing/stsb-bert-tiny-safetensors"
+SENTENCE_TRANSFORMER_REVISION = "f3cb857cba53019a20df283396bcca179cf051a4"
+SENTENCE_TRANSFORMER_MAXIMUM_LENGTH = 32
+SENTENCE_TRANSFORMER_LOCAL_BATCH_SIZE = 16
 
 
 def _emit(event: str, **values: Any) -> None:
@@ -453,6 +457,139 @@ def torch_dense(*, steps: int, global_batch_size: int) -> None:
     torch_xla.launch(_torch_worker, args=(steps, global_batch_size))
 
 
+def _sentence_pairs(size: int) -> dict[str, list[str]]:
+    return {
+        "anchor": [
+            f"Which document describes training example {index}?"
+            for index in range(size)
+        ],
+        "positive": [
+            f"This document describes training example {index}."
+            for index in range(size)
+        ],
+    }
+
+
+def _sentence_transformers_worker(
+    index: int,
+    checkpoint: str,
+    output: str,
+    steps: int,
+    local_batch_size: int,
+) -> None:
+    del index
+
+    import sentence_transformers
+    import torch_xla
+    import torch_xla.runtime as xr
+    from datasets import Dataset
+    from sentence_transformers import (
+        BatchSamplers,
+        SentenceTransformer,
+        SentenceTransformerTrainer,
+        SentenceTransformerTrainingArguments,
+        losses,
+    )
+
+    world_size = xr.world_size()
+    rank = xr.global_ordinal()
+    global_batch_size = local_batch_size * world_size
+    model = SentenceTransformer(checkpoint, local_files_only=True)
+    model.max_seq_length = SENTENCE_TRANSFORMER_MAXIMUM_LENGTH
+    loss = losses.MultipleNegativesRankingLoss(
+        model,
+        scale=20.0,
+        gather_across_devices=True,
+    )
+    train_dataset = Dataset.from_dict(
+        _sentence_pairs(global_batch_size * max(steps, 1))
+    )
+    arguments = SentenceTransformerTrainingArguments(
+        output_dir=str(Path(output) / f"process-{rank}"),
+        overwrite_output_dir=True,
+        per_device_train_batch_size=local_batch_size,
+        max_steps=steps,
+        learning_rate=2e-5,
+        lr_scheduler_type="constant",
+        warmup_steps=0,
+        weight_decay=0.0,
+        adam_beta1=0.9,
+        adam_beta2=0.999,
+        adam_epsilon=1e-8,
+        max_grad_norm=1.0,
+        bf16=False,
+        fp16=False,
+        logging_strategy="steps",
+        logging_steps=1,
+        logging_first_step=True,
+        report_to="none",
+        disable_tqdm=True,
+        save_strategy="no",
+        dataloader_drop_last=True,
+        dataloader_num_workers=0,
+        dataloader_pin_memory=False,
+        batch_sampler=BatchSamplers.NO_DUPLICATES,
+        seed=7,
+        data_seed=7,
+    )
+    trainer = SentenceTransformerTrainer(
+        model=model,
+        args=arguments,
+        train_dataset=train_dataset,
+        loss=loss,
+    )
+    started = time.perf_counter()
+    result = trainer.train()
+    torch_xla.sync(wait=True)
+    elapsed = time.perf_counter() - started
+    losses = [
+        float(row["loss"])
+        for row in trainer.state.log_history
+        if row.get("loss") is not None
+    ]
+    if rank == 0:
+        _emit(
+            "summary",
+            framework="sentence-transformers-pytorch-xla",
+            sentence_transformers_version=sentence_transformers.__version__,
+            model=SENTENCE_TRANSFORMER_MODEL,
+            model_revision=SENTENCE_TRANSFORMER_REVISION,
+            parameter_count=sum(parameter.numel() for parameter in model.parameters()),
+            process_count=xr.process_count(),
+            device_count=world_size,
+            steps=int(trainer.state.global_step),
+            local_batch_size=local_batch_size,
+            global_batch_size=global_batch_size,
+            first_loss=losses[0] if losses else None,
+            final_loss=losses[-1] if losses else None,
+            training_seconds=elapsed,
+            train_samples_per_second=float(
+                result.metrics.get("train_samples_per_second", 0.0)
+            ),
+        )
+
+
+def sentence_transformers_dense(
+    *, output: Path, steps: int, local_batch_size: int
+) -> None:
+    import torch_xla
+    from huggingface_hub import snapshot_download
+
+    checkpoint = snapshot_download(
+        SENTENCE_TRANSFORMER_MODEL,
+        revision=SENTENCE_TRANSFORMER_REVISION,
+    )
+    torch_xla.launch(
+        _sentence_transformers_worker,
+        args=(
+            checkpoint,
+            str(output.expanduser().resolve()),
+            steps,
+            local_batch_size,
+        ),
+    )
+
+
 def main(arguments: Sequence[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -471,6 +608,14 @@ def main(arguments: Sequence[str] | None = None) -> None:
     representax.add_argument("--output", type=Path, required=True)
     representax.add_argument("--steps", type=int, default=STEPS)
     representax.add_argument("--global-batch-size", type=int, default=256)
+    sentence_transformers = commands.add_parser("sentence-transformers-dense")
+    sentence_transformers.add_argument("--output", type=Path, required=True)
+    sentence_transformers.add_argument("--steps", type=int, default=STEPS)
+    sentence_transformers.add_argument(
+        "--local-batch-size",
+        type=int,
+        default=SENTENCE_TRANSFORMER_LOCAL_BATCH_SIZE,
+    )
     parsed = parser.parse_args(arguments)
     if parsed.command == "topology":
         jax_topology(
@@ -486,6 +631,12 @@ def main(arguments: Sequence[str] | None = None) -> None:
             output=parsed.output,
             steps=parsed.steps,
             global_batch_size=parsed.global_batch_size,
+        )
+    elif parsed.command == "sentence-transformers-dense":
+        sentence_transformers_dense(
+            output=parsed.output,
+            steps=parsed.steps,
+            local_batch_size=parsed.local_batch_size,
         )
     else:
         torch_dense(steps=parsed.steps, global_batch_size=parsed.global_batch_size)
