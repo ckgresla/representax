@@ -9,7 +9,7 @@ from typing import Any, Literal, cast
 import equinox as eqx
 import jax
 import jax.numpy as jnp
-from jax.sharding import Mesh, NamedSharding
+from jax.sharding import AxisType, Mesh, NamedSharding
 from jax.sharding import PartitionSpec as P
 from jaxtyping import Array, Float, PRNGKeyArray
 
@@ -456,31 +456,34 @@ def _device_local_mnr_output(
         )
     local_queries = query_count // group_count
     local_documents = document_count // group_count
-    query_groups = jax.lax.reshape(
+    axis_index = mesh.axis_names.index(partition_axis)
+    explicit_axis = mesh.axis_types[axis_index] is AxisType.Explicit
+
+    def grouped(value: Array, shape: tuple[int, ...], spec: P) -> Array:
+        if not explicit_axis:
+            return jnp.reshape(value, shape)
+        return jax.lax.reshape(
+            value,
+            shape,
+            out_sharding=NamedSharding(mesh, spec),
+        )
+
+    query_groups = grouped(
         queries,
         (group_count, local_queries, *queries.shape[1:]),
-        out_sharding=NamedSharding(
-            mesh,
-            P(partition_axis, None, *([None] * (queries.ndim - 1))),
-        ),
+        P(partition_axis, None, *([None] * (queries.ndim - 1))),
     )
-    document_groups = jax.lax.reshape(
+    document_groups = grouped(
         documents,
         (group_count, local_documents, *documents.shape[1:]),
-        out_sharding=NamedSharding(
-            mesh,
-            P(partition_axis, None, *([None] * (documents.ndim - 1))),
-        ),
+        P(partition_axis, None, *([None] * (documents.ndim - 1))),
     )
     diagonal = jnp.eye(group_count, dtype=jnp.bool_)[:, None, :, None]
     positive_mask = jnp.any(
-        jax.lax.reshape(
+        grouped(
             batch.positive_mask,
             (group_count, local_queries, group_count, local_documents),
-            out_sharding=NamedSharding(
-                mesh,
-                P(partition_axis, None, None, None),
-            ),
+            P(partition_axis, None, None, None),
         )
         & diagonal,
         axis=2,
@@ -489,27 +492,24 @@ def _device_local_mnr_output(
         None
         if batch.positive_weights is None
         else jnp.sum(
-            jax.lax.reshape(
+            grouped(
                 batch.positive_weights,
                 (group_count, local_queries, group_count, local_documents),
-                out_sharding=NamedSharding(
-                    mesh,
-                    P(partition_axis, None, None, None),
-                ),
+                P(partition_axis, None, None, None),
             )
             * diagonal,
             axis=2,
         )
     )
-    query_valid = jax.lax.reshape(
+    query_valid = grouped(
         batch.query_valid,
         (group_count, local_queries),
-        out_sharding=NamedSharding(mesh, P(partition_axis, None)),
+        P(partition_axis, None),
     )
-    document_valid = jax.lax.reshape(
+    document_valid = grouped(
         batch.document_valid,
         (group_count, local_documents),
-        out_sharding=NamedSharding(mesh, P(partition_axis, None)),
+        P(partition_axis, None),
     )
 
     def local_output(

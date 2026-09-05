@@ -10,6 +10,7 @@ import jax.numpy as jnp
 import numpy as np
 import optax
 import pytest
+from jax.sharding import AxisType
 
 from representax.core import LossOutput
 from representax.models import DenseEncoder
@@ -124,7 +125,11 @@ class _ExplicitGroupedMNR(MNRTask):
 
 @pytest.mark.distributed
 @pytest.mark.parametrize("world_size", [2, 4])
-def test_ddp_grad_cache_matches_explicit_device_local_update(world_size: int) -> None:
+@pytest.mark.parametrize("axis_type", [AxisType.Explicit, AxisType.Auto])
+def test_ddp_grad_cache_matches_explicit_device_local_update(
+    world_size: int,
+    axis_type: AxisType,
+) -> None:
     devices = jax.devices()
     if len(devices) < world_size:
         pytest.skip(f"requires at least {world_size} JAX devices")
@@ -150,7 +155,12 @@ def test_ddp_grad_cache_matches_explicit_device_local_update(world_size: int) ->
         execution=execution,
         donate_state=False,
     )
-    mesh = jax.make_mesh((world_size,), ("data",), devices=devices[:world_size])
+    mesh = jax.make_mesh(
+        (world_size,),
+        ("data",),
+        devices=devices[:world_size],
+        axis_types=(axis_type,),
+    )
     plan = ShardingPlan.ddp(state, optimizer, mesh, axis_name="data")
     distributed_step = build_train_step(
         MNRTask(scale=9.0, symmetric=True, negative_scope="local"),
