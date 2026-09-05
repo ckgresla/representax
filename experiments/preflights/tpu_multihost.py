@@ -91,6 +91,7 @@ def jax_topology(
     mesh_devices = devices if distributed else local_devices
     mesh = Mesh(np.asarray(mesh_devices), ("data",))
     sharding = NamedSharding(mesh, P("data"))
+    replicated = NamedSharding(mesh, P())
     bytes_per_device = payload_mib * 1024 * 1024
     elements_per_device = bytes_per_device // np.dtype(np.float32).itemsize
     local = np.ones(
@@ -112,7 +113,7 @@ def jax_topology(
         for process_index in sorted({device.process_index for device in mesh_devices})
     ]
     scopes = ("local", "global") if scope == "both" else (scope,)
-    def make_all_reduce(groups: list[list[int]] | None) -> Any:
+    def make_repeated_all_reduce(groups: list[list[int]] | None) -> Any:
         @partial(
             jax.shard_map,
             mesh=mesh,
@@ -120,22 +121,31 @@ def jax_topology(
             out_specs=P(),
             check_vma=False,
         )
-        def all_reduce(shard: Any) -> Any:
-            return jax.lax.psum(shard, "data", axis_index_groups=groups)
+        def repeated_all_reduce(shard: Any) -> Any:
+            def reduce_once(_: int, current: Any) -> Any:
+                return jax.lax.psum(
+                    current, "data", axis_index_groups=groups
+                )
 
-        return all_reduce
+            return jax.lax.fori_loop(0, iterations, reduce_once, shard)
+
+        return jax.jit(
+            repeated_all_reduce,
+            in_shardings=sharding,
+            out_shardings=replicated,
+        )
 
     for measured_scope in scopes:
         groups = process_groups if measured_scope == "local" else None
-        all_reduce = make_all_reduce(groups)
-        all_reduce(value).block_until_ready()
+        repeated_all_reduce = make_repeated_all_reduce(groups)
+        repeated_all_reduce(value).block_until_ready()
         durations = []
-        for _ in range(iterations):
+        for _ in range(5):
             started = time.perf_counter()
-            all_reduce(value).block_until_ready()
+            repeated_all_reduce(value).block_until_ready()
             durations.append(time.perf_counter() - started)
         if jax.process_index() == 0:
-            median = statistics.median(durations)
+            median = statistics.median(durations) / iterations
             participants = (
                 len(process_groups[0])
                 if measured_scope == "local"
@@ -148,6 +158,8 @@ def jax_topology(
                 participants=participants,
                 payload_bytes_per_device=bytes_per_device,
                 median_seconds=median,
+                measurements=5,
+                collectives_per_measurement=iterations,
                 payload_gigabytes_per_second_per_device=(
                     bytes_per_device / median / 1e9
                 ),
@@ -194,10 +206,15 @@ def jax_dense(*, steps: int, global_batch_size: int) -> None:
     optimizer = optax.adamw(LEARNING_RATE, weight_decay=0.0)
     optimizer_state = jax.device_put(optimizer.init(parameters), replicated)
 
-    def objective(model: Any) -> Any:
+    def objective(
+        model: Any,
+        left_batch: Any,
+        right_batch: Any,
+        targets: Any,
+    ) -> Any:
         matrix, offset = model
-        left_embedding = left_array @ matrix + offset
-        right_embedding = right_array @ matrix + offset
+        left_embedding = left_batch @ matrix + offset
+        right_embedding = right_batch @ matrix + offset
         left_embedding /= jnp.maximum(
             jnp.linalg.norm(left_embedding, axis=-1, keepdims=True), 1e-12
         )
@@ -205,11 +222,28 @@ def jax_dense(*, steps: int, global_batch_size: int) -> None:
             jnp.linalg.norm(right_embedding, axis=-1, keepdims=True), 1e-12
         )
         prediction = jnp.sum(left_embedding * right_embedding, axis=-1)
-        return jnp.mean(jnp.square(prediction - target_array))
+        return jnp.mean(jnp.square(prediction - targets))
 
-    @partial(jax.jit, in_shardings=(replicated, replicated))
-    def train_step(model: Any, state: Any) -> tuple[Any, Any, Any]:
-        loss, gradients = jax.value_and_grad(objective)(model)
+    @partial(
+        jax.jit,
+        in_shardings=(
+            replicated,
+            replicated,
+            batch_sharding,
+            batch_sharding,
+            target_sharding,
+        ),
+    )
+    def train_step(
+        model: Any,
+        state: Any,
+        left_batch: Any,
+        right_batch: Any,
+        targets: Any,
+    ) -> tuple[Any, Any, Any]:
+        loss, gradients = jax.value_and_grad(objective)(
+            model, left_batch, right_batch, targets
+        )
         updates, state = optimizer.update(gradients, state, model)
         return optax.apply_updates(model, updates), state, loss
 
@@ -220,7 +254,11 @@ def jax_dense(*, steps: int, global_batch_size: int) -> None:
         for step in range(steps):
             started = time.perf_counter()
             parameters, optimizer_state, loss = train_step(
-                parameters, optimizer_state
+                parameters,
+                optimizer_state,
+                left_array,
+                right_array,
+                target_array,
             )
             loss = float(loss.block_until_ready())
             elapsed = time.perf_counter() - started
