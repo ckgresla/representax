@@ -325,11 +325,11 @@ def _representax(
     from representax.train import run_job
 
     if GLOBAL_BATCH_SIZE % jax.device_count():
-        raise ValueError("global batch must divide the TPU device count")
+        raise ValueError("global batch must divide the device count")
     variant = cast(Variant, f"representax-{scope}")
     run_directory = output / f"process-{jax.process_index()}"
     job = JobConfig(
-        name=f"tpu-dense-{scope}-seed-{seed}",
+        name=f"{platform}-dense-{scope}-seed-{seed}",
         model=ModelConfig(
             target="representax.models:SentenceEncoder.load_from_hf",
             parameters={
