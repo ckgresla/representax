@@ -114,6 +114,7 @@ def jax_topology(
         for process_index in sorted({device.process_index for device in mesh_devices})
     ]
     scopes = ("local", "global") if scope == "both" else (scope,)
+
     def make_repeated_all_reduce(groups: list[list[int]] | None) -> Any:
         @partial(
             jax.shard_map,
@@ -124,9 +125,7 @@ def jax_topology(
         )
         def repeated_all_reduce(shard: Any) -> Any:
             def reduce_once(_: int, current: Any) -> Any:
-                return jax.lax.psum(
-                    current, "data", axis_index_groups=groups
-                )
+                return jax.lax.psum(current, "data", axis_index_groups=groups)
 
             return jax.lax.fori_loop(0, iterations, reduce_once, shard)
 
@@ -293,9 +292,7 @@ def jax_dense(*, steps: int, global_batch_size: int) -> None:
         )
 
 
-def representax_dense(
-    *, output: Path, steps: int, global_batch_size: int
-) -> None:
+def representax_dense(*, output: Path, steps: int, global_batch_size: int) -> None:
     jax = _jax_initialize(True)
 
     from experiments.preflights.tpu import (
