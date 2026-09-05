@@ -484,12 +484,12 @@ def _sentence_transformers_worker(
     import torch_xla.runtime as xr
     from datasets import Dataset
     from sentence_transformers import (
-        BatchSamplers,
         SentenceTransformer,
         SentenceTransformerTrainer,
         SentenceTransformerTrainingArguments,
         losses,
     )
+    from sentence_transformers.sentence_transformer.training_args import BatchSamplers
 
     world_size = xr.world_size()
     rank = xr.global_ordinal()
