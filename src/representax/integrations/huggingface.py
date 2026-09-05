@@ -159,7 +159,7 @@ def load_safetensor_subset(
         return {}
     checkpoint_path = Path(checkpoint)
     result: dict[str, jax.Array] = {}
-    target = jax.devices("cpu")[0] if device is None else device
+    target = jax.local_devices(backend="cpu")[0] if device is None else device
     for shard, shard_names in _safetensor_shards(checkpoint_path, requested).items():
         if not shard.is_file():
             raise FileNotFoundError(f"safetensor shard not found: {shard}")
