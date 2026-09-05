@@ -260,9 +260,13 @@ def test_unrolled_forward_matches_scanned_hidden_states_and_gradients():
     )
 
     compact = replace(model, unroll_layers=False)
+    actual_hidden = model.hidden_states(batch)
+    expected_hidden = compact.hidden_states(batch)
+    np.testing.assert_allclose(actual_hidden, expected_hidden, rtol=1e-6, atol=1e-6)
+    projection = jax.random.normal(jax.random.key(29), actual_hidden.shape)
 
     def objective(candidate):
-        return jnp.sum(candidate.hidden_states(batch))
+        return jnp.vdot(candidate.hidden_states(batch), projection)
 
     actual_value, actual_gradient = eqx.filter_value_and_grad(objective)(model)
     expected_value, expected_gradient = eqx.filter_value_and_grad(objective)(compact)
@@ -307,32 +311,6 @@ def test_local_attention_matches_explicit_dense_value_and_gradient():
 
     np.testing.assert_allclose(actual, expected, rtol=2e-6, atol=2e-6)
     np.testing.assert_allclose(actual_gradient, expected_gradient, rtol=2e-6, atol=2e-6)
-
-
-def test_short_local_attention_uses_equivalent_full_attention_path():
-    config = tiny_config().model_copy(
-        update={
-            "local_attention": 8,
-            "sliding_attention_rope_theta": 10_000.0,
-        }
-    )
-    full_config = config.model_copy(
-        update={"layer_types": ("full_attention", "full_attention")}
-    )
-    batch = ModernVBERTTextBatch(
-        input_ids=jnp.asarray([[1, 2, 3, 0], [4, 5, 6, 7]]),
-        attention_mask=jnp.asarray([[1, 1, 1, 0], [1, 1, 1, 1]]),
-    )
-    key = jax.random.key(23)
-    local = ModernVBERTTextEncoder.init(config, key=key)
-    full = ModernVBERTTextEncoder.init(full_config, key=key)
-
-    np.testing.assert_allclose(
-        local.hidden_states(batch),
-        full.hidden_states(batch),
-        rtol=1e-6,
-        atol=1e-6,
-    )
 
 
 def test_hf_state_dict_mapping_round_trips_the_native_tree():

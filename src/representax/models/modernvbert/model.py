@@ -234,31 +234,20 @@ class FusedSelfAttention(eqx.Module):
 
         operands = (query, key, value)
         local_radius = config.local_attention // 2
-        if (
-            sequence <= local_radius + 1
-            and config.full_attention_rope_theta
-            == config.sliding_attention_rope_theta
-        ):
-            attended = attend(
-                operands,
+        attended = jax.lax.cond(
+            sliding_attention,
+            lambda values: attend(
+                values,
+                rotary=sliding_position_embeddings,
+                local_radius=local_radius,
+            ),
+            lambda values: attend(
+                values,
                 rotary=full_position_embeddings,
                 local_radius=None,
-            )
-        else:
-            attended = jax.lax.cond(
-                sliding_attention,
-                lambda values: attend(
-                    values,
-                    rotary=sliding_position_embeddings,
-                    local_radius=local_radius,
-                ),
-                lambda values: attend(
-                    values,
-                    rotary=full_position_embeddings,
-                    local_radius=None,
-                ),
-                operands,
-            )
+            ),
+            operands,
+        )
         return self.output(attended.reshape(batch, sequence, config.hidden_size))
 
 
