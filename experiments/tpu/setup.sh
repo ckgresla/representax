@@ -8,8 +8,12 @@ jax_environment="${REPRESENTAX_TPU_JAX_ENV:-${project_dir}/.venv-jax}"
 torch_environment="${REPRESENTAX_TPU_TORCH_ENV:-${project_dir}/.venv-torch-xla}"
 
 if ! command -v "${uv_command}" >/dev/null 2>&1; then
-  echo "uv is required: https://docs.astral.sh/uv/getting-started/installation/" >&2
-  exit 2
+  if [[ ${uv_command} == "uv" && -x "${HOME}/.local/bin/uv" ]]; then
+    uv_command="${HOME}/.local/bin/uv"
+  else
+    echo "uv is required: https://docs.astral.sh/uv/getting-started/installation/" >&2
+    exit 2
+  fi
 fi
 
 UV_PROJECT_ENVIRONMENT="${jax_environment}" \
