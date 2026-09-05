@@ -480,10 +480,8 @@ def _sentence_transformers_worker(
     del index
 
     import sentence_transformers
-    import torch.distributed as distributed
     import torch_xla
     import torch_xla.core.xla_model as xm
-    import torch_xla.distributed.xla_backend  # noqa: F401
     import torch_xla.runtime as xr
     from datasets import Dataset
     from sentence_transformers import (
@@ -496,14 +494,13 @@ def _sentence_transformers_worker(
 
     world_size = xr.world_size()
     rank = xr.global_ordinal()
-    distributed.init_process_group("xla", init_method="xla://")
     global_batch_size = local_batch_size * world_size
     model = SentenceTransformer(checkpoint, local_files_only=True)
     model.max_seq_length = SENTENCE_TRANSFORMER_MAXIMUM_LENGTH
     loss = losses.MultipleNegativesRankingLoss(
         model,
         scale=20.0,
-        gather_across_devices=True,
+        gather_across_devices=False,
     )
     train_dataset = Dataset.from_dict(
         _sentence_pairs(global_batch_size * max(steps, 1))
@@ -523,7 +520,9 @@ def _sentence_transformers_worker(
         max_grad_norm=1.0,
         bf16=False,
         fp16=False,
-        logging_strategy="no",
+        logging_strategy="steps",
+        logging_steps=1,
+        logging_first_step=True,
         report_to="none",
         disable_tqdm=True,
         save_strategy="no",
@@ -577,7 +576,6 @@ def _sentence_transformers_worker(
                 result.metrics.get("train_samples_per_second", 0.0)
             ),
         )
-    distributed.destroy_process_group()
 
 
 def sentence_transformers_dense(
