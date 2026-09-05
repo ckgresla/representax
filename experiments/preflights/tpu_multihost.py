@@ -58,7 +58,9 @@ def _jax_initialize(distributed: bool) -> Any:
     return jax
 
 
-def jax_topology(*, distributed: bool, payload_mib: int, iterations: int) -> None:
+def jax_topology(
+    *, distributed: bool, scope: str, payload_mib: int, iterations: int
+) -> None:
     jax = _jax_initialize(distributed)
     import numpy as np
     from jax.sharding import Mesh, NamedSharding
@@ -101,32 +103,55 @@ def jax_topology(*, distributed: bool, payload_mib: int, iterations: int) -> Non
         global_shape=(len(mesh_devices) * elements_per_device,),
     )
 
-    @partial(
-        jax.shard_map,
-        mesh=mesh,
-        in_specs=P("data"),
-        out_specs=P(),
-        check_vma=False,
-    )
-    def all_reduce(shard: Any) -> Any:
-        return jax.lax.psum(shard, "data")
-
-    all_reduce(value).block_until_ready()
-    durations = []
-    for _ in range(iterations):
-        started = time.perf_counter()
-        all_reduce(value).block_until_ready()
-        durations.append(time.perf_counter() - started)
-    if jax.process_index() == 0:
-        median = statistics.median(durations)
-        _emit(
-            "all_reduce",
-            distributed=distributed,
-            participants=len(mesh_devices),
-            payload_bytes_per_device=bytes_per_device,
-            median_seconds=median,
-            payload_gigabytes_per_second_per_device=(bytes_per_device / median / 1e9),
+    process_groups = [
+        [
+            index
+            for index, device in enumerate(mesh_devices)
+            if device.process_index == process_index
+        ]
+        for process_index in sorted({device.process_index for device in mesh_devices})
+    ]
+    scopes = ("local", "global") if scope == "both" else (scope,)
+    def make_all_reduce(groups: list[list[int]] | None) -> Any:
+        @partial(
+            jax.shard_map,
+            mesh=mesh,
+            in_specs=P("data"),
+            out_specs=P(),
+            check_vma=False,
         )
+        def all_reduce(shard: Any) -> Any:
+            return jax.lax.psum(shard, "data", axis_index_groups=groups)
+
+        return all_reduce
+
+    for measured_scope in scopes:
+        groups = process_groups if measured_scope == "local" else None
+        all_reduce = make_all_reduce(groups)
+        all_reduce(value).block_until_ready()
+        durations = []
+        for _ in range(iterations):
+            started = time.perf_counter()
+            all_reduce(value).block_until_ready()
+            durations.append(time.perf_counter() - started)
+        if jax.process_index() == 0:
+            median = statistics.median(durations)
+            participants = (
+                len(process_groups[0])
+                if measured_scope == "local"
+                else len(mesh_devices)
+            )
+            _emit(
+                "all_reduce",
+                distributed=distributed,
+                scope=measured_scope,
+                participants=participants,
+                payload_bytes_per_device=bytes_per_device,
+                median_seconds=median,
+                payload_gigabytes_per_second_per_device=(
+                    bytes_per_device / median / 1e9
+                ),
+            )
 
 
 def jax_dense(*, steps: int, global_batch_size: int) -> None:
@@ -321,6 +346,9 @@ def main(arguments: Sequence[str] | None = None) -> None:
     commands = parser.add_subparsers(dest="command", required=True)
     topology = commands.add_parser("topology")
     topology.add_argument("--distributed", action="store_true")
+    topology.add_argument(
+        "--scope", choices=("local", "global", "both"), default="both"
+    )
     topology.add_argument("--payload-mib", type=int, default=16)
     topology.add_argument("--iterations", type=int, default=20)
     for name in ("jax-dense", "torch-dense"):
@@ -331,6 +359,7 @@ def main(arguments: Sequence[str] | None = None) -> None:
     if parsed.command == "topology":
         jax_topology(
             distributed=parsed.distributed,
+            scope=parsed.scope,
             payload_mib=parsed.payload_mib,
             iterations=parsed.iterations,
         )
