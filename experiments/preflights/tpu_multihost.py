@@ -506,7 +506,6 @@ def _sentence_transformers_worker(
     )
     arguments = SentenceTransformerTrainingArguments(
         output_dir=str(Path(output) / f"process-{rank}"),
-        overwrite_output_dir=True,
         per_device_train_batch_size=local_batch_size,
         max_steps=steps,
         learning_rate=2e-5,
