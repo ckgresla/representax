@@ -57,6 +57,9 @@ cuda12 = [
 cuda13 = [
     "jax[cuda13]>=0.5",
 ]
+tpu = [
+    "jax[tpu]>=0.5",
+]
 performance = [
     "nvidia-ml-py>=12",
 ]
