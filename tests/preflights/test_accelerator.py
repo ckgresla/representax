@@ -116,6 +116,20 @@ def test_torch_xla_checkpointing_replaces_the_transformers_backend(monkeypatch) 
     assert modeling_utils.checkpoint is marker
 
 
+def test_torch_xla_checkpointing_bypasses_the_trainer_wrapper(monkeypatch) -> None:
+    calls = []
+    monkeypatch.setattr(
+        accelerator,
+        "install_torch_xla_checkpointing",
+        lambda: calls.append("install"),
+    )
+    model = SimpleNamespace(gradient_checkpointing_enable=calls.append)
+
+    accelerator.enable_torch_xla_checkpointing(model)
+
+    assert calls == ["install", {"use_reentrant": True}]
+
+
 def test_deterministic_tpu_cached_mnr_disables_rng_snapshots() -> None:
     class Loss:
         def __init__(self, model, **options):

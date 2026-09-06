@@ -191,6 +191,13 @@ def install_torch_xla_checkpointing() -> None:
     modeling_utils.checkpoint = import_module("torch_xla.utils.checkpoint").checkpoint
 
 
+def enable_torch_xla_checkpointing(model: Any) -> None:
+    """Enable XLA rematerialization without the incompatible Trainer wrapper."""
+
+    install_torch_xla_checkpointing()
+    model.gradient_checkpointing_enable({"use_reentrant": True})
+
+
 def deterministic_tpu_cached_mnr(
     loss_type: type[Any], model: Any, **options: Any
 ) -> Any:
@@ -274,6 +281,7 @@ __all__ = [
     "Platform",
     "data_parallel_job",
     "deterministic_tpu_cached_mnr",
+    "enable_torch_xla_checkpointing",
     "initialize_jax",
     "install_torch_xla_checkpointing",
     "process_local_rows",
