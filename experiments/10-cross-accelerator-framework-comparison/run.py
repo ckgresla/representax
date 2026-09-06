@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import datetime
 import hashlib
 import importlib.metadata
 import json
 import os
 import platform as platform_module
+import shutil
 import statistics
 import subprocess
 import sys
@@ -21,7 +23,9 @@ MODEL_REVISION = "e8c3b32edf5434bc2275fc9bab85f82640a19130"
 DATASET_ID = "sentence-transformers/msmarco-msmarco-MiniLM-L6-v3"
 DATASET_REVISION = "0d54352548089199bde15ad7e06efe895dc80b56"
 SEEDS = (7, 42, 773, 1234, 2026)
-STEPS = 20
+FIRST_USE_STEPS = 2
+MEASURED_STEPS = 20
+STEPS = FIRST_USE_STEPS + MEASURED_STEPS
 GLOBAL_BATCH_SIZE = 2048
 QUERY_LENGTH = 32
 DOCUMENT_LENGTH = 256
@@ -95,7 +99,7 @@ RECIPE_ASSETS = {
     "image-text": ("clip-vit-b-32", "image-data", None),
     "audio-text": ("omni-3b", "audio-data", None),
     "video-text": ("omni-3b", "video-data", None),
-    "v-jepa": (None, "vjepa-data", "vjepa2-reference"),
+    "v-jepa": (None, "vjepa-data-2816", "vjepa2-reference"),
 }
 
 
@@ -114,6 +118,25 @@ def _write_json(path: Path, value: Mapping[str, Any]) -> None:
     os.replace(temporary, path)
 
 
+def _append_jsonl(path: Path, value: Mapping[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as stream:
+        stream.write(json.dumps(value, sort_keys=True) + "\n")
+
+
+def _utc_now() -> str:
+    return datetime.datetime.now(datetime.UTC).isoformat()
+
+
+def _git_patch() -> bytes:
+    return subprocess.run(
+        ("git", "diff", "--binary"),
+        cwd=Path(__file__).resolve().parents[2],
+        check=True,
+        capture_output=True,
+    ).stdout
+
+
 def _git_state() -> dict[str, Any]:
     root = Path(__file__).resolve().parents[2]
     head = subprocess.run(
@@ -123,17 +146,103 @@ def _git_state() -> dict[str, Any]:
         capture_output=True,
         text=True,
     ).stdout.strip()
-    patch = subprocess.run(
-        ("git", "diff", "--binary"),
-        cwd=root,
-        check=True,
-        capture_output=True,
-    ).stdout
+    patch = _git_patch()
     return {
         "commit": head,
         "working_tree_patch_sha256": ("sha256:" + hashlib.sha256(patch).hexdigest()),
         "working_tree_clean": not bool(patch),
     }
+
+
+def _reference_metric_rows(summary: Mapping[str, Any]) -> list[dict[str, Any]]:
+    timing = summary.get("step_timings")
+    if not isinstance(timing, list):
+        timing_container = summary.get("timing", {})
+        timing = (
+            timing_container.get("steps", [])
+            if isinstance(timing_container, Mapping)
+            else []
+        )
+    losses = summary.get("losses", [])
+    training_metrics = {
+        int(row["step"]): row
+        for row in summary.get("training_metrics", [])
+        if isinstance(row, Mapping) and "step" in row
+    }
+    batch_size = summary.get("global_batch_size", summary.get("batch_size"))
+    rows = []
+    for offset, timing_row in enumerate(timing):
+        if isinstance(timing_row, Mapping):
+            step = int(timing_row.get("step", offset + 1))
+            seconds = float(timing_row["seconds"])
+        elif isinstance(timing_row, (int, float)):
+            step = offset + 1
+            seconds = float(timing_row)
+        else:
+            continue
+        metrics: dict[str, Any] = {
+            "perf/step_seconds": seconds,
+            "perf/excluded_from_steady_state": step <= FIRST_USE_STEPS,
+        }
+        if batch_size is not None:
+            examples = int(batch_size)
+            metrics.update(
+                {
+                    "perf/examples": examples,
+                    "perf/examples_per_second": examples / seconds,
+                }
+            )
+        if offset < len(losses):
+            metrics["train/loss"] = float(losses[offset])
+        for name, value in training_metrics.get(step, {}).items():
+            if name in {"step", "epoch", "loss"} or not isinstance(
+                value, (bool, int, float)
+            ):
+                continue
+            metrics[f"reference/{name}"] = value
+        rows.append(
+            {
+                "schema_version": "representax-metrics-v1",
+                "category": "metric",
+                "event": "training_step",
+                "iteration": step,
+                "optimizer_step": step,
+                "metrics": metrics,
+            }
+        )
+    return rows
+
+
+def _materialize_canonical_evidence(
+    output: Path,
+    run: dict[str, Any],
+) -> dict[str, Any]:
+    summary_path = output / "summary.json"
+    if not summary_path.is_file():
+        return run
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    native_metrics = sorted((output / "run").glob("process-*/metrics.jsonl"))
+    native_events = sorted((output / "run").glob("process-*/events.jsonl"))
+    metrics_path = output / "metrics.jsonl"
+    if native_metrics:
+        shutil.copyfile(native_metrics[0], metrics_path)
+        run["native_metrics_source"] = str(native_metrics[0].relative_to(output))
+    else:
+        rows = _reference_metric_rows(summary)
+        with metrics_path.open("x", encoding="utf-8") as stream:
+            for row in rows:
+                stream.write(json.dumps(row, sort_keys=True) + "\n")
+    if native_events:
+        with (output / "events.jsonl").open("ab") as destination:
+            for path in native_events:
+                destination.write(path.read_bytes())
+        run["native_event_sources"] = [
+            str(path.relative_to(output)) for path in native_events
+        ]
+    run["summary_sha256"] = _sha256(summary_path)
+    run["metrics_sha256"] = _sha256(metrics_path)
+    run["worker_log_sha256"] = _sha256(output / "worker.log")
+    return run
 
 
 def _environment_state(
@@ -964,9 +1073,7 @@ def _recipe_command(arguments: argparse.Namespace) -> list[str]:
     if arguments.recipe == "v-jepa":
         if arguments.reference is None:
             raise ValueError("V-JEPA requires --reference")
-        command.extend(
-            ("--reference", str(arguments.reference), "--batch-size", "128")
-        )
+        command.extend(("--reference", str(arguments.reference), "--batch-size", "128"))
     return command
 
 
@@ -995,14 +1102,16 @@ def _run_recipe(arguments: argparse.Namespace) -> None:
         environment["PJRT_DEVICE"] = "TPU"
     if arguments.platform == "gpu":
         environment["CUDA_VISIBLE_DEVICES"] = str(arguments.gpu)
-    invocation = {
-        "schema_version": "representax-cross-accelerator-invocation-v1",
+    run = {
+        "schema_version": "representax-cross-accelerator-run-v1",
         "recipe": arguments.recipe,
         "framework": arguments.framework,
         "reference_framework": REFERENCE_FRAMEWORKS[arguments.recipe],
         "platform": arguments.platform,
         "seed": arguments.seed,
         "steps": arguments.steps,
+        "first_use_steps": min(FIRST_USE_STEPS, arguments.steps),
+        "measured_steps": max(0, arguments.steps - FIRST_USE_STEPS),
         "negative_scope": (
             arguments.negative_scope
             if arguments.framework == "representax"
@@ -1014,21 +1123,59 @@ def _run_recipe(arguments: argparse.Namespace) -> None:
         ),
         "command": command,
         "source": _git_state(),
+        "started_at": _utc_now(),
+        "status": "running",
     }
-    _write_json(arguments.output / "invocation.json", invocation)
+    _write_json(arguments.output / "run.json", run)
+    (arguments.output / "source.patch").write_bytes(_git_patch())
+    data_manifest = arguments.data / "manifest.json"
+    if data_manifest.is_file():
+        shutil.copyfile(data_manifest, arguments.output / "data-manifest.json")
+        run["data_manifest_sha256"] = _sha256(arguments.output / "data-manifest.json")
+        _write_json(arguments.output / "run.json", run)
     _write_json(
         arguments.output / "environment.json",
         _environment_state(Path(command[0]), environment=environment),
     )
+    _append_jsonl(
+        arguments.output / "events.jsonl",
+        {"event": "run_started", "timestamp": run["started_at"]},
+    )
     with (arguments.output / "worker.log").open("x", encoding="utf-8") as log:
-        subprocess.run(
-            command,
-            cwd=Path(__file__).resolve().parents[2],
-            env=environment,
-            stdout=log,
-            stderr=subprocess.STDOUT,
-            check=True,
-        )
+        try:
+            subprocess.run(
+                command,
+                cwd=Path(__file__).resolve().parents[2],
+                env=environment,
+                stdout=log,
+                stderr=subprocess.STDOUT,
+                check=True,
+            )
+        except subprocess.CalledProcessError as error:
+            run.update(
+                {
+                    "status": "failed",
+                    "completed_at": _utc_now(),
+                    "return_code": error.returncode,
+                }
+            )
+            _write_json(arguments.output / "run.json", run)
+            _append_jsonl(
+                arguments.output / "events.jsonl",
+                {
+                    "event": "run_failed",
+                    "timestamp": run["completed_at"],
+                    "return_code": error.returncode,
+                },
+            )
+            raise
+    run.update({"status": "completed", "completed_at": _utc_now()})
+    run = _materialize_canonical_evidence(arguments.output, run)
+    _write_json(arguments.output / "run.json", run)
+    _append_jsonl(
+        arguments.output / "events.jsonl",
+        {"event": "run_completed", "timestamp": run["completed_at"]},
+    )
 
 
 def _run_suite(arguments: argparse.Namespace) -> None:
@@ -1059,8 +1206,7 @@ def _run_suite(arguments: argparse.Namespace) -> None:
         )
         variant = (
             f"representax-{arguments.negative_scope}"
-            if arguments.framework == "representax"
-            and recipe in NEGATIVE_SCOPE_RECIPES
+            if arguments.framework == "representax" and recipe in NEGATIVE_SCOPE_RECIPES
             else arguments.framework
         )
         _run_recipe(

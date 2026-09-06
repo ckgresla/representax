@@ -72,7 +72,7 @@ def test_cli_requires_explicit_representax_negative_scope(tmp_path: Path) -> Non
     )
 
     assert arguments.negative_scope == "local"
-    assert arguments.steps == 20
+    assert arguments.steps == module.FIRST_USE_STEPS + module.MEASURED_STEPS
 
 
 def test_gpu_reference_control_records_inductor_without_changing_science() -> None:
@@ -134,9 +134,58 @@ def test_campaign_exposes_every_frozen_recipe() -> None:
     assert set(module.RECIPE_ASSETS) == set(module.RECIPES)
     assert module.RECIPE_ASSETS["v-jepa"] == (
         None,
-        "vjepa-data",
+        "vjepa-data-2816",
         "vjepa2-reference",
     )
+
+
+def test_reference_metric_rows_preserve_every_interval() -> None:
+    module = _module()
+
+    rows = module._reference_metric_rows(
+        {
+            "global_batch_size": 64,
+            "losses": [3.0, 2.0, 1.0],
+            "step_timings": [
+                {"step": 1, "seconds": 8.0},
+                {"step": 2, "seconds": 4.0},
+                {"step": 3, "seconds": 2.0},
+            ],
+        }
+    )
+
+    assert [row["optimizer_step"] for row in rows] == [1, 2, 3]
+    assert [row["metrics"]["train/loss"] for row in rows] == [3.0, 2.0, 1.0]
+    assert rows[0]["metrics"]["perf/excluded_from_steady_state"]
+    assert rows[1]["metrics"]["perf/excluded_from_steady_state"]
+    assert not rows[2]["metrics"]["perf/excluded_from_steady_state"]
+    assert rows[2]["metrics"]["perf/examples_per_second"] == 32.0
+
+
+def test_materialized_reference_evidence_is_content_addressed(tmp_path: Path) -> None:
+    module = _module()
+    output = tmp_path / "run"
+    output.mkdir()
+    (output / "summary.json").write_text(
+        json.dumps(
+            {
+                "batch_size": 8,
+                "losses": [2.0, 1.0],
+                "timing": {"steps": [4.0, 2.0]},
+            }
+        )
+    )
+    (output / "worker.log").write_text("worker output\n")
+
+    run = module._materialize_canonical_evidence(output, {})
+
+    rows = [
+        json.loads(line) for line in (output / "metrics.jsonl").read_text().splitlines()
+    ]
+    assert len(rows) == 2
+    assert run["summary_sha256"] == module._sha256(output / "summary.json")
+    assert run["metrics_sha256"] == module._sha256(output / "metrics.jsonl")
+    assert run["worker_log_sha256"] == module._sha256(output / "worker.log")
 
 
 def test_environment_state_records_reproducible_runtime(monkeypatch) -> None:
