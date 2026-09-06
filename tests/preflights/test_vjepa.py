@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import jax
 import jax.numpy as jnp
@@ -163,6 +164,55 @@ def test_reference_loss_repeats_shared_masks_across_the_local_batch() -> None:
 
     assert all(value.shape == (2, 1, 1) for value in repeated.values())
     np.testing.assert_array_equal(repeated["target_ids"], 1)
+
+
+def test_reference_loss_detaches_the_target_encoder(monkeypatch) -> None:
+    torch = __import__("torch")
+    from experiments.preflights import vjepa
+
+    target_grad_enabled = []
+
+    class Target:
+        def __call__(self, pixels, *, training):
+            del training
+            target_grad_enabled.append(torch.is_grad_enabled())
+            return torch.zeros((len(pixels), 2, 3072), dtype=pixels.dtype)
+
+    class Encoder:
+        def __call__(self, pixels, *, masks, training):
+            del training
+            return torch.zeros((len(pixels), masks.shape[1], 768))
+
+    class Predictor:
+        def __call__(self, context_features, context, target_ids, **_kwargs):
+            return (
+                torch.ones((len(context_features), target_ids.shape[1], 3072)),
+                torch.ones((len(context_features), context.shape[1], 3072)),
+            )
+
+    monkeypatch.setattr(
+        vjepa,
+        "import_module",
+        lambda _name: SimpleNamespace(
+            compute_mask_distance=lambda targets, _contexts, **_kwargs: [
+                [torch.ones_like(targets[0][0], dtype=torch.float32)]
+            ]
+        ),
+    )
+    shape = (1, 1, 1)
+    masks = {
+        "context_ids": np.zeros(shape, dtype=np.int32),
+        "target_ids": np.ones(shape, dtype=np.int32),
+        "context_valid": np.ones(shape, dtype=bool),
+        "target_valid": np.ones(shape, dtype=bool),
+    }
+
+    loss = vjepa._reference_loss(
+        Encoder(), Predictor(), Target(), torch.zeros((2, 1)), masks
+    )
+
+    assert torch.isfinite(loss)
+    assert target_grad_enabled == [False]
 
 
 def test_convert_checkpoint_command_is_explicit(tmp_path: Path) -> None:

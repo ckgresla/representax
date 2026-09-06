@@ -885,7 +885,8 @@ def _reference_loss(
     ).compute_mask_distance
     masks = _reference_masks_for_batch(masks, len(pixels))
 
-    target_features = target(pixels, training=True)
+    with torch.no_grad():
+        target_features = target(pixels, training=True)
     target_features = torch.cat(
         tuple(
             functional.layer_norm(
@@ -1058,11 +1059,19 @@ def _facebookresearch_worker(
             for group in optimizer.param_groups:
                 group["lr"] = lr
             pixels = torch.from_numpy(training_pixels[iteration]).to(device)
+            if platform == "tpu":
+                pixels.requires_grad_(True)
             optimizer.zero_grad(set_to_none=True)
             if platform == "tpu":
                 with torch.autocast(device.type, dtype=torch.bfloat16):
                     loss = _reference_loss(encoder, predictor, target, pixels, masks)
                 loss.backward()
+                if not any(
+                    parameter.grad is not None for parameter in encoder.parameters()
+                ):
+                    raise RuntimeError(
+                        "TPU checkpointing did not produce encoder gradients"
+                    )
                 step_loss = loss.detach()
             else:
                 step_losses = []
