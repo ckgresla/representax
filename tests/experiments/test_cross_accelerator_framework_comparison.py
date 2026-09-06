@@ -392,6 +392,60 @@ def test_recipe_command_preserves_frozen_tpu_shape(tmp_path: Path) -> None:
     assert "--gpu" not in command
 
 
+def test_recipe_command_uses_validated_single_gpu_media_batches(tmp_path: Path) -> None:
+    module = _module()
+    parser = module._parser()
+
+    video = parser.parse_args(
+        (
+            "recipe",
+            "--recipe",
+            "video-text",
+            "--framework",
+            "representax",
+            "--checkpoint",
+            str(tmp_path / "checkpoint"),
+            "--data",
+            str(tmp_path / "data"),
+            "--output",
+            str(tmp_path / "video"),
+            "--seed",
+            "7",
+            "--platform",
+            "gpu",
+            "--gpu",
+            "0",
+        )
+    )
+    vjepa = parser.parse_args(
+        (
+            "recipe",
+            "--recipe",
+            "v-jepa",
+            "--framework",
+            "representax",
+            "--data",
+            str(tmp_path / "data"),
+            "--reference",
+            str(tmp_path / "vjepa2"),
+            "--output",
+            str(tmp_path / "vjepa"),
+            "--seed",
+            "7",
+            "--platform",
+            "gpu",
+            "--gpu",
+            "0",
+        )
+    )
+
+    video_command = module._recipe_command(video)
+    vjepa_command = module._recipe_command(vjepa)
+
+    assert video_command[video_command.index("--batch-size") + 1] == "128"
+    assert vjepa_command[vjepa_command.index("--batch-size") + 1] == "1"
+
+
 def test_multimodal_recipe_matches_device_local_tpu_negatives(tmp_path: Path) -> None:
     module = _module()
     parser = module._parser()
