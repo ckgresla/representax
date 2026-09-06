@@ -15,6 +15,7 @@ from experiments.preflights.vjepa import (
     _parser,
     _reference_masks_for_batch,
     _representax_job,
+    _steady_state,
     frozen_contract,
 )
 
@@ -164,6 +165,20 @@ def test_reference_loss_repeats_shared_masks_across_the_local_batch() -> None:
 
     assert all(value.shape == (2, 1, 1) for value in repeated.values())
     np.testing.assert_array_equal(repeated["target_ids"], 1)
+
+
+def test_vjepa_steady_state_reports_global_examples_per_second() -> None:
+    rows = [
+        {
+            "event": "training_step",
+            "metrics": {"perf/step_seconds": seconds},
+        }
+        for seconds in (2.0, 4.0)
+    ]
+
+    report = _steady_state(rows, batch_size=128)
+
+    assert report["examples_per_second"] == 256 / 6
 
 
 def test_reference_loss_detaches_the_target_encoder(monkeypatch) -> None:

@@ -670,7 +670,9 @@ def _native_embeddings(model: Any, data_directory: Path) -> np.ndarray:
     return np.concatenate(values)
 
 
-def _steady_state(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+def _steady_state(
+    rows: Sequence[Mapping[str, Any]], *, batch_size: int
+) -> dict[str, Any]:
     durations = []
     compilations = []
     for row in rows:
@@ -693,7 +695,7 @@ def _steady_state(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         report.update(
             {
                 "median_step_seconds": statistics.median(durations),
-                "examples_per_second": len(durations) / sum(durations),
+                "examples_per_second": batch_size * len(durations) / sum(durations),
             }
         )
     return report
@@ -778,7 +780,7 @@ def _representax_worker(
             "device_count": jax.device_count(),
             "process_count": jax.process_count(),
             "elapsed_seconds": elapsed,
-            "timing": _steady_state(rows),
+            "timing": _steady_state(rows, batch_size=batch_size),
             "losses": losses,
             "final_loss": losses[-1],
             "inference_bundle": None,
@@ -804,7 +806,7 @@ def _representax_worker(
         "steps": steps,
         "global_batch_size": batch_size,
         "elapsed_seconds": elapsed,
-        "timing": _steady_state(rows),
+        "timing": _steady_state(rows, batch_size=batch_size),
         "losses": losses,
         "initial_evaluation": initial_evaluation,
         "final_evaluation": final_evaluation,
