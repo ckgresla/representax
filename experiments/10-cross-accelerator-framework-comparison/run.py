@@ -1,4 +1,4 @@
-"""Run the paper's matched dense-retrieval comparison on GPU or TPU."""
+"""Run the paper's matched framework comparisons on GPU or TPU."""
 
 from __future__ import annotations
 
@@ -82,6 +82,22 @@ REFERENCE_FRAMEWORKS = {
     "v-jepa": "facebookresearch-vjepa2",
 }
 
+RECIPE_ASSETS = {
+    "dense-retrieval": ("all-mpnet-base-v2", "dense-msmarco-unique-v1", None),
+    "semantic-similarity-mpnet-base": ("all-mpnet-base-v2", "pairs", None),
+    "semantic-similarity-bert-base": ("bert-base", "pairs", None),
+    "pair-classification-mpnet-base": ("all-mpnet-base-v2", "pairs", None),
+    "pair-classification-bert-base": ("bert-base", "pairs", None),
+    "cross-encoder": ("cross-checkpoint", "cross-data", None),
+    "late-interaction": ("late-checkpoint", "late-data", None),
+    "outcome-reward": ("qwen3-0.6b", "outcome-data", None),
+    "process-reward": ("qwen3-0.6b", "process-data", None),
+    "image-text": ("clip-vit-b-32", "image-data", None),
+    "audio-text": ("omni-3b", "audio-data", None),
+    "video-text": ("omni-3b", "video-data", None),
+    "v-jepa": (None, "vjepa-canary-512", "vjepa2-reference"),
+}
+
 
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
@@ -120,7 +136,22 @@ def _git_state() -> dict[str, Any]:
     }
 
 
-def _environment_state() -> dict[str, Any]:
+def _environment_state(
+    worker_python: Path | None = None,
+    *,
+    environment: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
+    if worker_python is not None:
+        result = subprocess.run(
+            (str(worker_python), str(Path(__file__).resolve()), "environment"),
+            cwd=Path(__file__).resolve().parents[2],
+            env=dict(environment) if environment is not None else None,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return json.loads(result.stdout)
+
     accelerator_variables = (
         "CUDA_VISIBLE_DEVICES",
         "JAX_COMPILATION_CACHE_DIR",
@@ -945,6 +976,17 @@ def _run_recipe(arguments: argparse.Namespace) -> None:
         raise ValueError("--torch-compile is only the dense GPU reference control")
     arguments.output.mkdir(parents=True, exist_ok=False)
     command = _recipe_command(arguments)
+    environment = os.environ.copy()
+    environment.update(
+        {
+            "PYTHONUNBUFFERED": "1",
+            "TOKENIZERS_PARALLELISM": "false",
+        }
+    )
+    if arguments.platform == "tpu" and arguments.framework == "reference":
+        environment["PJRT_DEVICE"] = "TPU"
+    if arguments.platform == "gpu":
+        environment["CUDA_VISIBLE_DEVICES"] = str(arguments.gpu)
     invocation = {
         "schema_version": "representax-cross-accelerator-invocation-v1",
         "recipe": arguments.recipe,
@@ -966,13 +1008,9 @@ def _run_recipe(arguments: argparse.Namespace) -> None:
         "source": _git_state(),
     }
     _write_json(arguments.output / "invocation.json", invocation)
-    _write_json(arguments.output / "environment.json", _environment_state())
-    environment = os.environ.copy()
-    environment.update(
-        {
-            "PYTHONUNBUFFERED": "1",
-            "TOKENIZERS_PARALLELISM": "false",
-        }
+    _write_json(
+        arguments.output / "environment.json",
+        _environment_state(Path(command[0]), environment=environment),
     )
     with (arguments.output / "worker.log").open("x", encoding="utf-8") as log:
         subprocess.run(
@@ -985,13 +1023,95 @@ def _run_recipe(arguments: argparse.Namespace) -> None:
         )
 
 
+def _run_suite(arguments: argparse.Namespace) -> None:
+    root = Path(__file__).resolve().parents[2]
+    if arguments.platform == "tpu":
+        jax_python = arguments.jax_python or (
+            root / "experiments/tpu/.venv-jax/bin/python"
+        )
+        reference_python = arguments.reference_python or (
+            root / "experiments/tpu/.venv-torch-xla/bin/python"
+        )
+        late_python = arguments.late_reference_python or (
+            root / "experiments/tpu/.venv-torch-xla-late/bin/python"
+        )
+    else:
+        jax_python = arguments.jax_python or Path(sys.executable)
+        reference_python = arguments.reference_python or Path(sys.executable)
+        late_python = arguments.late_reference_python or reference_python
+
+    for recipe in arguments.recipes or RECIPES:
+        checkpoint_name, data_name, reference_name = RECIPE_ASSETS[recipe]
+        worker_python = (
+            jax_python
+            if arguments.framework == "representax"
+            else late_python
+            if recipe == "late-interaction"
+            else reference_python
+        )
+        variant = (
+            f"representax-{arguments.negative_scope}"
+            if arguments.framework == "representax"
+            and recipe in NEGATIVE_SCOPE_RECIPES
+            else arguments.framework
+        )
+        _run_recipe(
+            argparse.Namespace(
+                recipe=recipe,
+                framework=arguments.framework,
+                checkpoint=(
+                    arguments.asset_root / checkpoint_name
+                    if checkpoint_name is not None
+                    else None
+                ),
+                data=arguments.asset_root / data_name,
+                reference=(
+                    arguments.asset_root / reference_name
+                    if reference_name is not None
+                    else None
+                ),
+                output=arguments.output / recipe / variant,
+                seed=arguments.seed,
+                steps=arguments.steps,
+                platform=arguments.platform,
+                gpu=arguments.gpu,
+                worker_python=worker_python,
+                negative_scope=arguments.negative_scope,
+                torch_compile=arguments.torch_compile,
+            )
+        )
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
+    commands.add_parser("environment", help=argparse.SUPPRESS)
     prepare = commands.add_parser("prepare-data")
     prepare.add_argument("--output", type=Path, required=True)
     prepare.add_argument("--checkpoint", type=Path, required=True)
     prepare.add_argument("--rows", type=int, default=DATA_POOL_SIZE)
+    suite = commands.add_parser("suite")
+    suite.add_argument(
+        "--framework",
+        choices=("representax", "reference"),
+        required=True,
+    )
+    suite.add_argument("--asset-root", type=Path, required=True)
+    suite.add_argument("--output", type=Path, required=True)
+    suite.add_argument("--seed", type=int, choices=SEEDS, default=SEEDS[0])
+    suite.add_argument("--steps", type=int, default=4)
+    suite.add_argument("--platform", choices=("gpu", "tpu"), required=True)
+    suite.add_argument("--gpu", type=int)
+    suite.add_argument("--recipe", dest="recipes", action="append", choices=RECIPES)
+    suite.add_argument("--jax-python", type=Path)
+    suite.add_argument("--reference-python", type=Path)
+    suite.add_argument("--late-reference-python", type=Path)
+    suite.add_argument(
+        "--negative-scope",
+        choices=("local", "global"),
+        default="local",
+    )
+    suite.add_argument("--torch-compile", action="store_true")
     recipe = commands.add_parser("recipe")
     recipe.add_argument("--recipe", choices=RECIPES, required=True)
     recipe.add_argument(
@@ -1034,8 +1154,14 @@ def _parser() -> argparse.ArgumentParser:
 
 def main(arguments: Sequence[str] | None = None) -> None:
     parsed = _parser().parse_args(arguments)
+    if parsed.command == "environment":
+        print(json.dumps(_environment_state(), sort_keys=True))
+        return
     if parsed.command == "prepare-data":
         _prepare_data(parsed.output, parsed.checkpoint, parsed.rows)
+        return
+    if parsed.command == "suite":
+        _run_suite(parsed)
         return
     if parsed.command == "recipe":
         _run_recipe(parsed)

@@ -131,6 +131,7 @@ def test_campaign_exposes_every_frozen_recipe() -> None:
     assert module.REFERENCE_FRAMEWORKS["late-interaction"] == "pylate"
     assert module.REFERENCE_FRAMEWORKS["outcome-reward"] == "trl"
     assert module.REFERENCE_FRAMEWORKS["v-jepa"] == "facebookresearch-vjepa2"
+    assert set(module.RECIPE_ASSETS) == set(module.RECIPES)
 
 
 def test_environment_state_records_reproducible_runtime(monkeypatch) -> None:
@@ -143,6 +144,54 @@ def test_environment_state_records_reproducible_runtime(monkeypatch) -> None:
     assert state["executable"]
     assert state["packages"]
     assert state["accelerator_environment"]["PJRT_DEVICE"] == "TPU"
+
+
+def test_environment_state_can_interrogate_worker_interpreter() -> None:
+    module = _module()
+
+    state = module._environment_state(Path(module.sys.executable))
+
+    assert Path(state["executable"]).resolve() == Path(module.sys.executable).resolve()
+
+
+def test_suite_selects_frozen_assets_and_reference_environments(
+    tmp_path: Path, monkeypatch
+) -> None:
+    module = _module()
+    calls = []
+    monkeypatch.setattr(module, "_run_recipe", calls.append)
+    arguments = module._parser().parse_args(
+        (
+            "suite",
+            "--framework",
+            "reference",
+            "--asset-root",
+            str(tmp_path / "assets"),
+            "--output",
+            str(tmp_path / "results"),
+            "--platform",
+            "tpu",
+            "--recipe",
+            "dense-retrieval",
+            "--recipe",
+            "late-interaction",
+            "--recipe",
+            "v-jepa",
+        )
+    )
+
+    module._run_suite(arguments)
+
+    assert [call.recipe for call in calls] == [
+        "dense-retrieval",
+        "late-interaction",
+        "v-jepa",
+    ]
+    assert calls[0].checkpoint == tmp_path / "assets/all-mpnet-base-v2"
+    assert calls[0].data == tmp_path / "assets/dense-msmarco-unique-v1"
+    assert ".venv-torch-xla-late" in str(calls[1].worker_python)
+    assert calls[2].checkpoint is None
+    assert calls[2].reference == tmp_path / "assets/vjepa2-reference"
 
 
 def test_recipe_command_preserves_frozen_tpu_shape(tmp_path: Path) -> None:
