@@ -369,7 +369,11 @@ def build_job_runtime(
         data_axis_size = (
             1 if data_axis_name is None else int(mesh.shape[data_axis_name])
         )
-        realized_batch_size = job.training.batch.micro_batch_size * data_axis_size
+        realized_batch_size = (
+            job.training.batch.micro_batch_size
+            * job.training.batch.gradient_accumulation_steps
+            * data_axis_size
+        )
         if realized_batch_size != job.training.global_batch_size:
             raise ValueError(
                 "distributed batch plan differs from global_batch_size: "

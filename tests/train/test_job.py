@@ -17,11 +17,13 @@ from representax.config import (
     CheckpointConfig,
     ComponentConfig,
     DataConfig,
+    DDPConfig,
     EvaluationConfig,
     EvaluatorConfig,
     ExportConfig,
     JobConfig,
     LoggingConfig,
+    MeshConfig,
     ModelConfig,
     OptimizationConfig,
     PrecisionConfig,
@@ -146,7 +148,7 @@ def test_job_builder_injects_loaded_processor_into_data_collation():
 
 
 @pytest.mark.runtime
-def test_run_job_repeats_finite_training_data_until_max_steps(tmp_path):
+def test_run_job_distributed_accumulation_repeats_data_until_max_steps(tmp_path):
     train_path = tmp_path / "train.jsonl"
     _write_pairs(train_path, count=4)
     job = JobConfig(
@@ -173,6 +175,8 @@ def test_run_job_repeats_finite_training_data_until_max_steps(tmp_path):
                 micro_batch_size=2,
                 gradient_accumulation_steps=2,
             ),
+            mesh=MeshConfig(axis_shapes=(1,), axis_names=("data",)),
+            sharding=DDPConfig(axis="data"),
         ),
     )
 

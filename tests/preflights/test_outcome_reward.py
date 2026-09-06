@@ -1,5 +1,6 @@
 """Contracts for the paper outcome-reward preflight."""
 
+from experiments.preflights.accelerator import data_parallel_job
 from experiments.preflights.outcome_reward import (
     MICRO_BATCH_SIZE,
     _representax_job,
@@ -71,6 +72,15 @@ def test_job_preserves_frozen_batch_through_gradient_accumulation(tmp_path) -> N
     assert job.evaluation is not None
     assert job.evaluation.primary_metric == "valid/ultrafeedback/pairwise_accuracy"
     assert job.export.huggingface is not None
+
+    distributed = data_parallel_job(
+        job,
+        device_count=16,
+        platform="tpu",
+        training_only=True,
+    )
+    assert distributed.training.batch.micro_batch_size == 4
+    assert distributed.training.batch.gradient_accumulation_steps == 2
 
 
 def test_probe_job_has_no_lifecycle_artifacts_and_fixed_pair_shape(tmp_path) -> None:
