@@ -1246,6 +1246,10 @@ def _worker(arguments: argparse.Namespace) -> None:
         )
 
 
+def _xla_worker(_index: int, arguments: argparse.Namespace) -> None:
+    _worker(arguments)
+
+
 def _pair(arguments: argparse.Namespace) -> None:
     if arguments.representax_gpu == arguments.reference_gpu:
         raise ValueError("Representax and the reference must use different GPUs")
@@ -1406,7 +1410,7 @@ def main() -> None:
         ):
             import torch_xla
 
-            torch_xla.launch(_worker, args=(arguments,))
+            torch_xla.launch(_xla_worker, args=(arguments,))
         else:
             _worker(arguments)
     else:
