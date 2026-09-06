@@ -55,6 +55,29 @@ def test_frozen_video_text_contract() -> None:
     assert contract.video_frames == 16
 
 
+def test_video_text_job_accepts_device_local_negatives(tmp_path) -> None:
+    data = tmp_path / "data"
+    data.mkdir()
+    (data / "manifest.json").write_text(
+        json.dumps(
+            {
+                "training_presentations": PREFLIGHT_BATCH_SIZE * 4,
+                "relevant_documents": {"0": [0]},
+            }
+        )
+    )
+
+    job = _representax_job(
+        checkpoint=tmp_path / "checkpoint",
+        data_directory=data,
+        steps=4,
+        seed=7,
+        negative_scope="local",
+    )
+
+    assert job.loss.negative_scope == "local"
+
+
 def test_video_text_collators_preserve_routes_and_validity(tmp_path) -> None:
     _video(tmp_path / "video.npy")
     processor = _Processor()

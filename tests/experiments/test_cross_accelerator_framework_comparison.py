@@ -164,6 +164,34 @@ def test_recipe_command_preserves_frozen_tpu_shape(tmp_path: Path) -> None:
     assert "--gpu" not in command
 
 
+def test_multimodal_recipe_matches_device_local_tpu_negatives(tmp_path: Path) -> None:
+    module = _module()
+    parser = module._parser()
+    arguments = parser.parse_args(
+        (
+            "recipe",
+            "--recipe",
+            "image-text",
+            "--framework",
+            "representax",
+            "--checkpoint",
+            str(tmp_path / "checkpoint"),
+            "--data",
+            str(tmp_path / "data"),
+            "--output",
+            str(tmp_path / "output"),
+            "--seed",
+            "7",
+            "--platform",
+            "tpu",
+        )
+    )
+
+    command = module._recipe_command(arguments)
+
+    assert command[command.index("--negative-scope") + 1] == "local"
+
+
 def test_reference_helpers_are_self_contained(tmp_path: Path) -> None:
     module = _module()
     path = tmp_path / "pairs.parquet"

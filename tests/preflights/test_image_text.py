@@ -121,12 +121,22 @@ def test_representax_job_uses_run_job_grad_cache_and_verified_export(tmp_path) -
     assert job.training.global_batch_size == 512
     assert job.training.grad_cache is not None
     assert job.training.grad_cache.micro_batch_size == GRAD_CACHE_MICRO_BATCH
+    assert job.loss.negative_scope == "global"
     assert job.checkpointing is not None and job.checkpointing.every == 2
     assert job.evaluation is not None and job.evaluation.on_start
     assert job.evaluation.on_end
     assert job.export.huggingface is not None
     assert job.export.huggingface.source_checkpoint == str(source)
     assert job.export.huggingface.verify_reload
+
+    local_job = _representax_job(
+        checkpoint=checkpoint,
+        data_directory=data,
+        steps=4,
+        seed=7,
+        negative_scope="local",
+    )
+    assert local_job.loss.negative_scope == "local"
 
 
 def test_pair_command_defaults_to_gpu_one() -> None:

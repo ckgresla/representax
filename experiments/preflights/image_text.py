@@ -408,7 +408,12 @@ class ImageTextEvaluationCollator:
 
 
 def _representax_job(
-    *, checkpoint: Path, data_directory: Path, steps: int, seed: int
+    *,
+    checkpoint: Path,
+    data_directory: Path,
+    steps: int,
+    seed: int,
+    negative_scope: str = "global",
 ) -> Any:
     if steps < 4 or steps % 2:
         raise ValueError("steps must be an even integer of at least four")
@@ -471,7 +476,11 @@ def _representax_job(
             },
         ),
         task=RetrievalConfig(),
-        loss=MNRConfig(scale=20.0, symmetric=False),
+        loss=MNRConfig(
+            scale=20.0,
+            symmetric=False,
+            negative_scope=negative_scope,
+        ),
         optimization=OptimizationConfig(
             optimizer=ComponentConfig(
                 target="optax.adamw",
@@ -581,6 +590,7 @@ def _representax_worker(
     steps: int,
     seed: int,
     platform: Platform = "gpu",
+    negative_scope: str = "global",
 ) -> dict[str, Any]:
     jax = initialize_jax(platform)
 
@@ -598,6 +608,7 @@ def _representax_worker(
         data_directory=data_directory,
         steps=steps,
         seed=seed,
+        negative_scope=negative_scope,
     )
     if jax.device_count() > 1:
         job = data_parallel_job(
@@ -983,7 +994,7 @@ def _worker(arguments: argparse.Namespace) -> None:
         if arguments.framework == "representax"
         else _sentence_transformers_worker
     )
-    report = function(
+    parameters = dict(
         checkpoint=arguments.checkpoint,
         data_directory=arguments.data_directory,
         run_directory=arguments.run_directory,
@@ -991,6 +1002,9 @@ def _worker(arguments: argparse.Namespace) -> None:
         seed=arguments.seed,
         platform=arguments.platform,
     )
+    if arguments.framework == "representax":
+        parameters["negative_scope"] = arguments.negative_scope
+    report = function(**parameters)
     if arguments.platform == "tpu":
         rank = (
             initialize_jax("tpu").process_index()
@@ -1104,6 +1118,9 @@ def _parser() -> argparse.ArgumentParser:
     worker.add_argument("--steps", type=int, default=4)
     worker.add_argument("--seed", type=int, default=7)
     worker.add_argument("--platform", choices=("gpu", "tpu"), default="gpu")
+    worker.add_argument(
+        "--negative-scope", choices=("local", "global"), default="global"
+    )
 
     pair = subparsers.add_parser("pair")
     pair.add_argument("--checkpoint", type=Path, required=True)

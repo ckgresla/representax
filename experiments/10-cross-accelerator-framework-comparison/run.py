@@ -54,6 +54,15 @@ RECIPES = (
     "video-text",
     "v-jepa",
 )
+NEGATIVE_SCOPE_RECIPES = frozenset(
+    {
+        "dense-retrieval",
+        "late-interaction",
+        "image-text",
+        "audio-text",
+        "video-text",
+    }
+)
 
 REFERENCE_FRAMEWORKS = {
     "dense-retrieval": "sentence-transformers",
@@ -870,7 +879,10 @@ def _recipe_command(arguments: argparse.Namespace) -> list[str]:
         )
         model = arguments.recipe.removeprefix(f"{workload}-")
         command.extend(("--workload", workload, "--model", model, "--serious"))
-    elif arguments.recipe == "late-interaction":
+    elif (
+        arguments.recipe in NEGATIVE_SCOPE_RECIPES
+        and arguments.framework == "representax"
+    ):
         command.extend(("--negative-scope", arguments.negative_scope))
     elif arguments.recipe == "outcome-reward":
         command.extend(("--padding", "static"))
@@ -911,7 +923,11 @@ def _run_recipe(arguments: argparse.Namespace) -> None:
         "steps": arguments.steps,
         "negative_scope": (
             arguments.negative_scope
-            if arguments.recipe in {"dense-retrieval", "late-interaction"}
+            if arguments.framework == "representax"
+            and arguments.recipe in NEGATIVE_SCOPE_RECIPES
+            else "local"
+            if arguments.framework == "reference"
+            and arguments.recipe in NEGATIVE_SCOPE_RECIPES
             else None
         ),
         "command": command,

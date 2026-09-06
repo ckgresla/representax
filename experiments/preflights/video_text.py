@@ -456,6 +456,7 @@ def _representax_job(
     seed: int,
     batch_size: int = PREFLIGHT_BATCH_SIZE,
     export_enabled: bool = True,
+    negative_scope: str = "global",
 ) -> Any:
     if steps < 4 or steps % 2:
         raise ValueError("steps must be an even integer of at least four")
@@ -524,7 +525,11 @@ def _representax_job(
             },
         ),
         task=RetrievalConfig(),
-        loss=MNRConfig(scale=20.0, symmetric=False),
+        loss=MNRConfig(
+            scale=20.0,
+            symmetric=False,
+            negative_scope=negative_scope,
+        ),
         optimization=OptimizationConfig(
             optimizer=ComponentConfig(
                 target="optax.adamw",
@@ -648,6 +653,7 @@ def _representax_worker(
     seed: int,
     batch_size: int,
     platform: Platform = "gpu",
+    negative_scope: str = "global",
 ) -> dict[str, Any]:
     jax = initialize_jax(platform)
 
@@ -668,6 +674,7 @@ def _representax_worker(
         seed=seed,
         batch_size=batch_size,
         export_enabled=platform == "gpu",
+        negative_scope=negative_scope,
     )
     if platform == "tpu":
         job = data_parallel_job(
@@ -1196,7 +1203,7 @@ def _worker(arguments: argparse.Namespace) -> None:
         if arguments.framework == "representax"
         else _sentence_transformers_worker
     )
-    report = function(
+    parameters = dict(
         checkpoint=arguments.checkpoint,
         data_directory=arguments.data_directory,
         run_directory=arguments.run_directory,
@@ -1205,6 +1212,9 @@ def _worker(arguments: argparse.Namespace) -> None:
         batch_size=arguments.batch_size,
         platform=arguments.platform,
     )
+    if arguments.framework == "representax":
+        parameters["negative_scope"] = arguments.negative_scope
+    report = function(**parameters)
     if arguments.platform == "tpu":
         rank = (
             initialize_jax("tpu").process_index()
@@ -1331,6 +1341,9 @@ def _parser() -> argparse.ArgumentParser:
     worker.add_argument("--seed", type=int, default=7)
     worker.add_argument("--batch-size", type=int, default=PREFLIGHT_BATCH_SIZE)
     worker.add_argument("--platform", choices=("gpu", "tpu"), default="gpu")
+    worker.add_argument(
+        "--negative-scope", choices=("local", "global"), default="global"
+    )
 
     pair = subparsers.add_parser("pair")
     pair.add_argument("--checkpoint", type=Path, required=True)
