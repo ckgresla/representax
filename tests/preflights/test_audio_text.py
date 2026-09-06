@@ -156,6 +156,8 @@ def test_representax_audio_job_uses_ddp_grad_cache_and_verified_export(
     assert job.training.adapter is not None
     assert type(job.training.adapter) is LoRAConfig
     assert job.training.adapter.target_pattern == "text"
+    assert job.data.num_threads == 1
+    assert job.data.prefetch_buffer_size == 1
     assert job.checkpointing is not None and job.checkpointing.every == 2
     assert job.evaluation is not None and job.evaluation.on_start
     assert job.evaluation.on_end

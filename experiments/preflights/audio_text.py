@@ -549,8 +549,8 @@ def _representax_job(
                 parameters={"root_directory": str(data_directory)},
             ),
             drop_remainder=True,
-            num_threads=8,
-            prefetch_buffer_size=8,
+            num_threads=1,
+            prefetch_buffer_size=1,
         )
 
     contract = frozen_contract()
