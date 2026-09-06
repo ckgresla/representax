@@ -84,6 +84,15 @@ def test_representax_job_preserves_frozen_scientific_contract(tmp_path) -> None:
     assert EXECUTION_SEQUENCE_LENGTH == 2048
     assert STEPS_PER_TRAJECTORY == 4
 
+    fixed_shape = _representax_job(
+        checkpoint=tmp_path / "checkpoint",
+        data_directory=data,
+        steps=4,
+        seed=7,
+        sequence_length_buckets=(EXECUTION_SEQUENCE_LENGTH,),
+    )
+    assert fixed_shape.model.parameters["sequence_length_buckets"] == [2048]
+
 
 def test_steady_state_excludes_compilation_rows() -> None:
     rows = (

@@ -395,6 +395,7 @@ def _representax_job(
     data_directory: Path,
     steps: int,
     seed: int,
+    sequence_length_buckets: Sequence[int] = SEQUENCE_LENGTH_BUCKETS,
 ) -> Any:
     from representax.config import (
         BatchConfig,
@@ -444,7 +445,7 @@ def _representax_job(
                 "local_files_only": True,
                 "parameter_dtype": "float32",
                 "compute_dtype": "bfloat16",
-                "sequence_length_buckets": list(SEQUENCE_LENGTH_BUCKETS),
+                "sequence_length_buckets": list(sequence_length_buckets),
                 "rematerialization": "full",
             },
         ),
@@ -568,6 +569,9 @@ def _representax_worker(
         data_directory=data_directory,
         steps=steps,
         seed=seed,
+        sequence_length_buckets=(EXECUTION_SEQUENCE_LENGTH,)
+        if platform == "tpu"
+        else SEQUENCE_LENGTH_BUCKETS,
     )
     if platform == "tpu":
         job = data_parallel_job(
