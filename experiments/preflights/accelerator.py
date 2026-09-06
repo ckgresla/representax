@@ -191,6 +191,65 @@ def install_torch_xla_checkpointing() -> None:
     modeling_utils.checkpoint = import_module("torch_xla.utils.checkpoint").checkpoint
 
 
+def deterministic_tpu_cached_mnr(
+    loss_type: type[Any], model: Any, **options: Any
+) -> Any:
+    """Use cached MNR on TPU when replay does not require RNG restoration."""
+
+    import torch
+
+    active_dropout = {
+        name: float(module.p)
+        for name, module in model.named_modules()
+        if isinstance(module, torch.nn.Dropout) and float(module.p) != 0.0
+    }
+    config = getattr(getattr(model[0], "auto_model", None), "config", None)
+
+    def visit(value: Any, path: str = "config") -> None:
+        if isinstance(value, dict):
+            for name, child in value.items():
+                child_path = f"{path}.{name}"
+                if "dropout" in name and isinstance(child, (float, int)) and child:
+                    active_dropout[child_path] = float(child)
+                else:
+                    visit(child, child_path)
+        elif isinstance(value, (tuple, list)):
+            for index, child in enumerate(value):
+                visit(child, f"{path}[{index}]")
+
+    if config is not None:
+        visit(config.to_dict())
+    if active_dropout:
+        raise RuntimeError(
+            "TPU cached MNR requires deterministic replay; active dropout: "
+            f"{active_dropout}"
+        )
+
+    class DeterministicTPUCachedMNR(loss_type):
+        def embed_minibatch(
+            self,
+            sentence_feature: Any,
+            begin: int,
+            end: int,
+            with_grad: bool,
+            copy_random_state: bool,
+            random_state: Any = None,
+        ) -> Any:
+            del copy_random_state
+            if random_state is not None:
+                raise RuntimeError("deterministic TPU replay received RNG state")
+            return super().embed_minibatch(
+                sentence_feature,
+                begin,
+                end,
+                with_grad,
+                False,
+                None,
+            )
+
+    return DeterministicTPUCachedMNR(model, **options)
+
+
 def use_fixed_text_padding(model: Any, maximum_length: int) -> None:
     """Configure a Sentence Transformers input module for one static XLA shape."""
 
@@ -210,6 +269,7 @@ def use_fixed_text_padding(model: Any, maximum_length: int) -> None:
 __all__ = [
     "Platform",
     "data_parallel_job",
+    "deterministic_tpu_cached_mnr",
     "initialize_jax",
     "install_torch_xla_checkpointing",
     "process_local_rows",

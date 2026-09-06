@@ -4,7 +4,11 @@ from types import SimpleNamespace
 
 import pytest
 from experiments.preflights import accelerator
-from experiments.preflights.accelerator import data_parallel_job, use_fixed_text_padding
+from experiments.preflights.accelerator import (
+    data_parallel_job,
+    deterministic_tpu_cached_mnr,
+    use_fixed_text_padding,
+)
 
 
 @pytest.mark.parametrize(
@@ -110,3 +114,47 @@ def test_torch_xla_checkpointing_replaces_the_transformers_backend(monkeypatch) 
     accelerator.install_torch_xla_checkpointing()
 
     assert modeling_utils.checkpoint is marker
+
+
+def test_deterministic_tpu_cached_mnr_disables_rng_snapshots() -> None:
+    class Loss:
+        def __init__(self, model, **options):
+            self.model = model
+            self.options = options
+
+        def embed_minibatch(
+            self,
+            sentence_feature,
+            begin,
+            end,
+            with_grad,
+            copy_random_state,
+            random_state=None,
+        ):
+            return copy_random_state, random_state
+
+    class Model:
+        def named_modules(self):
+            return ()
+
+        def __getitem__(self, _index):
+            return SimpleNamespace(auto_model=None)
+
+    loss = deterministic_tpu_cached_mnr(Loss, Model(), scale=20.0)
+
+    assert loss.options == {"scale": 20.0}
+    assert loss.embed_minibatch({}, 0, 1, False, True) == (False, None)
+
+
+def test_deterministic_tpu_cached_mnr_rejects_active_dropout() -> None:
+    import torch
+
+    class Model:
+        def named_modules(self):
+            return (("dropout", torch.nn.Dropout(0.1)),)
+
+        def __getitem__(self, _index):
+            return SimpleNamespace(auto_model=None)
+
+    with pytest.raises(RuntimeError, match="active dropout"):
+        deterministic_tpu_cached_mnr(object, Model())

@@ -22,6 +22,7 @@ import numpy as np
 from experiments.preflights.accelerator import (
     Platform,
     data_parallel_job,
+    deterministic_tpu_cached_mnr,
     initialize_jax,
     process_local_rows,
     torch_device,
@@ -1014,8 +1015,18 @@ def _sentence_transformers_worker(
         }
 
     train_dataset.set_transform(load_video_batch)
-    loss = CachedMultipleNegativesRankingLoss(
-        model, scale=20.0, mini_batch_size=GRAD_CACHE_MICRO_BATCH
+    loss_options = {
+        "scale": 20.0,
+        "mini_batch_size": GRAD_CACHE_MICRO_BATCH,
+    }
+    loss = (
+        deterministic_tpu_cached_mnr(
+            CachedMultipleNegativesRankingLoss,
+            model,
+            **loss_options,
+        )
+        if platform == "tpu"
+        else CachedMultipleNegativesRankingLoss(model, **loss_options)
     )
     arguments = SentenceTransformerTrainingArguments(
         output_dir=str(run_directory / "checkpoints"),
