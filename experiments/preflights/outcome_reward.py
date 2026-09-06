@@ -63,7 +63,7 @@ def reference_checkpointing(platform: Platform) -> tuple[bool, dict[str, bool] |
 
 
 def reference_micro_batch_size(platform: Platform, local_batch_size: int) -> int:
-    maximum = MICRO_BATCH_SIZE if platform == "gpu" else min(2, MICRO_BATCH_SIZE)
+    maximum = MICRO_BATCH_SIZE if platform == "gpu" else 1
     micro_batch_size = min(maximum, local_batch_size)
     while local_batch_size % micro_batch_size:
         micro_batch_size -= 1

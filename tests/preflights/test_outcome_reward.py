@@ -30,7 +30,7 @@ def test_tpu_reference_disables_unsupported_torch_checkpointing() -> None:
     assert reference_checkpointing("gpu") == (True, {"use_reentrant": False})
     assert reference_checkpointing("tpu") == (False, None)
     assert reference_micro_batch_size("gpu", 8) == 4
-    assert reference_micro_batch_size("tpu", 8) == 2
+    assert reference_micro_batch_size("tpu", 8) == 1
 
 
 def test_preference_rows_skip_sequences_that_require_truncation() -> None:
