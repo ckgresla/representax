@@ -508,6 +508,7 @@ def _representax_job(
     sharding: str = "ddp",
     export_enabled: bool = True,
     negative_scope: str = "global",
+    rematerialization: str = "none",
 ) -> Any:
     if steps < 4 or steps % 2:
         raise ValueError("steps must be an even integer of at least four")
@@ -631,7 +632,7 @@ def _representax_job(
                 alpha=8.0,
                 target_pattern="text",
             ),
-            activation_rematerialization="none",
+            activation_rematerialization=rematerialization,
             donate_buffers=True,
             precision=PrecisionConfig.bfloat16_mixed(),
         ),
@@ -740,6 +741,7 @@ def _representax_worker(
         sharding=sharding,
         export_enabled=not skip_export and platform == "gpu",
         negative_scope=negative_scope,
+        rematerialization="full" if platform == "tpu" else "none",
     )
     if platform == "tpu":
         job = (

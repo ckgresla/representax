@@ -182,6 +182,7 @@ def test_representax_audio_job_uses_ddp_grad_cache_and_verified_export(
     assert job.training.adapter is not None
     assert type(job.training.adapter) is LoRAConfig
     assert job.training.adapter.target_pattern == "text"
+    assert job.training.activation_rematerialization == "none"
     assert job.data.num_threads == 1
     assert job.data.prefetch_buffer_size == 1
     assert job.checkpointing is not None and job.checkpointing.every == 2
@@ -190,6 +191,30 @@ def test_representax_audio_job_uses_ddp_grad_cache_and_verified_export(
     assert job.export.huggingface is not None
     assert job.export.huggingface.source_checkpoint == str(checkpoint)
     assert job.export.huggingface.verify_reload
+
+
+def test_audio_job_can_enable_full_rematerialization(tmp_path) -> None:
+    data = tmp_path / "data"
+    data.mkdir()
+    (data / "manifest.json").write_text(
+        json.dumps(
+            {
+                "training_presentations": 32,
+                "relevant_documents": {"0": [0]},
+            }
+        )
+    )
+
+    job = _representax_job(
+        checkpoint=tmp_path / "checkpoint",
+        data_directory=data,
+        steps=4,
+        seed=7,
+        batch_size=PREFLIGHT_BATCH_SIZE,
+        rematerialization="full",
+    )
+
+    assert job.training.activation_rematerialization == "full"
 
 
 def test_representax_audio_scaling_probe_can_use_one_gpu_without_export(

@@ -470,6 +470,7 @@ def _representax_job(
     batch_size: int = PREFLIGHT_BATCH_SIZE,
     export_enabled: bool = True,
     negative_scope: str = "global",
+    rematerialization: str = "none",
 ) -> Any:
     if steps < 4 or steps % 2:
         raise ValueError("steps must be an even integer of at least four")
@@ -578,7 +579,7 @@ def _representax_job(
             batch=BatchConfig(micro_batch_size=batch_size),
             grad_cache=GradCacheConfig(micro_batch_size=GRAD_CACHE_MICRO_BATCH),
             adapter=LoRAConfig(rank=4, alpha=8.0, target_pattern="text"),
-            activation_rematerialization="none",
+            activation_rematerialization=rematerialization,
             donate_buffers=True,
             precision=PrecisionConfig.bfloat16_mixed(),
         ),
@@ -688,6 +689,7 @@ def _representax_worker(
         batch_size=batch_size,
         export_enabled=platform == "gpu",
         negative_scope=negative_scope,
+        rematerialization="full" if platform == "tpu" else "none",
     )
     if platform == "tpu":
         job = data_parallel_job(
