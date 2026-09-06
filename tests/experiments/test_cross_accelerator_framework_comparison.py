@@ -151,19 +151,6 @@ def test_environment_state_records_reproducible_runtime(monkeypatch) -> None:
     assert state["accelerator_environment"]["PJRT_DEVICE"] == "TPU"
 
 
-def test_environment_state_records_torch_xla_cache(monkeypatch) -> None:
-    module = _module()
-    monkeypatch.setenv("XLA_PERSISTENT_CACHE_PATH", "/tmp/xla-cache")
-    monkeypatch.setenv("XLA_PERSISTENT_CACHE_READ_ONLY", "0")
-
-    state = module._environment_state()
-
-    assert state["accelerator_environment"]["XLA_PERSISTENT_CACHE_PATH"] == (
-        "/tmp/xla-cache"
-    )
-    assert state["accelerator_environment"]["XLA_PERSISTENT_CACHE_READ_ONLY"] == "0"
-
-
 def test_environment_state_can_interrogate_worker_interpreter() -> None:
     module = _module()
 

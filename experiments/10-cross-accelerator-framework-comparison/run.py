@@ -157,8 +157,6 @@ def _environment_state(
         "JAX_COMPILATION_CACHE_DIR",
         "JAX_DEFAULT_MATMUL_PRECISION",
         "PJRT_DEVICE",
-        "XLA_PERSISTENT_CACHE_PATH",
-        "XLA_PERSISTENT_CACHE_READ_ONLY",
         "XLA_FLAGS",
         "XLA_PYTHON_CLIENT_ALLOCATOR",
         "XLA_PYTHON_CLIENT_MEM_FRACTION",
@@ -989,15 +987,6 @@ def _run_recipe(arguments: argparse.Namespace) -> None:
     )
     if arguments.platform == "tpu" and arguments.framework == "reference":
         environment["PJRT_DEVICE"] = "TPU"
-        environment.setdefault(
-            "XLA_PERSISTENT_CACHE_PATH",
-            str(Path.home() / ".cache/representax/torch-xla"),
-        )
-        environment.setdefault("XLA_PERSISTENT_CACHE_READ_ONLY", "0")
-        Path(environment["XLA_PERSISTENT_CACHE_PATH"]).mkdir(
-            parents=True,
-            exist_ok=True,
-        )
     if arguments.platform == "gpu":
         environment["CUDA_VISIBLE_DEVICES"] = str(arguments.gpu)
     invocation = {
