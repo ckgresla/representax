@@ -8,6 +8,7 @@ from experiments.preflights.outcome_reward import (
     optimizer_token_capacities,
     preference_rows,
     reference_checkpointing,
+    reference_micro_batch_size,
     reference_timing,
     steady_state,
 )
@@ -28,6 +29,8 @@ def test_frozen_contract_names_qwen_ultrafeedback_and_trl() -> None:
 def test_tpu_reference_disables_unsupported_torch_checkpointing() -> None:
     assert reference_checkpointing("gpu") == (True, {"use_reentrant": False})
     assert reference_checkpointing("tpu") == (False, None)
+    assert reference_micro_batch_size("gpu", 8) == 4
+    assert reference_micro_batch_size("tpu", 8) == 2
 
 
 def test_preference_rows_skip_sequences_that_require_truncation() -> None:

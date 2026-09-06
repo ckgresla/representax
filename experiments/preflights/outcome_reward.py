@@ -62,6 +62,14 @@ def reference_checkpointing(platform: Platform) -> tuple[bool, dict[str, bool] |
     return False, None
 
 
+def reference_micro_batch_size(platform: Platform, local_batch_size: int) -> int:
+    maximum = MICRO_BATCH_SIZE if platform == "gpu" else min(2, MICRO_BATCH_SIZE)
+    micro_batch_size = min(maximum, local_batch_size)
+    while local_batch_size % micro_batch_size:
+        micro_batch_size -= 1
+    return micro_batch_size
+
+
 def _document(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
@@ -1124,9 +1132,7 @@ def _trl_worker(
     if contract.global_batch_size % world_size:
         raise ValueError("global batch must divide the accelerator count")
     local_batch_size = contract.global_batch_size // world_size
-    micro_batch_size = min(MICRO_BATCH_SIZE, local_batch_size)
-    while local_batch_size % micro_batch_size:
-        micro_batch_size -= 1
+    micro_batch_size = reference_micro_batch_size(platform, local_batch_size)
     if platform == "tpu":
         run_directory = run_directory / f"process-{torch_rank()}"
     if trl.__version__ != contract.reference_version:
