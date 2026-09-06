@@ -74,6 +74,30 @@ def test_data_parallel_assembles_process_local_rows_on_one_process():
     )
 
 
+def test_sharding_plan_places_process_local_retrieval_batch():
+    device = jax.devices("cpu")[0]
+    mesh = jax.make_mesh((1,), ("data",), devices=[device])
+    model = DenseEncoder(3, 3, key=jax.random.key(2))
+    optimizer = optax.sgd(1e-2)
+    plan = ShardingPlan.ddp(
+        init_train_state(model, optimizer),
+        optimizer,
+        mesh,
+        axis_name="data",
+    )
+    local_batch = process_local_retrieval_batch(
+        query=jnp.arange(6).reshape(2, 3),
+        document=jnp.arange(6, 12).reshape(2, 3),
+        positive_mask=jnp.eye(2, dtype=jnp.bool_),
+    )
+
+    global_batch = plan.place_batch(local_batch)
+
+    np.testing.assert_array_equal(global_batch.query, local_batch.query)
+    np.testing.assert_array_equal(global_batch.document, local_batch.document)
+    np.testing.assert_array_equal(global_batch.positive_mask, jnp.eye(2, dtype=bool))
+
+
 def test_ddp_requires_batch_activation_annotations():
     device = jax.devices("cpu")[0]
     mesh = jax.make_mesh((1,), ("data",), devices=[device])

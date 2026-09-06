@@ -950,9 +950,8 @@ def _recipe_command(arguments: argparse.Namespace) -> list[str]:
     if arguments.recipe == "outcome-reward":
         command.extend(("--padding", "static"))
     if arguments.recipe == "audio-text":
-        sharding = "fsdp" if arguments.platform == "tpu" else "ddp"
         command.extend(
-            ("--batch-size", "256", "--sharding", sharding, "--continuous")
+            ("--batch-size", "256", "--sharding", "ddp", "--continuous")
         )
     if arguments.recipe == "video-text":
         command.extend(("--batch-size", "128"))

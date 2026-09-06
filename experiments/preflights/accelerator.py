@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Sequence
 from importlib import import_module
-from typing import Any, Literal
+from typing import Any, Literal, TypeVar
 
 Platform = Literal["gpu", "tpu"]
+Row = TypeVar("Row")
 
 
 def initialize_jax(platform: Platform) -> Any:
@@ -63,6 +65,21 @@ def data_parallel_job(
         if training_only
         else configured
     )
+
+
+def process_local_rows(rows: Sequence[Row]) -> tuple[Sequence[Row], int, int]:
+    """Select this JAX process's contiguous share of one global batch."""
+
+    import jax
+
+    process_count = jax.process_count()
+    if len(rows) % process_count:
+        raise ValueError(
+            f"global row count {len(rows)} does not divide {process_count} processes"
+        )
+    local_size = len(rows) // process_count
+    start = jax.process_index() * local_size
+    return rows[start : start + local_size], start, len(rows)
 
 
 def training_only_job(job: Any, *, platform: Platform) -> Any:
@@ -171,9 +188,7 @@ def install_torch_xla_checkpointing() -> None:
     """Route Transformers rematerialization through PyTorch/XLA's implementation."""
 
     modeling_utils = import_module("transformers.modeling_utils")
-    modeling_utils.checkpoint = import_module(
-        "torch_xla.utils.checkpoint"
-    ).checkpoint
+    modeling_utils.checkpoint = import_module("torch_xla.utils.checkpoint").checkpoint
 
 
 def use_fixed_text_padding(model: Any, maximum_length: int) -> None:
@@ -197,6 +212,7 @@ __all__ = [
     "data_parallel_job",
     "initialize_jax",
     "install_torch_xla_checkpointing",
+    "process_local_rows",
     "torch_device",
     "torch_device_report",
     "torch_empty_cache",

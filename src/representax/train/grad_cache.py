@@ -804,10 +804,6 @@ class GradCache:
                 loss_row_chunk_size=self.resolved_loss_row_chunk_size,
                 precision=active_precision_policy(),
             )
-        if axis_name is not None and base_task.negative_scope != "global":
-            raise NotImplementedError(
-                "distributed GradCache currently implements global negatives only"
-            )
         if axis_name is not None and representation_key is not None:
             representation_key = jax.random.fold_in(
                 representation_key,

@@ -24,6 +24,7 @@ from experiments.preflights.accelerator import (
     Platform,
     data_parallel_job,
     initialize_jax,
+    process_local_rows,
     torch_device,
     torch_device_report,
     torch_empty_cache,
@@ -398,22 +399,37 @@ class AudioTextRetrievalCollator:
 
     def __call__(self, rows: Sequence[Mapping[str, Any]]) -> Any:
         from representax.core import Route
-        from representax.tasks.retrieval import retrieval_batch
+        from representax.tasks.retrieval import (
+            process_local_retrieval_batch,
+            retrieval_batch,
+        )
 
-        size = len(rows)
-        return retrieval_batch(
-            query=self.processor(
-                tuple(
-                    {"audio": _load_audio(self.root_directory, str(row["audio"]))}
-                    for row in rows
-                ),
-                route=Route.QUERY,
+        local_rows, offset, global_size = process_local_rows(rows)
+        query = self.processor(
+            tuple(
+                {"audio": _load_audio(self.root_directory, str(row["audio"]))}
+                for row in local_rows
             ),
-            document=self.processor(
-                tuple(str(row["caption"]) for row in rows),
-                route=Route.DOCUMENT,
-            ),
-            positive_mask=np.eye(size, dtype=np.bool_),
+            route=Route.QUERY,
+        )
+        document = self.processor(
+            tuple(str(row["caption"]) for row in local_rows),
+            route=Route.DOCUMENT,
+        )
+        if len(local_rows) == global_size:
+            return retrieval_batch(
+                query=query,
+                document=document,
+                positive_mask=np.eye(global_size, dtype=np.bool_),
+            )
+        positive_mask = np.zeros((len(local_rows), global_size), dtype=np.bool_)
+        positive_mask[
+            np.arange(len(local_rows)), offset + np.arange(len(local_rows))
+        ] = True
+        return process_local_retrieval_batch(
+            query=query,
+            document=document,
+            positive_mask=positive_mask,
         )
 
 

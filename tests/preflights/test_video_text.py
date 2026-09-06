@@ -25,7 +25,11 @@ from representax.models.qwen2_5_omni import (
     Qwen2_5OmniEncoder,
     batch_from_processor_output,
 )
-from representax.tasks.retrieval import MNRTask, retrieval_batch
+from representax.tasks.retrieval import (
+    MNRTask,
+    ProcessLocalRetrievalBatch,
+    retrieval_batch,
+)
 from representax.train import GradCache, build_train_step, init_train_state
 
 
@@ -123,6 +127,30 @@ def test_video_text_collators_preserve_routes_and_validity(tmp_path) -> None:
     assert documents.kind == "document"
     np.testing.assert_array_equal(queries.ids, [10])
     np.testing.assert_array_equal(documents.ids, [20])
+
+
+def test_video_collator_preprocesses_only_process_local_rows(
+    tmp_path, monkeypatch
+) -> None:
+    _video(tmp_path / "video.npy")
+    monkeypatch.setattr(jax, "process_count", lambda: 2)
+    monkeypatch.setattr(jax, "process_index", lambda: 1)
+
+    batch = VideoTextRetrievalCollator(
+        processor=_Processor(),
+        root_directory=tmp_path,
+    )(
+        tuple(
+            {"video": "video.npy", "caption": f"caption-{index}"} for index in range(4)
+        )
+    )
+
+    assert isinstance(batch, ProcessLocalRetrievalBatch)
+    assert batch.query.shape == batch.document.shape == (2, 3)
+    np.testing.assert_array_equal(
+        batch.positive_mask,
+        [[False, False, True, False], [False, False, False, True]],
+    )
 
 
 def test_reference_video_preserves_frozen_frames_and_metadata(tmp_path) -> None:

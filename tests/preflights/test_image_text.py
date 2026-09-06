@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 from experiments.preflights.image_text import (
@@ -13,6 +14,8 @@ from experiments.preflights.image_text import (
     frozen_contract,
 )
 from PIL import Image
+
+from representax.tasks.retrieval import ProcessLocalRetrievalBatch
 
 
 class _Processor:
@@ -92,6 +95,30 @@ def test_image_text_collators_preserve_modalities_and_validity(tmp_path) -> None
     assert documents.kind == "document"
     np.testing.assert_array_equal(queries.valid, [True, False])
     np.testing.assert_array_equal(documents.ids, [20])
+
+
+def test_image_collator_preprocesses_only_process_local_rows(
+    tmp_path, monkeypatch
+) -> None:
+    _image(tmp_path / "image.jpg")
+    monkeypatch.setattr(jax, "process_count", lambda: 2)
+    monkeypatch.setattr(jax, "process_index", lambda: 0)
+
+    batch = ImageTextRetrievalCollator(
+        processor=_Processor(),
+        root_directory=tmp_path,
+    )(
+        tuple(
+            {"caption": f"caption-{index}", "image": "image.jpg"} for index in range(4)
+        )
+    )
+
+    assert isinstance(batch, ProcessLocalRetrievalBatch)
+    assert batch.query.shape == batch.document.shape == (2, 3)
+    np.testing.assert_array_equal(
+        batch.positive_mask,
+        [[True, False, False, False], [False, True, False, False]],
+    )
 
 
 def test_representax_job_uses_run_job_grad_cache_and_verified_export(tmp_path) -> None:

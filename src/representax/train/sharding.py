@@ -490,6 +490,18 @@ class ShardingPlan:
     def place_batch(self, batch: Any) -> Any:
         """Shard example rows on the data axis and replicate over FSDP axes."""
 
+        from representax.tasks.retrieval import (
+            ProcessLocalRetrievalBatch,
+            place_process_local_retrieval_batch,
+        )
+
+        if isinstance(batch, ProcessLocalRetrievalBatch):
+            if self.data_axis_name is None:
+                raise ValueError(
+                    "process-local retrieval batches require a data-parallel axis"
+                )
+            return place_process_local_retrieval_batch(batch, self.batch_sharding)
+
         return jax.tree.map(
             lambda value: (
                 jax.device_put(value, self.batch_sharding)
@@ -557,9 +569,9 @@ def _build_train_step_from_sharding_plan(
             if (
                 gradient_accumulation_steps > 1
                 and plan.data_axis_name is not None
-                and dict(
-                    zip(plan.mesh.axis_names, plan.mesh.axis_types, strict=True)
-                )[plan.data_axis_name]
+                and dict(zip(plan.mesh.axis_names, plan.mesh.axis_types, strict=True))[
+                    plan.data_axis_name
+                ]
                 is AxisType.Explicit
             )
             else None

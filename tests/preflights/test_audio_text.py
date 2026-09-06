@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 from experiments.preflights.audio_text import (
@@ -18,6 +19,7 @@ from experiments.preflights.audio_text import (
 )
 
 from representax.config import DDPConfig, FSDPConfig, LoRAConfig
+from representax.tasks.retrieval import ProcessLocalRetrievalBatch
 
 
 class _Processor:
@@ -105,6 +107,30 @@ def test_audio_text_collators_preserve_routes_and_validity(tmp_path) -> None:
     assert documents.kind == "document"
     np.testing.assert_array_equal(queries.ids, [10])
     np.testing.assert_array_equal(documents.ids, [20])
+
+
+def test_audio_collator_preprocesses_only_process_local_rows(
+    tmp_path, monkeypatch
+) -> None:
+    np.save(tmp_path / "audio.npy", np.zeros(SAMPLE_RATE, dtype=np.float32))
+    monkeypatch.setattr(jax, "process_count", lambda: 2)
+    monkeypatch.setattr(jax, "process_index", lambda: 1)
+
+    batch = AudioTextRetrievalCollator(
+        processor=_Processor(),
+        root_directory=tmp_path,
+    )(
+        tuple(
+            {"audio": "audio.npy", "caption": f"caption-{index}"} for index in range(4)
+        )
+    )
+
+    assert isinstance(batch, ProcessLocalRetrievalBatch)
+    assert batch.query.shape == batch.document.shape == (2, 3)
+    np.testing.assert_array_equal(
+        batch.positive_mask,
+        [[False, False, True, False], [False, False, False, True]],
+    )
 
 
 def test_reference_audio_transform_loads_only_requested_waveforms(tmp_path) -> None:

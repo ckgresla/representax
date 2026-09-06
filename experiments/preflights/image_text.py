@@ -25,6 +25,7 @@ from experiments.preflights.accelerator import (
     Platform,
     data_parallel_job,
     initialize_jax,
+    process_local_rows,
     torch_device_report,
     torch_rank,
     torch_reset_peak_memory,
@@ -345,17 +346,32 @@ class ImageTextRetrievalCollator:
 
     def __call__(self, rows: Sequence[Mapping[str, Any]]) -> Any:
         from representax.core import Route
-        from representax.tasks.retrieval import retrieval_batch
-
-        captions = tuple(str(row["caption"]) for row in rows)
-        images = tuple(
-            _open_image(self.root_directory / str(row["image"])) for row in rows
+        from representax.tasks.retrieval import (
+            process_local_retrieval_batch,
+            retrieval_batch,
         )
-        size = len(rows)
-        return retrieval_batch(
-            query=self.processor(captions, route=Route.QUERY),
-            document=self.processor(images, route=Route.DOCUMENT),
-            positive_mask=np.eye(size, dtype=np.bool_),
+
+        local_rows, offset, global_size = process_local_rows(rows)
+        captions = tuple(str(row["caption"]) for row in local_rows)
+        images = tuple(
+            _open_image(self.root_directory / str(row["image"])) for row in local_rows
+        )
+        query = self.processor(captions, route=Route.QUERY)
+        document = self.processor(images, route=Route.DOCUMENT)
+        if len(local_rows) == global_size:
+            return retrieval_batch(
+                query=query,
+                document=document,
+                positive_mask=np.eye(global_size, dtype=np.bool_),
+            )
+        positive_mask = np.zeros((len(local_rows), global_size), dtype=np.bool_)
+        positive_mask[
+            np.arange(len(local_rows)), offset + np.arange(len(local_rows))
+        ] = True
+        return process_local_retrieval_batch(
+            query=query,
+            document=document,
+            positive_mask=positive_mask,
         )
 
 
