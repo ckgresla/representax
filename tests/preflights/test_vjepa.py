@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import jax
 import jax.numpy as jnp
@@ -102,7 +103,7 @@ def test_representax_job_uses_full_frozen_architecture_and_lifecycle(tmp_path) -
     (data / "train.jsonl").write_text(
         "\n".join(json.dumps({"tensor": "clip.npy"}) for _ in range(4)) + "\n"
     )
-    (data / "official-initialization.pth.tar").write_bytes(b"checkpoint")
+    (data / "official-initialization.npz").write_bytes(b"checkpoint")
 
     job = _representax_job(data_directory=data, steps=4, seed=7)
 
@@ -128,7 +129,7 @@ def test_tpu_vjepa_uses_one_non_decomposed_local_batch(tmp_path) -> None:
     (data / "train.jsonl").write_text(
         "\n".join(json.dumps({"tensor": "clip.npy"}) for _ in range(128)) + "\n"
     )
-    (data / "official-initialization.pth.tar").write_bytes(b"checkpoint")
+    (data / "official-initialization.npz").write_bytes(b"checkpoint")
     job = _representax_job(
         data_directory=data,
         steps=4,
@@ -146,6 +147,21 @@ def test_tpu_vjepa_uses_one_non_decomposed_local_batch(tmp_path) -> None:
 
     assert sharded.training.batch.micro_batch_size == 8
     assert sharded.training.batch.gradient_accumulation_steps == 1
+
+
+def test_convert_checkpoint_command_is_explicit(tmp_path: Path) -> None:
+    arguments = _parser().parse_args(
+        [
+            "convert-checkpoint",
+            "--input",
+            str(tmp_path / "input.pth.tar"),
+            "--output",
+            str(tmp_path / "output.npz"),
+        ]
+    )
+
+    assert arguments.input == tmp_path / "input.pth.tar"
+    assert arguments.output == tmp_path / "output.npz"
 
 
 def test_pair_command_defaults_to_assigned_gpu_four() -> None:

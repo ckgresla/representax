@@ -8,6 +8,7 @@ from typing import Any
 
 import equinox as eqx
 import jax.numpy as jnp
+import numpy as np
 
 from .model import (
     VJEPA2_1Encoder,
@@ -205,13 +206,23 @@ def load_reference_state(
 def read_reference_checkpoint(path: str | Path) -> Mapping[str, Any]:
     """Read an official PyTorch checkpoint without making Torch a dependency."""
 
+    path = Path(path)
+    if path.suffix == ".npz":
+        groups: dict[str, dict[str, Any]] = {}
+        with np.load(path, allow_pickle=False) as values:
+            for name in values.files:
+                group, separator, parameter = name.partition("::")
+                if not separator or not parameter:
+                    raise ValueError(f"invalid V-JEPA NumPy checkpoint key {name!r}")
+                groups.setdefault(group, {})[parameter] = values[name]
+        return groups
     try:
         import torch
     except ImportError as error:  # pragma: no cover - parity environment only
         raise ImportError(
             "reading official V-JEPA checkpoints requires torch"
         ) from error
-    return torch.load(Path(path), map_location="cpu", weights_only=True)
+    return torch.load(path, map_location="cpu", weights_only=True)
 
 
 def load_reference_checkpoint(

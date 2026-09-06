@@ -365,6 +365,18 @@ def _write_initial_checkpoint(reference: Path, output: Path, seed: int) -> None:
     )
 
 
+def _write_numpy_checkpoint(source: Path, output: Path) -> None:
+    import torch
+
+    checkpoint = torch.load(source, map_location="cpu", weights_only=True)
+    arrays = {
+        f"{group}::{name}": value.detach().cpu().numpy()
+        for group in ("encoder", "predictor", "target_encoder")
+        for name, value in checkpoint[group].items()
+    }
+    np.savez(output, **arrays)
+
+
 def prepare_data(
     output: Path,
     *,
@@ -444,6 +456,8 @@ def prepare_data(
     )
     checkpoint = output / "official-initialization.pth.tar"
     _write_initial_checkpoint(reference, checkpoint, seed)
+    numpy_checkpoint = output / "official-initialization.npz"
+    _write_numpy_checkpoint(checkpoint, numpy_checkpoint)
     manifest = {
         "schema_version": "representax-vjepa-preflight-data-v1",
         "contract": asdict(contract),
@@ -459,6 +473,7 @@ def prepare_data(
             "evaluation.jsonl": _sha256(output / "evaluation.jsonl"),
             "masks.npz": _sha256(output / "masks.npz"),
             "official-initialization.pth.tar": _sha256(checkpoint),
+            "official-initialization.npz": _sha256(numpy_checkpoint),
         },
     }
     _write_json(output / "manifest.json", manifest)
@@ -571,7 +586,7 @@ def _representax_job(
                     "supervision_layers": [2, 5, 8, 11],
                 },
                 "modality": "video",
-                "checkpoint": str(data_directory / "official-initialization.pth.tar"),
+                "checkpoint": str(data_directory / "official-initialization.npz"),
                 "training": False,
                 "dtype": "float32",
                 "implementation": "xla",
@@ -1299,6 +1314,9 @@ def _parser() -> argparse.ArgumentParser:
         "--evaluation-videos", type=int, default=PREFLIGHT_EVALUATION_VIDEOS
     )
     prepare.add_argument("--seed", type=int, default=7)
+    convert = subparsers.add_parser("convert-checkpoint")
+    convert.add_argument("--input", type=Path, required=True)
+    convert.add_argument("--output", type=Path, required=True)
 
     worker = subparsers.add_parser("worker")
     worker.add_argument("--framework", choices=FRAMEWORKS, required=True)
@@ -1332,6 +1350,8 @@ def main() -> None:
             seed=arguments.seed,
         )
         print(json.dumps(manifest, indent=2, sort_keys=True))
+    elif arguments.command == "convert-checkpoint":
+        _write_numpy_checkpoint(arguments.input, arguments.output)
     elif arguments.command == "worker":
         if (
             arguments.framework == "facebookresearch-vjepa2"
