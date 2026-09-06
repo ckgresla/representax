@@ -12,6 +12,7 @@ from experiments.preflights.vjepa import (
     PREFLIGHT_BATCH_SIZE,
     VJEPAPreflightCollator,
     _parser,
+    _reference_masks_for_batch,
     _representax_job,
     frozen_contract,
 )
@@ -147,6 +148,21 @@ def test_tpu_vjepa_uses_one_non_decomposed_local_batch(tmp_path) -> None:
 
     assert sharded.training.batch.micro_batch_size == 8
     assert sharded.training.batch.gradient_accumulation_steps == 1
+
+
+def test_reference_loss_repeats_shared_masks_across_the_local_batch() -> None:
+    shape = (1, 1, 1)
+    masks = {
+        "context_ids": np.zeros(shape, dtype=np.int32),
+        "target_ids": np.ones(shape, dtype=np.int32),
+        "context_valid": np.ones(shape, dtype=bool),
+        "target_valid": np.ones(shape, dtype=bool),
+    }
+
+    repeated = _reference_masks_for_batch(masks, 2)
+
+    assert all(value.shape == (2, 1, 1) for value in repeated.values())
+    np.testing.assert_array_equal(repeated["target_ids"], 1)
 
 
 def test_convert_checkpoint_command_is_explicit(tmp_path: Path) -> None:

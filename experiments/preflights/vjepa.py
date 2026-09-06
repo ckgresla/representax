@@ -853,6 +853,23 @@ def _reference_embeddings(model: Any, data_directory: Path, device: Any) -> np.n
     return np.concatenate(values)
 
 
+def _reference_masks_for_batch(
+    masks: Mapping[str, np.ndarray], batch_size: int
+) -> dict[str, np.ndarray]:
+    mask_batch = masks["context_ids"].shape[0]
+    if mask_batch == 1 and batch_size != 1:
+        return {
+            name: np.repeat(value, batch_size, axis=0)
+            for name, value in masks.items()
+        }
+    if mask_batch != batch_size:
+        raise ValueError(
+            f"reference mask batch {mask_batch} does not match pixel batch "
+            f"{batch_size}"
+        )
+    return dict(masks)
+
+
 def _reference_loss(
     encoder: Any,
     predictor: Any,
@@ -866,6 +883,7 @@ def _reference_loss(
     compute_mask_distance = import_module(
         "app.vjepa_2_1.models.utils.masks_dist"
     ).compute_mask_distance
+    masks = _reference_masks_for_batch(masks, len(pixels))
 
     target_features = target(pixels, training=True)
     target_features = torch.cat(
@@ -1041,18 +1059,25 @@ def _facebookresearch_worker(
                 group["lr"] = lr
             pixels = torch.from_numpy(training_pixels[iteration]).to(device)
             optimizer.zero_grad(set_to_none=True)
-            step_losses = []
-            for local_index in range(local_batch_size):
+            if platform == "tpu":
                 with torch.autocast(device.type, dtype=torch.bfloat16):
-                    loss = _reference_loss(
-                        encoder,
-                        predictor,
-                        target,
-                        pixels[local_index : local_index + 1],
-                        masks,
-                    )
-                (loss / local_batch_size).backward()
-                step_losses.append(loss.detach())
+                    loss = _reference_loss(encoder, predictor, target, pixels, masks)
+                loss.backward()
+                step_loss = loss.detach()
+            else:
+                step_losses = []
+                for local_index in range(local_batch_size):
+                    with torch.autocast(device.type, dtype=torch.bfloat16):
+                        loss = _reference_loss(
+                            encoder,
+                            predictor,
+                            target,
+                            pixels[local_index : local_index + 1],
+                            masks,
+                        )
+                    (loss / local_batch_size).backward()
+                    step_losses.append(loss.detach())
+                step_loss = torch.stack(step_losses).mean()
             if platform == "tpu":
                 import torch_xla.core.xla_model as xm
 
@@ -1066,7 +1091,7 @@ def _facebookresearch_worker(
                     target_parameter.mul_(0.99925).add_(online, alpha=0.00075)
             torch_synchronize()
             durations.append(time.perf_counter() - step_started)
-            losses.append(float(torch.stack(step_losses).mean().cpu()))
+            losses.append(float(step_loss.cpu()))
 
     midpoint = steps // 2
     if platform == "tpu":
