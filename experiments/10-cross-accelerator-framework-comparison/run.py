@@ -70,6 +70,9 @@ NEGATIVE_SCOPE_RECIPES = frozenset(
         "video-text",
     }
 )
+CANONICAL_OUTPUT_VARIANTS = frozenset(
+    {"representax", "representax-local", "representax-global", "reference"}
+)
 
 REFERENCE_FRAMEWORKS = {
     "dense-retrieval": "sentence-transformers",
@@ -1309,6 +1312,8 @@ def _aggregate_runs(input_root: Path) -> dict[str, Any]:
     records: dict[tuple[str, str, int], dict[str, Any]] = {}
     for summary_path in sorted(input_root.rglob("summary.json")):
         output = summary_path.parent
+        if output.name not in CANONICAL_OUTPUT_VARIANTS:
+            continue
         if not all(
             (output / name).is_file()
             for name in ("run.json", "metrics.jsonl", "source.patch")

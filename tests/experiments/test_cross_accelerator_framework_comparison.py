@@ -214,9 +214,21 @@ def test_materialized_rank_zero_evidence_is_promoted(tmp_path: Path) -> None:
 
 
 def _write_aggregate_run(
-    module, root: Path, *, framework: str, seed: int, seconds: tuple[float, ...]
+    module,
+    root: Path,
+    *,
+    framework: str,
+    seed: int,
+    seconds: tuple[float, ...],
+    directory: str | None = None,
 ) -> None:
-    output = root / "workers/worker-3" / f"seed-{seed}" / "dense-retrieval" / framework
+    output = (
+        root
+        / "workers/worker-3"
+        / f"seed-{seed}"
+        / "dense-retrieval"
+        / (directory or framework)
+    )
     output.mkdir(parents=True)
     (output / "run.json").write_text(
         json.dumps(
@@ -267,6 +279,26 @@ def test_aggregate_uses_complete_measured_intervals(tmp_path: Path) -> None:
     assert "| dense-retrieval | 4.000 | 2.667 | 1.500x | 1 |" in module._render_results(
         results
     )
+
+
+def test_aggregate_ignores_preserved_noncanonical_runs(tmp_path: Path) -> None:
+    module = _module()
+    _write_aggregate_run(
+        module, tmp_path, framework="representax", seed=7, seconds=(1.0, 3.0)
+    )
+    _write_aggregate_run(
+        module,
+        tmp_path,
+        framework="representax",
+        seed=7,
+        seconds=(8.0, 8.0),
+        directory="representax.batch64-20260906T000000Z",
+    )
+
+    results = module._aggregate_runs(tmp_path)
+
+    assert len(results["runs"]) == 1
+    assert results["runs"][0]["examples_per_second"] == 4.0
 
 
 def test_environment_state_records_reproducible_runtime(monkeypatch) -> None:
