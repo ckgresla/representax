@@ -621,15 +621,17 @@ class Qwen2_5OmniCheckpointAdapter:
             qwen2_5_omni_weight_names(config),
             dtype=parameter_dtype,
         )
-        return self.from_state_dict(
-            config,
-            state,
-            parameter_dtype=parameter_dtype,
-            compute_dtype=compute_dtype,
-            model_id=model_id,
-            revision=revision,
-            config_model_type=str(hf_config.get("model_type", "")),
-        )
+        host = jax.local_devices(backend="cpu")[0]
+        with jax.default_device(host):
+            return self.from_state_dict(
+                config,
+                state,
+                parameter_dtype=parameter_dtype,
+                compute_dtype=compute_dtype,
+                model_id=model_id,
+                revision=revision,
+                config_model_type=str(hf_config.get("model_type", "")),
+            )
 
     def state_dict(self, model: Qwen2_5OmniEncoder) -> dict[str, jax.Array]:
         """Map native leaves back to the source Hugging Face tensor layout."""

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import equinox as eqx
 import jax
 import jax.numpy as jnp
@@ -265,6 +267,35 @@ def test_checkpoint_conversion_does_not_compile_cpu_layout_operations(
     )
 
     assert restored.text.layers.blocks.query.weight.shape == (2, 16, 16)
+
+
+def test_checkpoint_load_keeps_all_derived_arrays_on_local_cpu(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    config = tiny_config()
+    model = Qwen2_5OmniEncoder.init(
+        config,
+        key=jax.random.key(11),
+        rematerialization="none",
+    )
+    adapter = Qwen2_5OmniCheckpointAdapter(rematerialization="none")
+    cpu = jax.local_devices(backend="cpu")[0]
+    state = {
+        name: jax.device_put(np.asarray(value), cpu)
+        for name, value in adapter.state_dict(model).items()
+    }
+    (tmp_path / "config.json").write_text(json.dumps(config.to_hf_config()))
+    monkeypatch.setattr(
+        "representax.models.qwen2_5_omni.checkpoint.load_safetensor_subset",
+        lambda *_args, **_kwargs: state,
+    )
+
+    restored = adapter.load(tmp_path, parameter_dtype=jnp.float32)
+
+    for leaf in jax.tree.leaves(restored):
+        if eqx.is_array(leaf):
+            assert leaf.devices() == {cpu}
 
 
 def test_text_image_audio_forward_and_gradient_are_finite() -> None:
