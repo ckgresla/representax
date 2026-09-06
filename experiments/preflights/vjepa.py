@@ -903,7 +903,9 @@ def _reference_loss(
             mod="video",
             mask_index=0,
         )
-        batch_indices = torch.arange(len(pixels), device=pixels.device)[:, None]
+        batch_indices = torch.arange(
+            len(pixels), device=pixels.device, dtype=target_ids.dtype
+        )[:, None]
         target_for_prediction = target_features[batch_indices, target_ids]
         target_for_context = target_features[batch_indices, context]
         distance = compute_mask_distance(
