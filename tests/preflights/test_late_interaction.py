@@ -11,6 +11,7 @@ from experiments.preflights.late_interaction import (
     _encoding_timings,
     _pad_embeddings,
     _parser,
+    _pylate_loss,
     _representax_job,
     _representax_maxsim,
     _write_flat_index,
@@ -18,6 +19,19 @@ from experiments.preflights.late_interaction import (
     representax_steady_state,
     select_training_rows,
 )
+
+
+class _LossFactory:
+    def __init__(self) -> None:
+        self.calls = []
+
+    def Contrastive(self, **kwargs):
+        self.calls.append(("direct", kwargs))
+        return "direct"
+
+    def CachedContrastive(self, **kwargs):
+        self.calls.append(("cached", kwargs))
+        return "cached"
 
 
 def test_frozen_contract_names_one_model_dataset_and_reference() -> None:
@@ -33,6 +47,17 @@ def test_frozen_contract_names_one_model_dataset_and_reference() -> None:
     assert contract.global_batch_size == 512
     assert contract.maximum_query_length == 32
     assert contract.maximum_document_length == 256
+
+
+def test_pylate_uses_direct_contrastive_on_tpu_and_cached_on_gpu() -> None:
+    losses = _LossFactory()
+    model = object()
+
+    assert _pylate_loss(losses, model, "tpu") == "direct"
+    assert _pylate_loss(losses, model, "gpu") == "cached"
+    assert losses.calls[0][1]["model"] is model
+    assert "mini_batch_size" not in losses.calls[0][1]
+    assert losses.calls[1][1]["mini_batch_size"] == 8
 
 
 def test_training_selection_is_ordered_and_rejects_short_sources() -> None:

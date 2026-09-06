@@ -1158,6 +1158,21 @@ def _reference_dataset(path: Path, *, rows: int) -> Any:
     return dataset.select_columns(["query", "positive"])
 
 
+def _pylate_loss(losses: Any, model: Any, platform: Platform) -> Any:
+    if platform == "tpu":
+        return losses.Contrastive(
+            model=model,
+            score_mini_batch_size=GRAD_CACHE_MICRO_BATCH,
+            temperature=0.02,
+        )
+    return losses.CachedContrastive(
+        model=model,
+        mini_batch_size=GRAD_CACHE_MICRO_BATCH,
+        score_mini_batch_size=GRAD_CACHE_MICRO_BATCH,
+        temperature=0.02,
+    )
+
+
 def _pylate_worker(
     *,
     checkpoint: Path,
@@ -1210,12 +1225,7 @@ def _pylate_worker(
     midpoint = steps // 2
     checkpoint_root = run_directory / "checkpoints"
     first_timer = CudaStepTimer()
-    first_loss = losses.CachedContrastive(
-        model=model,
-        mini_batch_size=GRAD_CACHE_MICRO_BATCH,
-        score_mini_batch_size=GRAD_CACHE_MICRO_BATCH,
-        temperature=0.02,
-    )
+    first_loss = _pylate_loss(losses, model, platform)
     first_trainer = SentenceTransformerTrainer(
         model=model,
         args=_reference_arguments(
@@ -1293,12 +1303,7 @@ def _pylate_worker(
 
     model = load_model(checkpoint)
     second_timer = CudaStepTimer()
-    second_loss = losses.CachedContrastive(
-        model=model,
-        mini_batch_size=GRAD_CACHE_MICRO_BATCH,
-        score_mini_batch_size=GRAD_CACHE_MICRO_BATCH,
-        temperature=0.02,
-    )
+    second_loss = _pylate_loss(losses, model, platform)
     second_trainer = SentenceTransformerTrainer(
         model=model,
         args=_reference_arguments(
