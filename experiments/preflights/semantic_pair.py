@@ -1004,6 +1004,7 @@ def _sentence_transformers_worker(
         gradient_accumulation_steps=local_batch_size // micro_batch_size,
         max_steps=steps,
         learning_rate=2e-5,
+        optim="adamw_torch_fused" if platform == "gpu" else "adamw_torch",
         lr_scheduler_type="cosine",
         warmup_steps=1,
         weight_decay=0.0,

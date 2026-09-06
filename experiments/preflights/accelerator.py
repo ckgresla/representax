@@ -72,6 +72,18 @@ def torch_is_tpu() -> bool:
     return os.environ.get("PJRT_DEVICE", "").upper() == "TPU"
 
 
+def torch_device() -> Any:
+    import torch
+
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    if torch_is_tpu():
+        import torch_xla.core.xla_model as xm
+
+        return xm.xla_device()
+    return torch.device("cpu")
+
+
 def torch_synchronize() -> None:
     import torch
 
@@ -144,6 +156,7 @@ __all__ = [
     "Platform",
     "data_parallel_job",
     "initialize_jax",
+    "torch_device",
     "torch_device_report",
     "torch_empty_cache",
     "torch_is_tpu",

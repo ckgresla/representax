@@ -852,6 +852,7 @@ def _sentence_transformers_worker(
         per_device_train_batch_size=local_batch_size,
         max_steps=steps,
         learning_rate=2e-5,
+        optim="adamw_torch_fused" if platform == "gpu" else "adamw_torch",
         lr_scheduler_type="cosine",
         warmup_steps=1,
         weight_decay=0.0,
