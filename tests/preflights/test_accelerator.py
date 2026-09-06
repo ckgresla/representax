@@ -38,7 +38,11 @@ def test_data_parallel_job_preserves_global_batch(
     )
     job.model_copy = lambda *, update: SimpleNamespace(**update)
 
-    result = data_parallel_job(job, device_count=devices, platform="tpu")
+    result = data_parallel_job(
+        job,
+        device_count=devices,
+        platform="tpu",
+    )
 
     assert result.training.global_batch_size == global_batch
     assert result.training.mesh.axis_shapes == (devices,)

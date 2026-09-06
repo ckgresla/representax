@@ -25,6 +25,7 @@ def data_parallel_job(
     *,
     device_count: int,
     platform: Platform = "gpu",
+    training_only: bool = False,
 ) -> Any:
     """Run fixed global work as replicated-state data parallelism."""
 
@@ -55,7 +56,16 @@ def data_parallel_job(
     logging = job.logging.model_copy(
         update={"accelerator": job.logging.accelerator and platform == "gpu"}
     )
-    return job.model_copy(update={"training": training, "logging": logging})
+    updates = {"training": training, "logging": logging}
+    if training_only:
+        from representax.config import ExportConfig
+
+        updates.update(
+            checkpointing=None,
+            evaluation=None,
+            export=ExportConfig(enabled=False),
+        )
+    return job.model_copy(update=updates)
 
 
 def torch_is_tpu() -> bool:
