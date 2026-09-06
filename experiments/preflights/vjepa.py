@@ -532,8 +532,8 @@ def _representax_job(
             parameters={"root_directory": str(data_directory)},
         ),
         drop_remainder=True,
-        num_threads=0,
-        prefetch_buffer_size=0,
+        num_threads=4,
+        prefetch_buffer_size=8,
     )
     return JobConfig(
         name="paper-preflight-vjepa2-1-video-representation",
@@ -921,6 +921,10 @@ def _facebookresearch_worker(
         weight_decay=0.04,
     )
     records = _read_jsonl(data_directory / "train.jsonl")
+    training_pixels = [
+        np.load(data_directory / str(record["tensor"]), allow_pickle=False)
+        for record in records[:steps]
+    ]
     with np.load(data_directory / "masks.npz") as loaded_masks:
         masks = {name: loaded_masks[name] for name in loaded_masks.files}
     losses = []
@@ -930,17 +934,12 @@ def _facebookresearch_worker(
 
     def run_updates(start: int, stop: int) -> None:
         for iteration in range(start, stop):
+            step_started = time.perf_counter()
             lr = 1e-4 + (6e-4 - 1e-4) * min(iteration, 12_000) / 12_000
             for group in optimizer.param_groups:
                 group["lr"] = lr
-            pixels = torch.from_numpy(
-                np.load(
-                    data_directory / str(records[iteration]["tensor"]),
-                    allow_pickle=False,
-                )
-            )[None].to(device)
+            pixels = torch.from_numpy(training_pixels[iteration])[None].to(device)
             optimizer.zero_grad(set_to_none=True)
-            step_started = time.perf_counter()
             with torch.autocast("cuda", dtype=torch.bfloat16):
                 loss = _reference_loss(
                     encoder,
@@ -1033,6 +1032,10 @@ def _facebookresearch_worker(
             "median_step_seconds": statistics.median(warm),
             "examples_per_second": len(warm) / sum(warm),
         },
+        "step_timings": [
+            {"step": index + 1, "seconds": duration}
+            for index, duration in enumerate(durations)
+        ],
         "losses": losses,
         "initial_evaluation": initial_evaluation,
         "final_evaluation": final_evaluation,
@@ -1113,7 +1116,9 @@ def _pair(arguments: argparse.Namespace) -> None:
                     "JAX_DEFAULT_MATMUL_PRECISION": "highest",
                     "XLA_PYTHON_CLIENT_PREALLOCATE": "true",
                     "XLA_PYTHON_CLIENT_MEM_FRACTION": "0.90",
-                    "JAX_COMPILATION_CACHE_DIR": str(output / "jax-cache"),
+                    "JAX_COMPILATION_CACHE_DIR": os.environ.get(
+                        "REPRESENTAX_JAX_CACHE_DIR", str(output / "jax-cache")
+                    ),
                 }
             )
         commands[framework] = command

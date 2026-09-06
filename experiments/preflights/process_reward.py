@@ -18,6 +18,7 @@ from typing import Any
 import numpy as np
 
 from experiments.preflights.provenance import reference_source, write_reference_result
+from experiments.preflights.timing import CudaStepTimer
 
 ROOT = Path(__file__).resolve().parents[2]
 CAMPAIGN_MANIFEST = ROOT / "benchmarks/configs/paper-campaign-v1.json"
@@ -419,8 +420,8 @@ def _representax_job(
                 target=("experiments.preflights.process_reward:ProcessRewardPaperCollator")
             ),
             drop_remainder=not evaluation,
-            num_threads=0,
-            prefetch_buffer_size=2,
+            num_threads=4,
+            prefetch_buffer_size=8,
         )
 
     return JobConfig(
@@ -692,30 +693,6 @@ def _trl_worker(
         def _get_train_sampler(self, train_dataset: Any = None) -> Any:
             return SequentialSampler(train_dataset or self.train_dataset)
 
-    class StepTimer(TrainerCallback):
-        def __init__(self) -> None:
-            self.started: float | None = None
-            self.rows: list[dict[str, float | int]] = []
-
-        def on_step_begin(self, args: Any, state: Any, control: Any, **_: Any) -> Any:
-            del args, state
-            torch.cuda.synchronize()
-            self.started = time.perf_counter()
-            return control
-
-        def on_step_end(self, args: Any, state: Any, control: Any, **_: Any) -> Any:
-            del args
-            torch.cuda.synchronize()
-            if self.started is None:
-                raise RuntimeError("TRL step timer ended without starting")
-            self.rows.append(
-                {
-                    "step": int(state.global_step),
-                    "seconds": time.perf_counter() - self.started,
-                }
-            )
-            return control
-
     class StopAtMidpoint(TrainerCallback):
         def on_step_end(self, args: Any, state: Any, control: Any, **_: Any) -> Any:
             del args
@@ -769,7 +746,9 @@ def _trl_worker(
             save_steps=steps // 2,
             save_total_limit=2,
             dataloader_drop_last=True,
-            dataloader_num_workers=0,
+            dataloader_num_workers=4,
+            dataloader_prefetch_factor=2,
+            dataloader_persistent_workers=True,
             dataloader_pin_memory=True,
             seed=seed,
             data_seed=seed,
@@ -778,7 +757,7 @@ def _trl_worker(
         )
 
     first_model = ScalarStepClassifier()
-    first_timer = StepTimer()
+    first_timer = CudaStepTimer()
     first = SequentialPRMTrainer(
         model=first_model,
         args=arguments(),
@@ -786,7 +765,7 @@ def _trl_worker(
         train_dataset=train,
         eval_dataset=evaluation,
         processing_class=tokenizer,
-        callbacks=[first_timer, StopAtMidpoint()],
+        callbacks=[first_timer.callback(), StopAtMidpoint()],
     )
     if first.model_accepts_loss_kwargs:
         raise RuntimeError("TRL wrapper must use Trainer-owned loss accumulation")
@@ -794,6 +773,11 @@ def _trl_worker(
     torch.cuda.reset_peak_memory_stats()
     started = time.perf_counter()
     first.train()
+    first_losses = [
+        float(row["loss"])
+        for row in first.state.log_history
+        if row.get("loss") is not None
+    ]
     midpoint = run_directory / "checkpoints" / f"checkpoint-{steps // 2}"
     if not midpoint.is_dir():
         raise RuntimeError("TRL did not write its midpoint checkpoint")
@@ -802,7 +786,7 @@ def _trl_worker(
     torch.cuda.empty_cache()
 
     final_model = ScalarStepClassifier()
-    final_timer = StepTimer()
+    final_timer = CudaStepTimer()
     final = SequentialPRMTrainer(
         model=final_model,
         args=arguments(),
@@ -810,11 +794,16 @@ def _trl_worker(
         train_dataset=train,
         eval_dataset=evaluation,
         processing_class=tokenizer,
-        callbacks=[final_timer],
+        callbacks=[final_timer.callback()],
     )
     if final.model_accepts_loss_kwargs:
         raise RuntimeError("TRL wrapper must use Trainer-owned loss accumulation")
     output = final.train(resume_from_checkpoint=str(midpoint))
+    final_losses = [
+        float(row["loss"])
+        for row in final.state.log_history
+        if row.get("loss") is not None and int(row.get("step", 0)) > steps // 2
+    ]
     torch.cuda.synchronize()
     training_seconds = time.perf_counter() - started
     if final.state.global_step != steps:
@@ -876,9 +865,9 @@ def _trl_worker(
     if not np.array_equal(final_probe, reload_probe):
         raise RuntimeError("TRL export reload changed step logits")
 
-    timing = [*first_timer.rows, *final_timer.rows]
-    timing.sort(key=lambda row: int(row["step"]))
-    warm = [float(row["seconds"]) for row in timing[1:]]
+    timing = sorted((*first_timer.rows, *final_timer.rows))
+    cold_steps = {1, steps // 2 + 1}
+    warm = [duration for step, duration in timing if step not in cold_steps]
     return {
         "schema_version": "representax-process-reward-worker-v1",
         "framework": "trl",
@@ -892,16 +881,19 @@ def _trl_worker(
         "precision": "bfloat16-autocast-float32-parameters",
         "training_seconds": training_seconds,
         "compilation_and_first_step_seconds": 0.0,
-        "first_step_seconds": float(timing[0]["seconds"]),
+        "first_step_seconds": float(timing[0][1]),
         "steady_state": {
             "measured_steps": len(warm),
             "median_step_seconds": statistics.median(warm),
             "examples_per_second": contract.batch_size * len(warm) / sum(warm),
         },
-        "step_timings": timing,
+        "step_timings": [
+            {"step": step, "seconds": duration} for step, duration in timing
+        ],
         "initial_evaluation": initial_evaluation,
         "final_evaluation": final_evaluation,
         "training_metrics": output.metrics,
+        "losses": [*first_losses, *final_losses],
         "resumed": True,
         "checkpoint_iterations": [steps // 2, steps],
         "inference_bundle": str(export),
@@ -993,7 +985,9 @@ def _pair(arguments: argparse.Namespace) -> None:
             environment.update(
                 {
                     "JAX_DEFAULT_MATMUL_PRECISION": "highest",
-                    "JAX_COMPILATION_CACHE_DIR": str(output / "jax-cache"),
+                    "JAX_COMPILATION_CACHE_DIR": os.environ.get(
+                        "REPRESENTAX_JAX_CACHE_DIR", str(output / "jax-cache")
+                    ),
                     "XLA_PYTHON_CLIENT_PREALLOCATE": "true",
                     "XLA_PYTHON_CLIENT_MEM_FRACTION": "0.90",
                 }

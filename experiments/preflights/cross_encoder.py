@@ -354,8 +354,8 @@ def _representax_job(
             distribution=mix(source(str(path), map=identity), shuffle=False),
             collate=collator,
             drop_remainder=not evaluation,
-            num_threads=0,
-            prefetch_buffer_size=2,
+            num_threads=4,
+            prefetch_buffer_size=8,
         )
 
     schedule = ComponentConfig(
@@ -688,7 +688,9 @@ def _sentence_transformers_worker(
         save_steps=steps // 2,
         save_total_limit=2,
         dataloader_drop_last=True,
-        dataloader_num_workers=0,
+        dataloader_num_workers=4,
+        dataloader_prefetch_factor=2,
+        dataloader_persistent_workers=True,
         dataloader_pin_memory=True,
         batch_sampler=sequential_sentence_transformers_batches,
         seed=seed,
@@ -707,6 +709,11 @@ def _sentence_transformers_worker(
     output = trainer.train()
     torch.cuda.synchronize()
     training_seconds = time.perf_counter() - started
+    losses = [
+        float(row["loss"])
+        for row in trainer.state.log_history
+        if row.get("loss") is not None
+    ]
     final_evaluation = _reference_metrics(model, data_directory)
     export = run_directory / "final-model"
     trainer.save_model(str(export))
@@ -745,9 +752,13 @@ def _sentence_transformers_worker(
             timer.rows,
             batch_size=contract.batch_size,
         ),
+        "step_timings": [
+            {"step": step, "seconds": duration} for step, duration in timer.rows
+        ],
         "initial_evaluation": initial_evaluation,
         "final_evaluation": final_evaluation,
         "training_metrics": output.metrics,
+        "losses": losses,
         "checkpoint_directories": [str(path) for path in checkpoints],
         "inference_bundle": str(export),
         "reload_parameters_exact": True,
@@ -870,7 +881,9 @@ def _pair(arguments: argparse.Namespace) -> None:
                 "TOKENIZERS_PARALLELISM": "false",
                 "PYTHONUNBUFFERED": "1",
                 "JAX_DEFAULT_MATMUL_PRECISION": "highest",
-                "JAX_COMPILATION_CACHE_DIR": str(output / "jax-cache"),
+                "JAX_COMPILATION_CACHE_DIR": os.environ.get(
+                    "REPRESENTAX_JAX_CACHE_DIR", str(output / "jax-cache")
+                ),
             }
         )
         if framework == "representax":

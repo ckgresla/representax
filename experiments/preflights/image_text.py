@@ -441,8 +441,8 @@ def _representax_job(
                 parameters={"root_directory": str(data_directory)},
             ),
             drop_remainder=True,
-            num_threads=0,
-            prefetch_buffer_size=1,
+            num_threads=8,
+            prefetch_buffer_size=8,
         )
 
     source_checkpoint = checkpoint / "0_CLIPModel"
@@ -816,7 +816,9 @@ def _sentence_transformers_worker(
         save_steps=steps // 2,
         save_total_limit=2,
         dataloader_drop_last=True,
-        dataloader_num_workers=0,
+        dataloader_num_workers=8,
+        dataloader_prefetch_factor=1,
+        dataloader_persistent_workers=True,
         dataloader_pin_memory=True,
         batch_sampler=sequential_sentence_transformers_batches,
         seed=seed,
@@ -877,11 +879,15 @@ def _sentence_transformers_worker(
             timer.rows,
             batch_size=contract.global_batch_size,
         ),
+        "step_timings": [
+            {"step": step, "seconds": duration} for step, duration in timer.rows
+        ],
         "initial_evaluation_seconds": initial_evaluation_seconds,
         "final_evaluation_seconds": final_evaluation_seconds,
         "initial_evaluation": initial_evaluation,
         "final_evaluation": final_evaluation,
         "final_loss": losses[-1],
+        "losses": losses,
         "training_metrics": output.metrics,
         "checkpoint": str(midpoint),
         "inference_bundle": str(export),
@@ -956,7 +962,9 @@ def _pair(arguments: argparse.Namespace) -> None:
                     "JAX_DEFAULT_MATMUL_PRECISION": "highest",
                     "XLA_PYTHON_CLIENT_PREALLOCATE": "true",
                     "XLA_PYTHON_CLIENT_MEM_FRACTION": "0.90",
-                    "JAX_COMPILATION_CACHE_DIR": str(output / "jax-cache"),
+                    "JAX_COMPILATION_CACHE_DIR": os.environ.get(
+                        "REPRESENTAX_JAX_CACHE_DIR", str(output / "jax-cache")
+                    ),
                 }
             )
         commands[framework] = command

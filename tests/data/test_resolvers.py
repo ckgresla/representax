@@ -488,6 +488,42 @@ def test_data_loader_accepts_native_grain_datasets_directly(dataset_kind):
     assert callable(getattr(iterator, "set_state", None))
 
 
+def test_data_loader_repeats_complete_batches_and_restores_across_presentations():
+    contract = {"name": "repeated-values", "revision": "1"}
+
+    def loader():
+        return data.build_data_loader(
+            grain.MapDataset.range(5),
+            batch_size=2,
+            batch_fn=collate_values,
+            drop_remainder=True,
+            num_threads=0,
+            prefetch_buffer_size=0,
+            data_contract=contract,
+            repeat=True,
+        )
+
+    uninterrupted = iter(loader())
+    expected = [next(uninterrupted) for _ in range(7)]
+    first = iter(loader())
+    prefix = [next(first) for _ in range(3)]
+    state = first.get_state()
+    resumed = iter(loader())
+    resumed.set_state(state)
+
+    assert expected == [
+        (0, 1),
+        (2, 3),
+        (0, 1),
+        (2, 3),
+        (0, 1),
+        (2, 3),
+        (0, 1),
+    ]
+    assert [*prefix, *(next(resumed) for _ in range(4))] == expected
+    assert loader().data_contract["repeat"] is True
+
+
 def test_direct_grain_dataset_requires_a_reproducibility_contract():
     dataset = grain.MapDataset.source((1, 2))
 

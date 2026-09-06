@@ -445,6 +445,32 @@ class ShardingPlan:
 
         return jax.tree.map(place, state, self.state_shardings)
 
+    def restore_state_template(self, state: TrainState) -> TrainState:
+        """Describe a sharded restore target without allocating its arrays."""
+
+        shardings = self.state_shardings
+
+        def abstract(value: Any, sharding: NamedSharding) -> Any:
+            if not eqx.is_array(value):
+                return value
+            return jax.ShapeDtypeStruct(
+                value.shape,
+                value.dtype,
+                sharding=sharding,
+            )
+
+        return TrainState(
+            model=jax.tree.map(abstract, state.model, shardings.model),
+            optimizer_state=jax.tree.map(
+                abstract,
+                state.optimizer_state,
+                shardings.optimizer_state,
+            ),
+            # CheckpointManager reads this scalar while constructing the restore
+            # request. The checkpointed value itself is restored separately.
+            step=state.step,
+        )
+
     def place_replicated(self, tree: Any) -> Any:
         """Place an array PyTree as replicas, including from every host."""
 

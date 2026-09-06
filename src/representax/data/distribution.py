@@ -755,6 +755,7 @@ def build_data_loader(
     resolvers: Mapping[str, ArtifactResolver] | None = None,
     mappers: Mapping[str, Callable[[Any], Any]] | None = None,
     data_contract: Mapping[str, Any] | None = None,
+    repeat: bool = False,
 ) -> DataLoader:
     """Build a native Grain pipeline yielding static, model-ready batches.
 
@@ -814,6 +815,8 @@ def build_data_loader(
             ),
             prefetched=True,
         )
+        if repeat:
+            dataset = dataset.repeat()
         iterator = dataset.to_iter_dataset(
             grain.ReadOptions(
                 num_threads=num_threads,
@@ -838,6 +841,8 @@ def build_data_loader(
             distribution,
             prefetched=True,
         )
+        if repeat:
+            dataset = dataset.repeat()
         iterator = dataset.to_iter_dataset(
             grain.ReadOptions(
                 num_threads=num_threads,
@@ -852,6 +857,8 @@ def build_data_loader(
     elif isinstance(distribution, grain.IterDataset):
         if data_contract is None:
             raise ValueError("direct Grain datasets require data_contract")
+        if repeat:
+            raise ValueError("repeat requires a Grain MapDataset")
         iterator = batch_dataset(
             distribution,
             prefetched=False,
@@ -875,5 +882,6 @@ def build_data_loader(
             "source": source_contract,
             "batch_size": batch_size,
             "drop_remainder": drop_remainder,
+            "repeat": repeat,
         },
     )

@@ -10,6 +10,7 @@ from experiments.preflights.audio_text import (
     SAMPLE_RATE,
     AudioTextEvaluationCollator,
     AudioTextRetrievalCollator,
+    _ReferenceAudioTransform,
     _normalize_audio,
     _parser,
     _representax_job,
@@ -104,6 +105,21 @@ def test_audio_text_collators_preserve_routes_and_validity(tmp_path) -> None:
     assert documents.kind == "document"
     np.testing.assert_array_equal(queries.ids, [10])
     np.testing.assert_array_equal(documents.ids, [20])
+
+
+def test_reference_audio_transform_loads_only_requested_waveforms(tmp_path) -> None:
+    first = np.linspace(-1, 1, 8, dtype=np.float32)
+    second = np.linspace(1, -1, 8, dtype=np.float32)
+    np.save(tmp_path / "first.npy", first)
+    np.save(tmp_path / "second.npy", second)
+
+    transformed = _ReferenceAudioTransform(tmp_path)(
+        {"audio": ["second.npy"], "caption": ["caption"]}
+    )
+
+    assert transformed["caption"] == ["caption"]
+    assert transformed["audio"][0]["sampling_rate"] == SAMPLE_RATE
+    np.testing.assert_array_equal(transformed["audio"][0]["array"], second)
 
 
 def test_representax_audio_job_uses_ddp_grad_cache_and_verified_export(
@@ -225,3 +241,4 @@ def test_pair_command_defaults_to_gpus_zero_and_one() -> None:
     assert arguments.representax_sharding == "ddp"
     assert arguments.reference_gpu == 1
     assert arguments.batch_size == PREFLIGHT_BATCH_SIZE
+    assert not arguments.continuous

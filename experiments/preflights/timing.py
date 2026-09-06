@@ -2,25 +2,47 @@
 
 from __future__ import annotations
 
+import json
 import statistics
 import time
 from collections.abc import Iterable, Sequence
-from typing import Any
+from pathlib import Path
+from typing import IO, Any
 
 
 class CudaStepTimer:
-    def __init__(self) -> None:
+    def __init__(self, output: Path | None = None) -> None:
         self._started: float | None = None
         self.rows: list[tuple[int, float]] = []
+        self._stream: IO[str] | None = None
+        if output is not None:
+            output.parent.mkdir(parents=True, exist_ok=True)
+            self._stream = output.open("x", encoding="utf-8", buffering=1)
 
-    def callback(self) -> Any:
+    def record(self, step: int, duration: float) -> None:
+        self.rows.append((step, duration))
+        if self._stream is not None:
+            self._stream.write(
+                json.dumps(
+                    {"step": step, "duration_seconds": duration},
+                    sort_keys=True,
+                )
+                + "\n"
+            )
+
+    def close(self) -> None:
+        if self._stream is not None:
+            self._stream.close()
+            self._stream = None
+
+    def callback(self, *, stop_after: int | None = None) -> Any:
         import torch
         from transformers import TrainerCallback
 
         owner = self
 
         class Callback(TrainerCallback):
-            def on_step_begin(
+            def on_train_begin(
                 self, _args: Any, _state: Any, control: Any, **_: Any
             ) -> Any:
                 torch.cuda.synchronize()
@@ -33,10 +55,13 @@ class CudaStepTimer:
                 torch.cuda.synchronize()
                 if owner._started is None:
                     raise RuntimeError("optimizer-step timer ended without starting")
-                owner.rows.append(
-                    (int(state.global_step), time.perf_counter() - owner._started)
+                completed_at = time.perf_counter()
+                owner.record(
+                    int(state.global_step), completed_at - owner._started
                 )
-                owner._started = None
+                owner._started = completed_at
+                if stop_after is not None and int(state.global_step) >= stop_after:
+                    control.should_training_stop = True
                 return control
 
         return Callback()

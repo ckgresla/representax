@@ -35,6 +35,7 @@ PREFLIGHT_EVALUATION_QUERIES = 16
 PREFLIGHT_EVALUATION_DOCUMENTS = 128
 GRAD_CACHE_MICRO_BATCH = 1
 EVALUATION_BATCH_SIZE = 4
+REFERENCE_DATA_WORKERS = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -449,6 +450,23 @@ class AudioTextEvaluationCollator:
         )
 
 
+class _ReferenceAudioTransform:
+    def __init__(self, root_directory: str | Path) -> None:
+        self.root_directory = Path(root_directory).resolve()
+
+    def __call__(self, batch: Mapping[str, list[Any]]) -> dict[str, list[Any]]:
+        return {
+            **batch,
+            "audio": [
+                {
+                    "array": _load_audio(self.root_directory, str(relative)),
+                    "sampling_rate": SAMPLE_RATE,
+                }
+                for relative in batch["audio"]
+            ],
+        }
+
+
 def _representax_job(
     *,
     checkpoint: Path,
@@ -516,8 +534,8 @@ def _representax_job(
                 parameters={"root_directory": str(data_directory)},
             ),
             drop_remainder=True,
-            num_threads=2,
-            prefetch_buffer_size=2,
+            num_threads=8,
+            prefetch_buffer_size=8,
         )
 
     contract = frozen_contract()
@@ -660,6 +678,7 @@ def _representax_worker(
     batch_size: int,
     sharding: str = "ddp",
     skip_export: bool = False,
+    continuous: bool = False,
 ) -> dict[str, Any]:
     import jax
 
@@ -687,17 +706,23 @@ def _representax_worker(
         export_enabled=not skip_export,
     )
     started = time.perf_counter()
-    if not (run_directory / "run.json").is_file():
+    if continuous:
+        completed = run_job(job, run_directory)
+    elif not (run_directory / "run.json").is_file():
         paused = run_job(job, run_directory, stop_after=steps // 2)
         if paused.completed_iterations != steps // 2:
             raise RuntimeError("Representax did not stop at the midpoint checkpoint")
         del paused
         gc.collect()
         jax.clear_caches()
-    completed = run_job(job, run_directory, resume=True)
+        completed = run_job(job, run_directory, resume=True)
+    else:
+        completed = run_job(job, run_directory, resume=True)
     jax.block_until_ready(completed.state)
-    if not completed.resumed or completed.completed_iterations != steps:
-        raise RuntimeError("Representax did not resume to the final update")
+    if completed.completed_iterations != steps or (
+        not continuous and not completed.resumed
+    ):
+        raise RuntimeError("Representax did not reach the final update")
     if completed.inference_bundle is None and not skip_export:
         raise RuntimeError("Representax did not produce an inference bundle")
     trained_model = completed.state.model
@@ -929,16 +954,10 @@ def _sentence_transformers_worker(
     rows = _read_jsonl(data_directory / "train.jsonl")[: batch_size * steps]
     train_dataset = datasets.Dataset.from_dict(
         {
-            "audio": [
-                {
-                    "array": _load_audio(data_directory, str(row["audio"])),
-                    "sampling_rate": SAMPLE_RATE,
-                }
-                for row in rows
-            ],
+            "audio": [str(row["audio"]) for row in rows],
             "caption": [str(row["caption"]) for row in rows],
         }
-    ).with_format("numpy", columns=["audio"], output_all_columns=True)
+    ).with_transform(_ReferenceAudioTransform(data_directory))
     loss = CachedMultipleNegativesRankingLoss(
         model,
         scale=20.0,
@@ -967,7 +986,9 @@ def _sentence_transformers_worker(
         save_steps=steps // 2,
         save_total_limit=2,
         dataloader_drop_last=True,
-        dataloader_num_workers=0,
+        dataloader_num_workers=REFERENCE_DATA_WORKERS,
+        dataloader_prefetch_factor=1,
+        dataloader_persistent_workers=True,
         dataloader_pin_memory=True,
         batch_sampler=sequential_sentence_transformers_batches,
         seed=seed,
@@ -1046,14 +1067,21 @@ def _sentence_transformers_worker(
         "global_batch_size": batch_size,
         "frozen_global_batch_size": contract.global_batch_size,
         "grad_cache_micro_batch_size": GRAD_CACHE_MICRO_BATCH,
+        "data_workers": REFERENCE_DATA_WORKERS,
+        "data_loading": "lazy-waveform-files",
+        "prefetch_factor": 1,
         "training_seconds": training_seconds,
         "examples_per_second": batch_size * steps / training_seconds,
         "steady_state": warm_step_summary(timer.rows, batch_size=batch_size),
+        "step_timings": [
+            {"step": step, "seconds": duration} for step, duration in timer.rows
+        ],
         "initial_evaluation_seconds": initial_evaluation_seconds,
         "final_evaluation_seconds": final_evaluation_seconds,
         "initial_evaluation": initial_evaluation,
         "final_evaluation": final_evaluation,
         "final_loss": losses[-1],
+        "losses": losses,
         "training_metrics": output.metrics,
         "checkpoint": str(midpoint),
         "inference_bundle": str(export),
@@ -1082,6 +1110,7 @@ def _worker(arguments: argparse.Namespace) -> None:
     if arguments.framework == "representax":
         parameters["skip_export"] = arguments.skip_export
         parameters["sharding"] = arguments.sharding
+        parameters["continuous"] = arguments.continuous
     elif arguments.skip_export:
         raise ValueError("--skip-export is only available for Representax probes")
     report = function(**parameters)
@@ -1141,12 +1170,16 @@ def _pair(arguments: argparse.Namespace) -> None:
         }
         if framework == "representax":
             command.extend(("--sharding", arguments.representax_sharding))
+            if arguments.continuous:
+                command.append("--continuous")
             environment.update(
                 {
                     "JAX_DEFAULT_MATMUL_PRECISION": "highest",
                     "XLA_PYTHON_CLIENT_PREALLOCATE": "true",
                     "XLA_PYTHON_CLIENT_MEM_FRACTION": "0.90",
-                    "JAX_COMPILATION_CACHE_DIR": str(output / "jax-cache"),
+                    "JAX_COMPILATION_CACHE_DIR": os.environ.get(
+                        "REPRESENTAX_JAX_CACHE_DIR", str(output / "jax-cache")
+                    ),
                 }
             )
         commands[framework] = command
@@ -1170,6 +1203,7 @@ def _pair(arguments: argparse.Namespace) -> None:
             "seed": arguments.seed,
             "representax_gpus": arguments.representax_gpus,
             "reference_gpu": arguments.reference_gpu,
+            "continuous_representax_training": arguments.continuous,
             "data_manifest": _document(arguments.data_directory / "manifest.json"),
         },
         "commands": commands,
@@ -1204,6 +1238,7 @@ def _parser() -> argparse.ArgumentParser:
     worker.add_argument("--seed", type=int, default=7)
     worker.add_argument("--batch-size", type=int, default=PREFLIGHT_BATCH_SIZE)
     worker.add_argument("--skip-export", action="store_true")
+    worker.add_argument("--continuous", action="store_true")
     worker.add_argument("--sharding", choices=("ddp", "fsdp"), default="ddp")
 
     pair = subparsers.add_parser("pair")
@@ -1216,6 +1251,7 @@ def _parser() -> argparse.ArgumentParser:
     pair.add_argument("--representax-gpus", default="0,1")
     pair.add_argument("--representax-sharding", choices=("ddp", "fsdp"), default="ddp")
     pair.add_argument("--reference-gpu", type=int, default=1)
+    pair.add_argument("--continuous", action="store_true")
     return parser
 
 

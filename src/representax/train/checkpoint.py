@@ -329,7 +329,9 @@ def validate_complete_checkpoint(
         and fingerprint_data != expected_data_fingerprint
     ):
         raise IncompleteCheckpointError(
-            f"checkpoint data contract differs: {directory}"
+            "checkpoint data contract differs: "
+            f"saved={fingerprint_data}, expected={expected_data_fingerprint}, "
+            f"directory={directory}"
         )
     iteration = manifest.get("iteration")
     if not isinstance(iteration, int) or iteration < 0:

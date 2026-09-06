@@ -13,6 +13,7 @@ import pytest
 
 from representax.config import (
     BatchConfig,
+    CheckpointConfig,
     ComponentConfig,
     CustomShardingConfig,
     DataConfig,
@@ -47,6 +48,7 @@ from representax.train import (
     ShardingPlan,
     build_train_step,
     init_train_state,
+    run_job,
     training_checkpointables,
 )
 from representax.train.job import build_job_runtime
@@ -796,6 +798,102 @@ def test_fsdp_checkpoint_restore_preserves_state_and_shardings(tmp_path):
         strict=True,
     ):
         assert actual.sharding == expected.sharding
+
+
+@pytest.mark.distributed
+def test_fsdp_restore_template_carries_target_shardings_without_arrays():
+    devices = jax.devices()
+    if len(devices) < 2:
+        pytest.skip("requires at least two JAX devices")
+
+    model = DenseEncoder(4, 4, key=jax.random.key(5), normalize=False)
+    optimizer = optax.adamw(learning_rate=2e-3, weight_decay=1e-2)
+    state = init_train_state(model, optimizer)
+    mesh = jax.make_mesh((2,), ("data",), devices=devices[:2])
+    plan = ShardingPlan.fsdp(
+        state,
+        optimizer,
+        mesh,
+        parameter_axis_name="data",
+        data_axis_name="data",
+        minimum_parameter_elements=1,
+    )
+
+    template = plan.restore_state_template(state)
+
+    assert template.step is state.step
+    for value, sharding in zip(
+        jax.tree.leaves((template.model, template.optimizer_state)),
+        jax.tree.leaves(
+            (plan.state_shardings.model, plan.state_shardings.optimizer_state)
+        ),
+        strict=True,
+    ):
+        if isinstance(value, jax.ShapeDtypeStruct):
+            assert value.sharding == sharding
+
+
+@pytest.mark.distributed
+def test_fsdp_run_job_resumes_directly_into_target_shardings(tmp_path):
+    devices = jax.devices()
+    if len(devices) < 2:
+        pytest.skip("requires at least two JAX devices")
+
+    job = toy_job_config(
+        global_batch_size=TOY_BATCH_SIZE,
+        max_steps=2,
+        checkpointing=CheckpointConfig(every=1, asynchronous=False, save_final=False),
+    )
+    data = DataConfig.model_validate(
+        {
+            **job.data.model_dump(),
+            "collate": ComponentConfig(
+                target="tests.train.toy_retrieval.collate_retrieval"
+            ),
+            "num_threads": 0,
+            "prefetch_buffer_size": 0,
+        }
+    )
+    training = TrainingConfig.model_validate(
+        {
+            **job.training.model_dump(),
+            "mesh": MeshConfig(axis_shapes=(2,), axis_names=("data",)),
+            "sharding": FSDPConfig(
+                data_axis="data",
+                parameter_axis="data",
+                minimum_parameter_elements=1,
+            ),
+            "batch": BatchConfig(micro_batch_size=TOY_BATCH_SIZE // 2),
+            "grad_cache": GradCacheConfig(micro_batch_size=2),
+        }
+    )
+    job = JobConfig.model_validate(
+        {**job.model_dump(), "data": data, "training": training}
+    )
+    resolvers = {"memory": resolve_toy_retrieval}
+    mappers = {job.data.distribution.sources[0].mapper: identity}
+
+    paused = run_job(
+        job,
+        tmp_path / "run",
+        stop_after=1,
+        resolvers=resolvers,
+        mappers=mappers,
+    )
+    resumed = run_job(
+        job,
+        tmp_path / "run",
+        resume=True,
+        resolvers=resolvers,
+        mappers=mappers,
+    )
+
+    assert paused.completed_iterations == 1
+    assert resumed.completed_iterations == 2
+    assert resumed.resumed
+    for leaf in jax.tree.leaves(resumed.state):
+        if eqx.is_array(leaf) and leaf.ndim >= 2:
+            assert "data" in tuple(leaf.sharding.spec)
 
 
 @pytest.mark.distributed

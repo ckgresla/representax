@@ -32,6 +32,15 @@ def test_frozen_contract_uses_the_shared_mpnet_sentence_transformers_cell():
     assert semantic.reference_version == pair.reference_version == "5.6.1"
 
 
+def test_frozen_contract_exposes_the_bert_architecture_control():
+    semantic = frozen_contract("semantic-similarity", "bert-base")
+    pair = frozen_contract("pair-classification", "bert-base")
+
+    assert semantic.model_name == pair.model_name == "bert-base"
+    assert semantic.model_id == pair.model_id == "google-bert/bert-base-uncased"
+    assert semantic.model_revision == pair.model_revision
+
+
 def test_sts_scores_are_normalized_for_cosine_regression():
     assert normalize_sts_score(0) == 0
     assert normalize_sts_score(2.5) == 0.5

@@ -22,6 +22,7 @@ from typing import Any, Literal, cast
 import numpy as np
 
 from experiments.preflights.provenance import reference_source, write_reference_result
+from experiments.preflights.timing import CudaStepTimer
 
 ROOT = Path(__file__).resolve().parents[2]
 CAMPAIGN_MANIFEST = ROOT / "benchmarks/configs/paper-campaign-v1.json"
@@ -332,8 +333,8 @@ def _representax_job(
                 target=("representax.tasks.reward_modeling:PairwiseRewardCollator")
             ),
             drop_remainder=True,
-            num_threads=2,
-            prefetch_buffer_size=2,
+            num_threads=4,
+            prefetch_buffer_size=8,
         )
 
     return JobConfig(
@@ -457,13 +458,24 @@ def steady_state(
 
 
 def reference_timing(
-    rows: Sequence[Mapping[str, Any]], *, batch_size: int
+    rows: Sequence[tuple[int, float] | Mapping[str, Any]],
+    *,
+    batch_size: int,
+    excluded_steps: Iterable[int] = (1,),
 ) -> dict[str, Any]:
-    ordered = sorted(rows, key=lambda row: int(row["step"]))
+    ordered = sorted(
+        (
+            (int(row["step"]), float(row["seconds"]))
+            if isinstance(row, Mapping)
+            else (int(row[0]), float(row[1]))
+        )
+        for row in rows
+    )
     if not ordered:
         raise ValueError("TRL recorded no optimizer-step timings")
-    first = float(ordered[0]["seconds"])
-    warmed = [float(row["seconds"]) for row in ordered[1:]]
+    excluded = frozenset(excluded_steps)
+    first = float(ordered[0][1])
+    warmed = [duration for step, duration in ordered if step not in excluded]
     return {
         "first_step_seconds": first,
         "compilation_seconds": 0.0,
@@ -472,7 +484,9 @@ def reference_timing(
         "warm_examples_per_second": (
             batch_size * len(warmed) / sum(warmed) if warmed else None
         ),
-        "steps": ordered,
+        "steps": [
+            {"step": step, "seconds": duration} for step, duration in ordered
+        ],
     }
 
 
@@ -631,26 +645,6 @@ def _trl_probe_worker(
                 num_items_in_batch=num_items_in_batch,
             )
 
-    class StepTimer(TrainerCallback):
-        def __init__(self) -> None:
-            self.started = 0.0
-            self.rows: list[dict[str, float | int]] = []
-
-        def on_step_begin(self, args, state, control, **kwargs):
-            del args, state, control, kwargs
-            torch.cuda.synchronize()
-            self.started = time.perf_counter()
-
-        def on_step_end(self, args, state, control, **kwargs):
-            del args, control, kwargs
-            torch.cuda.synchronize()
-            self.rows.append(
-                {
-                    "step": int(state.global_step),
-                    "seconds": time.perf_counter() - self.started,
-                }
-            )
-
     run_directory.mkdir(parents=True, exist_ok=False)
     train = _reference_dataset(data_directory / "train.jsonl")
     tokenizer: Any = AutoTokenizer.from_pretrained(checkpoint, local_files_only=True)
@@ -678,7 +672,9 @@ def _trl_probe_worker(
         disable_tqdm=True,
         save_strategy="no",
         dataloader_drop_last=True,
-        dataloader_num_workers=0,
+        dataloader_num_workers=4,
+        dataloader_prefetch_factor=2,
+        dataloader_persistent_workers=True,
         dataloader_pin_memory=True,
         seed=seed,
         data_seed=seed,
@@ -691,7 +687,7 @@ def _trl_probe_worker(
             "attn_implementation": "sdpa",
         },
     )
-    timer = StepTimer()
+    timer = CudaStepTimer()
     collator = DataCollatorForPreference(
         pad_token_id=tokenizer.pad_token_id,
         pad_to_multiple_of=pad_to_multiple_of,
@@ -702,7 +698,7 @@ def _trl_probe_worker(
         train_dataset=train,
         processing_class=tokenizer,
         data_collator=collator,
-        callbacks=[timer],
+        callbacks=[timer.callback()],
     )
     torch.cuda.reset_peak_memory_stats()
     trainer.train()
@@ -1114,26 +1110,6 @@ def _trl_worker(
                 num_items_in_batch=num_items_in_batch,
             )
 
-    class StepTimer(TrainerCallback):
-        def __init__(self) -> None:
-            self.started = 0.0
-            self.rows: list[dict[str, float | int]] = []
-
-        def on_step_begin(self, args, state, control, **kwargs):
-            del args, state, control, kwargs
-            torch.cuda.synchronize()
-            self.started = time.perf_counter()
-
-        def on_step_end(self, args, state, control, **kwargs):
-            del args, control, kwargs
-            torch.cuda.synchronize()
-            self.rows.append(
-                {
-                    "step": int(state.global_step),
-                    "seconds": time.perf_counter() - self.started,
-                }
-            )
-
     class StopAtMidpoint(TrainerCallback):
         def on_step_end(self, args, state, control, **kwargs):
             del args, kwargs
@@ -1171,7 +1147,9 @@ def _trl_worker(
         save_steps=steps // 2,
         save_total_limit=1,
         dataloader_drop_last=True,
-        dataloader_num_workers=0,
+        dataloader_num_workers=4,
+        dataloader_prefetch_factor=2,
+        dataloader_persistent_workers=True,
         dataloader_pin_memory=True,
         seed=seed,
         data_seed=seed,
@@ -1185,7 +1163,7 @@ def _trl_worker(
         },
     )
 
-    first_timer = StepTimer()
+    first_timer = CudaStepTimer()
     collator = DataCollatorForPreference(
         pad_token_id=tokenizer.pad_token_id,
         pad_to_multiple_of=pad_to_multiple_of,
@@ -1197,7 +1175,7 @@ def _trl_worker(
         eval_dataset=evaluation,
         processing_class=tokenizer,
         data_collator=collator,
-        callbacks=[first_timer, StopAtMidpoint()],
+        callbacks=[first_timer.callback(), StopAtMidpoint()],
     )
     torch.cuda.reset_peak_memory_stats()
     initial_evaluation = trainer.evaluate()
@@ -1216,7 +1194,7 @@ def _trl_worker(
     gc.collect()
     torch.cuda.empty_cache()
 
-    second_timer = StepTimer()
+    second_timer = CudaStepTimer()
     tokenizer = cast(
         Any, AutoTokenizer.from_pretrained(checkpoint, local_files_only=True)
     )
@@ -1231,7 +1209,7 @@ def _trl_worker(
         eval_dataset=evaluation,
         processing_class=tokenizer,
         data_collator=collator,
-        callbacks=[second_timer],
+        callbacks=[second_timer.callback()],
     )
     started = time.perf_counter()
     trainer.train(resume_from_checkpoint=str(midpoint))
@@ -1308,7 +1286,11 @@ def _trl_worker(
             * steps
             / (first_training_seconds + second_training_seconds)
         ),
-        "timing": reference_timing(timing_rows, batch_size=contract.global_batch_size),
+        "timing": reference_timing(
+            timing_rows,
+            batch_size=contract.global_batch_size,
+            excluded_steps=(1, steps // 2 + 1),
+        ),
         "initial_evaluation": initial_evaluation,
         "final_evaluation": final_evaluation,
         "training_metrics": training_log,
@@ -1487,7 +1469,9 @@ def _pair(arguments: argparse.Namespace) -> None:
             environment.update(
                 {
                     "JAX_DEFAULT_MATMUL_PRECISION": "highest",
-                    "JAX_COMPILATION_CACHE_DIR": str(output / "jax-cache"),
+                    "JAX_COMPILATION_CACHE_DIR": os.environ.get(
+                        "REPRESENTAX_JAX_CACHE_DIR", str(output / "jax-cache")
+                    ),
                     "XLA_PYTHON_CLIENT_PREALLOCATE": "true",
                     "XLA_PYTHON_CLIENT_MEM_FRACTION": "0.90",
                 }

@@ -19,18 +19,22 @@ from typing import Any, Literal
 import numpy as np
 
 from experiments.preflights.provenance import reference_source, write_reference_result
+from experiments.preflights.timing import CudaStepTimer, warm_step_summary
 
 ROOT = Path(__file__).resolve().parents[2]
 CAMPAIGN_MANIFEST = ROOT / "benchmarks/configs/paper-campaign-v1.json"
 TEXT_MANIFEST = ROOT / "benchmarks/configs/paper-text-reward-v1.json"
 
 Workload = Literal["semantic-similarity", "pair-classification"]
+ModelName = Literal["mpnet-base", "bert-base"]
 FRAMEWORKS = ("representax", "sentence-transformers")
+MODELS = ("mpnet-base", "bert-base")
 MICRO_BATCH_SIZE = 32
 
 
 @dataclass(frozen=True, slots=True)
 class FrozenContract:
+    model_name: str
     model_id: str
     model_revision: str
     batch_size: int
@@ -92,7 +96,10 @@ def _document(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def frozen_contract(workload: Workload) -> FrozenContract:
+def frozen_contract(
+    workload: Workload,
+    model_name: ModelName = "mpnet-base",
+) -> FrozenContract:
     """Resolve and validate the identities frozen across the two manifests."""
 
     campaign = _document(CAMPAIGN_MANIFEST)
@@ -103,12 +110,16 @@ def frozen_contract(workload: Workload) -> FrozenContract:
         raise ValueError(f"unexpected frameworks for {workload}")
     if panel_row["reference"] != "sentence-transformers":
         raise ValueError(f"unexpected reference for {workload}")
-    model = panel["models"][panel_row["model"]]
+    allowed_models = (panel_row["model"], panel_row["architecture_control"])
+    if model_name not in allowed_models:
+        raise ValueError(f"{model_name!r} is not frozen for {workload}")
+    model = panel["models"][model_name]
     reference = reference_source(panel_row["reference"])
     if reference.release is None:
         raise ValueError("the labeled-pair reference requires a release")
     dataset_names = tuple(dict.fromkeys((*panel_row["train"], *panel_row["evaluate"])))
     return FrozenContract(
+        model_name=model_name,
         model_id=model["repo_id"],
         model_revision=model["revision"],
         batch_size=int(campaign_row["global_batch"]),
@@ -315,6 +326,8 @@ def _data_paths(workload: Workload, data_directory: Path) -> tuple[Path, Path]:
 def _representax_job(
     workload: Workload,
     *,
+    model_name: ModelName,
+    lifecycle: bool,
     checkpoint: Path,
     data_directory: Path,
     steps: int,
@@ -345,7 +358,7 @@ def _representax_job(
         PairwiseConfig,
     )
 
-    contract = frozen_contract(workload)
+    contract = frozen_contract(workload, model_name)
     training_batch_size = execution_batch_size(workload, contract)
     train_path, evaluation_path = _data_paths(workload, data_directory)
     if training_batch_size % MICRO_BATCH_SIZE:
@@ -369,8 +382,8 @@ def _representax_job(
             distribution=mix(source(str(path), map=identity), shuffle=False),
             collate=collator,
             drop_remainder=not evaluation,
-            num_threads=0,
-            prefetch_buffer_size=2,
+            num_threads=4,
+            prefetch_buffer_size=8,
         )
 
     schedule = ComponentConfig(
@@ -402,7 +415,7 @@ def _representax_job(
         primary_metric = "valid/sprint/average_precision_max"
 
     return JobConfig(
-        name=f"paper-preflight-{workload}",
+        name=f"paper-{workload}-{model_name}",
         model=ModelConfig(
             target="representax.models:SentenceEncoder.load_from_hf",
             parameters={
@@ -442,17 +455,22 @@ def _representax_job(
             donate_buffers=True,
             precision=PrecisionConfig.bfloat16_mixed(),
         ),
-        checkpointing=CheckpointConfig(
-            every=steps // 2,
-            keep=2,
-            save_final=True,
-            asynchronous=True,
+        checkpointing=(
+            CheckpointConfig(
+                every=steps // 2,
+                keep=2,
+                save_final=True,
+                asynchronous=True,
+            )
+            if lifecycle
+            else None
         ),
-        logging=LoggingConfig(console_every=1, timing=True),
+        logging=LoggingConfig(console_every=1, timing=True, accelerator=True),
         evaluation=EvaluationConfig(
             data=data(evaluation_path, evaluation=True),
             batch_size=MICRO_BATCH_SIZE,
             evaluators=(evaluator,),
+            every_steps=max(2, steps // 4),
             on_start=True,
             on_end=True,
             primary_metric=primary_metric,
@@ -585,9 +603,24 @@ def representax_steady_state(
     }
 
 
+def reference_steady_state(
+    rows: Sequence[tuple[int, float]], batch_size: int
+) -> dict[str, float]:
+    """Derive reference throughput after its first optimizer update."""
+
+    summary = warm_step_summary(rows, batch_size=batch_size)
+    return {
+        "measured_steps": float(summary["measured_steps"]),
+        "median_step_seconds": float(summary["median_step_seconds"]),
+        "aggregate_examples_per_second": float(summary["examples_per_second"]),
+    }
+
+
 def _representax_worker(
     workload: Workload,
     *,
+    model_name: ModelName,
+    lifecycle: bool,
     checkpoint: Path,
     data_directory: Path,
     run_directory: Path,
@@ -599,10 +632,12 @@ def _representax_worker(
     from representax import load_inference_bundle
     from representax.train import run_job
 
-    contract = frozen_contract(workload)
+    contract = frozen_contract(workload, model_name)
     training_batch_size = execution_batch_size(workload, contract)
     job = _representax_job(
         workload,
+        model_name=model_name,
+        lifecycle=lifecycle,
         checkpoint=checkpoint,
         data_directory=data_directory,
         steps=steps,
@@ -635,41 +670,44 @@ def _representax_worker(
         jax.clear_caches()
 
     started = time.perf_counter()
-    paused = run_job(job, run_directory, stop_after=steps // 2)
-    if paused.completed_iterations != steps // 2:
-        raise RuntimeError("Representax did not stop at the resumable midpoint")
-    if workload == "semantic-similarity":
-        assert processor is not None
-        assert similarity_curve is not None
-        midpoint_stsb = _similarity_metrics(
-            paused.state.model,
-            processor,
-            data_directory / "semantic-validation.jsonl",
-            MICRO_BATCH_SIZE,
-            name="stsb",
-        )
-        midpoint_sick = _similarity_metrics(
-            paused.state.model,
-            processor,
-            data_directory / "semantic-sick-r.jsonl",
-            MICRO_BATCH_SIZE,
-            name="sick_r",
-        )
-        similarity_curve.append(
-            _representax_similarity_point(
-                steps // 2,
-                midpoint_stsb,
-                midpoint_sick,
+    if lifecycle:
+        paused = run_job(job, run_directory, stop_after=steps // 2)
+        if paused.completed_iterations != steps // 2:
+            raise RuntimeError("Representax did not stop at the resumable midpoint")
+        if workload == "semantic-similarity":
+            assert processor is not None
+            assert similarity_curve is not None
+            midpoint_stsb = _similarity_metrics(
+                paused.state.model,
+                processor,
+                data_directory / "semantic-validation.jsonl",
+                MICRO_BATCH_SIZE,
+                name="stsb",
             )
-        )
-    del paused
-    gc.collect()
-    jax.clear_caches()
-    completed = run_job(job, run_directory, resume=True)
+            midpoint_sick = _similarity_metrics(
+                paused.state.model,
+                processor,
+                data_directory / "semantic-sick-r.jsonl",
+                MICRO_BATCH_SIZE,
+                name="sick_r",
+            )
+            similarity_curve.append(
+                _representax_similarity_point(
+                    steps // 2,
+                    midpoint_stsb,
+                    midpoint_sick,
+                )
+            )
+        del paused
+        gc.collect()
+        jax.clear_caches()
+        completed = run_job(job, run_directory, resume=True)
+    else:
+        completed = run_job(job, run_directory)
     jax.block_until_ready(completed.state)
     elapsed = time.perf_counter() - started
-    if not completed.resumed or completed.completed_iterations != steps:
-        raise RuntimeError("Representax did not resume to the requested update count")
+    if completed.completed_iterations != steps or completed.resumed != lifecycle:
+        raise RuntimeError("Representax ended with incorrect lifecycle state")
     if completed.inference_bundle is None:
         raise RuntimeError("Representax did not export the final inference bundle")
 
@@ -684,6 +722,16 @@ def _representax_worker(
         final_probe
         @ reload_probe
         / (np.linalg.norm(final_probe) * np.linalg.norm(reload_probe))
+    )
+    print(
+        json.dumps(
+            {
+                "reload_probe_maximum_absolute_difference": reload_maximum_difference,
+                "reload_probe_cosine": reload_cosine,
+            },
+            sort_keys=True,
+        ),
+        flush=True,
     )
     if not np.allclose(final_probe, reload_probe, rtol=2e-2, atol=2e-3):
         raise RuntimeError("Representax inference reload changed probe embeddings")
@@ -736,7 +784,7 @@ def _representax_worker(
         "evaluation_curve": similarity_curve,
         "final_training": training[-1]["metrics"],
         "resumed": completed.resumed,
-        "checkpoint_iterations": [steps // 2, steps],
+        "checkpoint_iterations": [steps // 2, steps] if lifecycle else [],
         "inference_bundle": str(completed.inference_bundle),
         "reload_job_name": restored_job.name,
         "reload_probe_maximum_absolute_difference": reload_maximum_difference,
@@ -830,6 +878,8 @@ def _run_reference_evaluation(
 def _sentence_transformers_worker(
     workload: Workload,
     *,
+    model_name: ModelName,
+    lifecycle: bool,
     checkpoint: Path,
     data_directory: Path,
     run_directory: Path,
@@ -855,8 +905,9 @@ def _sentence_transformers_worker(
     from sentence_transformers.sentence_transformer.losses.contrastive import (
         SiameseDistanceMetric,
     )
+    from transformers import TrainerCallback
 
-    contract = frozen_contract(workload)
+    contract = frozen_contract(workload, model_name)
     training_batch_size = execution_batch_size(workload, contract)
     if sentence_transformers.__version__ != contract.reference_version:
         raise RuntimeError(
@@ -877,7 +928,7 @@ def _sentence_transformers_worker(
     similarity_curve = (
         [_reference_similarity_point(0, initial_evaluation)]
         if workload == "semantic-similarity"
-        else None
+        else ([{"update": 0, **initial_evaluation}] if not lifecycle else None)
     )
     loss = (
         CosineSimilarityLoss(model)
@@ -908,40 +959,86 @@ def _sentence_transformers_worker(
         logging_steps=1,
         report_to="none",
         disable_tqdm=True,
-        save_strategy="steps",
+        save_strategy="steps" if lifecycle else "no",
         save_steps=steps // 2,
         save_total_limit=2,
         dataloader_drop_last=True,
-        dataloader_num_workers=0,
+        dataloader_num_workers=4,
+        dataloader_prefetch_factor=2,
+        dataloader_persistent_workers=True,
         dataloader_pin_memory=True,
         batch_sampler=sequential_sentence_transformers_batches,
         seed=seed,
         data_seed=seed,
     )
+
+    timer = CudaStepTimer()
+    quarter_steps = {steps // 4, steps // 2, 3 * steps // 4}
+
+    class PeriodicEvaluation(TrainerCallback):
+        trainer: Any = None
+
+        def on_step_end(self, args: Any, state: Any, control: Any, **_: Any) -> Any:
+            del args
+            update = int(state.global_step)
+            if update not in quarter_steps or update == steps:
+                return control
+            if self.trainer is None:
+                raise RuntimeError("periodic evaluator has no trainer")
+            metrics = _run_reference_evaluation(evaluators, self.trainer.model)
+            assert similarity_curve is not None
+            similarity_curve.append(
+                _reference_similarity_point(update, metrics)
+                if workload == "semantic-similarity"
+                else {"update": update, **metrics}
+            )
+            return control
+
+    periodic = None if lifecycle else PeriodicEvaluation()
+    callbacks = [timer.callback()] if periodic is None else [timer.callback(), periodic]
     trainer = SentenceTransformerTrainer(
         model=model,
         args=arguments,
         train_dataset=train_dataset,
         loss=loss,
         data_collator=_fixed_length_collator(model, contract.maximum_length),
+        callbacks=callbacks,
     )
+    if periodic is not None:
+        periodic.trainer = trainer
     torch.cuda.reset_peak_memory_stats()
     started = time.perf_counter()
     output = trainer.train()
     torch.cuda.synchronize()
     training_seconds = time.perf_counter() - started
-    final_evaluation = _run_reference_evaluation(evaluators, model)
+    losses = [
+        float(row["loss"])
+        for row in trainer.state.log_history
+        if row.get("loss") is not None
+    ]
+    trained_model = trainer.model
     export = run_directory / "final-model"
     trainer.save_model(str(export))
+    reloaded = SentenceTransformer(str(export), local_files_only=True)
+    trained_state = trained_model.state_dict()
+    reloaded_state = reloaded.state_dict()
+    if trained_state.keys() != reloaded_state.keys():
+        raise RuntimeError("Sentence Transformers reload changed parameter names")
+    reload_weight_maximum_difference = max(
+        float(torch.max(torch.abs(trained_state[name] - reloaded_state[name])).item())
+        for name in trained_state
+    )
+    if reload_weight_maximum_difference != 0.0:
+        raise RuntimeError("Sentence Transformers reload changed parameter values")
+    final_evaluation = _run_reference_evaluation(evaluators, reloaded)
     probe_rows = _read_jsonl(_data_paths(workload, data_directory)[1])[:8]
-    final_probe = model.encode(
+    final_probe = trained_model.encode(
         [row["sentence1"] for row in probe_rows]
         + [row["sentence2"] for row in probe_rows],
         batch_size=16,
         show_progress_bar=False,
         convert_to_numpy=True,
     ).reshape(-1)
-    reloaded = SentenceTransformer(str(export), local_files_only=True)
     reload_probe = reloaded.encode(
         [row["sentence1"] for row in probe_rows]
         + [row["sentence2"] for row in probe_rows],
@@ -955,20 +1052,38 @@ def _sentence_transformers_worker(
         @ reload_probe
         / (np.linalg.norm(final_probe) * np.linalg.norm(reload_probe))
     )
-    if not np.allclose(final_probe, reload_probe, rtol=2e-2, atol=2e-3):
-        raise RuntimeError("Sentence Transformers reload changed probe embeddings")
+    reload_relative_l2 = float(
+        np.linalg.norm(final_probe - reload_probe) / np.linalg.norm(final_probe)
+    )
+    print(
+        json.dumps(
+            {
+                "reload_probe_maximum_absolute_difference": reload_maximum_difference,
+                "reload_probe_cosine": reload_cosine,
+                "reload_probe_relative_l2": reload_relative_l2,
+            },
+            sort_keys=True,
+        ),
+        flush=True,
+    )
     checkpoints = sorted((run_directory / "checkpoints").glob("checkpoint-*"))
     if workload == "semantic-similarity":
-        midpoint_path = run_directory / "checkpoints" / f"checkpoint-{steps // 2}"
-        if not midpoint_path.is_dir():
-            raise RuntimeError("Sentence Transformers did not save the midpoint")
-        midpoint_model = SentenceTransformer(str(midpoint_path), local_files_only=True)
-        midpoint_evaluation = _run_reference_evaluation(evaluators, midpoint_model)
         assert similarity_curve is not None
-        similarity_curve.append(
-            _reference_similarity_point(steps // 2, midpoint_evaluation)
-        )
+        if lifecycle:
+            midpoint_path = run_directory / "checkpoints" / f"checkpoint-{steps // 2}"
+            if not midpoint_path.is_dir():
+                raise RuntimeError("Sentence Transformers did not save the midpoint")
+            midpoint_model = SentenceTransformer(
+                str(midpoint_path),
+                local_files_only=True,
+            )
+            midpoint_evaluation = _run_reference_evaluation(evaluators, midpoint_model)
+            similarity_curve.append(
+                _reference_similarity_point(steps // 2, midpoint_evaluation)
+            )
         similarity_curve.append(_reference_similarity_point(steps, final_evaluation))
+    elif similarity_curve is not None:
+        similarity_curve.append({"update": steps, **final_evaluation})
     return {
         "schema_version": "representax-semantic-pair-worker-v1",
         "framework": "sentence-transformers",
@@ -983,14 +1098,23 @@ def _sentence_transformers_worker(
         "precision": "bfloat16-compute-float32-master",
         "training_seconds": training_seconds,
         "examples_per_second": training_batch_size * steps / training_seconds,
+        "steady_state": reference_steady_state(timer.rows, training_batch_size),
+        "step_timings": [
+            {"step": step, "seconds": duration} for step, duration in timer.rows
+        ],
         "initial_evaluation": initial_evaluation,
         "final_evaluation": final_evaluation,
         "evaluation_curve": similarity_curve,
         "training_metrics": output.metrics,
+        "losses": losses,
         "checkpoint_directories": [str(path) for path in checkpoints],
         "inference_bundle": str(export),
         "reload_probe_maximum_absolute_difference": reload_maximum_difference,
         "reload_probe_cosine": reload_cosine,
+        "reload_probe_relative_l2": reload_relative_l2,
+        "reload_weight_maximum_absolute_difference": (
+            reload_weight_maximum_difference
+        ),
         "peak_device_bytes": int(torch.cuda.max_memory_allocated()),
         "peak_reserved_bytes": int(torch.cuda.max_memory_reserved()),
     }
@@ -1000,6 +1124,8 @@ def _worker(arguments: argparse.Namespace) -> None:
     report = (
         _representax_worker(
             arguments.workload,
+            model_name=arguments.model,
+            lifecycle=not arguments.serious,
             checkpoint=arguments.checkpoint,
             data_directory=arguments.data_directory,
             run_directory=arguments.run_directory,
@@ -1009,6 +1135,8 @@ def _worker(arguments: argparse.Namespace) -> None:
         if arguments.framework == "representax"
         else _sentence_transformers_worker(
             arguments.workload,
+            model_name=arguments.model,
+            lifecycle=not arguments.serious,
             checkpoint=arguments.checkpoint,
             data_directory=arguments.data_directory,
             run_directory=arguments.run_directory,
@@ -1047,6 +1175,8 @@ def _pair(arguments: argparse.Namespace) -> None:
             arguments.workload,
             "--framework",
             framework,
+            "--model",
+            arguments.model,
             "--checkpoint",
             str(arguments.checkpoint),
             "--data-directory",
@@ -1068,7 +1198,9 @@ def _pair(arguments: argparse.Namespace) -> None:
                 "PYTHONUNBUFFERED": "1",
                 "JAX_DEFAULT_MATMUL_PRECISION": "highest",
                 "XLA_PYTHON_CLIENT_PREALLOCATE": "false",
-                "JAX_COMPILATION_CACHE_DIR": str(output / "jax-cache"),
+                "JAX_COMPILATION_CACHE_DIR": os.environ.get(
+                    "REPRESENTAX_JAX_CACHE_DIR", str(output / "jax-cache")
+                ),
             }
         )
         if framework == "representax":
@@ -1112,7 +1244,7 @@ def _pair(arguments: argparse.Namespace) -> None:
         "schema_version": "representax-semantic-pair-preflight-v1",
         "workload": arguments.workload,
         "contract": {
-            **asdict(frozen_contract(arguments.workload)),
+            **asdict(frozen_contract(arguments.workload, arguments.model)),
             "steps": arguments.steps,
             "seed": arguments.seed,
             "representax_gpu": arguments.representax_gpu,
@@ -1138,6 +1270,12 @@ def _parser() -> argparse.ArgumentParser:
         required=True,
     )
     worker.add_argument("--framework", choices=FRAMEWORKS, required=True)
+    worker.add_argument("--model", choices=MODELS, default="mpnet-base")
+    worker.add_argument(
+        "--serious",
+        action="store_true",
+        help="run one uninterrupted measured trajectory without lifecycle checkpoints",
+    )
     worker.add_argument("--checkpoint", type=Path, required=True)
     worker.add_argument("--data-directory", type=Path, required=True)
     worker.add_argument("--run-directory", type=Path, required=True)
@@ -1152,6 +1290,7 @@ def _parser() -> argparse.ArgumentParser:
         required=True,
     )
     pair.add_argument("--checkpoint", type=Path, required=True)
+    pair.add_argument("--model", choices=MODELS, default="mpnet-base")
     pair.add_argument("--data-directory", type=Path, required=True)
     pair.add_argument("--output", type=Path, required=True)
     pair.add_argument("--steps", type=int, default=8)

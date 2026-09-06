@@ -248,6 +248,19 @@ class SentenceEncoder(eqx.Module):
             token_type_ids=token_type_ids,
         )
 
+    def training_filter(self) -> Any:
+        """Use the backbone's representation-training filter when it has one."""
+
+        selected = jax.tree.map(eqx.is_inexact_array, self)
+        backbone_filter = getattr(self.backbone, "training_filter", None)
+        if not callable(backbone_filter):
+            return selected
+        return eqx.tree_at(
+            lambda model: model.backbone,
+            selected,
+            backbone_filter(),
+        )
+
     def encode(
         self,
         inputs: Any,

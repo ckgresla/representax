@@ -19,6 +19,11 @@ from representax.models.bert import (
     bert_weight_names,
 )
 from representax.models.bert.checkpoint import _checkpoint_name_map
+from representax.models.sentence import (
+    SentenceEncoder,
+    SentenceNormalize,
+    SentencePooling,
+)
 
 
 def tiny_config() -> BertConfig:
@@ -124,6 +129,22 @@ def test_native_bert_is_scanned_jittable_and_dropout_is_keyed():
 
     lowered = cast(Any, hidden_only).lower(model, batch).as_text()
     assert lowered.count("stablehlo.while") == 1
+
+
+def test_sentence_training_filter_excludes_unused_bert_pooler():
+    backbone = BertEncoder.init(tiny_config(), key=jax.random.key(8))
+    model = SentenceEncoder(
+        backbone=backbone,
+        pooling=SentencePooling(input_dimension=12, modes=("mean",)),
+        postprocessors=(SentenceNormalize(),),
+        metadata=backbone.metadata,
+    )
+
+    selected = model.training_filter()
+
+    assert selected.backbone.tower.embeddings.word is True
+    assert selected.backbone.tower.pooler.weight is False
+    assert selected.backbone.tower.pooler.bias is False
 
 
 def test_checkpoint_mapping_round_trips_the_depth_major_tree():

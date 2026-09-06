@@ -604,6 +604,17 @@ class BertEncoder(eqx.Module):
             rematerialization=self.rematerialization,
         )
 
+    def training_filter(self) -> Any:
+        """Exclude the pooler that representation training never evaluates."""
+
+        selected = jax.tree.map(eqx.is_inexact_array, self)
+        frozen_pooler = jax.tree.map(lambda _value: False, self.tower.pooler)
+        return eqx.tree_at(
+            lambda model: model.tower.pooler,
+            selected,
+            frozen_pooler,
+        )
+
     def hidden_states_by_layer(
         self,
         inputs: BertBatch,

@@ -146,6 +146,42 @@ def test_job_builder_injects_loaded_processor_into_data_collation():
 
 
 @pytest.mark.runtime
+def test_run_job_repeats_finite_training_data_until_max_steps(tmp_path):
+    train_path = tmp_path / "train.jsonl"
+    _write_pairs(train_path, count=4)
+    job = JobConfig(
+        name="repeat-to-step-budget",
+        model=ModelConfig(
+            target="representax.models.DenseEncoder",
+            parameters={"input_dimension": 2, "output_dimension": 2},
+        ),
+        task=PairwiseConfig(),
+        loss=CosineRegressionConfig(),
+        optimization=OptimizationConfig(
+            optimizer=ComponentConfig(
+                target="optax.adamw",
+                parameters={"learning_rate": 0.01, "weight_decay": 0.0},
+            ),
+            max_gradient_norm=None,
+        ),
+        data=_data(train_path),
+        training=TrainingConfig(
+            global_batch_size=4,
+            max_steps=3,
+            seed=31,
+            batch=BatchConfig(
+                micro_batch_size=2,
+                gradient_accumulation_steps=2,
+            ),
+        ),
+    )
+
+    result = run_job(job, tmp_path / "run")
+
+    assert result.completed_iterations == 3
+
+
+@pytest.mark.runtime
 def test_run_job_trains_evaluates_selects_and_exports_from_disk(tmp_path):
     train_path = tmp_path / "train.jsonl"
     valid_path = tmp_path / "valid.jsonl"

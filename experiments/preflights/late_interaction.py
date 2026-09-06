@@ -19,6 +19,7 @@ from typing import Any, cast
 import numpy as np
 
 from experiments.preflights.provenance import reference_source, write_reference_result
+from experiments.preflights.timing import CudaStepTimer
 
 ROOT = Path(__file__).resolve().parents[2]
 CAMPAIGN_MANIFEST = ROOT / "benchmarks/configs/paper-campaign-v1.json"
@@ -345,8 +346,8 @@ def _representax_job(
                 parameters={"document_field": "positive"},
             ),
             drop_remainder=True,
-            num_threads=0,
-            prefetch_buffer_size=1,
+            num_threads=1,
+            prefetch_buffer_size=8,
         ),
         training=TrainingConfig(
             global_batch_size=contract.global_batch_size,
@@ -877,38 +878,6 @@ def _representax_worker(
     }
 
 
-class _StepTimer:
-    """Small Trainer callback factory kept independent of optional torch imports."""
-
-    @staticmethod
-    def callback(*, stop_after: int | None = None) -> Any:
-        import torch
-        from transformers import TrainerCallback
-
-        class Callback(TrainerCallback):
-            def __init__(self) -> None:
-                self.started = 0.0
-                self.durations: list[tuple[int, float]] = []
-
-            def on_step_begin(
-                self, args: Any, state: Any, control: Any, **_: Any
-            ) -> None:
-                torch.cuda.synchronize()
-                self.started = time.perf_counter()
-
-            def on_step_end(
-                self, args: Any, state: Any, control: Any, **_: Any
-            ) -> None:
-                torch.cuda.synchronize()
-                self.durations.append(
-                    (int(state.global_step), time.perf_counter() - self.started)
-                )
-                if stop_after is not None and state.global_step >= stop_after:
-                    control.should_training_stop = True
-
-        return Callback()
-
-
 def _pylate_encode(
     model: Any, texts: Sequence[str], *, is_query: bool
 ) -> tuple[tuple[np.ndarray, ...], dict[str, Any]]:
@@ -1111,7 +1080,9 @@ def _reference_arguments(
         save_steps=save_steps,
         save_total_limit=2 if save else None,
         dataloader_drop_last=True,
-        dataloader_num_workers=0,
+        dataloader_num_workers=4,
+        dataloader_prefetch_factor=2,
+        dataloader_persistent_workers=True,
         dataloader_pin_memory=True,
         seed=seed,
         data_seed=seed,
@@ -1166,7 +1137,7 @@ def _pylate_worker(
     initial_evaluation = _pylate_evaluation(model, data_directory, index_directory=None)
     midpoint = steps // 2
     checkpoint_root = run_directory / "checkpoints"
-    first_timer = _StepTimer.callback(stop_after=midpoint)
+    first_timer = CudaStepTimer()
     first_loss = losses.CachedContrastive(
         model=model,
         mini_batch_size=GRAD_CACHE_MICRO_BATCH,
@@ -1181,7 +1152,7 @@ def _pylate_worker(
         train_dataset=train,
         loss=first_loss,
         data_collator=utils.ColBERTCollator(model.tokenize),
-        callbacks=[first_timer],
+        callbacks=[first_timer.callback(stop_after=midpoint)],
     )
     torch.cuda.reset_peak_memory_stats()
     started = time.perf_counter()
@@ -1198,7 +1169,7 @@ def _pylate_worker(
     torch.cuda.empty_cache()
 
     model = load_model(checkpoint)
-    second_timer = _StepTimer.callback()
+    second_timer = CudaStepTimer()
     second_loss = losses.CachedContrastive(
         model=model,
         mini_batch_size=GRAD_CACHE_MICRO_BATCH,
@@ -1213,7 +1184,7 @@ def _pylate_worker(
         train_dataset=train,
         loss=second_loss,
         data_collator=utils.ColBERTCollator(model.tokenize),
-        callbacks=[second_timer],
+        callbacks=[second_timer.callback()],
     )
     second_output = second_trainer.train(
         resume_from_checkpoint=str(midpoint_checkpoint)
@@ -1257,7 +1228,7 @@ def _pylate_worker(
     if not parameters_exact or not np.array_equal(expected, actual):
         raise RuntimeError("PyLate export reload changed the probe embedding")
 
-    durations = [*first_timer.durations, *second_timer.durations]
+    durations = [*first_timer.rows, *second_timer.rows]
     warm = [
         duration
         for iteration, duration in durations
@@ -1269,7 +1240,7 @@ def _pylate_worker(
         float(row["loss"])
         for row in (*first_history, *second_history)
         if row.get("loss") is not None
-    ]
+    ][-steps:]
     if not loss_rows:
         raise RuntimeError("PyLate trainer emitted no finite training losses")
     peak_device_bytes = int(torch.cuda.max_memory_allocated())
@@ -1292,9 +1263,13 @@ def _pylate_worker(
             "median_step_seconds": statistics.median(warm),
             "examples_per_second": contract.global_batch_size * len(warm) / sum(warm),
         },
+        "step_timings": [
+            {"step": step, "seconds": duration} for step, duration in durations
+        ],
         "initial_evaluation": initial_evaluation,
         "final_evaluation": final_evaluation,
         "final_loss": loss_rows[-1],
+        "losses": loss_rows,
         "training_metrics": {
             "first": first_output.metrics,
             "resumed": second_output.metrics,
@@ -1428,7 +1403,7 @@ def _pylate_training_profile(
         data_directory / "train.jsonl",
         rows=contract.global_batch_size * steps,
     )
-    timer = _StepTimer.callback()
+    timer = CudaStepTimer()
     loss = losses.CachedContrastive(
         model=model,
         mini_batch_size=GRAD_CACHE_MICRO_BATCH,
@@ -1447,14 +1422,14 @@ def _pylate_training_profile(
         train_dataset=train,
         loss=loss,
         data_collator=utils.ColBERTCollator(model.tokenize),
-        callbacks=[timer],
+        callbacks=[timer.callback()],
     )
     torch.cuda.reset_peak_memory_stats()
     started = time.perf_counter()
     trainer.train()
     torch.cuda.synchronize()
     elapsed = time.perf_counter() - started
-    durations = [duration for _, duration in timer.durations]
+    durations = [duration for _, duration in timer.rows]
     if len(durations) != steps or len(durations) < 3:
         raise RuntimeError("PyLate timing profile is missing training updates")
     warm = durations[1:]
@@ -1479,7 +1454,7 @@ def _pylate_training_profile(
                 "compiled": False,
                 "first_eager_step": iteration == 1,
             }
-            for iteration, duration in timer.durations
+            for iteration, duration in timer.rows
         ],
         "checkpointing": False,
         "export": False,
@@ -1813,7 +1788,9 @@ def _pair(arguments: argparse.Namespace) -> None:
                     "JAX_DEFAULT_MATMUL_PRECISION": "highest",
                     "XLA_PYTHON_CLIENT_PREALLOCATE": "true",
                     "XLA_PYTHON_CLIENT_MEM_FRACTION": "0.90",
-                    "JAX_COMPILATION_CACHE_DIR": str(output / "jax-cache"),
+                    "JAX_COMPILATION_CACHE_DIR": os.environ.get(
+                        "REPRESENTAX_JAX_CACHE_DIR", str(output / "jax-cache")
+                    ),
                 }
             )
         else:

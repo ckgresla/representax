@@ -205,6 +205,7 @@ def build_batches(
     mappers: Mapping[str, Callable[[Any], Any]] | None = None,
     processor: Processor | None = None,
     measure_training_tokens: bool = False,
+    repeat: bool = False,
 ) -> Any:
     """Materialize one reproducible Grain batch source from its data config."""
 
@@ -217,6 +218,7 @@ def build_batches(
         prefetch_buffer_size=config.prefetch_buffer_size,
         host_memory_budget_bytes=config.host_memory_budget_bytes,
         measure_training_tokens=measure_training_tokens,
+        repeat=repeat,
         resolvers=resolvers,
         mappers=mappers,
     )
@@ -375,6 +377,8 @@ def build_job_runtime(
             )
         if place_initial_state:
             state = plan.place_state(state)
+        else:
+            state = plan.restore_state_template(state)
         place_state = plan.place_state
         place_batch = plan.place_batch
     startup_metrics["perf/sharding_initialization_seconds"] = (
@@ -403,6 +407,7 @@ def build_job_runtime(
         mappers=mappers,
         processor=processor,
         measure_training_tokens=job.logging.timing,
+        repeat=True,
     )
     startup_metrics["perf/data_loader_initialization_seconds"] = (
         time.perf_counter() - phase_started
