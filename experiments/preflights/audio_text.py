@@ -31,6 +31,7 @@ from experiments.preflights.accelerator import (
     torch_reset_peak_memory,
     torch_synchronize,
     torch_world_size,
+    use_fixed_text_padding,
 )
 from experiments.preflights.provenance import reference_source, write_reference_result
 from experiments.preflights.timing import CudaStepTimer, warm_step_summary
@@ -974,6 +975,8 @@ def _sentence_transformers_worker(
         local_files_only=True,
         model_kwargs={"dtype": torch.bfloat16},
     )
+    if platform == "tpu":
+        use_fixed_text_padding(model, 512)
     model.add_adapter(
         LoraConfig(
             r=4,

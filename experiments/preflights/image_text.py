@@ -30,6 +30,7 @@ from experiments.preflights.accelerator import (
     torch_reset_peak_memory,
     torch_synchronize,
     torch_world_size,
+    use_fixed_text_padding,
 )
 from experiments.preflights.provenance import reference_source, write_reference_result
 from experiments.preflights.timing import CudaStepTimer, warm_step_summary
@@ -835,6 +836,8 @@ def _sentence_transformers_worker(
             f"found {sentence_transformers.__version__}"
         )
     model = SentenceTransformer(str(checkpoint), local_files_only=True)
+    if platform == "tpu":
+        use_fixed_text_padding(model, 77)
     initial_started = time.perf_counter()
     initial_evaluation = (
         _reference_evaluation(model, data_directory, batch_size=EVALUATION_BATCH_SIZE)

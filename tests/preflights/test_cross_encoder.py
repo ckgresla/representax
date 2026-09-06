@@ -4,6 +4,7 @@ import json
 
 from experiments.preflights.cross_encoder import (
     _reference_training_dataset,
+    _representax_job,
     frozen_contract,
     pointwise_training_rows,
     representax_steady_state,
@@ -84,3 +85,21 @@ def test_reference_training_dataset_keeps_query_before_document(tmp_path) -> Non
     )
     dataset = _reference_training_dataset(path)
     assert dataset.column_names == ["query", "document", "label"]
+
+
+def test_cross_encoder_job_can_use_one_static_tpu_shape(tmp_path) -> None:
+    data = tmp_path / "data"
+    data.mkdir()
+    (data / "manifest.json").write_text(
+        json.dumps({"evaluation": {"candidates_per_query": 32}})
+    )
+
+    job = _representax_job(
+        checkpoint=tmp_path / "checkpoint",
+        data_directory=data,
+        steps=4,
+        seed=7,
+        sequence_length_buckets=(512,),
+    )
+
+    assert job.model.parameters["sequence_length_buckets"] == [512]

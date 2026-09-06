@@ -152,6 +152,22 @@ def torch_world_size() -> int:
     return int(xr.world_size())
 
 
+def use_fixed_text_padding(model: Any, maximum_length: int) -> None:
+    """Configure a Sentence Transformers input module for one static XLA shape."""
+
+    if maximum_length <= 0:
+        raise ValueError("maximum text length must be positive")
+    module = model[0]
+    current = dict(getattr(module, "processing_kwargs", {}))
+    text = dict(current.get("text", {}))
+    text.update(
+        padding="max_length",
+        truncation=True,
+        max_length=maximum_length,
+    )
+    module.processing_kwargs = {**current, "text": text}
+
+
 __all__ = [
     "Platform",
     "data_parallel_job",
@@ -164,4 +180,5 @@ __all__ = [
     "torch_reset_peak_memory",
     "torch_synchronize",
     "torch_world_size",
+    "use_fixed_text_padding",
 ]

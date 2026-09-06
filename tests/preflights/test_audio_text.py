@@ -10,9 +10,9 @@ from experiments.preflights.audio_text import (
     SAMPLE_RATE,
     AudioTextEvaluationCollator,
     AudioTextRetrievalCollator,
-    _ReferenceAudioTransform,
     _normalize_audio,
     _parser,
+    _ReferenceAudioTransform,
     _representax_job,
     frozen_contract,
 )

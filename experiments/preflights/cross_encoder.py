@@ -28,6 +28,7 @@ from experiments.preflights.accelerator import (
     torch_reset_peak_memory,
     torch_synchronize,
     torch_world_size,
+    use_fixed_text_padding,
 )
 from experiments.preflights.provenance import reference_source, write_reference_result
 from experiments.preflights.timing import CudaStepTimer, warm_step_summary
@@ -314,6 +315,7 @@ def _representax_job(
     data_directory: Path,
     steps: int,
     seed: int,
+    sequence_length_buckets: Sequence[int] = SEQUENCE_BUCKETS,
 ) -> Any:
     from representax.config import (
         BatchConfig,
@@ -388,7 +390,7 @@ def _representax_job(
                 "local_files_only": True,
                 "parameter_dtype": "float32",
                 "compute_dtype": "bfloat16",
-                "sequence_length_buckets": SEQUENCE_BUCKETS,
+                "sequence_length_buckets": sequence_length_buckets,
             },
         ),
         task=PointwiseScoringConfig(),
@@ -538,6 +540,9 @@ def _representax_worker(
         data_directory=data_directory,
         steps=steps,
         seed=seed,
+        sequence_length_buckets=(contract.maximum_length,)
+        if platform == "tpu"
+        else SEQUENCE_BUCKETS,
     )
     if jax.device_count() > 1:
         job = data_parallel_job(
@@ -717,6 +722,8 @@ def _sentence_transformers_worker(
         local_files_only=True,
         max_length=contract.maximum_length,
     )
+    if platform == "tpu":
+        use_fixed_text_padding(model, contract.maximum_length)
     train = _reference_training_dataset(data_directory / "train.jsonl")
     initial_evaluation = (
         _reference_metrics(model, data_directory) if platform == "gpu" else None

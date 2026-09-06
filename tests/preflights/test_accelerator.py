@@ -3,7 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
-from experiments.preflights.accelerator import data_parallel_job
+from experiments.preflights.accelerator import data_parallel_job, use_fixed_text_padding
 
 
 @pytest.mark.parametrize(
@@ -70,3 +70,24 @@ def test_data_parallel_job_rejects_fractional_local_batches() -> None:
 
     with pytest.raises(ValueError, match="does not divide"):
         data_parallel_job(job, device_count=4)
+
+
+def test_fixed_text_padding_preserves_other_processing_settings() -> None:
+    module = SimpleNamespace(
+        processing_kwargs={
+            "text": {"padding_side": "right"},
+            "audio": {"sampling_rate": 16_000},
+        }
+    )
+
+    use_fixed_text_padding([module], 256)
+
+    assert module.processing_kwargs == {
+        "text": {
+            "padding_side": "right",
+            "padding": "max_length",
+            "truncation": True,
+            "max_length": 256,
+        },
+        "audio": {"sampling_rate": 16_000},
+    }

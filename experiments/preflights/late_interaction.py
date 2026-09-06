@@ -822,6 +822,7 @@ def _representax_worker(
         steps=steps,
         seed=seed,
         lifecycle=platform == "gpu",
+        static_shapes=platform == "tpu",
         negative_scope=negative_scope,
     )
     if platform == "tpu":
