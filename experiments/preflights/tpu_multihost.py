@@ -370,6 +370,98 @@ def representax_dense(*, output: Path, steps: int, global_batch_size: int) -> No
     )
 
 
+def jax_local_negative_mnr(*, global_batch_size: int) -> None:
+    """Check device-local MNR reduction on the complete multi-host mesh."""
+
+    jax = _jax_initialize(True)
+    import jax.numpy as jnp
+    import numpy as np
+    from jax.sharding import AxisType, NamedSharding
+    from jax.sharding import PartitionSpec as P
+
+    from representax.tasks.retrieval import (
+        MNRTask,
+        place_process_local_retrieval_batch,
+        process_local_retrieval_batch,
+    )
+    from representax.train.grad_cache import _device_local_mnr_output
+
+    if global_batch_size % jax.device_count():
+        raise ValueError("global batch must be divisible by the global device count")
+    local_size = global_batch_size // jax.process_count()
+    process_start = jax.process_index() * local_size
+    rows = np.arange(process_start, process_start + local_size, dtype=np.float32)
+    dimensions = np.arange(8, dtype=np.float32)
+    query = np.sin(rows[:, None] * 0.17 + dimensions[None, :] * 0.11)
+    document = np.cos(rows[:, None] * 0.13 + dimensions[None, :] * 0.07)
+    query /= np.linalg.norm(query, axis=1, keepdims=True)
+    document /= np.linalg.norm(document, axis=1, keepdims=True)
+    positive_mask = np.zeros((local_size, global_batch_size), dtype=np.bool_)
+    positive_mask[np.arange(local_size), process_start + np.arange(local_size)] = True
+
+    mesh = jax.make_mesh(
+        (jax.device_count(),),
+        ("data",),
+        axis_types=(AxisType.Explicit,),
+    )
+    sharding = NamedSharding(mesh, P("data"))
+    batch = place_process_local_retrieval_batch(
+        process_local_retrieval_batch(
+            query=jnp.asarray(query),
+            document=jnp.asarray(document),
+            positive_mask=positive_mask,
+        ),
+        sharding,
+    )
+    task = MNRTask(scale=3.0, symmetric=False, negative_scope="local")
+
+    @jax.jit
+    def distributed_loss(value: Any) -> Any:
+        return _device_local_mnr_output(
+            task,
+            value,
+            value.query,
+            value.document,
+            group_count=jax.device_count(),
+            mesh=mesh,
+            partition_axis="data",
+            row_chunk_size=global_batch_size,
+        ).loss
+
+    with jax.set_mesh(mesh):
+        actual = float(distributed_loss(batch).block_until_ready())
+
+    all_rows = np.arange(global_batch_size, dtype=np.float32)
+    all_query = np.sin(all_rows[:, None] * 0.17 + dimensions[None, :] * 0.11)
+    all_document = np.cos(all_rows[:, None] * 0.13 + dimensions[None, :] * 0.07)
+    all_query /= np.linalg.norm(all_query, axis=1, keepdims=True)
+    all_document /= np.linalg.norm(all_document, axis=1, keepdims=True)
+    rows_per_device = global_batch_size // jax.device_count()
+    losses = []
+    for start in range(0, global_batch_size, rows_per_device):
+        logits = 3.0 * (
+            all_query[start : start + rows_per_device]
+            @ all_document[start : start + rows_per_device].T
+        )
+        maximum = logits.max(axis=1)
+        logsumexp = maximum + np.log(
+            np.exp(logits - maximum[:, None]).sum(axis=1)
+        )
+        losses.extend(logsumexp - np.diag(logits))
+    expected = float(np.mean(losses))
+    if jax.process_index() == 0:
+        _emit(
+            "local_negative_mnr",
+            process_count=jax.process_count(),
+            device_count=jax.device_count(),
+            global_batch_size=global_batch_size,
+            actual_loss=actual,
+            expected_loss=expected,
+            absolute_difference=abs(actual - expected),
+        )
+    np.testing.assert_allclose(actual, expected, rtol=2e-5, atol=2e-6)
+
+
 def _torch_worker(index: int, steps: int, global_batch_size: int) -> None:
     del index
     import torch
@@ -625,6 +717,8 @@ def main(arguments: Sequence[str] | None = None) -> None:
         type=int,
         default=SENTENCE_TRANSFORMER_LOCAL_BATCH_SIZE,
     )
+    local_negative = commands.add_parser("jax-local-negative-mnr")
+    local_negative.add_argument("--global-batch-size", type=int, default=64)
     parsed = parser.parse_args(arguments)
     if parsed.command == "topology":
         jax_topology(
@@ -647,6 +741,8 @@ def main(arguments: Sequence[str] | None = None) -> None:
             steps=parsed.steps,
             local_batch_size=parsed.local_batch_size,
         )
+    elif parsed.command == "jax-local-negative-mnr":
+        jax_local_negative_mnr(global_batch_size=parsed.global_batch_size)
     else:
         torch_dense(steps=parsed.steps, global_batch_size=parsed.global_batch_size)
 
