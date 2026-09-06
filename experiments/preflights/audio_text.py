@@ -25,6 +25,7 @@ from experiments.preflights.accelerator import (
     data_parallel_job,
     deterministic_tpu_cached_mnr,
     enable_torch_xla_checkpointing,
+    grad_cache_replay_size,
     initialize_jax,
     process_local_rows,
     torch_device,
@@ -987,6 +988,11 @@ def _sentence_transformers_worker(
     if batch_size % world_size:
         raise ValueError("global batch must divide the accelerator count")
     local_batch_size = batch_size // world_size
+    replay_size = grad_cache_replay_size(
+        platform,
+        local_batch_size=local_batch_size,
+        preferred_size=GRAD_CACHE_MICRO_BATCH,
+    )
     if platform == "tpu":
         run_directory = run_directory / f"process-{torch_rank()}"
     if sentence_transformers.__version__ != contract.reference_version:
@@ -1036,7 +1042,7 @@ def _sentence_transformers_worker(
     ).with_transform(_ReferenceAudioTransform(data_directory))
     loss_options = {
         "scale": 20.0,
-        "mini_batch_size": GRAD_CACHE_MICRO_BATCH,
+        "mini_batch_size": replay_size,
     }
     loss = (
         deterministic_tpu_cached_mnr(
@@ -1106,6 +1112,7 @@ def _sentence_transformers_worker(
             "steps": steps,
             "global_batch_size": batch_size,
             "local_batch_size": local_batch_size,
+            "grad_cache_micro_batch_size": replay_size,
             "platform": platform,
             "device_count": world_size,
             "activation_checkpointing": "torch-xla-reentrant",

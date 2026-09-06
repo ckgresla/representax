@@ -82,6 +82,22 @@ def process_local_rows(rows: Sequence[Row]) -> tuple[Sequence[Row], int, int]:
     return rows[start : start + local_size], start, len(rows)
 
 
+def grad_cache_replay_size(
+    platform: Platform,
+    *,
+    local_batch_size: int,
+    preferred_size: int,
+) -> int:
+    """Use one replay on TPU to keep lazy XLA compilation bounded."""
+
+    if local_batch_size <= 0 or preferred_size <= 0:
+        raise ValueError("GradCache replay sizes must be positive")
+    return local_batch_size if platform == "tpu" else min(
+        local_batch_size,
+        preferred_size,
+    )
+
+
 def training_only_job(job: Any, *, platform: Platform) -> Any:
     """Disable lifecycle work while preserving an experiment's sharding plan."""
 
@@ -282,6 +298,7 @@ __all__ = [
     "data_parallel_job",
     "deterministic_tpu_cached_mnr",
     "enable_torch_xla_checkpointing",
+    "grad_cache_replay_size",
     "initialize_jax",
     "install_torch_xla_checkpointing",
     "process_local_rows",

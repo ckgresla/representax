@@ -7,8 +7,25 @@ from experiments.preflights import accelerator
 from experiments.preflights.accelerator import (
     data_parallel_job,
     deterministic_tpu_cached_mnr,
+    grad_cache_replay_size,
     use_fixed_text_padding,
 )
+
+
+def test_tpu_grad_cache_uses_one_local_replay() -> None:
+    assert grad_cache_replay_size(
+        "tpu",
+        local_batch_size=16,
+        preferred_size=2,
+    ) == 16
+
+
+def test_gpu_grad_cache_keeps_the_preferred_replay_size() -> None:
+    assert grad_cache_replay_size(
+        "gpu",
+        local_batch_size=16,
+        preferred_size=2,
+    ) == 2
 
 
 @pytest.mark.parametrize(
