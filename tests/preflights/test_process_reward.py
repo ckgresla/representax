@@ -81,7 +81,7 @@ def test_representax_job_preserves_frozen_scientific_contract(tmp_path) -> None:
     assert job.export.enabled
     assert job.export.huggingface is None
     assert job.model.parameters["sequence_length_buckets"][-1] == 2048
-    assert EXECUTION_SEQUENCE_LENGTH == 256
+    assert EXECUTION_SEQUENCE_LENGTH == 2048
     assert STEPS_PER_TRAJECTORY == 4
 
 

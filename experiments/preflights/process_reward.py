@@ -17,15 +17,25 @@ from typing import Any
 
 import numpy as np
 
+from experiments.preflights.accelerator import (
+    Platform,
+    data_parallel_job,
+    initialize_jax,
+    torch_device_report,
+    torch_rank,
+    torch_reset_peak_memory,
+    torch_synchronize,
+    torch_world_size,
+)
 from experiments.preflights.provenance import reference_source, write_reference_result
-from experiments.preflights.timing import CudaStepTimer
+from experiments.preflights.timing import CudaStepTimer, warm_step_summary
 
 ROOT = Path(__file__).resolve().parents[2]
 CAMPAIGN_MANIFEST = ROOT / "benchmarks/configs/paper-campaign-v1.json"
 TEXT_REWARD_MANIFEST = ROOT / "benchmarks/configs/paper-text-reward-v1.json"
 FRAMEWORKS = ("representax", "trl")
 STEPS_PER_TRAJECTORY = 4
-EXECUTION_SEQUENCE_LENGTH = 256
+EXECUTION_SEQUENCE_LENGTH = 2048
 SEQUENCE_LENGTH_BUCKETS = (256, 512, 1024, 2048)
 MICRO_BATCH_SIZE = 2
 EVALUATION_BATCH_SIZE = 8
@@ -545,8 +555,9 @@ def _representax_worker(
     run_directory: Path,
     steps: int,
     seed: int,
+    platform: Platform = "gpu",
 ) -> dict[str, Any]:
-    import jax
+    jax = initialize_jax(platform)
 
     from representax import load_inference_bundle
     from representax.train import run_job
@@ -558,20 +569,53 @@ def _representax_worker(
         steps=steps,
         seed=seed,
     )
+    if platform == "tpu":
+        job = data_parallel_job(
+            job,
+            device_count=jax.device_count(),
+            platform=platform,
+            training_only=True,
+        )
+        run_directory = run_directory / f"process-{jax.process_index()}"
     started = time.perf_counter()
-    paused = run_job(job, run_directory, stop_after=steps // 2)
-    if paused.completed_iterations != steps // 2:
-        raise RuntimeError("Representax did not stop at the resumable midpoint")
-    del paused
-    gc.collect()
-    jax.clear_caches()
-    completed = run_job(job, run_directory, resume=True)
+    if platform == "tpu":
+        completed = run_job(job, run_directory)
+    else:
+        paused = run_job(job, run_directory, stop_after=steps // 2)
+        if paused.completed_iterations != steps // 2:
+            raise RuntimeError("Representax did not stop at the resumable midpoint")
+        del paused
+        gc.collect()
+        jax.clear_caches()
+        completed = run_job(job, run_directory, resume=True)
     jax.block_until_ready(completed.state)
     elapsed = time.perf_counter() - started
-    if not completed.resumed or completed.completed_iterations != steps:
+    if completed.completed_iterations != steps or completed.resumed != (
+        platform == "gpu"
+    ):
         raise RuntimeError("Representax did not resume to the requested update count")
-    if completed.inference_bundle is None:
+    if completed.inference_bundle is None and platform == "gpu":
         raise RuntimeError("Representax did not export a native inference bundle")
+
+    rows = _read_jsonl(run_directory / "metrics.jsonl")
+    training = [row for row in rows if row.get("event") == "training_step"]
+    if platform == "tpu":
+        return {
+            "schema_version": "representax-process-reward-worker-v1",
+            "framework": "representax",
+            "steps": steps,
+            "batch_size": contract.batch_size,
+            "maximum_length": contract.maximum_length,
+            "execution_sequence_length": EXECUTION_SEQUENCE_LENGTH,
+            "platform": platform,
+            "device_count": jax.device_count(),
+            "process_count": jax.process_count(),
+            "elapsed_seconds": elapsed,
+            "steady_state": representax_steady_state(training, contract.batch_size),
+            "final_training": training[-1]["metrics"],
+            "losses": [float(row["metrics"]["train/loss"]) for row in training],
+            "inference_bundle": None,
+        }
 
     _, processor = load_process_reward_model(
         checkpoint,
@@ -589,8 +633,6 @@ def _representax_worker(
     if not np.array_equal(final_probe, reload_probe):
         raise RuntimeError("Representax native reload changed step logits")
 
-    rows = _read_jsonl(run_directory / "metrics.jsonl")
-    training = [row for row in rows if row.get("event") == "training_step"]
     evaluations = [row for row in rows if row.get("event") == "evaluation"]
     compile_seconds = sum(
         float(row["metrics"].get("perf/compilation_and_first_step_seconds", 0.0))
@@ -630,6 +672,7 @@ def _trl_worker(
     run_directory: Path,
     steps: int,
     seed: int,
+    platform: Platform = "gpu",
 ) -> dict[str, Any]:
     import torch
     import torch.nn.functional as functional
@@ -648,6 +691,15 @@ def _trl_worker(
     from trl.experimental.prm import PRMConfig, PRMTrainer
 
     contract = frozen_contract()
+    world_size = torch_world_size()
+    if contract.batch_size % world_size:
+        raise ValueError("global batch must divide the accelerator count")
+    local_batch_size = contract.batch_size // world_size
+    micro_batch_size = min(MICRO_BATCH_SIZE, local_batch_size)
+    while local_batch_size % micro_batch_size:
+        micro_batch_size -= 1
+    if platform == "tpu":
+        run_directory = run_directory / f"process-{torch_rank()}"
     if trl.__version__ != contract.reference_version:
         raise RuntimeError(
             f"expected trl=={contract.reference_version}, found {trl.__version__}"
@@ -724,10 +776,11 @@ def _trl_worker(
     def arguments() -> PRMConfig:
         return PRMConfig(
             output_dir=str(run_directory / "checkpoints"),
-            per_device_train_batch_size=MICRO_BATCH_SIZE,
-            gradient_accumulation_steps=contract.batch_size // MICRO_BATCH_SIZE,
+            per_device_train_batch_size=micro_batch_size,
+            gradient_accumulation_steps=local_batch_size // micro_batch_size,
             max_steps=steps,
             learning_rate=1e-5,
+            optim="adamw_torch_fused" if platform == "gpu" else "adamw_torch",
             lr_scheduler_type="cosine",
             warmup_steps=1,
             weight_decay=0.0,
@@ -742,14 +795,14 @@ def _trl_worker(
             logging_steps=1,
             report_to="none",
             disable_tqdm=True,
-            save_strategy="steps",
+            save_strategy="steps" if platform == "gpu" else "no",
             save_steps=steps // 2,
             save_total_limit=2,
             dataloader_drop_last=True,
-            dataloader_num_workers=4,
-            dataloader_prefetch_factor=2,
-            dataloader_persistent_workers=True,
-            dataloader_pin_memory=True,
+            dataloader_num_workers=4 if platform == "gpu" else 0,
+            dataloader_prefetch_factor=2 if platform == "gpu" else None,
+            dataloader_persistent_workers=platform == "gpu",
+            dataloader_pin_memory=platform == "gpu",
             seed=seed,
             data_seed=seed,
             max_length=contract.maximum_length,
@@ -765,12 +818,14 @@ def _trl_worker(
         train_dataset=train,
         eval_dataset=evaluation,
         processing_class=tokenizer,
-        callbacks=[first_timer.callback(), StopAtMidpoint()],
+        callbacks=[first_timer.callback()]
+        if platform == "tpu"
+        else [first_timer.callback(), StopAtMidpoint()],
     )
     if first.model_accepts_loss_kwargs:
         raise RuntimeError("TRL wrapper must use Trainer-owned loss accumulation")
-    initial_evaluation = first.evaluate()
-    torch.cuda.reset_peak_memory_stats()
+    initial_evaluation = first.evaluate() if platform == "gpu" else None
+    torch_reset_peak_memory()
     started = time.perf_counter()
     first.train()
     first_losses = [
@@ -778,6 +833,34 @@ def _trl_worker(
         for row in first.state.log_history
         if row.get("loss") is not None
     ]
+    if platform == "tpu":
+        torch_synchronize()
+        training_seconds = time.perf_counter() - started
+        return {
+            "schema_version": "representax-process-reward-worker-v1",
+            "framework": "trl",
+            "framework_version": trl.__version__,
+            "transformers_version": transformers.__version__,
+            "steps": steps,
+            "batch_size": contract.batch_size,
+            "local_batch_size": local_batch_size,
+            "micro_batch_size": micro_batch_size,
+            "maximum_length": contract.maximum_length,
+            "execution_sequence_length": EXECUTION_SEQUENCE_LENGTH,
+            "platform": platform,
+            "device_count": world_size,
+            "training_seconds": training_seconds,
+            "steady_state": {
+                **warm_step_summary(first_timer.rows, batch_size=contract.batch_size),
+            },
+            "step_timings": [
+                {"step": step, "seconds": duration}
+                for step, duration in first_timer.rows
+            ],
+            "losses": first_losses,
+            "inference_bundle": None,
+            **torch_device_report(),
+        }
     midpoint = run_directory / "checkpoints" / f"checkpoint-{steps // 2}"
     if not midpoint.is_dir():
         raise RuntimeError("TRL did not write its midpoint checkpoint")
@@ -915,11 +998,24 @@ def _worker(arguments: argparse.Namespace) -> None:
         run_directory=arguments.run_directory,
         steps=arguments.steps,
         seed=arguments.seed,
+        platform=arguments.platform,
     )
+    if arguments.platform == "tpu":
+        rank = (
+            initialize_jax("tpu").process_index()
+            if arguments.framework == "representax"
+            else torch_rank()
+        )
+        if rank != 0:
+            return
     if arguments.framework == "representax":
         _write_json(arguments.report, report)
     else:
         write_reference_result(arguments.report, report, reference="trl")
+
+
+def _xla_worker(_index: int, arguments: argparse.Namespace) -> None:
+    _worker(arguments)
 
 
 def _run_process(
@@ -1038,6 +1134,7 @@ def _parser() -> argparse.ArgumentParser:
     worker.add_argument("--report", type=Path, required=True)
     worker.add_argument("--steps", type=int, default=4)
     worker.add_argument("--seed", type=int, default=7)
+    worker.add_argument("--platform", choices=("gpu", "tpu"), default="gpu")
 
     pair = subparsers.add_parser("pair")
     pair.add_argument("--checkpoint", type=Path, required=True)
@@ -1069,7 +1166,12 @@ def main() -> None:
             )
         )
     elif arguments.command == "worker":
-        _worker(arguments)
+        if arguments.framework == "trl" and arguments.platform == "tpu":
+            import torch_xla
+
+            torch_xla.launch(_xla_worker, args=(arguments,))
+        else:
+            _worker(arguments)
     else:
         _pair(arguments)
 

@@ -19,6 +19,18 @@ from typing import Any
 
 import numpy as np
 
+from experiments.preflights.accelerator import (
+    Platform,
+    data_parallel_job,
+    initialize_jax,
+    torch_device,
+    torch_device_report,
+    torch_empty_cache,
+    torch_rank,
+    torch_reset_peak_memory,
+    torch_synchronize,
+    torch_world_size,
+)
 from experiments.preflights.provenance import reference_source, write_reference_result
 from experiments.preflights.timing import CudaStepTimer, warm_step_summary
 
@@ -635,8 +647,9 @@ def _representax_worker(
     steps: int,
     seed: int,
     batch_size: int,
+    platform: Platform = "gpu",
 ) -> dict[str, Any]:
-    import jax
+    jax = initialize_jax(platform)
 
     from representax import load_inference_bundle
     from representax.config import PrecisionConfig
@@ -648,32 +661,67 @@ def _representax_worker(
     from representax.precision import precision_context, resolve_precision_policy
     from representax.train import run_job
 
-    if jax.default_backend() != "gpu" or len(jax.devices()) != 1:
-        raise RuntimeError("video-text preflight requires exactly one visible GPU")
     job = _representax_job(
         checkpoint=checkpoint,
         data_directory=data_directory,
         steps=steps,
         seed=seed,
         batch_size=batch_size,
+        export_enabled=platform == "gpu",
     )
+    if platform == "tpu":
+        job = data_parallel_job(
+            job,
+            device_count=jax.device_count(),
+            platform=platform,
+            training_only=True,
+        )
+        run_directory = run_directory / f"process-{jax.process_index()}"
     started = time.perf_counter()
-    if not (run_directory / "run.json").is_file():
+    if platform == "tpu":
+        completed = run_job(job, run_directory)
+    else:
         paused = run_job(job, run_directory, stop_after=steps // 2)
         if paused.completed_iterations != steps // 2:
             raise RuntimeError("Representax did not stop at the midpoint checkpoint")
         del paused
         gc.collect()
         jax.clear_caches()
-    completed = run_job(job, run_directory, resume=True)
+        completed = run_job(job, run_directory, resume=True)
     jax.block_until_ready(completed.state)
-    if not completed.resumed or completed.completed_iterations != steps:
+    if completed.completed_iterations != steps or completed.resumed != (
+        platform == "gpu"
+    ):
         raise RuntimeError("Representax did not resume to the final update")
-    if completed.inference_bundle is None:
+    if completed.inference_bundle is None and platform == "gpu":
         raise RuntimeError("Representax did not produce an inference bundle")
     trained_model = completed.state.model
     if not isinstance(trained_model, Qwen2_5OmniEncoder):
         raise TypeError("video-text training returned a different model family")
+
+    rows = _read_jsonl(run_directory / "metrics.jsonl")
+    updates = list(
+        {
+            int(row["iteration"]): row
+            for row in rows
+            if row.get("event") == "training_step"
+        }.values()
+    )
+    if platform == "tpu":
+        return {
+            "schema_version": "representax-video-text-worker-v1",
+            "framework": "representax",
+            "steps": steps,
+            "global_batch_size": batch_size,
+            "platform": platform,
+            "device_count": jax.device_count(),
+            "process_count": jax.process_count(),
+            "elapsed_seconds": time.perf_counter() - started,
+            "timing": _timing(rows, batch_size),
+            "final_loss": float(updates[-1]["metrics"]["train/loss"]),
+            "training_metrics": [row["metrics"] for row in updates],
+            "inference_bundle": None,
+        }
 
     processor = make_qwen2_5_omni_processor(
         checkpoint,
@@ -724,14 +772,6 @@ def _representax_worker(
     if reload_difference != 0.0:
         raise RuntimeError("native inference reload changed video-text embeddings")
 
-    rows = _read_jsonl(run_directory / "metrics.jsonl")
-    updates = list(
-        {
-            int(row["iteration"]): row
-            for row in rows
-            if row.get("event") == "training_step"
-        }.values()
-    )
     evaluations = list(
         {
             int(row["iteration"]): row
@@ -860,6 +900,7 @@ def _sentence_transformers_worker(
     steps: int,
     seed: int,
     batch_size: int,
+    platform: Platform = "gpu",
 ) -> dict[str, Any]:
     import datasets
     import sentence_transformers
@@ -882,6 +923,12 @@ def _sentence_transformers_worker(
             return None
 
     contract = frozen_contract()
+    world_size = torch_world_size()
+    if batch_size % world_size:
+        raise ValueError("global batch must divide the accelerator count")
+    local_batch_size = batch_size // world_size
+    if platform == "tpu":
+        run_directory = run_directory / f"process-{torch_rank()}"
     if sentence_transformers.__version__ != contract.reference_version:
         raise RuntimeError(
             f"expected sentence-transformers=={contract.reference_version}, "
@@ -889,7 +936,7 @@ def _sentence_transformers_worker(
         )
     model = SentenceTransformer(
         str(checkpoint),
-        device="cuda",
+        device=torch_device(),
         local_files_only=True,
         model_kwargs={"dtype": torch.bfloat16},
     )
@@ -919,8 +966,10 @@ def _sentence_transformers_worker(
     if not training_prompt:
         raise RuntimeError("the frozen video-text checkpoint has no default prompt")
     initial_started = time.perf_counter()
-    initial_evaluation = _reference_evaluation(
-        model, data_directory, batch_size=EVALUATION_BATCH_SIZE
+    initial_evaluation = (
+        _reference_evaluation(model, data_directory, batch_size=EVALUATION_BATCH_SIZE)
+        if platform == "gpu"
+        else None
     )
     initial_evaluation_seconds = time.perf_counter() - initial_started
     rows = _read_jsonl(data_directory / "train.jsonl")[: batch_size * steps]
@@ -946,9 +995,10 @@ def _sentence_transformers_worker(
     )
     arguments = SentenceTransformerTrainingArguments(
         output_dir=str(run_directory / "checkpoints"),
-        per_device_train_batch_size=batch_size,
+        per_device_train_batch_size=local_batch_size,
         max_steps=steps,
         learning_rate=2e-5,
+        optim="adamw_torch_fused" if platform == "gpu" else "adamw_torch",
         lr_scheduler_type="cosine",
         warmup_steps=1,
         weight_decay=0.0,
@@ -963,14 +1013,14 @@ def _sentence_transformers_worker(
         logging_steps=1,
         report_to="none",
         disable_tqdm=True,
-        save_strategy="steps",
+        save_strategy="steps" if platform == "gpu" else "no",
         save_steps=steps // 2,
         save_total_limit=2,
         dataloader_drop_last=True,
-        dataloader_num_workers=8,
-        dataloader_prefetch_factor=1,
-        dataloader_persistent_workers=True,
-        dataloader_pin_memory=True,
+        dataloader_num_workers=8 if platform == "gpu" else 0,
+        dataloader_prefetch_factor=1 if platform == "gpu" else None,
+        dataloader_persistent_workers=platform == "gpu",
+        dataloader_pin_memory=platform == "gpu",
         batch_sampler=sequential_sentence_transformers_batches,
         seed=seed,
         data_seed=seed,
@@ -978,17 +1028,56 @@ def _sentence_transformers_worker(
     )
     midpoint_step = steps // 2
     timer = CudaStepTimer()
-    midpoint_callback = _StopAtMidpoint.build(midpoint_step)
+    midpoint_callback = (
+        _StopAtMidpoint.build(midpoint_step) if platform == "gpu" else None
+    )
     trainer = PreflightTrainer(
         model=model,
         args=arguments,
         train_dataset=train_dataset,
         loss=loss,
-        callbacks=[midpoint_callback, timer.callback()],
+        callbacks=[timer.callback()]
+        if midpoint_callback is None
+        else [midpoint_callback, timer.callback()],
     )
-    torch.cuda.reset_peak_memory_stats()
+    torch_reset_peak_memory()
     started = time.perf_counter()
     trainer.train()
+    if platform == "tpu":
+        torch_synchronize()
+        training_seconds = time.perf_counter() - started
+        losses = [
+            float(row["loss"])
+            for row in trainer.state.log_history
+            if row.get("loss") is not None
+        ]
+        warmed = warm_step_summary(timer.rows, batch_size=batch_size)
+        return {
+            "schema_version": "representax-video-text-worker-v1",
+            "framework": "sentence-transformers",
+            "framework_version": sentence_transformers.__version__,
+            "transformers_version": transformers.__version__,
+            "steps": steps,
+            "global_batch_size": batch_size,
+            "local_batch_size": local_batch_size,
+            "platform": platform,
+            "device_count": world_size,
+            "training_seconds": training_seconds,
+            "timing": {
+                "execution": "xla",
+                "compilation_and_first_step_seconds": [],
+                "warmed_steps": warmed["measured_steps"],
+                "median_warmed_step_seconds": warmed["median_step_seconds"],
+                "warmed_examples_per_second": warmed["examples_per_second"],
+            },
+            "step_timings": [
+                {"step": step, "seconds": duration} for step, duration in timer.rows
+            ],
+            "losses": losses,
+            "inference_bundle": None,
+            **torch_device_report(),
+        }
+    assert midpoint_callback is not None
     midpoint = run_directory / "checkpoints" / f"checkpoint-{steps // 2}"
     if trainer.state.global_step != steps // 2 or not midpoint.is_dir():
         raise RuntimeError(
@@ -996,7 +1085,7 @@ def _sentence_transformers_worker(
         )
     trainer.remove_callback(type(midpoint_callback))
     output = trainer.train(resume_from_checkpoint=str(midpoint))
-    torch.cuda.synchronize()
+    torch_synchronize()
     training_seconds = time.perf_counter() - started
     if trainer.state.global_step != steps:
         raise RuntimeError("Sentence Transformers did not resume to the final update")
@@ -1024,12 +1113,12 @@ def _sentence_transformers_worker(
     device = torch.cuda.get_device_name()
     del trainer, loss, model
     gc.collect()
-    torch.cuda.empty_cache()
+    torch_empty_cache()
 
     def load_probe(path: Path) -> np.ndarray:
         restored = SentenceTransformer(
             str(path),
-            device="cuda",
+            device=torch_device(),
             local_files_only=True,
             model_kwargs={"dtype": torch.bfloat16},
         )
@@ -1045,7 +1134,7 @@ def _sentence_transformers_worker(
         embedding = restored.encode([probe], convert_to_numpy=True)
         del restored
         gc.collect()
-        torch.cuda.empty_cache()
+        torch_empty_cache()
         return embedding
 
     midpoint_probe = load_probe(midpoint)
@@ -1110,7 +1199,16 @@ def _worker(arguments: argparse.Namespace) -> None:
         steps=arguments.steps,
         seed=arguments.seed,
         batch_size=arguments.batch_size,
+        platform=arguments.platform,
     )
+    if arguments.platform == "tpu":
+        rank = (
+            initialize_jax("tpu").process_index()
+            if arguments.framework == "representax"
+            else torch_rank()
+        )
+        if rank != 0:
+            return
     if arguments.framework == "representax":
         _write_json(arguments.report, report)
     else:
@@ -1120,6 +1218,10 @@ def _worker(arguments: argparse.Namespace) -> None:
             reference="sentence-transformers",
         )
     print(json.dumps(report, indent=2, sort_keys=True))
+
+
+def _xla_worker(_index: int, arguments: argparse.Namespace) -> None:
+    _worker(arguments)
 
 
 def _pair(arguments: argparse.Namespace) -> None:
@@ -1224,6 +1326,7 @@ def _parser() -> argparse.ArgumentParser:
     worker.add_argument("--steps", type=int, default=4)
     worker.add_argument("--seed", type=int, default=7)
     worker.add_argument("--batch-size", type=int, default=PREFLIGHT_BATCH_SIZE)
+    worker.add_argument("--platform", choices=("gpu", "tpu"), default="gpu")
 
     pair = subparsers.add_parser("pair")
     pair.add_argument("--checkpoint", type=Path, required=True)
@@ -1252,7 +1355,15 @@ def main() -> None:
             )
         )
     elif arguments.command == "worker":
-        _worker(arguments)
+        if (
+            arguments.framework == "sentence-transformers"
+            and arguments.platform == "tpu"
+        ):
+            import torch_xla
+
+            torch_xla.launch(_xla_worker, args=(arguments,))
+        else:
+            _worker(arguments)
     else:
         _pair(arguments)
 

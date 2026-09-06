@@ -21,6 +21,16 @@ from typing import Any, Literal, cast
 
 import numpy as np
 
+from experiments.preflights.accelerator import (
+    Platform,
+    data_parallel_job,
+    initialize_jax,
+    torch_device_report,
+    torch_rank,
+    torch_reset_peak_memory,
+    torch_synchronize,
+    torch_world_size,
+)
 from experiments.preflights.provenance import reference_source, write_reference_result
 from experiments.preflights.timing import CudaStepTimer
 
@@ -596,7 +606,6 @@ def _trl_probe_worker(
     import transformers
     from torch.utils.data import SequentialSampler
     from transformers import AutoTokenizer
-    from transformers.trainer_callback import TrainerCallback
 
     trl = import_module("trl")
     RewardConfig = trl.RewardConfig
@@ -927,15 +936,14 @@ def _representax_worker(
     steps: int,
     seed: int,
     padding: PaddingMode = "static",
+    platform: Platform = "gpu",
 ) -> dict[str, Any]:
-    import jax
+    jax = initialize_jax(platform)
 
     from representax import load_inference_bundle
     from representax.models.qwen_reward import QwenRewardModel
     from representax.train import run_job
 
-    if jax.default_backend() != "gpu" or len(jax.devices()) != 1:
-        raise RuntimeError("outcome-reward preflight requires one visible GPU")
     contract = frozen_contract()
     job = _representax_job(
         checkpoint=checkpoint,
@@ -945,7 +953,39 @@ def _representax_worker(
         sequence_length_buckets=(
             (contract.maximum_length,) if padding == "static" else SEQUENCE_BUCKETS
         ),
+        lifecycle=platform == "gpu",
     )
+    if platform == "tpu":
+        job = data_parallel_job(
+            job,
+            device_count=jax.device_count(),
+            platform=platform,
+            training_only=True,
+        )
+        run_directory = run_directory / f"process-{jax.process_index()}"
+        started = time.perf_counter()
+        completed = run_job(job, run_directory)
+        jax.block_until_ready(completed.state)
+        rows = _read_jsonl(run_directory / "metrics.jsonl")
+        training = tuple(row for row in rows if row.get("event") == "training_step")
+        return {
+            "schema_version": "representax-outcome-reward-worker-v1",
+            "framework": "representax",
+            "steps": steps,
+            "global_batch_size": contract.global_batch_size,
+            "maximum_length": contract.maximum_length,
+            "padding": padding,
+            "platform": platform,
+            "device_count": jax.device_count(),
+            "process_count": jax.process_count(),
+            "elapsed_seconds": time.perf_counter() - started,
+            "steady_state": steady_state(
+                training, batch_size=contract.global_batch_size
+            ),
+            "final_training": training[-1]["metrics"],
+            "training_metrics": [row["metrics"] for row in training],
+            "inference_bundle": None,
+        }
     run_manifest_path = run_directory / "run.json"
     run_manifest = _document(run_manifest_path) if run_manifest_path.is_file() else None
     if run_manifest is not None and run_manifest.get("status") == "completed":
@@ -1058,6 +1098,7 @@ def _trl_worker(
     steps: int,
     seed: int,
     padding: PaddingMode = "static",
+    platform: Platform = "gpu",
 ) -> dict[str, Any]:
     import torch
     import transformers
@@ -1073,11 +1114,22 @@ def _trl_worker(
     ).DataCollatorForPreference
 
     contract = frozen_contract()
+    world_size = torch_world_size()
+    if contract.global_batch_size % world_size:
+        raise ValueError("global batch must divide the accelerator count")
+    local_batch_size = contract.global_batch_size // world_size
+    micro_batch_size = min(MICRO_BATCH_SIZE, local_batch_size)
+    while local_batch_size % micro_batch_size:
+        micro_batch_size -= 1
+    if platform == "tpu":
+        run_directory = run_directory / f"process-{torch_rank()}"
     if trl.__version__ != contract.reference_version:
         raise RuntimeError(
             f"expected trl=={contract.reference_version}, found {trl.__version__}"
         )
-    if not torch.cuda.is_available() or torch.cuda.device_count() != 1:
+    if platform == "gpu" and (
+        not torch.cuda.is_available() or torch.cuda.device_count() != 1
+    ):
         raise RuntimeError("TRL outcome-reward preflight requires one visible GPU")
 
     class SequentialRewardTrainer(RewardTrainer):
@@ -1123,11 +1175,12 @@ def _trl_worker(
     pad_to_multiple_of = contract.maximum_length if padding == "static" else None
     training_arguments = RewardConfig(
         output_dir=str(run_directory / "checkpoints"),
-        per_device_train_batch_size=MICRO_BATCH_SIZE,
+        per_device_train_batch_size=micro_batch_size,
         per_device_eval_batch_size=EVALUATION_BATCH_SIZE,
-        gradient_accumulation_steps=contract.global_batch_size // MICRO_BATCH_SIZE,
+        gradient_accumulation_steps=local_batch_size // micro_batch_size,
         max_steps=steps,
         learning_rate=1e-5,
+        optim="adamw_torch_fused" if platform == "gpu" else "adamw_torch",
         lr_scheduler_type="cosine",
         warmup_steps=1,
         weight_decay=0.0,
@@ -1143,14 +1196,14 @@ def _trl_worker(
         logging_steps=1,
         report_to="none",
         disable_tqdm=True,
-        save_strategy="steps",
+        save_strategy="steps" if platform == "gpu" else "no",
         save_steps=steps // 2,
         save_total_limit=1,
         dataloader_drop_last=True,
-        dataloader_num_workers=4,
-        dataloader_prefetch_factor=2,
-        dataloader_persistent_workers=True,
-        dataloader_pin_memory=True,
+        dataloader_num_workers=4 if platform == "gpu" else 0,
+        dataloader_prefetch_factor=2 if platform == "gpu" else None,
+        dataloader_persistent_workers=platform == "gpu",
+        dataloader_pin_memory=platform == "gpu",
         seed=seed,
         data_seed=seed,
         max_length=contract.maximum_length,
@@ -1175,14 +1228,48 @@ def _trl_worker(
         eval_dataset=evaluation,
         processing_class=tokenizer,
         data_collator=collator,
-        callbacks=[first_timer.callback(), StopAtMidpoint()],
+        callbacks=[first_timer.callback()]
+        if platform == "tpu"
+        else [first_timer.callback(), StopAtMidpoint()],
     )
-    torch.cuda.reset_peak_memory_stats()
-    initial_evaluation = trainer.evaluate()
+    torch_reset_peak_memory()
+    initial_evaluation = trainer.evaluate() if platform == "gpu" else None
     started = time.perf_counter()
     trainer.train()
-    torch.cuda.synchronize()
+    torch_synchronize()
     first_training_seconds = time.perf_counter() - started
+    if platform == "tpu":
+        losses = [
+            float(row["loss"])
+            for row in trainer.state.log_history
+            if row.get("loss") is not None
+        ]
+        return {
+            "schema_version": "representax-outcome-reward-worker-v1",
+            "framework": "trl",
+            "framework_version": trl.__version__,
+            "transformers_version": transformers.__version__,
+            "steps": steps,
+            "global_batch_size": contract.global_batch_size,
+            "local_batch_size": local_batch_size,
+            "micro_batch_size": micro_batch_size,
+            "maximum_length": contract.maximum_length,
+            "padding": padding,
+            "platform": platform,
+            "device_count": world_size,
+            "training_seconds": first_training_seconds,
+            "examples_per_second": (
+                contract.global_batch_size * steps / first_training_seconds
+            ),
+            "timing": reference_timing(
+                first_timer.rows,
+                batch_size=contract.global_batch_size,
+            ),
+            "training_metrics": list(trainer.state.log_history),
+            "losses": losses,
+            "inference_bundle": None,
+            **torch_device_report(),
+        }
     if int(trainer.state.global_step) != steps // 2:
         raise RuntimeError("TRL did not stop at the midpoint checkpoint")
     midpoint = run_directory / "checkpoints" / f"checkpoint-{steps // 2}"
@@ -1348,6 +1435,7 @@ def _worker(arguments: argparse.Namespace) -> None:
             steps=arguments.steps,
             seed=arguments.seed,
             padding=arguments.padding,
+            platform=arguments.platform,
         )
         report["probe_rows"] = list(
             _read_jsonl(arguments.data_directory / "evaluation.jsonl")[:2]
@@ -1360,11 +1448,24 @@ def _worker(arguments: argparse.Namespace) -> None:
             steps=arguments.steps,
             seed=arguments.seed,
             padding=arguments.padding,
+            platform=arguments.platform,
         )
+    if arguments.platform == "tpu":
+        rank = (
+            initialize_jax("tpu").process_index()
+            if arguments.framework == "representax"
+            else torch_rank()
+        )
+        if rank != 0:
+            return
     if arguments.framework == "representax":
         _write_json(arguments.report, report)
     else:
         write_reference_result(arguments.report, report, reference="trl")
+
+
+def _xla_worker(_index: int, arguments: argparse.Namespace) -> None:
+    _worker(arguments)
 
 
 def _probe_worker(arguments: argparse.Namespace) -> None:
@@ -1565,6 +1666,7 @@ def _parser() -> argparse.ArgumentParser:
     worker.add_argument("--steps", type=int, default=4)
     worker.add_argument("--seed", type=int, default=7)
     worker.add_argument("--padding", choices=("dynamic", "static"), default="static")
+    worker.add_argument("--platform", choices=("gpu", "tpu"), default="gpu")
 
     probe = subparsers.add_parser("probe")
     probe.add_argument("--framework", choices=FRAMEWORKS, required=True)
@@ -1616,7 +1718,12 @@ def main() -> None:
         )
         print(json.dumps(manifest, indent=2, sort_keys=True))
     elif arguments.command == "worker":
-        _worker(arguments)
+        if arguments.framework == "trl" and arguments.platform == "tpu":
+            import torch_xla
+
+            torch_xla.launch(_xla_worker, args=(arguments,))
+        else:
+            _worker(arguments)
     elif arguments.command == "probe":
         _probe_worker(arguments)
     elif arguments.command == "kernel-probe":
