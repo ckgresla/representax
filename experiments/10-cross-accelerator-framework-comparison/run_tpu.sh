@@ -33,11 +33,67 @@ run_one() {
   local recipe=$1
   local seed=$2
   local framework=$3
+  local variant=$framework
+  local output
   local command
+  local status_command
+  local status_output
+  local response_count
+  local complete_count
+
+  if [[ $framework == representax ]]; then
+    case $recipe in
+      dense-retrieval|late-interaction|image-text|audio-text|video-text)
+        variant=representax-local
+        ;;
+    esac
+  fi
+  output="$REMOTE_OUTPUT_ROOT/seed-$seed/$recipe/$variant"
+
+  printf -v status_command \
+    'if grep -q %q %q 2>/dev/null; then echo COMPLETE; else echo INCOMPLETE; fi' \
+    '"status": "completed"' \
+    "$output/run.json"
+  status_output=$(
+    CLOUDSDK_CONFIG=$CLOUDSDK_CONFIG \
+      gcloud alpha compute tpus tpu-vm ssh "$TPU_NAME" \
+        --project="$TPU_PROJECT" \
+        --zone="$TPU_ZONE" \
+        --worker=all \
+        --batch-size=4 \
+        --command="$status_command" 2>/dev/null
+  )
+  response_count=$(grep -Ec '^(COMPLETE|INCOMPLETE)$' <<<"$status_output" || true)
+  complete_count=$(grep -c '^COMPLETE$' <<<"$status_output" || true)
+  if (( response_count != 4 )); then
+    echo "could not read run status from all four TPU workers" >&2
+    return 1
+  fi
+  if (( complete_count == 4 )); then
+    printf '[%s] skipping completed recipe=%s seed=%s framework=%s\n' \
+      "$(date -Is)" "$recipe" "$seed" "$framework"
+    return
+  fi
+  if (( complete_count != 0 )); then
+    printf '[%s] archiving partial recipe=%s seed=%s framework=%s\n' \
+      "$(date -Is)" "$recipe" "$seed" "$framework"
+  fi
+  printf -v command \
+    'if [[ -e %q ]]; then mv %q %q; fi' \
+    "$output" \
+    "$output" \
+    "$output.partial-$(date -u +%Y%m%dT%H%M%SZ)"
+  CLOUDSDK_CONFIG=$CLOUDSDK_CONFIG gcloud alpha compute tpus tpu-vm ssh "$TPU_NAME" \
+    --project="$TPU_PROJECT" \
+    --zone="$TPU_ZONE" \
+    --worker=all \
+    --batch-size=4 \
+    --command="$command"
 
   printf -v command \
-    'cd %q && %q %q suite --framework %q --asset-root %q --output %q --seed %q --steps %q --platform tpu --recipe %q' \
+    'cd %q && JAX_COMPILATION_CACHE_DIR=%q %q %q suite --framework %q --asset-root %q --output %q --seed %q --steps %q --platform tpu --recipe %q' \
     "$REMOTE_REPOSITORY" \
+    "$REMOTE_ASSET_ROOT/jax-cache" \
     "$REMOTE_REPOSITORY/experiments/tpu/.venv-jax/bin/python" \
     "$REMOTE_REPOSITORY/experiments/10-cross-accelerator-framework-comparison/run.py" \
     "$framework" \
