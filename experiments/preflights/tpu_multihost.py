@@ -414,6 +414,20 @@ def jax_local_negative_mnr(*, global_batch_size: int) -> None:
         ),
         sharding,
     )
+    local_document_ids = np.arange(
+        process_start,
+        process_start + local_size,
+        dtype=np.int32,
+    )
+    document_order = jax.make_array_from_process_local_data(
+        sharding,
+        local_document_ids,
+        global_shape=(global_batch_size,),
+    )
+    aligned_positive_mask = jax.jit(
+        lambda mask, order: mask[:, order],
+        out_shardings=NamedSharding(mesh, P("data", None)),
+    )(batch.positive_mask, document_order)
     task = MNRTask(scale=3.0, symmetric=False, negative_scope="local")
 
     @jax.jit
@@ -489,7 +503,7 @@ def jax_local_negative_mnr(*, global_batch_size: int) -> None:
         for value in jax.jit(mapped_loss)(
             batch.query,
             batch.document,
-            batch.positive_mask,
+            aligned_positive_mask,
         )
     )
     jax.block_until_ready((mapped, direct, query_error, mask_error))
