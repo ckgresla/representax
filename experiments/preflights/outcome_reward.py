@@ -59,15 +59,13 @@ class FrozenContract:
 def reference_checkpointing(platform: Platform) -> tuple[bool, dict[str, bool] | None]:
     if platform == "gpu":
         return True, {"use_reentrant": False}
-    return False, None
+    return True, {"use_reentrant": True}
 
 
-def reference_micro_batch_size(platform: Platform, local_batch_size: int) -> int:
-    maximum = MICRO_BATCH_SIZE if platform == "gpu" else 1
-    micro_batch_size = min(maximum, local_batch_size)
-    while local_batch_size % micro_batch_size:
-        micro_batch_size -= 1
-    return micro_batch_size
+def _install_xla_checkpointing() -> None:
+    modeling_utils = import_module("transformers.modeling_utils")
+    xla_checkpoint = import_module("torch_xla.utils.checkpoint").checkpoint
+    modeling_utils.checkpoint = xla_checkpoint
 
 
 def _document(path: Path) -> dict[str, Any]:
@@ -1132,7 +1130,9 @@ def _trl_worker(
     if contract.global_batch_size % world_size:
         raise ValueError("global batch must divide the accelerator count")
     local_batch_size = contract.global_batch_size // world_size
-    micro_batch_size = reference_micro_batch_size(platform, local_batch_size)
+    micro_batch_size = min(MICRO_BATCH_SIZE, local_batch_size)
+    while local_batch_size % micro_batch_size:
+        micro_batch_size -= 1
     if platform == "tpu":
         run_directory = run_directory / f"process-{torch_rank()}"
     if trl.__version__ != contract.reference_version:
@@ -1185,6 +1185,8 @@ def _trl_worker(
     evaluation = _reference_dataset(data_directory / "evaluation.jsonl")
     tokenizer: Any = AutoTokenizer.from_pretrained(checkpoint, local_files_only=True)
     pad_to_multiple_of = contract.maximum_length if padding == "static" else None
+    if platform == "tpu":
+        _install_xla_checkpointing()
     gradient_checkpointing, gradient_checkpointing_kwargs = reference_checkpointing(
         platform
     )
@@ -1271,7 +1273,7 @@ def _trl_worker(
             "maximum_length": contract.maximum_length,
             "padding": padding,
             "platform": platform,
-            "activation_checkpointing": False,
+            "activation_checkpointing": "torch-xla-reentrant",
             "device_count": world_size,
             "training_seconds": first_training_seconds,
             "examples_per_second": (
