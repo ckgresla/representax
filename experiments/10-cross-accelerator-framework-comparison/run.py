@@ -95,7 +95,7 @@ RECIPE_ASSETS = {
     "image-text": ("clip-vit-b-32", "image-data", None),
     "audio-text": ("omni-3b", "audio-data", None),
     "video-text": ("omni-3b", "video-data", None),
-    "v-jepa": (None, "vjepa-canary-512", "vjepa2-reference"),
+    "v-jepa": (None, "vjepa-data", "vjepa2-reference"),
 }
 
 

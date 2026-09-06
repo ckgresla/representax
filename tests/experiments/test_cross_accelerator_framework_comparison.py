@@ -132,6 +132,11 @@ def test_campaign_exposes_every_frozen_recipe() -> None:
     assert module.REFERENCE_FRAMEWORKS["outcome-reward"] == "trl"
     assert module.REFERENCE_FRAMEWORKS["v-jepa"] == "facebookresearch-vjepa2"
     assert set(module.RECIPE_ASSETS) == set(module.RECIPES)
+    assert module.RECIPE_ASSETS["v-jepa"] == (
+        None,
+        "vjepa-data",
+        "vjepa2-reference",
+    )
 
 
 def test_environment_state_records_reproducible_runtime(monkeypatch) -> None:
