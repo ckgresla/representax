@@ -75,6 +75,24 @@ variant() {
   echo "$framework"
 }
 
+prune_run_artifacts() {
+  local output=$1
+  local path
+  local -a paths=()
+  while IFS= read -r -d '' path; do
+    paths+=("$path")
+  done < <(
+    find "$output" \
+      \( -type d \( -name checkpoints -o -name final-model -o -name flat-index \) \
+      -o -type f -name final-model.pt \) -prune -print0
+  )
+  (( ${#paths[@]} )) || return
+  printf '%s\n' "${paths[@]}" >"$output/pruned-artifacts.txt"
+  for path in "${paths[@]}"; do
+    find "$path" -xdev -depth -delete
+  done
+}
+
 run_one() {
   local recipe=$1
   local seed=$2
@@ -100,12 +118,15 @@ run_one() {
   [[ $compile == true ]] && command+=(--torch-compile)
 
   if [[ -f $output/run.json ]] && grep -q '"status": "completed"' "$output/run.json"; then
+    prune_run_artifacts "$output"
     printf '[%s] complete; skipping %s seed=%s framework=%s\n' \
       "$(date -Is)" "$recipe" "$seed" "$framework"
     return
   fi
   if [[ -e $output ]]; then
-    mv "$output" "$output.partial-$(date -u +%Y%m%dT%H%M%SZ)"
+    local partial="$output.partial-$(date -u +%Y%m%dT%H%M%SZ)"
+    mv "$output" "$partial"
+    prune_run_artifacts "$partial"
   fi
 
   printf '[%s] gpu=%s recipe=%s seed=%s framework=%s compile=%s\n' \
@@ -116,6 +137,7 @@ run_one() {
   JAX_COMPILATION_CACHE_DIR="$cache_root/jax/gpu-$gpu/$recipe" \
   TORCHINDUCTOR_CACHE_DIR="$cache_root/torchinductor/gpu-$gpu/$recipe" \
     "${command[@]}"
+  prune_run_artifacts "$output"
 }
 
 run_pair() {
@@ -186,4 +208,3 @@ done
 
 "$python" "$experiment_dir/run.py" aggregate --input "$output_root" --output "$output_root"
 "$python" "$experiment_dir/run.py" aggregate --input "$inductor_root" --output "$inductor_root"
-
