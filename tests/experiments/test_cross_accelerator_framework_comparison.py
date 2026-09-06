@@ -504,7 +504,10 @@ def test_video_recipe_keeps_frozen_batch_and_negative_scope(tmp_path: Path) -> N
 
     command = module._recipe_command(arguments)
 
-    assert command[command.index("--batch-size") + 1] == "128"
+    assert command[command.index("--batch-size") + 1] == str(
+        module.TPU_VIDEO_GLOBAL_BATCH_SIZE
+    )
+    assert module.TPU_VIDEO_GLOBAL_BATCH_SIZE == 112
     assert command[command.index("--negative-scope") + 1] == "local"
 
 

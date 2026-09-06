@@ -35,6 +35,7 @@ WARMUP_RATIO = 0.06
 REPRESENTAX_CHUNK_SIZE = 32
 REFERENCE_CHUNK_SIZE = 128
 TPU_AUDIO_GLOBAL_BATCH_SIZE = 48
+TPU_VIDEO_GLOBAL_BATCH_SIZE = 112
 EXPERIMENT_DIRECTORY = Path(__file__).resolve().parent
 DATA_MANIFEST = EXPERIMENT_DIRECTORY / "data-manifest.json"
 MODEL_MANIFEST = EXPERIMENT_DIRECTORY / "model-manifest.json"
@@ -1093,7 +1094,7 @@ def _recipe_command(arguments: argparse.Namespace) -> list[str]:
             )
         )
     if arguments.recipe == "video-text":
-        command.extend(("--batch-size", "128"))
+        command.extend(("--batch-size", str(TPU_VIDEO_GLOBAL_BATCH_SIZE)))
     if arguments.recipe == "v-jepa":
         if arguments.reference is None:
             raise ValueError("V-JEPA requires --reference")
