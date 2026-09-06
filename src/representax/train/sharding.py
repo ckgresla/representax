@@ -432,15 +432,15 @@ class ShardingPlan:
                 return value
             if sharding.is_fully_addressable:
                 return jax.device_put(value, sharding)
-            if tuple(sharding.spec):
-                raise NotImplementedError(
-                    "multi-host placement of sharded parameters requires "
-                    "process-local checkpoint restoration"
+            if not value.is_fully_addressable:
+                raise ValueError(
+                    "initial state must be process-local before global placement"
                 )
-            return jax.make_array_from_process_local_data(
+            local_value = np.asarray(value)
+            return jax.make_array_from_callback(
+                value.shape,
                 sharding,
-                value,
-                global_shape=value.shape,
+                lambda index: local_value[index],
             )
 
         return jax.tree.map(place, state, self.state_shardings)
