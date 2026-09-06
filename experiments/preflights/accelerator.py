@@ -209,7 +209,11 @@ def deterministic_tpu_cached_mnr(
         if isinstance(value, dict):
             for name, child in value.items():
                 child_path = f"{path}.{name}"
-                if "dropout" in name and isinstance(child, (float, int)) and child:
+                if (
+                    "dropout" in str(name).lower()
+                    and isinstance(child, (float, int))
+                    and child
+                ):
                     active_dropout[child_path] = float(child)
                 else:
                     visit(child, child_path)

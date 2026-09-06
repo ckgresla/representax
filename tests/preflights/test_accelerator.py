@@ -138,7 +138,8 @@ def test_deterministic_tpu_cached_mnr_disables_rng_snapshots() -> None:
             return ()
 
         def __getitem__(self, _index):
-            return SimpleNamespace(auto_model=None)
+            config = SimpleNamespace(to_dict=lambda: {0: {"dropout": 0.0}})
+            return SimpleNamespace(auto_model=SimpleNamespace(config=config))
 
     loss = deterministic_tpu_cached_mnr(Loss, Model(), scale=20.0)
 
