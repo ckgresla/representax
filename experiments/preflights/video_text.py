@@ -25,6 +25,7 @@ from experiments.preflights.accelerator import (
     enable_torch_xla_checkpointing,
     initialize_jax,
     process_local_rows,
+    sentence_transformer_default_prompt,
     torch_device,
     torch_device_report,
     torch_empty_cache,
@@ -989,9 +990,7 @@ def _sentence_transformers_worker(
             bias="none",
         )
     )
-    training_prompt = model.prompts.get(model.default_prompt_name or "")
-    if not training_prompt:
-        raise RuntimeError("the frozen video-text checkpoint has no default prompt")
+    training_prompt = sentence_transformer_default_prompt(model)
     initial_started = time.perf_counter()
     initial_evaluation = (
         _reference_evaluation(model, data_directory, batch_size=EVALUATION_BATCH_SIZE)

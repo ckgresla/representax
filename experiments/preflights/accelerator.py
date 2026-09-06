@@ -82,6 +82,16 @@ def process_local_rows(rows: Sequence[Row]) -> tuple[Sequence[Row], int, int]:
     return rows[start : start + local_size], start, len(rows)
 
 
+def sentence_transformer_default_prompt(model: Any) -> str:
+    """Return the checkpoint's declared default prompt for Trainer preprocessing."""
+
+    name = model.default_prompt_name
+    prompt = model.prompts.get(name or "")
+    if not prompt:
+        raise RuntimeError("the frozen checkpoint has no default training prompt")
+    return str(prompt)
+
+
 def training_only_job(job: Any, *, platform: Platform) -> Any:
     """Disable lifecycle work while preserving an experiment's sharding plan."""
 

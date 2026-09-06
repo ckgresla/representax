@@ -7,6 +7,7 @@ from experiments.preflights import accelerator
 from experiments.preflights.accelerator import (
     data_parallel_job,
     deterministic_tpu_cached_mnr,
+    sentence_transformer_default_prompt,
     use_fixed_text_padding,
 )
 
@@ -96,6 +97,19 @@ def test_fixed_text_padding_preserves_other_processing_settings() -> None:
         },
         "audio": {"sampling_rate": 16_000},
     }
+
+
+def test_sentence_transformer_training_uses_the_declared_default_prompt() -> None:
+    model = SimpleNamespace(
+        default_prompt_name="default",
+        prompts={"default": "Represent this input."},
+    )
+
+    assert sentence_transformer_default_prompt(model) == "Represent this input."
+
+    model.prompts.clear()
+    with pytest.raises(RuntimeError, match="no default training prompt"):
+        sentence_transformer_default_prompt(model)
 
 
 def test_torch_xla_checkpointing_replaces_the_transformers_backend(monkeypatch) -> None:
