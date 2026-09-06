@@ -30,16 +30,21 @@ def test_data_parallel_job_preserves_global_batch(
             max_steps=2,
             seed=7,
             batch=BatchConfig(micro_batch_size=preferred_micro),
-        )
+        ),
+        logging=SimpleNamespace(
+            accelerator=True,
+            model_copy=lambda *, update: SimpleNamespace(**update),
+        ),
     )
     job.model_copy = lambda *, update: SimpleNamespace(**update)
 
-    result = data_parallel_job(job, device_count=devices)
+    result = data_parallel_job(job, device_count=devices, platform="tpu")
 
     assert result.training.global_batch_size == global_batch
     assert result.training.mesh.axis_shapes == (devices,)
     assert result.training.batch.micro_batch_size == micro
     assert result.training.batch.gradient_accumulation_steps == accumulation
+    assert not result.logging.accelerator
 
 
 def test_data_parallel_job_rejects_fractional_local_batches() -> None:
@@ -51,7 +56,11 @@ def test_data_parallel_job_rejects_fractional_local_batches() -> None:
             max_steps=2,
             seed=7,
             batch=BatchConfig(micro_batch_size=2),
-        )
+        ),
+        logging=SimpleNamespace(
+            accelerator=False,
+            model_copy=lambda *, update: SimpleNamespace(**update),
+        ),
     )
     job.model_copy = lambda *, update: SimpleNamespace(**update)
 

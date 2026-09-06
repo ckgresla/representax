@@ -20,7 +20,12 @@ def initialize_jax(platform: Platform) -> Any:
     return jax
 
 
-def data_parallel_job(job: Any, *, device_count: int) -> Any:
+def data_parallel_job(
+    job: Any,
+    *,
+    device_count: int,
+    platform: Platform = "gpu",
+) -> Any:
     """Run fixed global work as replicated-state data parallelism."""
 
     from representax.config import BatchConfig, DDPConfig, MeshConfig
@@ -47,7 +52,10 @@ def data_parallel_job(job: Any, *, device_count: int) -> Any:
             ),
         }
     )
-    return job.model_copy(update={"training": training})
+    logging = job.logging.model_copy(
+        update={"accelerator": job.logging.accelerator and platform == "gpu"}
+    )
+    return job.model_copy(update={"training": training, "logging": logging})
 
 
 def torch_is_tpu() -> bool:

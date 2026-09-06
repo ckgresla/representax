@@ -655,7 +655,11 @@ def _representax_worker(
         seed=seed,
     )
     if jax.device_count() > 1:
-        job = data_parallel_job(job, device_count=jax.device_count())
+        job = data_parallel_job(
+            job,
+            device_count=jax.device_count(),
+            platform=platform,
+        )
     if platform == "tpu":
         run_directory = run_directory / f"process-{jax.process_index()}"
     sick_initial = None
