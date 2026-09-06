@@ -9,6 +9,8 @@ from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import IO, Any
 
+from experiments.preflights.accelerator import torch_synchronize
+
 
 class CudaStepTimer:
     def __init__(self, output: Path | None = None) -> None:
@@ -36,7 +38,6 @@ class CudaStepTimer:
             self._stream = None
 
     def callback(self, *, stop_after: int | None = None) -> Any:
-        import torch
         from transformers import TrainerCallback
 
         owner = self
@@ -45,14 +46,14 @@ class CudaStepTimer:
             def on_train_begin(
                 self, _args: Any, _state: Any, control: Any, **_: Any
             ) -> Any:
-                torch.cuda.synchronize()
+                torch_synchronize()
                 owner._started = time.perf_counter()
                 return control
 
             def on_step_end(
                 self, _args: Any, state: Any, control: Any, **_: Any
             ) -> Any:
-                torch.cuda.synchronize()
+                torch_synchronize()
                 if owner._started is None:
                     raise RuntimeError("optimizer-step timer ended without starting")
                 completed_at = time.perf_counter()

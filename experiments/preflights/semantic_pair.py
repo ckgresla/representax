@@ -18,6 +18,16 @@ from typing import Any, Literal
 
 import numpy as np
 
+from experiments.preflights.accelerator import (
+    Platform,
+    data_parallel_job,
+    initialize_jax,
+    torch_device_report,
+    torch_rank,
+    torch_reset_peak_memory,
+    torch_synchronize,
+    torch_world_size,
+)
 from experiments.preflights.provenance import reference_source, write_reference_result
 from experiments.preflights.timing import CudaStepTimer, warm_step_summary
 
@@ -626,8 +636,9 @@ def _representax_worker(
     run_directory: Path,
     steps: int,
     seed: int,
+    platform: Platform = "gpu",
 ) -> dict[str, Any]:
-    import jax
+    jax = initialize_jax(platform)
 
     from representax import load_inference_bundle
     from representax.train import run_job
@@ -643,6 +654,10 @@ def _representax_worker(
         steps=steps,
         seed=seed,
     )
+    if jax.device_count() > 1:
+        job = data_parallel_job(job, device_count=jax.device_count())
+    if platform == "tpu":
+        run_directory = run_directory / f"process-{jax.process_index()}"
     sick_initial = None
     similarity_curve = None
     processor = None
@@ -774,6 +789,9 @@ def _representax_worker(
         "micro_batch_size": MICRO_BATCH_SIZE,
         "maximum_length": contract.maximum_length,
         "precision": "bfloat16-compute-float32-master",
+        "platform": platform,
+        "device_count": jax.device_count(),
+        "process_count": jax.process_count(),
         "elapsed_seconds": elapsed,
         "compilation_and_first_step_seconds": compile_seconds,
         "steady_state": representax_steady_state(training, training_batch_size),
@@ -790,7 +808,7 @@ def _representax_worker(
         "reload_probe_maximum_absolute_difference": reload_maximum_difference,
         "reload_probe_cosine": reload_cosine,
         "peak_device_bytes": int(
-            (jax.devices()[0].memory_stats() or {}).get("peak_bytes_in_use", 0)
+            (jax.local_devices()[0].memory_stats() or {}).get("peak_bytes_in_use", 0)
         ),
     }
 
@@ -885,6 +903,7 @@ def _sentence_transformers_worker(
     run_directory: Path,
     steps: int,
     seed: int,
+    platform: Platform = "gpu",
 ) -> dict[str, Any]:
     if steps < 4 or steps % 2:
         raise ValueError("steps must be an even integer of at least four")
@@ -909,6 +928,15 @@ def _sentence_transformers_worker(
 
     contract = frozen_contract(workload, model_name)
     training_batch_size = execution_batch_size(workload, contract)
+    world_size = torch_world_size()
+    if training_batch_size % world_size:
+        raise ValueError("global batch must divide the accelerator count")
+    local_batch_size = training_batch_size // world_size
+    micro_batch_size = min(MICRO_BATCH_SIZE, local_batch_size)
+    while local_batch_size % micro_batch_size:
+        micro_batch_size -= 1
+    if platform == "tpu":
+        run_directory = run_directory / f"process-{torch_rank()}"
     if sentence_transformers.__version__ != contract.reference_version:
         raise RuntimeError(
             f"expected sentence-transformers=={contract.reference_version}, "
@@ -941,8 +969,8 @@ def _sentence_transformers_worker(
     )
     arguments = SentenceTransformerTrainingArguments(
         output_dir=str(run_directory / "checkpoints"),
-        per_device_train_batch_size=MICRO_BATCH_SIZE,
-        gradient_accumulation_steps=training_batch_size // MICRO_BATCH_SIZE,
+        per_device_train_batch_size=micro_batch_size,
+        gradient_accumulation_steps=local_batch_size // micro_batch_size,
         max_steps=steps,
         learning_rate=2e-5,
         lr_scheduler_type="cosine",
@@ -966,7 +994,7 @@ def _sentence_transformers_worker(
         dataloader_num_workers=4,
         dataloader_prefetch_factor=2,
         dataloader_persistent_workers=True,
-        dataloader_pin_memory=True,
+        dataloader_pin_memory=platform == "gpu",
         batch_sampler=sequential_sentence_transformers_batches,
         seed=seed,
         data_seed=seed,
@@ -1006,10 +1034,10 @@ def _sentence_transformers_worker(
     )
     if periodic is not None:
         periodic.trainer = trainer
-    torch.cuda.reset_peak_memory_stats()
+    torch_reset_peak_memory()
     started = time.perf_counter()
     output = trainer.train()
-    torch.cuda.synchronize()
+    torch_synchronize()
     training_seconds = time.perf_counter() - started
     losses = [
         float(row["loss"])
@@ -1096,6 +1124,8 @@ def _sentence_transformers_worker(
         "micro_batch_size": MICRO_BATCH_SIZE,
         "maximum_length": contract.maximum_length,
         "precision": "bfloat16-compute-float32-master",
+        "platform": platform,
+        "device_count": world_size,
         "training_seconds": training_seconds,
         "examples_per_second": training_batch_size * steps / training_seconds,
         "steady_state": reference_steady_state(timer.rows, training_batch_size),
@@ -1112,11 +1142,8 @@ def _sentence_transformers_worker(
         "reload_probe_maximum_absolute_difference": reload_maximum_difference,
         "reload_probe_cosine": reload_cosine,
         "reload_probe_relative_l2": reload_relative_l2,
-        "reload_weight_maximum_absolute_difference": (
-            reload_weight_maximum_difference
-        ),
-        "peak_device_bytes": int(torch.cuda.max_memory_allocated()),
-        "peak_reserved_bytes": int(torch.cuda.max_memory_reserved()),
+        "reload_weight_maximum_absolute_difference": (reload_weight_maximum_difference),
+        **torch_device_report(),
     }
 
 
@@ -1131,6 +1158,7 @@ def _worker(arguments: argparse.Namespace) -> None:
             run_directory=arguments.run_directory,
             steps=arguments.steps,
             seed=arguments.seed,
+            platform=arguments.platform,
         )
         if arguments.framework == "representax"
         else _sentence_transformers_worker(
@@ -1142,8 +1170,17 @@ def _worker(arguments: argparse.Namespace) -> None:
             run_directory=arguments.run_directory,
             steps=arguments.steps,
             seed=arguments.seed,
+            platform=arguments.platform,
         )
     )
+    if arguments.platform == "tpu":
+        rank = (
+            initialize_jax("tpu").process_index()
+            if arguments.framework == "representax"
+            else torch_rank()
+        )
+        if rank != 0:
+            return
     if arguments.framework == "representax":
         _write_json(arguments.report, report)
     else:
@@ -1189,6 +1226,8 @@ def _pair(arguments: argparse.Namespace) -> None:
             str(arguments.steps),
             "--seed",
             str(arguments.seed),
+            "--platform",
+            "gpu",
         ]
         environment = os.environ.copy()
         environment.update(
@@ -1282,6 +1321,7 @@ def _parser() -> argparse.ArgumentParser:
     worker.add_argument("--report", type=Path, required=True)
     worker.add_argument("--steps", type=int, default=8)
     worker.add_argument("--seed", type=int, default=7)
+    worker.add_argument("--platform", choices=("gpu", "tpu"), default="gpu")
 
     pair = subparsers.add_parser("pair")
     pair.add_argument(
@@ -1305,7 +1345,15 @@ def main() -> None:
     if arguments.command == "prepare":
         print(json.dumps(prepare_data(arguments.output), indent=2, sort_keys=True))
     elif arguments.command == "worker":
-        _worker(arguments)
+        if (
+            arguments.framework == "sentence-transformers"
+            and arguments.platform == "tpu"
+        ):
+            import torch_xla
+
+            torch_xla.launch(_worker, args=(arguments,))
+        else:
+            _worker(arguments)
     else:
         _pair(arguments)
 
