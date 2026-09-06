@@ -434,7 +434,7 @@ class _TimedBatchFn:
 
     def __call__(self, values: Sequence[Any]) -> _BatchEnvelope:
         started = time.perf_counter()
-        with jax.default_device(jax.devices("cpu")[0]):
+        with jax.default_device(jax.local_devices(backend="cpu")[0]):
             batch = self.batch_fn(values)
         duration = time.perf_counter() - started
         return self.monitor(batch, preprocess_seconds=duration)

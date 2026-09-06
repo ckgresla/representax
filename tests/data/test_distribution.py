@@ -154,3 +154,33 @@ def test_artifact_requires_exactly_one_inline_value_or_lazy_reference():
             uri="s3://video/clip.mp4",
             byte_range=(10, 10),
         )
+
+
+def test_preprocessing_selects_a_process_local_cpu_device(monkeypatch):
+    import jax
+    import numpy as np
+
+    from representax.data import distribution
+
+    local_cpu = jax.local_devices(backend="cpu")[0]
+    calls = []
+
+    def local_devices(*, backend):
+        calls.append(backend)
+        return [local_cpu]
+
+    def global_devices(*args, **kwargs):
+        del args, kwargs
+        raise AssertionError("preprocessing must not select a global CPU device")
+
+    monkeypatch.setattr(distribution.jax, "local_devices", local_devices)
+    monkeypatch.setattr(distribution.jax, "devices", global_devices)
+
+    timed = distribution._TimedBatchFn(
+        batch_fn=lambda rows: np.asarray(rows),
+        monitor=distribution._BatchMonitor(maximum_bytes=None),
+    )
+    envelope = timed([1, 2])
+
+    assert calls == ["cpu"]
+    np.testing.assert_array_equal(envelope.payload, np.asarray([1, 2]))
