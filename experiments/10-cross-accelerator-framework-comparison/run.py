@@ -1236,10 +1236,175 @@ def _run_suite(arguments: argparse.Namespace) -> None:
         )
 
 
+def _measured_run(summary_path: Path) -> dict[str, Any]:
+    output = summary_path.parent
+    run = json.loads((output / "run.json").read_text(encoding="utf-8"))
+    metric_rows = [
+        json.loads(line)
+        for line in (output / "metrics.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    training_rows = [
+        row
+        for row in metric_rows
+        if row.get("event") == "training_step"
+        and "perf/step_seconds" in row.get("metrics", {})
+    ]
+    expected = int(run["measured_steps"])
+    if len(training_rows) < expected:
+        raise ValueError(
+            f"{output} has {len(training_rows)} timed updates; expected {expected}"
+        )
+    measured = training_rows[-expected:]
+    seconds = [float(row["metrics"]["perf/step_seconds"]) for row in measured]
+    examples = [row["metrics"].get("perf/examples") for row in measured]
+    losses = [
+        float(row["metrics"]["train/loss"])
+        for row in training_rows
+        if "train/loss" in row["metrics"]
+    ]
+    result = {
+        "recipe": run["recipe"],
+        "framework": run["framework"],
+        "seed": int(run["seed"]),
+        "measured_updates": len(measured),
+        "total_step_seconds": sum(seconds),
+        "steps_per_second": len(measured) / sum(seconds),
+        "median_step_seconds": statistics.median(seconds),
+        "first_loss": losses[0] if losses else None,
+        "final_loss": losses[-1] if losses else None,
+        "summary_sha256": _sha256(summary_path),
+        "metrics_sha256": _sha256(output / "metrics.jsonl"),
+        "source_commit": run["source"]["commit"],
+        "result_directory": str(output),
+    }
+    if examples and all(value is not None for value in examples):
+        result["examples_per_second"] = sum(int(value) for value in examples) / sum(
+            seconds
+        )
+    return result
+
+
+def _aggregate_runs(input_root: Path) -> dict[str, Any]:
+    records: dict[tuple[str, str, int], dict[str, Any]] = {}
+    for summary_path in sorted(input_root.rglob("summary.json")):
+        output = summary_path.parent
+        if not all(
+            (output / name).is_file()
+            for name in ("run.json", "metrics.jsonl", "source.patch")
+        ):
+            continue
+        record = _measured_run(summary_path)
+        key = (record["recipe"], record["framework"], record["seed"])
+        previous = records.get(key)
+        if (
+            previous is not None
+            and previous["summary_sha256"] != record["summary_sha256"]
+        ):
+            raise ValueError(f"conflicting results for {key}")
+        records[key] = record
+
+    aggregates = []
+    for recipe in RECIPES:
+        by_framework = {}
+        for framework in ("representax", "reference"):
+            selected = [
+                record
+                for (name, owner, _), record in records.items()
+                if name == recipe and owner == framework
+            ]
+            if not selected:
+                continue
+            selected.sort(key=lambda row: row["seed"])
+            step_rates = [float(row["steps_per_second"]) for row in selected]
+            example_rates = [
+                float(row["examples_per_second"])
+                for row in selected
+                if "examples_per_second" in row
+            ]
+            by_framework[framework] = {
+                "seeds": [row["seed"] for row in selected],
+                "seed_count": len(selected),
+                "median_steps_per_second": statistics.median(step_rates),
+                "mean_steps_per_second": statistics.fmean(step_rates),
+                "stdev_steps_per_second": (
+                    statistics.stdev(step_rates) if len(step_rates) > 1 else 0.0
+                ),
+                "median_examples_per_second": (
+                    statistics.median(example_rates) if example_rates else None
+                ),
+                "mean_examples_per_second": (
+                    statistics.fmean(example_rates) if example_rates else None
+                ),
+                "stdev_examples_per_second": (
+                    statistics.stdev(example_rates) if len(example_rates) > 1 else 0.0
+                ),
+            }
+        row: dict[str, Any] = {"recipe": recipe, "frameworks": by_framework}
+        native = by_framework.get("representax", {})
+        reference = by_framework.get("reference", {})
+        native_rate = native.get("median_examples_per_second")
+        reference_rate = reference.get("median_examples_per_second")
+        if native_rate is not None and reference_rate is not None:
+            row["representax_to_reference_ratio"] = native_rate / reference_rate
+        aggregates.append(row)
+    return {
+        "schema_version": "representax-cross-accelerator-results-v1",
+        "generated_at": _utc_now(),
+        "measured_updates_per_seed": MEASURED_STEPS,
+        "runs": sorted(
+            records.values(),
+            key=lambda row: (row["recipe"], row["framework"], row["seed"]),
+        ),
+        "aggregates": aggregates,
+    }
+
+
+def _render_results(results: Mapping[str, Any]) -> str:
+    lines = [
+        "# TPU Framework Comparison",
+        "",
+        "Each seed rate is total examples divided by the sum of its 20 measured "
+        "optimizer-step intervals. The table reports the median seed rate.",
+        "",
+        "| Recipe | Representax ex/s | Reference ex/s | Ratio | Seeds |",
+        "|---|---:|---:|---:|---:|",
+    ]
+    for row in results["aggregates"]:
+        frameworks = row["frameworks"]
+        native = frameworks.get("representax", {})
+        reference = frameworks.get("reference", {})
+        native_rate = native.get("median_examples_per_second")
+        reference_rate = reference.get("median_examples_per_second")
+        ratio = row.get("representax_to_reference_ratio")
+        seed_count = min(native.get("seed_count", 0), reference.get("seed_count", 0))
+        lines.append(
+            "| {recipe} | {native} | {reference} | {ratio} | {seeds} |".format(
+                recipe=row["recipe"],
+                native="-" if native_rate is None else f"{native_rate:.3f}",
+                reference=("-" if reference_rate is None else f"{reference_rate:.3f}"),
+                ratio="-" if ratio is None else f"{ratio:.3f}x",
+                seeds=seed_count,
+            )
+        )
+    return "\n".join(lines) + "\n"
+
+
+def _run_aggregate(arguments: argparse.Namespace) -> None:
+    results = _aggregate_runs(arguments.input)
+    arguments.output.mkdir(parents=True, exist_ok=True)
+    _write_json(arguments.output / "results.json", results)
+    (arguments.output / "RESULTS.md").write_text(
+        _render_results(results), encoding="utf-8"
+    )
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("environment", help=argparse.SUPPRESS)
+    aggregate = commands.add_parser("aggregate")
+    aggregate.add_argument("--input", type=Path, required=True)
+    aggregate.add_argument("--output", type=Path, required=True)
     prepare = commands.add_parser("prepare-data")
     prepare.add_argument("--output", type=Path, required=True)
     prepare.add_argument("--checkpoint", type=Path, required=True)
@@ -1313,6 +1478,9 @@ def main(arguments: Sequence[str] | None = None) -> None:
         return
     if parsed.command == "prepare-data":
         _prepare_data(parsed.output, parsed.checkpoint, parsed.rows)
+        return
+    if parsed.command == "aggregate":
+        _run_aggregate(parsed)
         return
     if parsed.command == "suite":
         _run_suite(parsed)

@@ -188,6 +188,62 @@ def test_materialized_reference_evidence_is_content_addressed(tmp_path: Path) ->
     assert run["worker_log_sha256"] == module._sha256(output / "worker.log")
 
 
+def _write_aggregate_run(
+    module, root: Path, *, framework: str, seed: int, seconds: tuple[float, ...]
+) -> None:
+    output = root / "workers/worker-3" / f"seed-{seed}" / "dense-retrieval" / framework
+    output.mkdir(parents=True)
+    (output / "run.json").write_text(
+        json.dumps(
+            {
+                "recipe": "dense-retrieval",
+                "framework": framework,
+                "seed": seed,
+                "measured_steps": 2,
+                "source": {"commit": "abc123"},
+            }
+        )
+    )
+    rows = [
+        {
+            "event": "training_step",
+            "iteration": step,
+            "metrics": {
+                "perf/step_seconds": duration,
+                "perf/examples": 8,
+                "train/loss": float(4 - step),
+            },
+        }
+        for step, duration in enumerate((9.0, *seconds), start=1)
+    ]
+    (output / "metrics.jsonl").write_text(
+        "".join(json.dumps(row) + "\n" for row in rows)
+    )
+    (output / "summary.json").write_text("{}\n")
+    (output / "source.patch").write_text("")
+
+
+def test_aggregate_uses_complete_measured_intervals(tmp_path: Path) -> None:
+    module = _module()
+    _write_aggregate_run(
+        module, tmp_path, framework="representax", seed=7, seconds=(1.0, 3.0)
+    )
+    _write_aggregate_run(
+        module, tmp_path, framework="reference", seed=7, seconds=(2.0, 4.0)
+    )
+
+    results = module._aggregate_runs(tmp_path)
+    rows = {row["framework"]: row for row in results["runs"]}
+
+    assert rows["representax"]["steps_per_second"] == 0.5
+    assert rows["representax"]["examples_per_second"] == 4.0
+    assert rows["reference"]["examples_per_second"] == 16 / 6
+    assert results["aggregates"][0]["representax_to_reference_ratio"] == 1.5
+    assert "| dense-retrieval | 4.000 | 2.667 | 1.500x | 1 |" in module._render_results(
+        results
+    )
+
+
 def test_environment_state_records_reproducible_runtime(monkeypatch) -> None:
     module = _module()
     monkeypatch.setenv("PJRT_DEVICE", "TPU")
