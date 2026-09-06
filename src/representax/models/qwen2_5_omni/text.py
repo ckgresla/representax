@@ -14,6 +14,7 @@ from representax.models.components import (
     dot_product_attention,
     embedding_lookup,
     rematerialize,
+    stack_parameters,
 )
 from representax.planning import RematerializationPolicy
 
@@ -228,7 +229,7 @@ class Qwen2_5OmniTextLayerStack(eqx.Module):
             # the complete layer stack before scan, which is both unnecessary
             # and prohibitive for multi-billion-parameter towers.
             blocks=jax.tree.map(
-                lambda *values: jnp.stack(values),
+                stack_parameters,
                 *compute_layers,
             ),
             sliding=jnp.asarray(

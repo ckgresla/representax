@@ -15,6 +15,7 @@ from representax.models.components import (
     Linear,
     dot_product_attention,
     rematerialize,
+    stack_parameters,
 )
 from representax.planning import RematerializationPolicy
 
@@ -244,7 +245,7 @@ class Qwen2_5OmniAudioLayerStack(eqx.Module):
         if not layers:
             raise ValueError("Qwen2.5-Omni requires at least one audio layer")
         return cls(
-            layers=jax.tree.map(lambda *values: jnp.stack(values), *layers),
+            layers=jax.tree.map(stack_parameters, *layers),
             depth=len(layers),
         )
 

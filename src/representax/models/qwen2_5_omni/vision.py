@@ -13,6 +13,7 @@ from representax.models.components import (
     RMSNorm,
     dot_product_attention,
     rematerialize,
+    stack_parameters,
 )
 from representax.planning import RematerializationPolicy
 
@@ -244,7 +245,7 @@ class Qwen2_5OmniVisionBlockStack(eqx.Module):
             raise ValueError("Qwen2.5-Omni requires at least one vision block")
         full = frozenset(full_attention_layers)
         return cls(
-            blocks=jax.tree.map(lambda *values: jnp.stack(values), *blocks),
+            blocks=jax.tree.map(stack_parameters, *blocks),
             full_attention=jnp.asarray(
                 tuple(index in full for index in range(len(blocks)))
             ),

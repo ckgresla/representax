@@ -7,6 +7,7 @@ from typing import Any, Literal
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+import numpy as np
 from jaxtyping import Array, Bool, Float, Int, PRNGKeyArray
 
 from representax.core.sharding import (
@@ -25,6 +26,31 @@ from representax.precision import (
 AttentionImplementation = Literal["xla", "cudnn"]
 Activation = Literal["gelu", "gelu_new", "relu", "silu"]
 LinearWeightLayout = Literal["output_input", "input_output"]
+
+
+def _single_cpu_device(value: Any) -> jax.Device | None:
+    if not isinstance(value, jax.Array) or not value.is_fully_addressable:
+        return None
+    devices = value.devices()
+    if len(devices) != 1:
+        return None
+    device = next(iter(devices))
+    return device if device.platform == "cpu" else None
+
+
+def stack_parameters(*values: Array) -> Array:
+    """Stack CPU-staged checkpoint arrays without compiling a JAX program."""
+
+    if (
+        values
+        and (device := _single_cpu_device(values[0])) is not None
+        and all(_single_cpu_device(value) == device for value in values)
+    ):
+        return jax.device_put(
+            np.stack(tuple(np.asarray(value) for value in values)),
+            device,
+        )
+    return jnp.stack(values)
 
 
 def rematerialize(function: Any, policy: RematerializationPolicy) -> Any:
@@ -89,8 +115,15 @@ class Linear(eqx.Module):
 
         if self.weight_layout == "input_output":
             return self
+        if (device := _single_cpu_device(self.weight)) is not None:
+            weight = jax.device_put(
+                np.swapaxes(np.asarray(self.weight), -2, -1),
+                device,
+            )
+        else:
+            weight = jnp.swapaxes(self.weight, -2, -1)
         return Linear(
-            weight=jnp.swapaxes(self.weight, -2, -1),
+            weight=weight,
             bias=self.bias,
             weight_layout="input_output",
         )
@@ -345,4 +378,5 @@ __all__ = [
     "mean_pool",
     "rematerialize",
     "segment_mean_pool",
+    "stack_parameters",
 ]

@@ -234,6 +234,39 @@ def test_checkpoint_state_dict_round_trip_is_exact() -> None:
         np.testing.assert_array_equal(restored_state[name], state[name])
 
 
+def test_checkpoint_conversion_does_not_compile_cpu_layout_operations(
+    monkeypatch,
+) -> None:
+    config = tiny_config()
+    model = Qwen2_5OmniEncoder.init(
+        config,
+        key=jax.random.key(11),
+        rematerialization="none",
+    )
+    adapter = Qwen2_5OmniCheckpointAdapter(rematerialization="none")
+    cpu = jax.local_devices(backend="cpu")[0]
+    state = {
+        name: jax.device_put(np.asarray(value), cpu)
+        for name, value in adapter.state_dict(model).items()
+    }
+
+    def unexpected_dispatch(*_args, **_kwargs):
+        raise AssertionError("CPU checkpoint layout conversion dispatched through JAX")
+
+    monkeypatch.setattr(
+        "representax.models.components.jnp.swapaxes", unexpected_dispatch
+    )
+    monkeypatch.setattr("representax.models.components.jnp.stack", unexpected_dispatch)
+    restored = adapter.from_state_dict(
+        config,
+        state,
+        parameter_dtype=jnp.float32,
+        compute_dtype=jnp.float32,
+    )
+
+    assert restored.text.layers.blocks.query.weight.shape == (2, 16, 16)
+
+
 def test_text_image_audio_forward_and_gradient_are_finite() -> None:
     config = tiny_config()
     pixel_values = (
