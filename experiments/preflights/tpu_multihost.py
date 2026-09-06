@@ -424,6 +424,7 @@ def jax_local_negative_mnr(*, global_batch_size: int) -> None:
         local_document_ids,
         global_shape=(global_batch_size,),
     )
+    document_order = jax.reshard(document_order, NamedSharding(mesh, P()))
     aligned_positive_mask = jax.jit(
         lambda mask, order: mask[:, order],
         out_shardings=NamedSharding(mesh, P("data", None)),
