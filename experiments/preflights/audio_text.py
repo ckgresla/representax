@@ -25,6 +25,7 @@ from experiments.preflights.accelerator import (
     data_parallel_job,
     deterministic_tpu_cached_mnr,
     initialize_jax,
+    install_torch_xla_checkpointing,
     process_local_rows,
     torch_device,
     torch_device_report,
@@ -993,6 +994,8 @@ def _sentence_transformers_worker(
             f"expected sentence-transformers=={contract.reference_version}, "
             f"found {sentence_transformers.__version__}"
         )
+    if platform == "tpu":
+        install_torch_xla_checkpointing()
     model = SentenceTransformer(
         str(checkpoint),
         device=torch_device(),
@@ -1060,7 +1063,10 @@ def _sentence_transformers_worker(
         max_grad_norm=1.0,
         bf16=True,
         fp16=False,
-        gradient_checkpointing=False,
+        gradient_checkpointing=platform == "tpu",
+        gradient_checkpointing_kwargs=(
+            {"use_reentrant": True} if platform == "tpu" else None
+        ),
         logging_strategy="steps",
         logging_steps=1,
         report_to="none",
@@ -1106,6 +1112,7 @@ def _sentence_transformers_worker(
             "local_batch_size": local_batch_size,
             "platform": platform,
             "device_count": world_size,
+            "activation_checkpointing": "torch-xla-reentrant",
             "training_seconds": training_seconds,
             "examples_per_second": batch_size * steps / training_seconds,
             "steady_state": warm_step_summary(
