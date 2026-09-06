@@ -203,11 +203,42 @@ def process_local_retrieval_batch(
     )
 
 
+def _process_concatenated_column_order(
+    indices: Mapping[Any, tuple[slice, ...]],
+    global_size: int,
+) -> np.ndarray:
+    starts_by_process: dict[int, set[tuple[int, int]]] = {}
+    for device, index in indices.items():
+        document_slice = index[0]
+        start = 0 if document_slice.start is None else document_slice.start
+        stop = global_size if document_slice.stop is None else document_slice.stop
+        starts_by_process.setdefault(device.process_index, set()).add((start, stop))
+    order = np.empty(global_size, dtype=np.int32)
+    source = 0
+    for process_index in sorted(starts_by_process):
+        for start, stop in sorted(starts_by_process[process_index]):
+            size = stop - start
+            order[start:stop] = np.arange(source, source + size, dtype=np.int32)
+            source += size
+    if source != global_size:
+        raise ValueError("process-local document shards do not cover all columns")
+    return order
+
+
 def place_process_local_retrieval_batch(
     batch: ProcessLocalRetrievalBatch,
     sharding: NamedSharding,
 ) -> RetrievalBatch:
     """Assemble process-local retrieval rows with a leading-axis sharding."""
+
+    global_document_count = batch.positive_mask.shape[1]
+    column_order = _process_concatenated_column_order(
+        sharding.devices_indices_map((global_document_count,)),
+        global_document_count,
+    )
+
+    def align_columns(value: Any) -> Any:
+        return value[:, column_order]
 
     def global_rows(tree: Any) -> Any:
         return jax.tree.map(
@@ -223,11 +254,11 @@ def place_process_local_retrieval_batch(
     return RetrievalBatch(
         query=global_rows(batch.query),
         document=global_rows(batch.document),
-        positive_mask=global_rows(batch.positive_mask),
+        positive_mask=global_rows(align_columns(batch.positive_mask)),
         positive_weights=(
             None
             if batch.positive_weights is None
-            else global_rows(batch.positive_weights)
+            else global_rows(align_columns(batch.positive_weights))
         ),
         query_valid=global_rows(batch.query_valid),
         document_valid=global_rows(batch.document_valid),

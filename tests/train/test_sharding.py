@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import cast
 
 import jax
@@ -19,6 +20,7 @@ from representax.tasks.retrieval import (
     place_process_local_retrieval_batch,
     process_local_retrieval_batch,
 )
+from representax.tasks.retrieval.batch import _process_concatenated_column_order
 from representax.train import (
     ProcessLocalBatch,
     ShardingPlan,
@@ -97,6 +99,24 @@ def test_sharding_plan_places_process_local_retrieval_batch():
     np.testing.assert_array_equal(global_batch.query, local_batch.query)
     np.testing.assert_array_equal(global_batch.document, local_batch.document)
     np.testing.assert_array_equal(global_batch.positive_mask, jnp.eye(2, dtype=bool))
+
+
+def test_process_local_relations_follow_interleaved_device_order():
+    @dataclass(frozen=True)
+    class Device:
+        identifier: int
+        process_index: int
+
+    indices = {
+        Device(0, 0): (slice(0, 2),),
+        Device(1, 1): (slice(2, 4),),
+        Device(2, 0): (slice(4, 6),),
+        Device(3, 1): (slice(6, 8),),
+    }
+
+    order = _process_concatenated_column_order(indices, 8)
+
+    np.testing.assert_array_equal(order, [0, 1, 4, 5, 2, 3, 6, 7])
 
 
 def test_sharding_plan_places_generic_process_local_batch():

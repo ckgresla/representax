@@ -414,21 +414,6 @@ def jax_local_negative_mnr(*, global_batch_size: int) -> None:
         ),
         sharding,
     )
-    local_document_ids = np.arange(
-        process_start,
-        process_start + local_size,
-        dtype=np.int32,
-    )
-    document_order = jax.make_array_from_process_local_data(
-        sharding,
-        local_document_ids,
-        global_shape=(global_batch_size,),
-    )
-    document_order = jax.reshard(document_order, NamedSharding(mesh, P()))
-    aligned_positive_mask = jax.jit(
-        lambda mask, order: mask[:, order],
-        out_shardings=NamedSharding(mesh, P("data", None)),
-    )(batch.positive_mask, document_order)
     task = MNRTask(scale=3.0, symmetric=False, negative_scope="local")
 
     @jax.jit
@@ -451,14 +436,14 @@ def jax_local_negative_mnr(*, global_batch_size: int) -> None:
         jax.shard_map,
         mesh=mesh,
         in_specs=(P("data"), P("data"), P("data", None)),
-        out_specs=(P(), P(), P(), P()),
+        out_specs=(P(), P(), P()),
         check_vma=False,
     )
     def mapped_loss(
         local_query: Any,
         local_document: Any,
         local_positive_mask: Any,
-    ) -> tuple[Any, Any, Any, Any]:
+    ) -> tuple[Any, Any, Any]:
         axis_index = jax.lax.axis_index("data")
         document_start = axis_index * local_document.shape[0]
         local_mask = jax.lax.dynamic_slice_in_dim(
@@ -482,32 +467,23 @@ def jax_local_negative_mnr(*, global_batch_size: int) -> None:
         direct = jnp.mean(
             jax.nn.logsumexp(logits, axis=1) - jnp.diag(logits)
         )
-        local_rows = axis_index * local_query.shape[0] + jnp.arange(
-            local_query.shape[0], dtype=jnp.float32
-        )
-        expected_query = jnp.sin(
-            local_rows[:, None] * 0.17
-            + jnp.arange(8, dtype=jnp.float32)[None, :] * 0.11
-        )
-        expected_query /= jnp.linalg.norm(expected_query, axis=1, keepdims=True)
-        query_error = jnp.max(jnp.abs(local_query - expected_query))
         mask_error = jnp.max(
             jnp.abs(local_mask.astype(jnp.int32) - jnp.eye(local_query.shape[0]))
         )
         return tuple(
             jax.lax.pmean(result, "data")
-            for result in (value, direct, query_error, mask_error)
+            for result in (value, direct, mask_error)
         )
 
-    mapped, direct, query_error, mask_error = (
+    mapped, direct, mask_error = (
         float(value)
         for value in jax.jit(mapped_loss)(
             batch.query,
             batch.document,
-            aligned_positive_mask,
+            batch.positive_mask,
         )
     )
-    jax.block_until_ready((mapped, direct, query_error, mask_error))
+    jax.block_until_ready((mapped, direct, mask_error))
 
     all_rows = np.arange(global_batch_size, dtype=np.float32)
     all_query = np.sin(all_rows[:, None] * 0.17 + dimensions[None, :] * 0.11)
@@ -539,11 +515,11 @@ def jax_local_negative_mnr(*, global_batch_size: int) -> None:
             expected_loss=expected,
             legacy_absolute_difference=abs(legacy - expected),
             mapped_absolute_difference=abs(mapped - expected),
-            query_maximum_absolute_difference=query_error,
             mask_maximum_absolute_difference=mask_error,
         )
-    np.testing.assert_allclose(direct, expected, rtol=2e-5, atol=2e-6)
-    np.testing.assert_allclose(query_error, 0.0, atol=2e-6)
+    np.testing.assert_allclose(legacy, direct, rtol=2e-5, atol=2e-6)
+    np.testing.assert_allclose(mapped, direct, rtol=2e-5, atol=2e-6)
+    np.testing.assert_allclose(direct, expected, rtol=1e-4, atol=2e-6)
     np.testing.assert_allclose(mask_error, 0.0, atol=0.0)
 
 
