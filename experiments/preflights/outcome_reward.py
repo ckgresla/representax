@@ -56,6 +56,12 @@ class FrozenContract:
     reference_version: str
 
 
+def reference_checkpointing(platform: Platform) -> tuple[bool, dict[str, bool] | None]:
+    if platform == "gpu":
+        return True, {"use_reentrant": False}
+    return False, None
+
+
 def _document(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
@@ -1173,6 +1179,9 @@ def _trl_worker(
     evaluation = _reference_dataset(data_directory / "evaluation.jsonl")
     tokenizer: Any = AutoTokenizer.from_pretrained(checkpoint, local_files_only=True)
     pad_to_multiple_of = contract.maximum_length if padding == "static" else None
+    gradient_checkpointing, gradient_checkpointing_kwargs = reference_checkpointing(
+        platform
+    )
     training_arguments = RewardConfig(
         output_dir=str(run_directory / "checkpoints"),
         per_device_train_batch_size=micro_batch_size,
@@ -1190,8 +1199,8 @@ def _trl_worker(
         max_grad_norm=1.0,
         bf16=True,
         fp16=False,
-        gradient_checkpointing=True,
-        gradient_checkpointing_kwargs={"use_reentrant": False},
+        gradient_checkpointing=gradient_checkpointing,
+        gradient_checkpointing_kwargs=gradient_checkpointing_kwargs,
         logging_strategy="steps",
         logging_steps=1,
         report_to="none",
@@ -1256,6 +1265,7 @@ def _trl_worker(
             "maximum_length": contract.maximum_length,
             "padding": padding,
             "platform": platform,
+            "activation_checkpointing": False,
             "device_count": world_size,
             "training_seconds": first_training_seconds,
             "examples_per_second": (
@@ -1357,6 +1367,7 @@ def _trl_worker(
         "maximum_length": contract.maximum_length,
         "padding": padding,
         "padding_scope": "microbatch",
+        "activation_checkpointing": True,
         "input_shapes": input_shapes,
         "pair_execution": "one-concatenated-forward",
         "padded_tokens_per_update": optimizer_token_capacities(

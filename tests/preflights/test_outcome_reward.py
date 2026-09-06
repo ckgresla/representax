@@ -7,6 +7,7 @@ from experiments.preflights.outcome_reward import (
     frozen_contract,
     optimizer_token_capacities,
     preference_rows,
+    reference_checkpointing,
     reference_timing,
     steady_state,
 )
@@ -22,6 +23,11 @@ def test_frozen_contract_names_qwen_ultrafeedback_and_trl() -> None:
     assert contract.maximum_length == 1024
     assert contract.objective == "bradley-terry-log-sigmoid"
     assert contract.reference_version == "1.10.0"
+
+
+def test_tpu_reference_disables_unsupported_torch_checkpointing() -> None:
+    assert reference_checkpointing("gpu") == (True, {"use_reentrant": False})
+    assert reference_checkpointing("tpu") == (False, None)
 
 
 def test_preference_rows_skip_sequences_that_require_truncation() -> None:
