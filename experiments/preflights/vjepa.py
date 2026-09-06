@@ -703,7 +703,7 @@ def _representax_worker(
         steps=steps,
         seed=seed,
         batch_size=batch_size,
-        micro_batch_size=1 if platform == "tpu" else batch_size,
+        micro_batch_size=batch_size,
     )
     from representax.models.vjepa2_1 import load_vjepa2_1
 
