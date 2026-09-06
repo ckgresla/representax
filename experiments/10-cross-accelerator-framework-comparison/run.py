@@ -34,6 +34,7 @@ LEARNING_RATE = 2e-5
 WARMUP_RATIO = 0.06
 REPRESENTAX_CHUNK_SIZE = 32
 REFERENCE_CHUNK_SIZE = 128
+TPU_AUDIO_GLOBAL_BATCH_SIZE = 48
 EXPERIMENT_DIRECTORY = Path(__file__).resolve().parent
 DATA_MANIFEST = EXPERIMENT_DIRECTORY / "data-manifest.json"
 MODEL_MANIFEST = EXPERIMENT_DIRECTORY / "model-manifest.json"
@@ -1078,7 +1079,11 @@ def _recipe_command(arguments: argparse.Namespace) -> list[str]:
         command.extend(
             (
                 "--batch-size",
-                "64" if arguments.platform == "tpu" else "256",
+                (
+                    str(TPU_AUDIO_GLOBAL_BATCH_SIZE)
+                    if arguments.platform == "tpu"
+                    else "256"
+                ),
                 "--sharding",
                 "ddp",
                 "--continuous",
