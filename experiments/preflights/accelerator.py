@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Sequence
+from functools import partial
 from importlib import import_module
 from typing import Any, Literal, TypeVar
 
@@ -195,10 +196,31 @@ def torch_world_size() -> int:
 
 
 def install_torch_xla_checkpointing() -> None:
-    """Route Transformers rematerialization through PyTorch/XLA's implementation."""
+    """Route PyTorch rematerialization through PyTorch/XLA's implementation."""
 
     modeling_utils = import_module("transformers.modeling_utils")
-    modeling_utils.checkpoint = import_module("torch_xla.utils.checkpoint").checkpoint
+    torch_checkpoint = import_module("torch.utils.checkpoint")
+    xla_checkpoint = import_module("torch_xla.utils.checkpoint").checkpoint
+
+    def checkpoint(
+        function: Any,
+        *args: Any,
+        preserve_rng_state: bool = True,
+        use_reentrant: bool = True,
+        **kwargs: Any,
+    ) -> Any:
+        del use_reentrant
+        if kwargs:
+            function = partial(function, **kwargs)
+        return xla_checkpoint(
+            function,
+            *args,
+            preserve_rng_state=preserve_rng_state,
+            use_reentrant=True,
+        )
+
+    modeling_utils.checkpoint = checkpoint
+    torch_checkpoint.checkpoint = checkpoint
 
 
 def enable_torch_xla_checkpointing(model: Any) -> None:

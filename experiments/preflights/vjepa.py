@@ -24,6 +24,7 @@ from experiments.preflights.accelerator import (
     Platform,
     data_parallel_job,
     initialize_jax,
+    install_torch_xla_checkpointing,
     process_local_rows,
     torch_device,
     torch_device_report,
@@ -969,6 +970,7 @@ def _facebookresearch_worker(
     local_batch_size = batch_size // world_size
     if platform == "tpu":
         run_directory = run_directory / f"process-{torch_rank()}"
+        install_torch_xla_checkpointing()
     actual_commit = subprocess.run(
         ("git", "-C", str(reference), "rev-parse", "HEAD"),
         check=True,

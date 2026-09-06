@@ -113,12 +113,20 @@ def test_sentence_transformer_training_uses_the_declared_default_prompt() -> Non
 
 
 def test_torch_xla_checkpointing_replaces_the_transformers_backend(monkeypatch) -> None:
-    marker = object()
+    calls = []
+
+    def marker(function, *args, **kwargs):
+        calls.append((function, args, kwargs))
+        return function(*args)
+
     modeling_utils = SimpleNamespace(checkpoint=None)
+    torch_checkpoint = SimpleNamespace(checkpoint=None)
 
     def import_module(name: str):
         if name == "transformers.modeling_utils":
             return modeling_utils
+        if name == "torch.utils.checkpoint":
+            return torch_checkpoint
         if name == "torch_xla.utils.checkpoint":
             return SimpleNamespace(checkpoint=marker)
         raise AssertionError(name)
@@ -127,7 +135,19 @@ def test_torch_xla_checkpointing_replaces_the_transformers_backend(monkeypatch) 
 
     accelerator.install_torch_xla_checkpointing()
 
-    assert modeling_utils.checkpoint is marker
+    assert modeling_utils.checkpoint is torch_checkpoint.checkpoint
+    result = modeling_utils.checkpoint(
+        lambda value, *, scale: value * scale,
+        3,
+        scale=4,
+        use_reentrant=False,
+    )
+    assert result == 12
+    assert calls[0][1] == (3,)
+    assert calls[0][2] == {
+        "preserve_rng_state": True,
+        "use_reentrant": True,
+    }
 
 
 def test_torch_xla_checkpointing_bypasses_the_trainer_wrapper(monkeypatch) -> None:
