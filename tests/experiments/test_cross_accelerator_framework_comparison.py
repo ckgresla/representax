@@ -258,7 +258,7 @@ def test_multimodal_recipe_matches_device_local_tpu_negatives(tmp_path: Path) ->
     assert command[command.index("--negative-scope") + 1] == "local"
 
 
-def test_audio_recipe_keeps_frozen_batch_and_sharding_options(tmp_path: Path) -> None:
+def test_audio_tpu_recipe_uses_the_matched_feasible_batch(tmp_path: Path) -> None:
     module = _module()
     arguments = module._parser().parse_args(
         (
@@ -282,10 +282,37 @@ def test_audio_recipe_keeps_frozen_batch_and_sharding_options(tmp_path: Path) ->
 
     command = module._recipe_command(arguments)
 
-    assert command[command.index("--batch-size") + 1] == "256"
+    assert command[command.index("--batch-size") + 1] == "128"
     assert command[command.index("--sharding") + 1] == "ddp"
     assert command[command.index("--negative-scope") + 1] == "local"
     assert "--continuous" in command
+
+
+def test_audio_gpu_recipe_keeps_the_frozen_batch(tmp_path: Path) -> None:
+    module = _module()
+    arguments = module._parser().parse_args(
+        (
+            "recipe",
+            "--recipe",
+            "audio-text",
+            "--framework",
+            "reference",
+            "--checkpoint",
+            str(tmp_path / "checkpoint"),
+            "--data",
+            str(tmp_path / "data"),
+            "--output",
+            str(tmp_path / "output"),
+            "--seed",
+            "7",
+            "--platform",
+            "gpu",
+        )
+    )
+
+    command = module._recipe_command(arguments)
+
+    assert command[command.index("--batch-size") + 1] == "256"
 
 
 def test_video_recipe_keeps_frozen_batch_and_negative_scope(tmp_path: Path) -> None:
