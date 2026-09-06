@@ -554,7 +554,14 @@ def _build_train_step_from_sharding_plan(
         gradient_accumulation_steps=gradient_accumulation_steps,
         accumulation_split_sharding=(
             NamedSharding(plan.mesh, P(None, plan.data_axis_name))
-            if gradient_accumulation_steps > 1 and plan.data_axis_name is not None
+            if (
+                gradient_accumulation_steps > 1
+                and plan.data_axis_name is not None
+                and dict(
+                    zip(plan.mesh.axis_names, plan.mesh.axis_types, strict=True)
+                )[plan.data_axis_name]
+                is AxisType.Explicit
+            )
             else None
         ),
         precision=precision,

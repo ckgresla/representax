@@ -9,6 +9,7 @@ import jax.numpy as jnp
 import numpy as np
 import optax
 import pytest
+from jax.sharding import AxisType
 from jax.sharding import PartitionSpec as P
 
 from representax.models import DenseEncoder
@@ -89,6 +90,55 @@ def test_sharded_gradient_accumulation_matches_one_full_batch_update():
     device = jax.devices("cpu")[0]
     mesh = jax.make_mesh((1,), ("data",), devices=[device])
     model = DenseEncoder(3, 3, key=jax.random.key(13))
+    optimizer = optax.sgd(1e-2)
+    state = init_train_state(model, optimizer)
+    batch = pairwise_batch(
+        left=jnp.arange(12, dtype=jnp.float32).reshape(4, 3) / 10,
+        right=jnp.arange(12, 24, dtype=jnp.float32).reshape(4, 3) / 10,
+        labels=jnp.asarray((0.1, 0.3, 0.7, 0.9)),
+    )
+    task = CosineRegressionTask()
+    direct = build_train_step(task, optimizer, max_grad_norm=None)(
+        state,
+        batch,
+        None,
+    )
+    plan = ShardingPlan.ddp(state, optimizer, mesh, axis_name="data")
+    accumulated = build_train_step(
+        task,
+        optimizer,
+        plan=plan,
+        max_grad_norm=None,
+        gradient_accumulation_steps=2,
+    )(
+        plan.place_state(state),
+        plan.place_batch(batch),
+        None,
+    )
+
+    np.testing.assert_allclose(
+        accumulated.metrics.loss,
+        direct.metrics.loss,
+        rtol=1e-6,
+        atol=1e-7,
+    )
+    np.testing.assert_allclose(
+        cast(DenseEncoder, accumulated.state.model).projection.weight,
+        cast(DenseEncoder, direct.state.model).projection.weight,
+        rtol=2e-5,
+        atol=2e-6,
+    )
+
+
+def test_auto_sharded_gradient_accumulation_matches_one_full_batch_update():
+    device = jax.devices("cpu")[0]
+    mesh = jax.make_mesh(
+        (1,),
+        ("data",),
+        axis_types=(AxisType.Auto,),
+        devices=[device],
+    )
+    model = DenseEncoder(3, 3, key=jax.random.key(17))
     optimizer = optax.sgd(1e-2)
     state = init_train_state(model, optimizer)
     batch = pairwise_batch(
