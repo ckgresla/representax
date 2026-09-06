@@ -879,18 +879,19 @@ def _recipe_command(arguments: argparse.Namespace) -> list[str]:
         )
         model = arguments.recipe.removeprefix(f"{workload}-")
         command.extend(("--workload", workload, "--model", model, "--serious"))
-    elif (
+        return command
+    if (
         arguments.recipe in NEGATIVE_SCOPE_RECIPES
         and arguments.framework == "representax"
     ):
         command.extend(("--negative-scope", arguments.negative_scope))
-    elif arguments.recipe == "outcome-reward":
+    if arguments.recipe == "outcome-reward":
         command.extend(("--padding", "static"))
-    elif arguments.recipe == "audio-text":
+    if arguments.recipe == "audio-text":
         command.extend(("--batch-size", "256", "--sharding", "ddp", "--continuous"))
-    elif arguments.recipe == "video-text":
+    if arguments.recipe == "video-text":
         command.extend(("--batch-size", "128"))
-    elif arguments.recipe == "v-jepa":
+    if arguments.recipe == "v-jepa":
         if arguments.reference is None:
             raise ValueError("V-JEPA requires --reference")
         command.extend(

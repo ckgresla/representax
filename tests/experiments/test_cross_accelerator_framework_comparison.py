@@ -192,6 +192,64 @@ def test_multimodal_recipe_matches_device_local_tpu_negatives(tmp_path: Path) ->
     assert command[command.index("--negative-scope") + 1] == "local"
 
 
+def test_audio_recipe_keeps_frozen_batch_and_sharding_options(tmp_path: Path) -> None:
+    module = _module()
+    arguments = module._parser().parse_args(
+        (
+            "recipe",
+            "--recipe",
+            "audio-text",
+            "--framework",
+            "representax",
+            "--checkpoint",
+            str(tmp_path / "checkpoint"),
+            "--data",
+            str(tmp_path / "data"),
+            "--output",
+            str(tmp_path / "output"),
+            "--seed",
+            "7",
+            "--platform",
+            "tpu",
+        )
+    )
+
+    command = module._recipe_command(arguments)
+
+    assert command[command.index("--batch-size") + 1] == "256"
+    assert command[command.index("--sharding") + 1] == "ddp"
+    assert command[command.index("--negative-scope") + 1] == "local"
+    assert "--continuous" in command
+
+
+def test_video_recipe_keeps_frozen_batch_and_negative_scope(tmp_path: Path) -> None:
+    module = _module()
+    arguments = module._parser().parse_args(
+        (
+            "recipe",
+            "--recipe",
+            "video-text",
+            "--framework",
+            "representax",
+            "--checkpoint",
+            str(tmp_path / "checkpoint"),
+            "--data",
+            str(tmp_path / "data"),
+            "--output",
+            str(tmp_path / "output"),
+            "--seed",
+            "7",
+            "--platform",
+            "tpu",
+        )
+    )
+
+    command = module._recipe_command(arguments)
+
+    assert command[command.index("--batch-size") + 1] == "128"
+    assert command[command.index("--negative-scope") + 1] == "local"
+
+
 def test_reference_helpers_are_self_contained(tmp_path: Path) -> None:
     module = _module()
     path = tmp_path / "pairs.parquet"
