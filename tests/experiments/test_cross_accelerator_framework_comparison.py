@@ -188,6 +188,31 @@ def test_materialized_reference_evidence_is_content_addressed(tmp_path: Path) ->
     assert run["worker_log_sha256"] == module._sha256(output / "worker.log")
 
 
+def test_materialized_rank_zero_evidence_is_promoted(tmp_path: Path) -> None:
+    module = _module()
+    output = tmp_path / "run"
+    process = output / "process-0"
+    process.mkdir(parents=True)
+    (process / "summary.json").write_text(json.dumps({"losses": [1.0]}))
+    (process / "metrics.jsonl").write_text(
+        json.dumps({"event": "training_step", "iteration": 1}) + "\n"
+    )
+    (process / "events.jsonl").write_text(json.dumps({"event": "step"}) + "\n")
+    (output / "worker.log").write_text("worker output\n")
+
+    run = module._materialize_canonical_evidence(output, {})
+
+    assert run["native_summary_source"] == "process-0/summary.json"
+    assert run["native_metrics_source"] == "process-0/metrics.jsonl"
+    assert json.loads((output / "summary.json").read_text()) == {"losses": [1.0]}
+    assert (output / "metrics.jsonl").read_text() == (
+        process / "metrics.jsonl"
+    ).read_text()
+    assert (output / "events.jsonl").read_text() == (
+        process / "events.jsonl"
+    ).read_text()
+
+
 def _write_aggregate_run(
     module, root: Path, *, framework: str, seed: int, seconds: tuple[float, ...]
 ) -> None:

@@ -219,10 +219,26 @@ def _materialize_canonical_evidence(
 ) -> dict[str, Any]:
     summary_path = output / "summary.json"
     if not summary_path.is_file():
-        return run
+        rank_zero_summaries = sorted(output.glob("process-*/summary.json"))
+        if not rank_zero_summaries:
+            return run
+        if len(rank_zero_summaries) != 1:
+            raise ValueError(
+                f"{output} has {len(rank_zero_summaries)} rank-zero summaries"
+            )
+        shutil.copyfile(rank_zero_summaries[0], summary_path)
+        run["native_summary_source"] = str(
+            rank_zero_summaries[0].relative_to(output)
+        )
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
-    native_metrics = sorted((output / "run").glob("process-*/metrics.jsonl"))
-    native_events = sorted((output / "run").glob("process-*/events.jsonl"))
+    native_metrics = sorted(
+        [*output.glob("process-*/metrics.jsonl")]
+        + [*(output / "run").glob("process-*/metrics.jsonl")]
+    )
+    native_events = sorted(
+        [*output.glob("process-*/events.jsonl")]
+        + [*(output / "run").glob("process-*/events.jsonl")]
+    )
     metrics_path = output / "metrics.jsonl"
     if native_metrics:
         shutil.copyfile(native_metrics[0], metrics_path)

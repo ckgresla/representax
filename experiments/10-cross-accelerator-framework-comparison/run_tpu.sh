@@ -40,6 +40,7 @@ run_one() {
   local status_output
   local response_count
   local complete_count
+  local summary_count
 
   if [[ $framework == representax ]]; then
     case $recipe in
@@ -51,9 +52,10 @@ run_one() {
   output="$REMOTE_OUTPUT_ROOT/seed-$seed/$recipe/$variant"
 
   printf -v status_command \
-    'if grep -q %q %q 2>/dev/null; then echo COMPLETE; else echo INCOMPLETE; fi' \
+    'if grep -q %q %q 2>/dev/null; then if [[ -f %q ]]; then echo COMPLETE_SUMMARY; else echo COMPLETE; fi; else echo INCOMPLETE; fi' \
     '"status": "completed"' \
-    "$output/run.json"
+    "$output/run.json" \
+    "$output/summary.json"
   status_output=$(
     CLOUDSDK_CONFIG=$CLOUDSDK_CONFIG \
       gcloud alpha compute tpus tpu-vm ssh "$TPU_NAME" \
@@ -63,18 +65,19 @@ run_one() {
         --batch-size=4 \
         --command="$status_command" 2>/dev/null
   )
-  response_count=$(grep -Ec '^(COMPLETE|INCOMPLETE)$' <<<"$status_output" || true)
-  complete_count=$(grep -c '^COMPLETE$' <<<"$status_output" || true)
+  response_count=$(grep -Ec '^(COMPLETE|COMPLETE_SUMMARY|INCOMPLETE)$' <<<"$status_output" || true)
+  complete_count=$(grep -Ec '^COMPLETE(_SUMMARY)?$' <<<"$status_output" || true)
+  summary_count=$(grep -c '^COMPLETE_SUMMARY$' <<<"$status_output" || true)
   if (( response_count != 4 )); then
     echo "could not read run status from all four TPU workers" >&2
     return 1
   fi
-  if (( complete_count == 4 )); then
+  if (( complete_count == 4 && summary_count == 1 )); then
     printf '[%s] skipping completed recipe=%s seed=%s framework=%s\n' \
       "$(date -Is)" "$recipe" "$seed" "$framework"
     return
   fi
-  if (( complete_count != 0 )); then
+  if (( complete_count != 0 || summary_count != 0 )); then
     printf '[%s] archiving partial recipe=%s seed=%s framework=%s\n' \
       "$(date -Is)" "$recipe" "$seed" "$framework"
   fi
