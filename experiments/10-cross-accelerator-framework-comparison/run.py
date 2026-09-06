@@ -953,7 +953,7 @@ def _recipe_command(arguments: argparse.Namespace) -> list[str]:
         command.extend(
             (
                 "--batch-size",
-                "128" if arguments.platform == "tpu" else "256",
+                "64" if arguments.platform == "tpu" else "256",
                 "--sharding",
                 "ddp",
                 "--continuous",

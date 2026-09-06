@@ -282,7 +282,7 @@ def test_audio_tpu_recipe_uses_the_matched_feasible_batch(tmp_path: Path) -> Non
 
     command = module._recipe_command(arguments)
 
-    assert command[command.index("--batch-size") + 1] == "128"
+    assert command[command.index("--batch-size") + 1] == "64"
     assert command[command.index("--sharding") + 1] == "ddp"
     assert command[command.index("--negative-scope") + 1] == "local"
     assert "--continuous" in command
