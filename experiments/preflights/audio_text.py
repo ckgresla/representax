@@ -23,7 +23,6 @@ import numpy as np
 from experiments.preflights.accelerator import (
     Platform,
     data_parallel_job,
-    deterministic_tpu_cached_mnr,
     enable_torch_xla_checkpointing,
     initialize_jax,
     process_local_rows,
@@ -980,6 +979,7 @@ def _sentence_transformers_worker(
     )
     from sentence_transformers.sentence_transformer.losses import (
         CachedMultipleNegativesRankingLoss,
+        MultipleNegativesRankingLoss,
     )
 
     contract = frozen_contract()
@@ -987,10 +987,6 @@ def _sentence_transformers_worker(
     if batch_size % world_size:
         raise ValueError("global batch must divide the accelerator count")
     local_batch_size = batch_size // world_size
-    replay_size = min(
-        local_batch_size,
-        8 if platform == "tpu" else GRAD_CACHE_MICRO_BATCH,
-    )
     if platform == "tpu":
         run_directory = run_directory / f"process-{torch_rank()}"
     if sentence_transformers.__version__ != contract.reference_version:
@@ -1038,18 +1034,14 @@ def _sentence_transformers_worker(
             "caption": [str(row["caption"]) for row in rows],
         }
     ).with_transform(_ReferenceAudioTransform(data_directory))
-    loss_options = {
-        "scale": 20.0,
-        "mini_batch_size": replay_size,
-    }
     loss = (
-        deterministic_tpu_cached_mnr(
-            CachedMultipleNegativesRankingLoss,
-            model,
-            **loss_options,
-        )
+        MultipleNegativesRankingLoss(model, scale=20.0)
         if platform == "tpu"
-        else CachedMultipleNegativesRankingLoss(model, **loss_options)
+        else CachedMultipleNegativesRankingLoss(
+            model,
+            scale=20.0,
+            mini_batch_size=GRAD_CACHE_MICRO_BATCH,
+        )
     )
     arguments = SentenceTransformerTrainingArguments(
         output_dir=str(run_directory / "checkpoints"),
@@ -1110,7 +1102,8 @@ def _sentence_transformers_worker(
             "steps": steps,
             "global_batch_size": batch_size,
             "local_batch_size": local_batch_size,
-            "grad_cache_micro_batch_size": replay_size,
+            "loss_implementation": "multiple_negatives_ranking",
+            "grad_cache_micro_batch_size": None,
             "platform": platform,
             "device_count": world_size,
             "activation_checkpointing": "torch-xla-reentrant",
