@@ -31,6 +31,7 @@ from experiments.preflights.accelerator import (
     torch_reset_peak_memory,
     torch_synchronize,
     torch_world_size,
+    training_only_job,
     use_fixed_text_padding,
 )
 from experiments.preflights.provenance import reference_source, write_reference_result
@@ -725,11 +726,15 @@ def _representax_worker(
         negative_scope=negative_scope,
     )
     if platform == "tpu":
-        job = data_parallel_job(
-            job,
-            device_count=world_size,
-            platform=platform,
-            training_only=True,
+        job = (
+            data_parallel_job(
+                job,
+                device_count=world_size,
+                platform=platform,
+                training_only=True,
+            )
+            if sharding == "ddp"
+            else training_only_job(job, platform=platform)
         )
         run_directory = run_directory / f"process-{jax.process_index()}"
         continuous = True

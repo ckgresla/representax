@@ -57,16 +57,30 @@ def data_parallel_job(
     logging = job.logging.model_copy(
         update={"accelerator": job.logging.accelerator and platform == "gpu"}
     )
-    updates = {"training": training, "logging": logging}
-    if training_only:
-        from representax.config import ExportConfig
+    configured = job.model_copy(update={"training": training, "logging": logging})
+    return (
+        training_only_job(configured, platform=platform)
+        if training_only
+        else configured
+    )
 
-        updates.update(
-            checkpointing=None,
-            evaluation=None,
-            export=ExportConfig(enabled=False),
-        )
-    return job.model_copy(update=updates)
+
+def training_only_job(job: Any, *, platform: Platform) -> Any:
+    """Disable lifecycle work while preserving an experiment's sharding plan."""
+
+    from representax.config import ExportConfig
+
+    logging = job.logging.model_copy(
+        update={"accelerator": job.logging.accelerator and platform == "gpu"}
+    )
+    return job.model_copy(
+        update={
+            "checkpointing": None,
+            "evaluation": None,
+            "export": ExportConfig(enabled=False),
+            "logging": logging,
+        }
+    )
 
 
 def torch_is_tpu() -> bool:
@@ -191,5 +205,6 @@ __all__ = [
     "torch_reset_peak_memory",
     "torch_synchronize",
     "torch_world_size",
+    "training_only_job",
     "use_fixed_text_padding",
 ]

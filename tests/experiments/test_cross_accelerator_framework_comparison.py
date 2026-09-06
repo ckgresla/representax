@@ -278,7 +278,7 @@ def test_audio_recipe_keeps_frozen_batch_and_sharding_options(tmp_path: Path) ->
     command = module._recipe_command(arguments)
 
     assert command[command.index("--batch-size") + 1] == "256"
-    assert command[command.index("--sharding") + 1] == "ddp"
+    assert command[command.index("--sharding") + 1] == "fsdp"
     assert command[command.index("--negative-scope") + 1] == "local"
     assert "--continuous" in command
 
