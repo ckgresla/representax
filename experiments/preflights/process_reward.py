@@ -851,7 +851,11 @@ def _trl_worker(
             "device_count": world_size,
             "training_seconds": training_seconds,
             "steady_state": {
-                **warm_step_summary(first_timer.rows, batch_size=contract.batch_size),
+                **warm_step_summary(
+                    first_timer.rows,
+                    batch_size=contract.batch_size,
+                    excluded_steps=(1, 2),
+                ),
             },
             "step_timings": [
                 {"step": step, "seconds": duration}

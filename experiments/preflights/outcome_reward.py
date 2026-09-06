@@ -1264,6 +1264,7 @@ def _trl_worker(
             "timing": reference_timing(
                 first_timer.rows,
                 batch_size=contract.global_batch_size,
+                excluded_steps=(1, 2),
             ),
             "training_metrics": list(trainer.state.log_history),
             "losses": losses,

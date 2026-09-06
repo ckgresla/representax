@@ -4,13 +4,43 @@ version = "0.0.0"
 requires-python = ">=3.10,<3.11"
 dependencies = [
     "numpy>=2",
-    "sentence-transformers[train]==5.6.1",
     "torch==2.9.0",
     "torch_xla[tpu]==2.9.0",
 ]
 
+[dependency-groups]
+sentence-transformers = [
+    "peft==0.19.1",
+    "sentence-transformers[train]==5.6.1",
+]
+reward = [
+    "trl==1.10.0",
+]
+vjepa = [
+    "einops==0.8.2",
+    "timm==1.0.29",
+    "torchvision==0.24.0",
+]
+late-interaction = [
+    "pylate==1.6.0",
+]
+
+[tool.uv]
+default-groups = ["sentence-transformers", "reward", "vjepa"]
+conflicts = [
+    [
+        { group = "sentence-transformers" },
+        { group = "late-interaction" },
+    ],
+    [
+        { group = "reward" },
+        { group = "late-interaction" },
+    ],
+]
+
 [tool.uv.sources]
 torch = { index = "pytorch-cpu" }
+torchvision = { index = "pytorch-cpu" }
 
 [[tool.uv.index]]
 name = "pytorch-cpu"

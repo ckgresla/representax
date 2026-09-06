@@ -1051,7 +1051,11 @@ def _sentence_transformers_worker(
             for row in trainer.state.log_history
             if row.get("loss") is not None
         ]
-        warmed = warm_step_summary(timer.rows, batch_size=batch_size)
+        warmed = warm_step_summary(
+            timer.rows,
+            batch_size=batch_size,
+            excluded_steps=(1, 2),
+        )
         return {
             "schema_version": "representax-video-text-worker-v1",
             "framework": "sentence-transformers",

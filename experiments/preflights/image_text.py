@@ -914,6 +914,7 @@ def _sentence_transformers_worker(
             "steady_state": warm_step_summary(
                 timer.rows,
                 batch_size=contract.global_batch_size,
+                excluded_steps=(1, 2),
             ),
             "step_timings": [
                 {"step": step, "seconds": duration} for step, duration in timer.rows

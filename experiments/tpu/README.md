@@ -3,8 +3,10 @@
 `setup.sh` creates two isolated, locked environments:
 
 - `.venv-jax`: Python 3.13 with the local Representax checkout and JAX TPU runtime.
-- `.venv-torch-xla`: system Python 3.10 with Sentence Transformers, the CPU
-  PyTorch 2.9 wheel, and PyTorch/XLA 2.9.
+- `.venv-torch-xla`: system Python 3.10 with Sentence Transformers, TRL,
+  Meta V-JEPA dependencies, the CPU PyTorch 2.9 wheel, and PyTorch/XLA 2.9.
+- `.venv-torch-xla-late`: the same PyTorch/XLA base with PyLate's required
+  Sentence Transformers release. It is separate because those releases conflict.
 
 PyTorch/XLA's pinned `libtpu` wheel is unavailable for Python 3.13. Its wheel
 also requires the system Python shared library, so the TPU VM's Python 3.10 is

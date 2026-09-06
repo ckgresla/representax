@@ -18,6 +18,17 @@ from typing import Any, cast
 
 import numpy as np
 
+from experiments.preflights.accelerator import (
+    Platform,
+    data_parallel_job,
+    initialize_jax,
+    torch_device,
+    torch_device_report,
+    torch_rank,
+    torch_reset_peak_memory,
+    torch_synchronize,
+    torch_world_size,
+)
 from experiments.preflights.provenance import reference_source, write_reference_result
 from experiments.preflights.timing import CudaStepTimer
 
@@ -246,6 +257,7 @@ def _representax_job(
     seed: int,
     lifecycle: bool = True,
     static_shapes: bool = False,
+    negative_scope: str = "global",
 ) -> Any:
     from representax.config import (
         BatchConfig,
@@ -315,7 +327,9 @@ def _representax_job(
         ),
         task=LateInteractionConfig(),
         loss=LateInteractionContrastiveConfig(
-            temperature=0.02, symmetric=False, negative_scope="global"
+            temperature=0.02,
+            symmetric=False,
+            negative_scope=negative_scope,
         ),
         optimization=OptimizationConfig(
             optimizer=ComponentConfig(
@@ -769,8 +783,10 @@ def _representax_worker(
     steps: int,
     seed: int,
     resume_existing: bool = False,
+    platform: Platform = "gpu",
+    negative_scope: str = "global",
 ) -> dict[str, Any]:
-    import jax
+    jax = initialize_jax(platform)
 
     from representax import load_inference_bundle
     from representax.integrations.late_interaction import (
@@ -779,28 +795,47 @@ def _representax_worker(
     from representax.train import run_job
 
     contract = frozen_contract()
-    initial_model, processor = load_late_interaction_text_model(
-        checkpoint,
-        revision=contract.model_revision,
-        local_files_only=True,
-        parameter_dtype=jax.numpy.float32,
-        compute_dtype=jax.numpy.bfloat16,
-        rematerialization="none",
-        query_sequence_length_buckets=QUERY_BUCKETS,
-        document_sequence_length_buckets=DOCUMENT_BUCKETS,
-    )
-    initial_evaluation = _representax_evaluation(
-        initial_model, processor, data_directory, index_directory=None
-    )
-    del initial_model
-    gc.collect()
-    jax.clear_caches()
+    if platform == "gpu":
+        initial_model, processor = load_late_interaction_text_model(
+            checkpoint,
+            revision=contract.model_revision,
+            local_files_only=True,
+            parameter_dtype=jax.numpy.float32,
+            compute_dtype=jax.numpy.bfloat16,
+            rematerialization="none",
+            query_sequence_length_buckets=QUERY_BUCKETS,
+            document_sequence_length_buckets=DOCUMENT_BUCKETS,
+        )
+        initial_evaluation = _representax_evaluation(
+            initial_model, processor, data_directory, index_directory=None
+        )
+        del initial_model
+        gc.collect()
+        jax.clear_caches()
+    else:
+        processor = None
+        initial_evaluation = None
 
     job = _representax_job(
-        checkpoint=checkpoint, data_directory=data_directory, steps=steps, seed=seed
+        checkpoint=checkpoint,
+        data_directory=data_directory,
+        steps=steps,
+        seed=seed,
+        lifecycle=platform == "gpu",
+        negative_scope=negative_scope,
     )
+    if platform == "tpu":
+        job = data_parallel_job(
+            job,
+            device_count=jax.device_count(),
+            platform=platform,
+            training_only=True,
+        )
+        run_directory = run_directory / f"process-{jax.process_index()}"
     started = time.perf_counter()
-    if resume_existing:
+    if platform == "tpu":
+        completed = run_job(job, run_directory)
+    elif resume_existing:
         completed = run_job(job, run_directory, resume=True)
     else:
         paused = run_job(job, run_directory, stop_after=steps // 2)
@@ -812,11 +847,35 @@ def _representax_worker(
         completed = run_job(job, run_directory, resume=True)
     jax.block_until_ready(completed.state)
     elapsed = time.perf_counter() - started
-    if not completed.resumed or completed.completed_iterations != steps:
+    if completed.completed_iterations != steps or completed.resumed != (
+        platform == "gpu"
+    ):
         raise RuntimeError("Representax did not resume to the requested update count")
-    if completed.inference_bundle is None:
+    if completed.inference_bundle is None and platform == "gpu":
         raise RuntimeError("Representax did not export an inference bundle")
 
+    rows = _metric_rows(run_directory / "metrics.jsonl")
+    training = [row for row in rows if row.get("event") == "training_step"]
+    if platform == "tpu":
+        return {
+            "schema_version": "representax-late-interaction-worker-v1",
+            "framework": "representax",
+            "steps": steps,
+            "global_batch_size": contract.global_batch_size,
+            "negative_scope": negative_scope,
+            "platform": platform,
+            "device_count": jax.device_count(),
+            "process_count": jax.process_count(),
+            "elapsed_seconds": elapsed,
+            "steady_state": representax_steady_state(
+                training, contract.global_batch_size
+            ),
+            "final_loss": float(training[-1]["metrics"]["train/loss"]),
+            "losses": [float(row["metrics"]["train/loss"]) for row in training],
+            "inference_bundle": None,
+        }
+
+    assert processor is not None
     final_evaluation = _representax_evaluation(
         completed.state.model,
         processor,
@@ -839,8 +898,6 @@ def _representax_worker(
     if reload_difference != 0.0 or restored_job.name != job.name:
         raise RuntimeError("native inference reload changed late-interaction output")
 
-    rows = _metric_rows(run_directory / "metrics.jsonl")
-    training = [row for row in rows if row.get("event") == "training_step"]
     if len(training) != steps:
         raise RuntimeError("Representax metric stream is missing training updates")
     update_norms = [
@@ -1053,15 +1110,17 @@ def _reference_arguments(
     save_steps: int,
     seed: int,
     save: bool = True,
+    platform: Platform = "gpu",
 ) -> Any:
     from sentence_transformers import SentenceTransformerTrainingArguments
 
     contract = frozen_contract()
     return SentenceTransformerTrainingArguments(
         output_dir=str(output),
-        per_device_train_batch_size=contract.global_batch_size,
+        per_device_train_batch_size=contract.global_batch_size // torch_world_size(),
         max_steps=max_steps,
         learning_rate=3e-6,
+        optim="adamw_torch_fused" if platform == "gpu" else "adamw_torch",
         lr_scheduler_type="cosine",
         warmup_steps=1,
         weight_decay=0.0,
@@ -1080,10 +1139,10 @@ def _reference_arguments(
         save_steps=save_steps,
         save_total_limit=2 if save else None,
         dataloader_drop_last=True,
-        dataloader_num_workers=4,
-        dataloader_prefetch_factor=2,
-        dataloader_persistent_workers=True,
-        dataloader_pin_memory=True,
+        dataloader_num_workers=4 if platform == "gpu" else 0,
+        dataloader_prefetch_factor=2 if platform == "gpu" else None,
+        dataloader_persistent_workers=platform == "gpu",
+        dataloader_pin_memory=platform == "gpu",
         seed=seed,
         data_seed=seed,
     )
@@ -1105,6 +1164,7 @@ def _pylate_worker(
     run_directory: Path,
     steps: int,
     seed: int,
+    platform: Platform = "gpu",
 ) -> dict[str, Any]:
     from importlib.metadata import version
 
@@ -1116,6 +1176,11 @@ def _pylate_worker(
     utils = importlib.import_module("pylate.utils")
 
     contract = frozen_contract()
+    world_size = torch_world_size()
+    if contract.global_batch_size % world_size:
+        raise ValueError("global batch must divide the accelerator count")
+    if platform == "tpu":
+        run_directory = run_directory / f"process-{torch_rank()}"
     if version("pylate") != contract.reference_version:
         raise RuntimeError(
             f"expected pylate=={contract.reference_version}, found {version('pylate')}"
@@ -1127,14 +1192,20 @@ def _pylate_worker(
 
     def load_model(path: Path) -> Any:
         model = models.ColBERT(
-            model_name_or_path=str(path), device="cuda", local_files_only=True
+            model_name_or_path=str(path),
+            device=torch_device(),
+            local_files_only=True,
         )
         model.query_length = contract.maximum_query_length
         model.document_length = contract.maximum_document_length
         return model
 
     model = load_model(checkpoint)
-    initial_evaluation = _pylate_evaluation(model, data_directory, index_directory=None)
+    initial_evaluation = (
+        _pylate_evaluation(model, data_directory, index_directory=None)
+        if platform == "gpu"
+        else None
+    )
     midpoint = steps // 2
     checkpoint_root = run_directory / "checkpoints"
     first_timer = CudaStepTimer()
@@ -1147,17 +1218,68 @@ def _pylate_worker(
     first_trainer = SentenceTransformerTrainer(
         model=model,
         args=_reference_arguments(
-            checkpoint_root, max_steps=steps, save_steps=midpoint, seed=seed
+            checkpoint_root,
+            max_steps=steps,
+            save_steps=midpoint,
+            seed=seed,
+            save=platform == "gpu",
+            platform=platform,
         ),
         train_dataset=train,
         loss=first_loss,
         data_collator=utils.ColBERTCollator(model.tokenize),
-        callbacks=[first_timer.callback(stop_after=midpoint)],
+        callbacks=[first_timer.callback()]
+        if platform == "tpu"
+        else [first_timer.callback(stop_after=midpoint)],
     )
-    torch.cuda.reset_peak_memory_stats()
+    torch_reset_peak_memory()
     started = time.perf_counter()
     first_output = first_trainer.train()
-    torch.cuda.synchronize()
+    torch_synchronize()
+    if platform == "tpu":
+        training_seconds = time.perf_counter() - started
+        history = tuple(first_trainer.state.log_history)
+        loss_rows = [
+            float(row["loss"]) for row in history if row.get("loss") is not None
+        ][-steps:]
+        warm = [
+            duration
+            for iteration, duration in first_timer.rows
+            if iteration not in {1, 2}
+        ]
+        if not warm or not loss_rows:
+            raise RuntimeError("PyLate emitted no warm timings or finite losses")
+        return {
+            "schema_version": "representax-late-interaction-worker-v1",
+            "framework": "pylate",
+            "framework_version": version("pylate"),
+            "sentence_transformers_version": version("sentence-transformers"),
+            "transformers_version": version("transformers"),
+            "torch_version": torch.__version__,
+            "steps": steps,
+            "global_batch_size": contract.global_batch_size,
+            "local_batch_size": contract.global_batch_size // world_size,
+            "negative_scope": "local",
+            "platform": platform,
+            "device_count": world_size,
+            "training_seconds": training_seconds,
+            "steady_state": {
+                "measured_steps": len(warm),
+                "median_step_seconds": statistics.median(warm),
+                "examples_per_second": (
+                    contract.global_batch_size * len(warm) / sum(warm)
+                ),
+            },
+            "step_timings": [
+                {"step": step, "seconds": duration}
+                for step, duration in first_timer.rows
+            ],
+            "final_loss": loss_rows[-1],
+            "losses": loss_rows,
+            "training_metrics": first_output.metrics,
+            "inference_bundle": None,
+            **torch_device_report(),
+        }
     if first_trainer.state.global_step != midpoint:
         raise RuntimeError("PyLate did not stop at the requested midpoint")
     midpoint_checkpoint = checkpoint_root / f"checkpoint-{midpoint}"
@@ -1684,12 +1806,22 @@ def _worker(arguments: argparse.Namespace) -> None:
         run_directory=arguments.run_directory,
         steps=arguments.steps,
         seed=arguments.seed,
+        platform=arguments.platform,
     )
     if arguments.framework == "representax":
         parameters["resume_existing"] = arguments.resume_existing
+        parameters["negative_scope"] = arguments.negative_scope
     elif arguments.resume_existing:
         raise ValueError("--resume-existing is only available for Representax")
     report = function(**parameters)
+    if arguments.platform == "tpu":
+        rank = (
+            initialize_jax("tpu").process_index()
+            if arguments.framework == "representax"
+            else torch_rank()
+        )
+        if rank != 0:
+            return
     if arguments.framework == "representax":
         _write_json(arguments.report, report)
     else:
@@ -1699,6 +1831,10 @@ def _worker(arguments: argparse.Namespace) -> None:
             reference="pylate",
         )
     print(json.dumps(report, indent=2, sort_keys=True))
+
+
+def _xla_worker(_index: int, arguments: argparse.Namespace) -> None:
+    _worker(arguments)
 
 
 def _build_summary(
@@ -1858,6 +1994,10 @@ def _parser() -> argparse.ArgumentParser:
     worker.add_argument("--steps", type=int, default=4)
     worker.add_argument("--seed", type=int, default=7)
     worker.add_argument("--resume-existing", action="store_true")
+    worker.add_argument("--platform", choices=("gpu", "tpu"), default="gpu")
+    worker.add_argument(
+        "--negative-scope", choices=("local", "global"), default="global"
+    )
 
     pair = subparsers.add_parser("pair")
     pair.add_argument("--checkpoint", type=Path, required=True)
@@ -1930,7 +2070,12 @@ def main() -> None:
             )
         )
     elif arguments.command == "worker":
-        _worker(arguments)
+        if arguments.framework == "pylate" and arguments.platform == "tpu":
+            import torch_xla
+
+            torch_xla.launch(_xla_worker, args=(arguments,))
+        else:
+            _worker(arguments)
     elif arguments.command == "verify-export":
         _verify_export(arguments.report, arguments.output)
     elif arguments.command == "remeasure-representax":

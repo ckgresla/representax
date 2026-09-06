@@ -123,6 +123,47 @@ def test_tpu_reference_uses_the_supported_uncached_loss() -> None:
     assert tpu["execution"]["sentence_transformers_grad_cache_chunk"] is None
 
 
+def test_campaign_exposes_every_frozen_recipe() -> None:
+    module = _module()
+
+    assert len(module.RECIPES) == 13
+    assert set(module.REFERENCE_FRAMEWORKS) == set(module.RECIPES)
+    assert module.REFERENCE_FRAMEWORKS["late-interaction"] == "pylate"
+    assert module.REFERENCE_FRAMEWORKS["outcome-reward"] == "trl"
+    assert module.REFERENCE_FRAMEWORKS["v-jepa"] == "facebookresearch-vjepa2"
+
+
+def test_recipe_command_preserves_frozen_tpu_shape(tmp_path: Path) -> None:
+    module = _module()
+    parser = module._parser()
+    arguments = parser.parse_args(
+        (
+            "recipe",
+            "--recipe",
+            "v-jepa",
+            "--framework",
+            "reference",
+            "--data",
+            str(tmp_path / "data"),
+            "--reference",
+            str(tmp_path / "vjepa2"),
+            "--output",
+            str(tmp_path / "output"),
+            "--seed",
+            "7",
+            "--platform",
+            "tpu",
+        )
+    )
+
+    command = module._recipe_command(arguments)
+
+    assert "facebookresearch-vjepa2" in command
+    assert command[command.index("--batch-size") + 1] == "128"
+    assert command[command.index("--platform") + 1] == "tpu"
+    assert "--gpu" not in command
+
+
 def test_reference_helpers_are_self_contained(tmp_path: Path) -> None:
     module = _module()
     path = tmp_path / "pairs.parquet"

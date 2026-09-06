@@ -39,6 +39,38 @@ Variant = Literal[
 ]
 Platform = Literal["gpu", "tpu"]
 
+RECIPES = (
+    "dense-retrieval",
+    "semantic-similarity-mpnet-base",
+    "semantic-similarity-bert-base",
+    "pair-classification-mpnet-base",
+    "pair-classification-bert-base",
+    "cross-encoder",
+    "late-interaction",
+    "outcome-reward",
+    "process-reward",
+    "image-text",
+    "audio-text",
+    "video-text",
+    "v-jepa",
+)
+
+REFERENCE_FRAMEWORKS = {
+    "dense-retrieval": "sentence-transformers",
+    "semantic-similarity-mpnet-base": "sentence-transformers",
+    "semantic-similarity-bert-base": "sentence-transformers",
+    "pair-classification-mpnet-base": "sentence-transformers",
+    "pair-classification-bert-base": "sentence-transformers",
+    "cross-encoder": "sentence-transformers",
+    "late-interaction": "pylate",
+    "outcome-reward": "trl",
+    "process-reward": "trl",
+    "image-text": "sentence-transformers",
+    "audio-text": "sentence-transformers",
+    "video-text": "sentence-transformers",
+    "v-jepa": "facebookresearch-vjepa2",
+}
+
 
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
@@ -694,7 +726,7 @@ def _sentence_transformers_worker(
     metrics_path.write_text(
         "".join(json.dumps(row, sort_keys=True) + "\n" for row in recorder.rows)
     )
-    warm = recorder.rows[1:]
+    warm = recorder.rows[2:] if platform == "tpu" else recorder.rows[1:]
     variant: Variant = "sentence-transformers-local"
     summary = {
         "contract": _contract(
@@ -757,6 +789,153 @@ def _sentence_transformers(
         _sentence_transformers_worker(0, *worker_arguments)
 
 
+def _recipe_command(arguments: argparse.Namespace) -> list[str]:
+    worker_python = str(arguments.worker_python or Path(sys.executable))
+    framework = (
+        "representax"
+        if arguments.framework == "representax"
+        else REFERENCE_FRAMEWORKS[arguments.recipe]
+    )
+    if arguments.recipe == "dense-retrieval":
+        if arguments.checkpoint is None:
+            raise ValueError("dense retrieval requires --checkpoint")
+        command = [
+            worker_python,
+            str(Path(__file__).resolve()),
+            "representax" if arguments.framework == "representax" else framework,
+            "--checkpoint",
+            str(arguments.checkpoint),
+            "--data",
+            str(arguments.data),
+            "--output",
+            str(arguments.output),
+            "--seed",
+            str(arguments.seed),
+            "--steps",
+            str(arguments.steps),
+            "--platform",
+            arguments.platform,
+        ]
+        if arguments.platform == "gpu":
+            command.extend(("--gpu", str(arguments.gpu)))
+        if arguments.framework == "representax":
+            command.extend(("--negative-scope", arguments.negative_scope))
+        elif arguments.torch_compile:
+            command.append("--torch-compile")
+        return command
+
+    if arguments.checkpoint is None and arguments.recipe != "v-jepa":
+        raise ValueError(f"{arguments.recipe} requires --checkpoint")
+    module = {
+        "semantic-similarity-mpnet-base": "semantic_pair",
+        "semantic-similarity-bert-base": "semantic_pair",
+        "pair-classification-mpnet-base": "semantic_pair",
+        "pair-classification-bert-base": "semantic_pair",
+        "cross-encoder": "cross_encoder",
+        "late-interaction": "late_interaction",
+        "outcome-reward": "outcome_reward",
+        "process-reward": "process_reward",
+        "image-text": "image_text",
+        "audio-text": "audio_text",
+        "video-text": "video_text",
+        "v-jepa": "vjepa",
+    }[arguments.recipe]
+    command = [
+        worker_python,
+        "-m",
+        f"experiments.preflights.{module}",
+        "worker",
+        "--framework",
+        framework,
+        "--data-directory",
+        str(arguments.data),
+        "--run-directory",
+        str(arguments.output / "run"),
+        "--report",
+        str(arguments.output / "summary.json"),
+        "--steps",
+        str(arguments.steps),
+        "--seed",
+        str(arguments.seed),
+        "--platform",
+        arguments.platform,
+    ]
+    if arguments.checkpoint is not None:
+        command.extend(("--checkpoint", str(arguments.checkpoint)))
+    if arguments.recipe.startswith(("semantic-similarity-", "pair-classification-")):
+        workload = (
+            "semantic-similarity"
+            if arguments.recipe.startswith("semantic-similarity-")
+            else "pair-classification"
+        )
+        model = arguments.recipe.removeprefix(f"{workload}-")
+        command.extend(("--workload", workload, "--model", model, "--serious"))
+    elif arguments.recipe == "late-interaction":
+        command.extend(("--negative-scope", arguments.negative_scope))
+    elif arguments.recipe == "outcome-reward":
+        command.extend(("--padding", "static"))
+    elif arguments.recipe == "audio-text":
+        command.extend(("--batch-size", "256", "--sharding", "ddp", "--continuous"))
+    elif arguments.recipe == "video-text":
+        command.extend(("--batch-size", "128"))
+    elif arguments.recipe == "v-jepa":
+        if arguments.reference is None:
+            raise ValueError("V-JEPA requires --reference")
+        command.extend(
+            ("--reference", str(arguments.reference), "--batch-size", "128")
+        )
+    return command
+
+
+def _run_recipe(arguments: argparse.Namespace) -> None:
+    if arguments.platform == "gpu":
+        if arguments.gpu is None or arguments.gpu < 0:
+            raise ValueError("GPU runs require one non-negative --gpu index")
+    elif arguments.gpu is not None:
+        raise ValueError("TPU runs do not accept --gpu")
+    if arguments.torch_compile and not (
+        arguments.recipe == "dense-retrieval"
+        and arguments.framework == "reference"
+        and arguments.platform == "gpu"
+    ):
+        raise ValueError("--torch-compile is only the dense GPU reference control")
+    arguments.output.mkdir(parents=True, exist_ok=False)
+    command = _recipe_command(arguments)
+    invocation = {
+        "schema_version": "representax-cross-accelerator-invocation-v1",
+        "recipe": arguments.recipe,
+        "framework": arguments.framework,
+        "reference_framework": REFERENCE_FRAMEWORKS[arguments.recipe],
+        "platform": arguments.platform,
+        "seed": arguments.seed,
+        "steps": arguments.steps,
+        "negative_scope": (
+            arguments.negative_scope
+            if arguments.recipe in {"dense-retrieval", "late-interaction"}
+            else None
+        ),
+        "command": command,
+        "source": _git_state(),
+    }
+    _write_json(arguments.output / "invocation.json", invocation)
+    environment = os.environ.copy()
+    environment.update(
+        {
+            "PYTHONUNBUFFERED": "1",
+            "TOKENIZERS_PARALLELISM": "false",
+        }
+    )
+    with (arguments.output / "worker.log").open("x", encoding="utf-8") as log:
+        subprocess.run(
+            command,
+            cwd=Path(__file__).resolve().parents[2],
+            env=environment,
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            check=True,
+        )
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -764,6 +943,28 @@ def _parser() -> argparse.ArgumentParser:
     prepare.add_argument("--output", type=Path, required=True)
     prepare.add_argument("--checkpoint", type=Path, required=True)
     prepare.add_argument("--rows", type=int, default=DATA_POOL_SIZE)
+    recipe = commands.add_parser("recipe")
+    recipe.add_argument("--recipe", choices=RECIPES, required=True)
+    recipe.add_argument(
+        "--framework",
+        choices=("representax", "reference"),
+        required=True,
+    )
+    recipe.add_argument("--checkpoint", type=Path)
+    recipe.add_argument("--data", type=Path, required=True)
+    recipe.add_argument("--reference", type=Path)
+    recipe.add_argument("--output", type=Path, required=True)
+    recipe.add_argument("--seed", type=int, choices=SEEDS, required=True)
+    recipe.add_argument("--steps", type=int, default=STEPS)
+    recipe.add_argument("--platform", choices=("gpu", "tpu"), required=True)
+    recipe.add_argument("--gpu", type=int)
+    recipe.add_argument("--worker-python", type=Path)
+    recipe.add_argument(
+        "--negative-scope",
+        choices=("local", "global"),
+        default="local",
+    )
+    recipe.add_argument("--torch-compile", action="store_true")
     for name in ("representax", "sentence-transformers"):
         command = commands.add_parser(name)
         command.add_argument("--checkpoint", type=Path, required=True)
@@ -786,6 +987,9 @@ def main(arguments: Sequence[str] | None = None) -> None:
     parsed = _parser().parse_args(arguments)
     if parsed.command == "prepare-data":
         _prepare_data(parsed.output, parsed.checkpoint, parsed.rows)
+        return
+    if parsed.command == "recipe":
+        _run_recipe(parsed)
         return
     if parsed.platform == "gpu":
         if parsed.gpu is None or parsed.gpu < 0:

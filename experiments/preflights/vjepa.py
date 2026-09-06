@@ -20,6 +20,17 @@ from typing import Any
 
 import numpy as np
 
+from experiments.preflights.accelerator import (
+    Platform,
+    data_parallel_job,
+    initialize_jax,
+    torch_device,
+    torch_device_report,
+    torch_rank,
+    torch_reset_peak_memory,
+    torch_synchronize,
+    torch_world_size,
+)
 from experiments.preflights.provenance import reference_source, write_reference_result
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -503,6 +514,8 @@ def _representax_job(
     data_directory: Path,
     steps: int,
     seed: int,
+    batch_size: int = PREFLIGHT_BATCH_SIZE,
+    micro_batch_size: int = PREFLIGHT_BATCH_SIZE,
 ) -> Any:
     if steps < 4 or steps % 2:
         raise ValueError("steps must be an even integer of at least four")
@@ -590,10 +603,13 @@ def _representax_job(
         ),
         data=data,
         training=TrainingConfig(
-            global_batch_size=PREFLIGHT_BATCH_SIZE,
+            global_batch_size=batch_size,
             max_steps=steps,
             seed=seed,
-            batch=BatchConfig(micro_batch_size=PREFLIGHT_BATCH_SIZE),
+            batch=BatchConfig(
+                micro_batch_size=micro_batch_size,
+                gradient_accumulation_steps=batch_size // micro_batch_size,
+            ),
             activation_rematerialization="full",
             donate_buffers=True,
             precision=PrecisionConfig.bfloat16_mixed(),
@@ -669,47 +685,85 @@ def _representax_worker(
     run_directory: Path,
     steps: int,
     seed: int,
+    batch_size: int = PREFLIGHT_BATCH_SIZE,
+    platform: Platform = "gpu",
 ) -> dict[str, Any]:
-    import jax
+    jax = initialize_jax(platform)
 
     from representax import load_inference_bundle
     from representax.models.vjepa2_1 import VJEPA2_1Model
     from representax.train import run_job
 
-    if jax.default_backend() != "gpu" or len(jax.devices()) != 1:
-        raise RuntimeError("V-JEPA preflight requires exactly one visible GPU")
     job = _representax_job(
         data_directory=data_directory,
         steps=steps,
         seed=seed,
+        batch_size=batch_size,
+        micro_batch_size=1 if platform == "tpu" else batch_size,
     )
     from representax.models.vjepa2_1 import load_vjepa2_1
 
-    initial_model, _ = load_vjepa2_1(
-        key=jax.random.key(seed),
-        **job.model.parameters,
-    )
-    initial_evaluation = _geometry(_native_embeddings(initial_model, data_directory))
-    del initial_model
-    gc.collect()
-    jax.clear_caches()
+    if platform == "gpu":
+        initial_model, _ = load_vjepa2_1(
+            key=jax.random.key(seed),
+            **job.model.parameters,
+        )
+        initial_evaluation = _geometry(
+            _native_embeddings(initial_model, data_directory)
+        )
+        del initial_model
+        gc.collect()
+        jax.clear_caches()
+    else:
+        initial_evaluation = None
+        job = data_parallel_job(
+            job,
+            device_count=jax.device_count(),
+            platform=platform,
+            training_only=True,
+        )
+        run_directory = run_directory / f"process-{jax.process_index()}"
 
     started = time.perf_counter()
-    paused = run_job(job, run_directory, stop_after=steps // 2)
-    if paused.completed_iterations != steps // 2:
-        raise RuntimeError("Representax did not stop at the midpoint checkpoint")
-    del paused
-    gc.collect()
-    jax.clear_caches()
-    completed = run_job(job, run_directory, resume=True)
+    if platform == "tpu":
+        completed = run_job(job, run_directory)
+    else:
+        paused = run_job(job, run_directory, stop_after=steps // 2)
+        if paused.completed_iterations != steps // 2:
+            raise RuntimeError("Representax did not stop at the midpoint checkpoint")
+        del paused
+        gc.collect()
+        jax.clear_caches()
+        completed = run_job(job, run_directory, resume=True)
     jax.block_until_ready(completed.state)
     elapsed = time.perf_counter() - started
-    if not completed.resumed or completed.completed_iterations != steps:
+    if completed.completed_iterations != steps or completed.resumed != (
+        platform == "gpu"
+    ):
         raise RuntimeError("Representax did not resume to the final update")
-    if completed.inference_bundle is None:
+    if completed.inference_bundle is None and platform == "gpu":
         raise RuntimeError("Representax did not export an inference bundle")
     if not isinstance(completed.state.model, VJEPA2_1Model):
         raise TypeError("Representax returned a different model family")
+    rows = _read_jsonl(run_directory / "metrics.jsonl")
+    updates = [row for row in rows if row.get("event") == "training_step"]
+    losses = [float(row["metrics"]["train/loss"]) for row in updates]
+    if platform == "tpu":
+        return {
+            "schema_version": "representax-vjepa-worker-v1",
+            "framework": "representax",
+            "steps": steps,
+            "global_batch_size": batch_size,
+            "platform": platform,
+            "device_count": jax.device_count(),
+            "process_count": jax.process_count(),
+            "elapsed_seconds": elapsed,
+            "timing": _steady_state(rows),
+            "losses": losses,
+            "final_loss": losses[-1],
+            "inference_bundle": None,
+        }
+
     expected = _native_embeddings(completed.state.model, data_directory)
     final_evaluation = _geometry(expected)
     reloaded, reloaded_job = load_inference_bundle(completed.inference_bundle)
@@ -720,18 +774,15 @@ def _representax_worker(
     if reload_difference != 0.0:
         raise RuntimeError("native inference reload changed V-JEPA embeddings")
 
-    rows = _read_jsonl(run_directory / "metrics.jsonl")
-    updates = [row for row in rows if row.get("event") == "training_step"]
     if len(updates) != steps:
         raise RuntimeError("Representax evidence is missing training updates")
-    losses = [float(row["metrics"]["train/loss"]) for row in updates]
     if not np.all(np.isfinite(losses)):
         raise RuntimeError("Representax produced a non-finite loss")
     return {
         "schema_version": "representax-vjepa-worker-v1",
         "framework": "representax",
         "steps": steps,
-        "global_batch_size": PREFLIGHT_BATCH_SIZE,
+        "global_batch_size": batch_size,
         "elapsed_seconds": elapsed,
         "timing": _steady_state(rows),
         "losses": losses,
@@ -760,7 +811,7 @@ def _load_reference_state(
         device=device,
         activation_checkpointing=activation_checkpointing,
     )
-    state = torch.load(checkpoint, map_location=device, weights_only=False)
+    state = torch.load(checkpoint, map_location="cpu", weights_only=False)
     encoder.load_state_dict(state["encoder"])
     predictor.load_state_dict(state["predictor"])
     target.load_state_dict(state["target_encoder"])
@@ -883,12 +934,22 @@ def _facebookresearch_worker(
     run_directory: Path,
     steps: int,
     seed: int,
+    batch_size: int = PREFLIGHT_BATCH_SIZE,
+    platform: Platform = "gpu",
 ) -> dict[str, Any]:
     import torch
 
-    if not torch.cuda.is_available() or torch.cuda.device_count() != 1:
+    if platform == "gpu" and (
+        not torch.cuda.is_available() or torch.cuda.device_count() != 1
+    ):
         raise RuntimeError("Meta V-JEPA preflight requires exactly one visible GPU")
     contract = frozen_contract()
+    world_size = torch_world_size()
+    if batch_size % world_size:
+        raise ValueError("global batch must divide the accelerator count")
+    local_batch_size = batch_size // world_size
+    if platform == "tpu":
+        run_directory = run_directory / f"process-{torch_rank()}"
     actual_commit = subprocess.run(
         ("git", "-C", str(reference), "rev-parse", "HEAD"),
         check=True,
@@ -898,7 +959,7 @@ def _facebookresearch_worker(
     if actual_commit != contract.reference_commit:
         raise RuntimeError("Meta reference checkout does not match the frozen commit")
     run_directory.mkdir(parents=True, exist_ok=False)
-    device = torch.device("cuda")
+    device = torch_device()
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
     initial_checkpoint = data_directory / "official-initialization.pth.tar"
@@ -908,8 +969,10 @@ def _facebookresearch_worker(
         device=device,
         activation_checkpointing=True,
     )
-    initial_evaluation = _geometry(
-        _reference_embeddings(target, data_directory, device)
+    initial_evaluation = (
+        _geometry(_reference_embeddings(target, data_directory, device))
+        if platform == "gpu"
+        else None
     )
     for parameter in target.parameters():
         parameter.requires_grad = False
@@ -921,15 +984,30 @@ def _facebookresearch_worker(
         weight_decay=0.04,
     )
     records = _read_jsonl(data_directory / "train.jsonl")
-    training_pixels = [
-        np.load(data_directory / str(record["tensor"]), allow_pickle=False)
-        for record in records[:steps]
-    ]
+    required_rows = batch_size * steps
+    if len(records) < required_rows:
+        raise ValueError(f"V-JEPA requires {required_rows} prepared training videos")
+    rank = torch_rank()
+    training_pixels = []
+    for iteration in range(steps):
+        start = iteration * batch_size + rank * local_batch_size
+        block = records[start : start + local_batch_size]
+        training_pixels.append(
+            np.stack(
+                [
+                    np.load(
+                        data_directory / str(record["tensor"]),
+                        allow_pickle=False,
+                    )
+                    for record in block
+                ]
+            )
+        )
     with np.load(data_directory / "masks.npz") as loaded_masks:
         masks = {name: loaded_masks[name] for name in loaded_masks.files}
     losses = []
     durations = []
-    torch.cuda.reset_peak_memory_stats()
+    torch_reset_peak_memory()
     started = time.perf_counter()
 
     def run_updates(start: int, stop: int) -> None:
@@ -938,28 +1016,70 @@ def _facebookresearch_worker(
             lr = 1e-4 + (6e-4 - 1e-4) * min(iteration, 12_000) / 12_000
             for group in optimizer.param_groups:
                 group["lr"] = lr
-            pixels = torch.from_numpy(training_pixels[iteration])[None].to(device)
+            pixels = torch.from_numpy(training_pixels[iteration]).to(device)
             optimizer.zero_grad(set_to_none=True)
-            with torch.autocast("cuda", dtype=torch.bfloat16):
-                loss = _reference_loss(
-                    encoder,
-                    predictor,
-                    target,
-                    pixels,
-                    masks,
-                )
-            loss.backward()
-            optimizer.step()
+            step_losses = []
+            for local_index in range(local_batch_size):
+                with torch.autocast(device.type, dtype=torch.bfloat16):
+                    loss = _reference_loss(
+                        encoder,
+                        predictor,
+                        target,
+                        pixels[local_index : local_index + 1],
+                        masks,
+                    )
+                (loss / local_batch_size).backward()
+                step_losses.append(loss.detach())
+            if platform == "tpu":
+                import torch_xla.core.xla_model as xm
+
+                xm.optimizer_step(optimizer)
+            else:
+                optimizer.step()
             with torch.no_grad():
                 for online, target_parameter in zip(
                     encoder.parameters(), target.parameters(), strict=True
                 ):
                     target_parameter.mul_(0.99925).add_(online, alpha=0.00075)
-            torch.cuda.synchronize()
+            torch_synchronize()
             durations.append(time.perf_counter() - step_started)
-            losses.append(float(loss.detach()))
+            losses.append(float(torch.stack(step_losses).mean().cpu()))
 
     midpoint = steps // 2
+    if platform == "tpu":
+        run_updates(0, steps)
+        torch_synchronize()
+        elapsed = time.perf_counter() - started
+        warm = durations[2:]
+        if not warm:
+            raise RuntimeError("Meta V-JEPA emitted no warm TPU step timings")
+        return {
+            "schema_version": "representax-vjepa-worker-v1",
+            "framework": "facebookresearch-vjepa2",
+            "reference_commit": actual_commit,
+            "torch_version": torch.__version__,
+            "steps": steps,
+            "global_batch_size": batch_size,
+            "local_batch_size": local_batch_size,
+            "platform": platform,
+            "device_count": world_size,
+            "elapsed_seconds": elapsed,
+            "timing": {
+                "compilation_seconds": sum(durations[:2]),
+                "compilation_events": 2,
+                "measured_steps": len(warm),
+                "median_step_seconds": statistics.median(warm),
+                "examples_per_second": batch_size * len(warm) / sum(warm),
+            },
+            "step_timings": [
+                {"step": index + 1, "seconds": duration}
+                for index, duration in enumerate(durations)
+            ],
+            "losses": losses,
+            "final_loss": losses[-1],
+            "inference_bundle": None,
+            **torch_device_report(),
+        }
     run_updates(0, midpoint)
     midpoint_path = run_directory / "checkpoints" / f"checkpoint-{midpoint}.pt"
     _save_reference_checkpoint(
@@ -993,7 +1113,7 @@ def _facebookresearch_worker(
     )
     optimizer.load_state_dict(checkpoint_state["optimizer"])
     run_updates(midpoint, steps)
-    torch.cuda.synchronize()
+    torch_synchronize()
     elapsed = time.perf_counter() - started
     final_evaluation = _geometry(_reference_embeddings(target, data_directory, device))
     final_path = run_directory / "final-model.pt"
@@ -1023,7 +1143,7 @@ def _facebookresearch_worker(
         "reference_commit": actual_commit,
         "torch_version": torch.__version__,
         "steps": steps,
-        "global_batch_size": PREFLIGHT_BATCH_SIZE,
+        "global_batch_size": batch_size,
         "elapsed_seconds": elapsed,
         "timing": {
             "compilation_seconds": 0.0,
@@ -1056,6 +1176,8 @@ def _worker(arguments: argparse.Namespace) -> None:
             run_directory=arguments.run_directory,
             steps=arguments.steps,
             seed=arguments.seed,
+            batch_size=arguments.batch_size,
+            platform=arguments.platform,
         )
     else:
         report = _facebookresearch_worker(
@@ -1064,7 +1186,17 @@ def _worker(arguments: argparse.Namespace) -> None:
             run_directory=arguments.run_directory,
             steps=arguments.steps,
             seed=arguments.seed,
+            batch_size=arguments.batch_size,
+            platform=arguments.platform,
         )
+    if arguments.platform == "tpu":
+        rank = (
+            initialize_jax("tpu").process_index()
+            if arguments.framework == "representax"
+            else torch_rank()
+        )
+        if rank != 0:
+            return
     if arguments.framework == "representax":
         _write_json(arguments.report, report)
     else:
@@ -1075,6 +1207,10 @@ def _worker(arguments: argparse.Namespace) -> None:
             checkout=arguments.reference,
         )
     print(json.dumps(report, indent=2, sort_keys=True))
+
+
+def _xla_worker(_index: int, arguments: argparse.Namespace) -> None:
+    _worker(arguments)
 
 
 def _pair(arguments: argparse.Namespace) -> None:
@@ -1168,6 +1304,8 @@ def _parser() -> argparse.ArgumentParser:
     worker.add_argument("--report", type=Path, required=True)
     worker.add_argument("--steps", type=int, default=PREFLIGHT_STEPS)
     worker.add_argument("--seed", type=int, default=7)
+    worker.add_argument("--batch-size", type=int, default=PREFLIGHT_BATCH_SIZE)
+    worker.add_argument("--platform", choices=("gpu", "tpu"), default="gpu")
 
     pair = subparsers.add_parser("pair")
     pair.add_argument("--reference", type=Path, required=True)
@@ -1191,7 +1329,15 @@ def main() -> None:
         )
         print(json.dumps(manifest, indent=2, sort_keys=True))
     elif arguments.command == "worker":
-        _worker(arguments)
+        if (
+            arguments.framework == "facebookresearch-vjepa2"
+            and arguments.platform == "tpu"
+        ):
+            import torch_xla
+
+            torch_xla.launch(_xla_worker, args=(arguments,))
+        else:
+            _worker(arguments)
     else:
         _pair(arguments)
 

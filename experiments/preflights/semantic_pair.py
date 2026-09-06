@@ -614,11 +614,18 @@ def representax_steady_state(
 
 
 def reference_steady_state(
-    rows: Sequence[tuple[int, float]], batch_size: int
+    rows: Sequence[tuple[int, float]],
+    batch_size: int,
+    *,
+    excluded_steps: Sequence[int] = (1,),
 ) -> dict[str, float]:
     """Derive reference throughput after its first optimizer update."""
 
-    summary = warm_step_summary(rows, batch_size=batch_size)
+    summary = warm_step_summary(
+        rows,
+        batch_size=batch_size,
+        excluded_steps=excluded_steps,
+    )
     return {
         "measured_steps": float(summary["measured_steps"]),
         "median_step_seconds": float(summary["median_step_seconds"]),
@@ -1092,7 +1099,11 @@ def _sentence_transformers_worker(
             "device_count": world_size,
             "training_seconds": training_seconds,
             "examples_per_second": training_batch_size * steps / training_seconds,
-            "steady_state": reference_steady_state(timer.rows, training_batch_size),
+            "steady_state": reference_steady_state(
+                timer.rows,
+                training_batch_size,
+                excluded_steps=(1, 2),
+            ),
             "step_timings": [
                 {"step": step, "seconds": duration} for step, duration in timer.rows
             ],
