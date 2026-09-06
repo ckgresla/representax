@@ -12,6 +12,7 @@ from experiments.preflights.vjepa import (
     FRAMEWORKS,
     PREFLIGHT_BATCH_SIZE,
     VJEPAPreflightCollator,
+    _copy_initialization,
     _parser,
     _reference_masks_for_batch,
     _representax_job,
@@ -243,6 +244,55 @@ def test_convert_checkpoint_command_is_explicit(tmp_path: Path) -> None:
 
     assert arguments.input == tmp_path / "input.pth.tar"
     assert arguments.output == tmp_path / "output.npz"
+
+
+def test_copy_initialization_verifies_and_copies_both_formats(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    output = tmp_path / "output"
+    source.mkdir()
+    output.mkdir()
+    files = {
+        "official-initialization.pth.tar": b"torch",
+        "official-initialization.npz": b"numpy",
+    }
+    for name, value in files.items():
+        (source / name).write_bytes(value)
+    (source / "manifest.json").write_text(
+        json.dumps(
+            {
+                "reference_commit": "abc123",
+                "seed": 7,
+                "files": {
+                    name: "sha256:" + __import__("hashlib").sha256(value).hexdigest()
+                    for name, value in files.items()
+                },
+            }
+        )
+    )
+
+    copied = _copy_initialization(
+        source, output, reference_commit="abc123", seed=7
+    )
+
+    assert [path.read_bytes() for path in copied] == [b"torch", b"numpy"]
+
+
+def test_prepare_initialization_command_is_explicit(tmp_path: Path) -> None:
+    arguments = _parser().parse_args(
+        [
+            "prepare-initialization",
+            "--output",
+            str(tmp_path / "initialization"),
+            "--reference",
+            str(tmp_path / "reference"),
+            "--seed",
+            "42",
+        ]
+    )
+
+    assert arguments.output == tmp_path / "initialization"
+    assert arguments.reference == tmp_path / "reference"
+    assert arguments.seed == 42
 
 
 def test_pair_command_defaults_to_assigned_gpu_four() -> None:

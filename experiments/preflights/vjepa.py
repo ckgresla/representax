@@ -8,6 +8,7 @@ import gc
 import hashlib
 import json
 import os
+import shutil
 import statistics
 import subprocess
 import sys
@@ -378,6 +379,61 @@ def _write_numpy_checkpoint(source: Path, output: Path) -> None:
     np.savez(output, **arrays)
 
 
+def prepare_initialization(
+    output: Path, *, reference: Path, seed: int
+) -> dict[str, Any]:
+    contract = frozen_contract()
+    actual_commit = subprocess.run(
+        ("git", "-C", str(reference), "rev-parse", "HEAD"),
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    if actual_commit != contract.reference_commit:
+        raise ValueError(
+            f"expected Meta commit {contract.reference_commit}, found {actual_commit}"
+        )
+    output.mkdir(parents=True, exist_ok=False)
+    checkpoint = output / "official-initialization.pth.tar"
+    numpy_checkpoint = output / "official-initialization.npz"
+    _write_initial_checkpoint(reference, checkpoint, seed)
+    _write_numpy_checkpoint(checkpoint, numpy_checkpoint)
+    manifest = {
+        "schema_version": "representax-vjepa-initialization-v1",
+        "reference_commit": actual_commit,
+        "seed": seed,
+        "files": {
+            checkpoint.name: _sha256(checkpoint),
+            numpy_checkpoint.name: _sha256(numpy_checkpoint),
+        },
+    }
+    _write_json(output / "manifest.json", manifest)
+    return manifest
+
+
+def _copy_initialization(
+    source: Path,
+    output: Path,
+    *,
+    reference_commit: str,
+    seed: int,
+) -> tuple[Path, Path]:
+    manifest = _document(source / "manifest.json")
+    if manifest.get("reference_commit") != reference_commit:
+        raise ValueError("V-JEPA initialization reference commit changed")
+    if manifest.get("seed") != seed:
+        raise ValueError("V-JEPA initialization seed changed")
+    copied = []
+    for name in ("official-initialization.pth.tar", "official-initialization.npz"):
+        source_path = source / name
+        if _sha256(source_path) != manifest["files"][name]:
+            raise ValueError(f"V-JEPA initialization hash changed: {source_path}")
+        destination = output / name
+        shutil.copyfile(source_path, destination)
+        copied.append(destination)
+    return copied[0], copied[1]
+
+
 def prepare_data(
     output: Path,
     *,
@@ -385,6 +441,7 @@ def prepare_data(
     train_videos: int = PREFLIGHT_TRAIN_VIDEOS,
     evaluation_videos: int = PREFLIGHT_EVALUATION_VIDEOS,
     seed: int = 7,
+    initialization: Path | None = None,
 ) -> dict[str, Any]:
     """Materialize a bounded, deterministic SSV2 tensor and initialization set."""
 
@@ -455,10 +512,18 @@ def prepare_data(
         context_valid=masks[2],
         target_valid=masks[3],
     )
-    checkpoint = output / "official-initialization.pth.tar"
-    _write_initial_checkpoint(reference, checkpoint, seed)
-    numpy_checkpoint = output / "official-initialization.npz"
-    _write_numpy_checkpoint(checkpoint, numpy_checkpoint)
+    if initialization is None:
+        checkpoint = output / "official-initialization.pth.tar"
+        _write_initial_checkpoint(reference, checkpoint, seed)
+        numpy_checkpoint = output / "official-initialization.npz"
+        _write_numpy_checkpoint(checkpoint, numpy_checkpoint)
+    else:
+        checkpoint, numpy_checkpoint = _copy_initialization(
+            initialization,
+            output,
+            reference_commit=actual_commit,
+            seed=seed,
+        )
     manifest = {
         "schema_version": "representax-vjepa-preflight-data-v1",
         "contract": asdict(contract),
@@ -1354,6 +1419,11 @@ def _parser() -> argparse.ArgumentParser:
         "--evaluation-videos", type=int, default=PREFLIGHT_EVALUATION_VIDEOS
     )
     prepare.add_argument("--seed", type=int, default=7)
+    prepare.add_argument("--initialization", type=Path)
+    initialize = subparsers.add_parser("prepare-initialization")
+    initialize.add_argument("--output", type=Path, required=True)
+    initialize.add_argument("--reference", type=Path, required=True)
+    initialize.add_argument("--seed", type=int, default=7)
     convert = subparsers.add_parser("convert-checkpoint")
     convert.add_argument("--input", type=Path, required=True)
     convert.add_argument("--output", type=Path, required=True)
@@ -1387,6 +1457,14 @@ def main() -> None:
             reference=arguments.reference,
             train_videos=arguments.train_videos,
             evaluation_videos=arguments.evaluation_videos,
+            seed=arguments.seed,
+            initialization=arguments.initialization,
+        )
+        print(json.dumps(manifest, indent=2, sort_keys=True))
+    elif arguments.command == "prepare-initialization":
+        manifest = prepare_initialization(
+            arguments.output,
+            reference=arguments.reference,
             seed=arguments.seed,
         )
         print(json.dumps(manifest, indent=2, sort_keys=True))
