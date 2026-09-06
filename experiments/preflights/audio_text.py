@@ -983,6 +983,11 @@ def _sentence_transformers_worker(
         MultipleNegativesRankingLoss,
     )
 
+    class PreflightTrainer(SentenceTransformerTrainer):
+        def add_model_card_callback(self, _default_args_dict: dict[str, Any]) -> None:
+            # Model-card widget generation executes an unrelated TPU forward.
+            return None
+
     contract = frozen_contract()
     world_size = torch_world_size()
     if batch_size % world_size:
@@ -1079,7 +1084,7 @@ def _sentence_transformers_worker(
         prompts=training_prompt,
     )
     timer = CudaStepTimer()
-    trainer = SentenceTransformerTrainer(
+    trainer = PreflightTrainer(
         model=model,
         args=arguments,
         train_dataset=train_dataset,
