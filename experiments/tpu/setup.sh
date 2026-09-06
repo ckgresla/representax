@@ -8,6 +8,11 @@ jax_environment="${REPRESENTAX_TPU_JAX_ENV:-${project_dir}/.venv-jax}"
 torch_environment="${REPRESENTAX_TPU_TORCH_ENV:-${project_dir}/.venv-torch-xla}"
 late_environment="${REPRESENTAX_TPU_LATE_ENV:-${project_dir}/.venv-torch-xla-late}"
 
+if ! command -v ffprobe >/dev/null 2>&1; then
+  sudo apt-get update
+  sudo apt-get install --yes ffmpeg
+fi
+
 if ! command -v "${uv_command}" >/dev/null 2>&1; then
   if [[ ${uv_command} == "uv" && -x "${HOME}/.local/bin/uv" ]]; then
     uv_command="${HOME}/.local/bin/uv"

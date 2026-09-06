@@ -1,6 +1,7 @@
 # TPU experiment environments
 
-`setup.sh` creates two isolated, locked environments:
+`setup.sh` installs the host `ffmpeg` tools used for video preparation and
+creates three isolated, locked environments:
 
 - `.venv-jax`: Python 3.13 with the local Representax checkout and JAX TPU runtime.
 - `.venv-torch-xla`: system Python 3.10 with Sentence Transformers, TRL,
