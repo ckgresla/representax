@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.metadata
 import json
 import os
+import platform as platform_module
 import statistics
 import subprocess
 import sys
@@ -115,6 +117,35 @@ def _git_state() -> dict[str, Any]:
         "commit": head,
         "working_tree_patch_sha256": ("sha256:" + hashlib.sha256(patch).hexdigest()),
         "working_tree_clean": not bool(patch),
+    }
+
+
+def _environment_state() -> dict[str, Any]:
+    accelerator_variables = (
+        "CUDA_VISIBLE_DEVICES",
+        "JAX_COMPILATION_CACHE_DIR",
+        "JAX_DEFAULT_MATMUL_PRECISION",
+        "PJRT_DEVICE",
+        "XLA_FLAGS",
+        "XLA_PYTHON_CLIENT_ALLOCATOR",
+        "XLA_PYTHON_CLIENT_MEM_FRACTION",
+        "XLA_PYTHON_CLIENT_PREALLOCATE",
+    )
+    packages = {
+        distribution.metadata["Name"]: distribution.version
+        for distribution in importlib.metadata.distributions()
+        if distribution.metadata["Name"]
+    }
+    return {
+        "python": platform_module.python_version(),
+        "executable": sys.executable,
+        "platform": platform_module.platform(),
+        "packages": dict(sorted(packages.items(), key=lambda item: item[0].lower())),
+        "accelerator_environment": {
+            name: os.environ[name]
+            for name in accelerator_variables
+            if name in os.environ
+        },
     }
 
 
@@ -935,6 +966,7 @@ def _run_recipe(arguments: argparse.Namespace) -> None:
         "source": _git_state(),
     }
     _write_json(arguments.output / "invocation.json", invocation)
+    _write_json(arguments.output / "environment.json", _environment_state())
     environment = os.environ.copy()
     environment.update(
         {

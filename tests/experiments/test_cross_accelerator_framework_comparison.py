@@ -133,6 +133,18 @@ def test_campaign_exposes_every_frozen_recipe() -> None:
     assert module.REFERENCE_FRAMEWORKS["v-jepa"] == "facebookresearch-vjepa2"
 
 
+def test_environment_state_records_reproducible_runtime(monkeypatch) -> None:
+    module = _module()
+    monkeypatch.setenv("PJRT_DEVICE", "TPU")
+
+    state = module._environment_state()
+
+    assert state["python"]
+    assert state["executable"]
+    assert state["packages"]
+    assert state["accelerator_environment"]["PJRT_DEVICE"] == "TPU"
+
+
 def test_recipe_command_preserves_frozen_tpu_shape(tmp_path: Path) -> None:
     module = _module()
     parser = module._parser()
