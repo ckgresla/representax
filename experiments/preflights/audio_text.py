@@ -25,7 +25,6 @@ from experiments.preflights.accelerator import (
     data_parallel_job,
     deterministic_tpu_cached_mnr,
     enable_torch_xla_checkpointing,
-    grad_cache_replay_size,
     initialize_jax,
     process_local_rows,
     torch_device,
@@ -988,10 +987,9 @@ def _sentence_transformers_worker(
     if batch_size % world_size:
         raise ValueError("global batch must divide the accelerator count")
     local_batch_size = batch_size // world_size
-    replay_size = grad_cache_replay_size(
-        platform,
-        local_batch_size=local_batch_size,
-        preferred_size=GRAD_CACHE_MICRO_BATCH,
+    replay_size = min(
+        local_batch_size,
+        8 if platform == "tpu" else GRAD_CACHE_MICRO_BATCH,
     )
     if platform == "tpu":
         run_directory = run_directory / f"process-{torch_rank()}"
