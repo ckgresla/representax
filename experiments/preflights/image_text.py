@@ -21,6 +21,16 @@ from typing import Any
 
 import numpy as np
 
+from experiments.preflights.accelerator import (
+    Platform,
+    data_parallel_job,
+    initialize_jax,
+    torch_device_report,
+    torch_rank,
+    torch_reset_peak_memory,
+    torch_synchronize,
+    torch_world_size,
+)
 from experiments.preflights.provenance import reference_source, write_reference_result
 from experiments.preflights.timing import CudaStepTimer, warm_step_summary
 
@@ -570,8 +580,9 @@ def _representax_worker(
     run_directory: Path,
     steps: int,
     seed: int,
+    platform: Platform = "gpu",
 ) -> dict[str, Any]:
-    import jax
+    jax = initialize_jax(platform)
 
     from representax import load_inference_bundle
     from representax.config import PrecisionConfig
@@ -582,25 +593,57 @@ def _representax_worker(
     from representax.precision import precision_context, resolve_precision_policy
     from representax.train import run_job
 
-    if jax.default_backend() != "gpu" or len(jax.devices()) != 1:
-        raise RuntimeError("image-text preflight requires exactly one visible GPU")
     job = _representax_job(
         checkpoint=checkpoint,
         data_directory=data_directory,
         steps=steps,
         seed=seed,
     )
+    if jax.device_count() > 1:
+        job = data_parallel_job(
+            job,
+            device_count=jax.device_count(),
+            platform=platform,
+            training_only=platform == "tpu",
+        )
+    if platform == "tpu":
+        run_directory = run_directory / f"process-{jax.process_index()}"
     started = time.perf_counter()
-    paused = run_job(job, run_directory, stop_after=steps // 2)
-    if paused.completed_iterations != steps // 2:
-        raise RuntimeError("Representax did not stop at the midpoint checkpoint")
-    del paused
-    gc.collect()
-    jax.clear_caches()
-    completed = run_job(job, run_directory, resume=True)
+    if platform == "gpu":
+        paused = run_job(job, run_directory, stop_after=steps // 2)
+        if paused.completed_iterations != steps // 2:
+            raise RuntimeError("Representax did not stop at the midpoint checkpoint")
+        del paused
+        gc.collect()
+        jax.clear_caches()
+        completed = run_job(job, run_directory, resume=True)
+    else:
+        completed = run_job(job, run_directory)
     jax.block_until_ready(completed.state)
-    if not completed.resumed or completed.completed_iterations != steps:
+    if completed.completed_iterations != steps or completed.resumed != (
+        platform == "gpu"
+    ):
         raise RuntimeError("Representax did not resume to the final update")
+    rows = _metric_rows(run_directory / "metrics.jsonl")
+    updates = [row for row in rows if row.get("event") == "training_step"]
+    if platform == "tpu":
+        return {
+            "schema_version": "representax-image-text-worker-v1",
+            "framework": "representax",
+            "steps": steps,
+            "global_batch_size": frozen_contract().global_batch_size,
+            "platform": platform,
+            "device_count": jax.device_count(),
+            "process_count": jax.process_count(),
+            "elapsed_seconds": time.perf_counter() - started,
+            "steady_state": _steady_state(
+                rows,
+                frozen_contract().global_batch_size,
+            ),
+            "final_loss": float(updates[-1]["metrics"]["train/loss"]),
+            "training_metrics": [row["metrics"] for row in updates],
+            "inference_bundle": None,
+        }
     if completed.inference_bundle is None:
         raise RuntimeError("Representax did not produce an inference bundle")
 
@@ -644,8 +687,6 @@ def _representax_worker(
     if reload_difference != 0.0:
         raise RuntimeError("native inference reload changed CLIP embeddings")
 
-    rows = _metric_rows(run_directory / "metrics.jsonl")
-    updates = [row for row in rows if row.get("event") == "training_step"]
     evaluations = [row for row in rows if row.get("event") == "evaluation"]
     if len(updates) != steps or len(evaluations) != 2:
         raise RuntimeError("Representax evidence is missing updates or evaluations")
@@ -754,10 +795,10 @@ def _sentence_transformers_worker(
     run_directory: Path,
     steps: int,
     seed: int,
+    platform: Platform = "gpu",
 ) -> dict[str, Any]:
     import datasets
     import sentence_transformers
-    import torch
     import transformers
     from benchmarks.samplers import sequential_sentence_transformers_batches
     from sentence_transformers import (
@@ -767,9 +808,16 @@ def _sentence_transformers_worker(
     )
     from sentence_transformers.sentence_transformer.losses import (
         CachedMultipleNegativesRankingLoss,
+        MultipleNegativesRankingLoss,
     )
 
     contract = frozen_contract()
+    world_size = torch_world_size()
+    if contract.global_batch_size % world_size:
+        raise ValueError("global batch must divide the accelerator count")
+    local_batch_size = contract.global_batch_size // world_size
+    if platform == "tpu":
+        run_directory = run_directory / f"process-{torch_rank()}"
     if sentence_transformers.__version__ != contract.reference_version:
         raise RuntimeError(
             f"expected sentence-transformers=={contract.reference_version}, "
@@ -777,8 +825,10 @@ def _sentence_transformers_worker(
         )
     model = SentenceTransformer(str(checkpoint), local_files_only=True)
     initial_started = time.perf_counter()
-    initial_evaluation = _reference_evaluation(
-        model, data_directory, batch_size=EVALUATION_BATCH_SIZE
+    initial_evaluation = (
+        _reference_evaluation(model, data_directory, batch_size=EVALUATION_BATCH_SIZE)
+        if platform == "gpu"
+        else None
     )
     initial_evaluation_seconds = time.perf_counter() - initial_started
     rows = _read_jsonl(data_directory / "train.jsonl")
@@ -788,14 +838,18 @@ def _sentence_transformers_worker(
             "image": [str(data_directory / row["image"]) for row in rows],
         }
     ).cast_column("image", datasets.Image())
-    loss = CachedMultipleNegativesRankingLoss(
-        model,
-        scale=20.0,
-        mini_batch_size=GRAD_CACHE_MICRO_BATCH,
+    loss = (
+        MultipleNegativesRankingLoss(model, scale=20.0, gather_across_devices=False)
+        if platform == "tpu"
+        else CachedMultipleNegativesRankingLoss(
+            model,
+            scale=20.0,
+            mini_batch_size=GRAD_CACHE_MICRO_BATCH,
+        )
     )
     arguments = SentenceTransformerTrainingArguments(
         output_dir=str(run_directory / "checkpoints"),
-        per_device_train_batch_size=contract.global_batch_size,
+        per_device_train_batch_size=local_batch_size,
         max_steps=steps,
         learning_rate=2e-5,
         lr_scheduler_type="cosine",
@@ -812,14 +866,14 @@ def _sentence_transformers_worker(
         logging_steps=1,
         report_to="none",
         disable_tqdm=True,
-        save_strategy="steps",
+        save_strategy="steps" if platform == "gpu" else "no",
         save_steps=steps // 2,
         save_total_limit=2,
         dataloader_drop_last=True,
-        dataloader_num_workers=8,
-        dataloader_prefetch_factor=1,
-        dataloader_persistent_workers=True,
-        dataloader_pin_memory=True,
+        dataloader_num_workers=8 if platform == "gpu" else 0,
+        dataloader_prefetch_factor=1 if platform == "gpu" else None,
+        dataloader_persistent_workers=platform == "gpu",
+        dataloader_pin_memory=platform == "gpu",
         batch_sampler=sequential_sentence_transformers_batches,
         seed=seed,
         data_seed=seed,
@@ -832,11 +886,41 @@ def _sentence_transformers_worker(
         loss=loss,
         callbacks=[timer.callback()],
     )
-    torch.cuda.reset_peak_memory_stats()
+    torch_reset_peak_memory()
     started = time.perf_counter()
     output = trainer.train()
-    torch.cuda.synchronize()
+    torch_synchronize()
     training_seconds = time.perf_counter() - started
+    losses = [
+        float(row["loss"])
+        for row in trainer.state.log_history
+        if row.get("loss") is not None
+    ]
+    if platform == "tpu":
+        return {
+            "schema_version": "representax-image-text-worker-v1",
+            "framework": "sentence-transformers",
+            "framework_version": sentence_transformers.__version__,
+            "transformers_version": transformers.__version__,
+            "steps": steps,
+            "global_batch_size": contract.global_batch_size,
+            "platform": platform,
+            "device_count": world_size,
+            "training_seconds": training_seconds,
+            "examples_per_second": contract.global_batch_size
+            * steps
+            / training_seconds,
+            "steady_state": warm_step_summary(
+                timer.rows,
+                batch_size=contract.global_batch_size,
+            ),
+            "step_timings": [
+                {"step": step, "seconds": duration} for step, duration in timer.rows
+            ],
+            "losses": losses,
+            "inference_bundle": None,
+            **torch_device_report(),
+        }
     final_started = time.perf_counter()
     final_evaluation = _reference_evaluation(
         model, data_directory, batch_size=EVALUATION_BATCH_SIZE
@@ -860,11 +944,6 @@ def _sentence_transformers_worker(
     reload_difference = float(np.max(np.abs(expected - actual)))
     if not np.array_equal(expected, actual) or not np.all(np.isfinite(midpoint_probe)):
         raise RuntimeError("Sentence Transformers checkpoint or export reload failed")
-    losses = [
-        float(row["loss"])
-        for row in trainer.state.log_history
-        if row.get("loss") is not None
-    ]
     return {
         "schema_version": "representax-image-text-worker-v1",
         "framework": "sentence-transformers",
@@ -892,9 +971,7 @@ def _sentence_transformers_worker(
         "checkpoint": str(midpoint),
         "inference_bundle": str(export),
         "reload_maximum_absolute_difference": reload_difference,
-        "peak_device_bytes": int(torch.cuda.max_memory_allocated()),
-        "peak_reserved_bytes": int(torch.cuda.max_memory_reserved()),
-        "device": torch.cuda.get_device_name(),
+        **torch_device_report(),
     }
 
 
@@ -910,7 +987,16 @@ def _worker(arguments: argparse.Namespace) -> None:
         run_directory=arguments.run_directory,
         steps=arguments.steps,
         seed=arguments.seed,
+        platform=arguments.platform,
     )
+    if arguments.platform == "tpu":
+        rank = (
+            initialize_jax("tpu").process_index()
+            if arguments.framework == "representax"
+            else torch_rank()
+        )
+        if rank != 0:
+            return
     if arguments.framework == "representax":
         _write_json(arguments.report, report)
     else:
@@ -920,6 +1006,10 @@ def _worker(arguments: argparse.Namespace) -> None:
             reference="sentence-transformers",
         )
     print(json.dumps(report, indent=2, sort_keys=True))
+
+
+def _xla_worker(_index: int, arguments: argparse.Namespace) -> None:
+    _worker(arguments)
 
 
 def _pair(arguments: argparse.Namespace) -> None:
@@ -949,6 +1039,8 @@ def _pair(arguments: argparse.Namespace) -> None:
             str(arguments.steps),
             "--seed",
             str(arguments.seed),
+            "--platform",
+            "gpu",
         ]
         environment = {
             **os.environ,
@@ -1009,6 +1101,7 @@ def _parser() -> argparse.ArgumentParser:
     worker.add_argument("--report", type=Path, required=True)
     worker.add_argument("--steps", type=int, default=4)
     worker.add_argument("--seed", type=int, default=7)
+    worker.add_argument("--platform", choices=("gpu", "tpu"), default="gpu")
 
     pair = subparsers.add_parser("pair")
     pair.add_argument("--checkpoint", type=Path, required=True)
@@ -1034,7 +1127,15 @@ def main() -> None:
             )
         )
     elif arguments.command == "worker":
-        _worker(arguments)
+        if (
+            arguments.framework == "sentence-transformers"
+            and arguments.platform == "tpu"
+        ):
+            import torch_xla
+
+            torch_xla.launch(_xla_worker, args=(arguments,))
+        else:
+            _worker(arguments)
     else:
         _pair(arguments)
 
