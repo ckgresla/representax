@@ -2195,6 +2195,7 @@ cuda12 = [
 hf = [
     { name = "datasets" },
     { name = "huggingface-hub" },
+    { name = "jinja2" },
     { name = "pillow" },
     { name = "pyarrow" },
     { name = "tokenizers" },
@@ -2218,7 +2219,9 @@ requires-dist = [
     { name = "jax", specifier = ">=0.5" },
     { name = "jax", extras = ["cuda12"], marker = "extra == 'cuda12'", specifier = ">=0.5" },
     { name = "jax", extras = ["cuda13"], marker = "extra == 'cuda13'", specifier = ">=0.5" },
+    { name = "jax", extras = ["tpu"], marker = "extra == 'tpu'", specifier = ">=0.5" },
     { name = "jaxtyping", specifier = ">=0.3" },
+    { name = "jinja2", marker = "extra == 'hf'", specifier = ">=3.1" },
     { name = "nvidia-ml-py", marker = "extra == 'performance'", specifier = ">=12" },
     { name = "optax", specifier = ">=0.2.6" },
     { name = "orbax-checkpoint", specifier = ">=0.12,<0.13" },
@@ -2232,7 +2235,7 @@ requires-dist = [
     { name = "transformers", marker = "extra == 'hf'", specifier = "==5.6.0" },
     { name = "wandb", marker = "extra == 'wandb'", specifier = ">=0.19" },
 ]
-provides-extras = ["config", "hf", "cuda12", "cuda13", "performance", "wandb", "test"]
+provides-extras = ["config", "hf", "cuda12", "cuda13", "tpu", "performance", "wandb", "test"]
 
 [package.metadata.requires-dev]
 parity = [
