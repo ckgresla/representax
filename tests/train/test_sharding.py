@@ -20,6 +20,7 @@ from representax.tasks.retrieval import (
     process_local_retrieval_batch,
 )
 from representax.train import (
+    ProcessLocalBatch,
     ShardingPlan,
     build_train_step,
     fsdp_partition_spec,
@@ -96,6 +97,24 @@ def test_sharding_plan_places_process_local_retrieval_batch():
     np.testing.assert_array_equal(global_batch.query, local_batch.query)
     np.testing.assert_array_equal(global_batch.document, local_batch.document)
     np.testing.assert_array_equal(global_batch.positive_mask, jnp.eye(2, dtype=bool))
+
+
+def test_sharding_plan_places_generic_process_local_batch():
+    device = jax.devices("cpu")[0]
+    mesh = jax.make_mesh((1,), ("data",), devices=[device])
+    model = DenseEncoder(3, 3, key=jax.random.key(5))
+    optimizer = optax.sgd(1e-2)
+    plan = ShardingPlan.ddp(
+        init_train_state(model, optimizer),
+        optimizer,
+        mesh,
+        axis_name="data",
+    )
+    local = {"pixels": jnp.arange(24).reshape(2, 3, 4)}
+
+    global_batch = plan.place_batch(ProcessLocalBatch(local))
+
+    np.testing.assert_array_equal(global_batch["pixels"], local["pixels"])
 
 
 def test_ddp_requires_batch_activation_annotations():

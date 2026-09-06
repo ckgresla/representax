@@ -38,6 +38,7 @@ from .loop import DataStarvationError, TrainingRunResult
 from .mega_batch import MegaBatchMining
 from .optimizer import build_optimizer, build_schedule
 from .sharding import (
+    ProcessLocalBatch,
     ShardingPlan,
     fsdp_parameter_specs,
     fsdp_partition_spec,
@@ -74,6 +75,7 @@ __all__ = [
     "MegaBatchMining",
     "MegaBatchMiningConfig",
     "PrecisionPolicy",
+    "ProcessLocalBatch",
     "MetricRecord",
     "Reporter",
     "RestoredTrainingState",

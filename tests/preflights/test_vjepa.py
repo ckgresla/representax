@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 from experiments.preflights.vjepa import (
@@ -17,6 +18,7 @@ from representax.tasks.jepa.vjepa2_1 import (
     dense_prediction_loss,
     mask_distance_weights,
 )
+from representax.train import ProcessLocalBatch
 
 
 def test_frozen_vjepa_contract() -> None:
@@ -61,6 +63,36 @@ def test_vjepa_collator_loads_shared_pixels_and_masks(tmp_path) -> None:
     assert batch.target_ids.shape == shape
     assert np.all(np.asarray(batch.context_valid))
     assert np.all(np.asarray(batch.target_valid))
+
+
+def test_vjepa_collator_loads_only_process_local_videos(tmp_path, monkeypatch) -> None:
+    for index in range(4):
+        np.save(
+            tmp_path / f"clip-{index}.npy",
+            np.full((3, 16, 8, 8), index, dtype=np.float32),
+        )
+    shape = (1, 2, 3)
+    np.savez_compressed(
+        tmp_path / "masks.npz",
+        context_ids=np.arange(6, dtype=np.int32).reshape(shape),
+        target_ids=np.arange(6, dtype=np.int32).reshape(shape),
+        context_valid=np.ones(shape, dtype=bool),
+        target_valid=np.ones(shape, dtype=bool),
+    )
+    (tmp_path / "manifest.json").write_text(
+        json.dumps({"files": {"masks.npz": "sha256:test"}})
+    )
+    monkeypatch.setattr(jax, "process_count", lambda: 2)
+    monkeypatch.setattr(jax, "process_index", lambda: 1)
+
+    batch = VJEPAPreflightCollator(root_directory=tmp_path)(
+        tuple({"tensor": f"clip-{index}.npy"} for index in range(4))
+    )
+
+    assert isinstance(batch, ProcessLocalBatch)
+    assert batch.value.pixels.shape == (2, 3, 16, 8, 8)
+    np.testing.assert_array_equal(batch.value.pixels[:, 0, 0, 0, 0], [2, 3])
+    assert batch.value.context_ids.shape == (2, 2, 3)
 
 
 def test_representax_job_uses_full_frozen_architecture_and_lifecycle(tmp_path) -> None:

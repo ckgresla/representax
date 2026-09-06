@@ -23,6 +23,13 @@ from .state import StepResult, TrainState
 from .step import TrainStep, _build_train_step_body
 
 
+@dataclass(frozen=True)
+class ProcessLocalBatch:
+    """A batch whose leading array axes contain this process's rows."""
+
+    value: Any
+
+
 def _named_shardings(mesh: Mesh, specs: Any) -> Any:
     return jax.tree.map(
         lambda spec: NamedSharding(mesh, spec),
@@ -501,6 +508,30 @@ class ShardingPlan:
                     "process-local retrieval batches require a data-parallel axis"
                 )
             return place_process_local_retrieval_batch(batch, self.batch_sharding)
+
+        if isinstance(batch, ProcessLocalBatch):
+            if self.data_axis_name is None:
+                raise ValueError(
+                    "process-local batches require a data-parallel axis"
+                )
+
+            def assemble(value: Any) -> Any:
+                if not eqx.is_array(value):
+                    return value
+                if value.ndim == 0:
+                    raise ValueError(
+                        "process-local batch arrays require a leading row axis"
+                    )
+                return jax.make_array_from_process_local_data(
+                    self.batch_sharding,
+                    value,
+                )
+
+            return jax.tree.map(
+                assemble,
+                batch.value,
+                is_leaf=lambda value: value is None,
+            )
 
         return jax.tree.map(
             lambda value: (

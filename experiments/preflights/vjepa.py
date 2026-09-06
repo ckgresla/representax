@@ -24,6 +24,7 @@ from experiments.preflights.accelerator import (
     Platform,
     data_parallel_job,
     initialize_jax,
+    process_local_rows,
     torch_device,
     torch_device_report,
     torch_rank,
@@ -482,15 +483,17 @@ class VJEPAPreflightCollator:
         import jax.numpy as jnp
 
         from representax.tasks.jepa import VJEPA2_1Batch
+        from representax.train import ProcessLocalBatch
 
+        local_rows, _offset, global_size = process_local_rows(rows)
         pixels = np.stack(
             tuple(
                 np.load(self.root_directory / str(row["tensor"]), allow_pickle=False)
-                for row in rows
+                for row in local_rows
             )
         )
         with np.load(self.root_directory / "masks.npz") as masks:
-            repeat = len(rows)
+            repeat = len(local_rows)
             values = {
                 name: np.repeat(masks[name], repeat, axis=0)
                 for name in (
@@ -500,13 +503,14 @@ class VJEPAPreflightCollator:
                     "target_valid",
                 )
             }
-        return VJEPA2_1Batch(
+        batch = VJEPA2_1Batch(
             pixels=jnp.asarray(pixels),
             context_ids=jnp.asarray(values["context_ids"]),
             target_ids=jnp.asarray(values["target_ids"]),
             context_valid=jnp.asarray(values["context_valid"]),
             target_valid=jnp.asarray(values["target_valid"]),
         )
+        return batch if len(local_rows) == global_size else ProcessLocalBatch(batch)
 
 
 def _representax_job(
