@@ -383,6 +383,7 @@ def jax_local_negative_mnr(*, global_batch_size: int) -> None:
         MNRTask,
         place_process_local_retrieval_batch,
         process_local_retrieval_batch,
+        retrieval_batch,
     )
     from representax.train.grad_cache import _device_local_mnr_output
 
@@ -429,7 +430,47 @@ def jax_local_negative_mnr(*, global_batch_size: int) -> None:
         ).loss
 
     with jax.set_mesh(mesh):
-        actual = float(distributed_loss(batch).block_until_ready())
+        legacy = float(distributed_loss(batch).block_until_ready())
+
+    @partial(
+        jax.shard_map,
+        mesh=mesh,
+        in_specs=(P("data"), P("data"), P("data", None)),
+        out_specs=P(),
+        check_vma=False,
+    )
+    def mapped_loss(
+        local_query: Any,
+        local_document: Any,
+        local_positive_mask: Any,
+    ) -> Any:
+        document_start = jax.lax.axis_index("data") * local_document.shape[0]
+        local_mask = jax.lax.dynamic_slice_in_dim(
+            local_positive_mask,
+            document_start,
+            local_document.shape[0],
+            axis=1,
+        )
+        local_batch = retrieval_batch(
+            query=local_query,
+            document=local_document,
+            positive_mask=local_mask,
+        )
+        value = task.loss_from_embeddings(
+            local_query,
+            local_document,
+            local_batch,
+            row_chunk_size=local_query.shape[0],
+        ).loss
+        return jax.lax.pmean(value, "data")
+
+    mapped = float(
+        jax.jit(mapped_loss)(
+            batch.query,
+            batch.document,
+            batch.positive_mask,
+        ).block_until_ready()
+    )
 
     all_rows = np.arange(global_batch_size, dtype=np.float32)
     all_query = np.sin(all_rows[:, None] * 0.17 + dimensions[None, :] * 0.11)
@@ -455,11 +496,13 @@ def jax_local_negative_mnr(*, global_batch_size: int) -> None:
             process_count=jax.process_count(),
             device_count=jax.device_count(),
             global_batch_size=global_batch_size,
-            actual_loss=actual,
+            legacy_loss=legacy,
+            mapped_loss=mapped,
             expected_loss=expected,
-            absolute_difference=abs(actual - expected),
+            legacy_absolute_difference=abs(legacy - expected),
+            mapped_absolute_difference=abs(mapped - expected),
         )
-    np.testing.assert_allclose(actual, expected, rtol=2e-5, atol=2e-6)
+    np.testing.assert_allclose(mapped, expected, rtol=2e-5, atol=2e-6)
 
 
 def _torch_worker(index: int, steps: int, global_batch_size: int) -> None:
