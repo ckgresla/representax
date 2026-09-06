@@ -3,6 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
+from experiments.preflights import accelerator
 from experiments.preflights.accelerator import data_parallel_job, use_fixed_text_padding
 
 
@@ -91,3 +92,21 @@ def test_fixed_text_padding_preserves_other_processing_settings() -> None:
         },
         "audio": {"sampling_rate": 16_000},
     }
+
+
+def test_torch_xla_checkpointing_replaces_the_transformers_backend(monkeypatch) -> None:
+    marker = object()
+    modeling_utils = SimpleNamespace(checkpoint=None)
+
+    def import_module(name: str):
+        if name == "transformers.modeling_utils":
+            return modeling_utils
+        if name == "torch_xla.utils.checkpoint":
+            return SimpleNamespace(checkpoint=marker)
+        raise AssertionError(name)
+
+    monkeypatch.setattr(accelerator, "import_module", import_module)
+
+    accelerator.install_torch_xla_checkpointing()
+
+    assert modeling_utils.checkpoint is marker

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from importlib import import_module
 from typing import Any, Literal
 
 Platform = Literal["gpu", "tpu"]
@@ -152,6 +153,15 @@ def torch_world_size() -> int:
     return int(xr.world_size())
 
 
+def install_torch_xla_checkpointing() -> None:
+    """Route Transformers rematerialization through PyTorch/XLA's implementation."""
+
+    modeling_utils = import_module("transformers.modeling_utils")
+    modeling_utils.checkpoint = import_module(
+        "torch_xla.utils.checkpoint"
+    ).checkpoint
+
+
 def use_fixed_text_padding(model: Any, maximum_length: int) -> None:
     """Configure a Sentence Transformers input module for one static XLA shape."""
 
@@ -172,6 +182,7 @@ __all__ = [
     "Platform",
     "data_parallel_job",
     "initialize_jax",
+    "install_torch_xla_checkpointing",
     "torch_device",
     "torch_device_report",
     "torch_empty_cache",

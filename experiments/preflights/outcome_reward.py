@@ -25,6 +25,7 @@ from experiments.preflights.accelerator import (
     Platform,
     data_parallel_job,
     initialize_jax,
+    install_torch_xla_checkpointing,
     torch_device_report,
     torch_rank,
     torch_reset_peak_memory,
@@ -60,12 +61,6 @@ def reference_checkpointing(platform: Platform) -> tuple[bool, dict[str, bool] |
     if platform == "gpu":
         return True, {"use_reentrant": False}
     return True, {"use_reentrant": True}
-
-
-def _install_xla_checkpointing() -> None:
-    modeling_utils = import_module("transformers.modeling_utils")
-    xla_checkpoint = import_module("torch_xla.utils.checkpoint").checkpoint
-    modeling_utils.checkpoint = xla_checkpoint
 
 
 def _document(path: Path) -> dict[str, Any]:
@@ -1186,7 +1181,7 @@ def _trl_worker(
     tokenizer: Any = AutoTokenizer.from_pretrained(checkpoint, local_files_only=True)
     pad_to_multiple_of = contract.maximum_length if padding == "static" else None
     if platform == "tpu":
-        _install_xla_checkpointing()
+        install_torch_xla_checkpointing()
     gradient_checkpointing, gradient_checkpointing_kwargs = reference_checkpointing(
         platform
     )

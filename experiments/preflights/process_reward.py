@@ -21,6 +21,7 @@ from experiments.preflights.accelerator import (
     Platform,
     data_parallel_job,
     initialize_jax,
+    install_torch_xla_checkpointing,
     torch_device_report,
     torch_rank,
     torch_reset_peak_memory,
@@ -814,6 +815,11 @@ def _trl_worker(
         )
 
     first_model = ScalarStepClassifier()
+    if platform == "tpu":
+        install_torch_xla_checkpointing()
+        first_model.sequence.gradient_checkpointing_enable(
+            gradient_checkpointing_kwargs={"use_reentrant": True}
+        )
     first_timer = CudaStepTimer()
     first = SequentialPRMTrainer(
         model=first_model,
@@ -852,6 +858,7 @@ def _trl_worker(
             "maximum_length": contract.maximum_length,
             "execution_sequence_length": EXECUTION_SEQUENCE_LENGTH,
             "platform": platform,
+            "activation_checkpointing": "torch-xla-reentrant",
             "device_count": world_size,
             "training_seconds": training_seconds,
             "steady_state": {
