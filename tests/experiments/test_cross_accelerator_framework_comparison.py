@@ -148,7 +148,8 @@ def test_gpu_launcher_shares_caches_and_pins_the_jax_environment() -> None:
 
     assert 'JAX_COMPILATION_CACHE_DIR="$cache_root/jax/$recipe"' in source
     assert 'TORCHINDUCTOR_CACHE_DIR="$cache_root/torchinductor/$recipe"' in source
-    assert 'run_one "$recipe" 7 representax "${gpus[0]}"' in source
+    assert 'readonly prewarm_root="${output_root}-prewarm"' in source
+    assert 'run_one "$recipe" 7 representax "${gpus[0]}" "$prewarm_root"' in source
     assert 'JAX_DEFAULT_MATMUL_PRECISION=highest' in source
     assert '--unset=XLA_FLAGS' in source
     assert 'flock --exclusive' in source

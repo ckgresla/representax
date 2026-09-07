@@ -58,9 +58,11 @@ readonly parallel_recipes=(
 readonly isolated_recipes=(audio-text video-text v-jepa)
 readonly pair_count=$((${#gpus[@]} / 2))
 readonly cache_root="$output_root/caches"
+readonly prewarm_root="${output_root}-prewarm"
 readonly inductor_root="${output_root}-torchinductor"
 mkdir -p \
   "$output_root/orchestrator" \
+  "$prewarm_root/orchestrator" \
   "$cache_root/locks" \
   "$inductor_root/orchestrator"
 
@@ -201,11 +203,11 @@ run_lane() {
   done
 }
 
-# Seed 7 is both a measured run and the cache warm-up. Running these native jobs
-# serially prevents multiple XLA compilers from oversubscribing the host CPU.
+# Populate every native executable before measuring. Keeping these artifacts
+# separate ensures all five canonical seeds contain 20 compile-free updates.
 for recipe in "${parallel_recipes[@]}" "${isolated_recipes[@]}"; do
-  log="$output_root/orchestrator/$recipe-seed-7-representax.log"
-  run_one "$recipe" 7 representax "${gpus[0]}" >"$log" 2>&1
+  log="$prewarm_root/orchestrator/$recipe-seed-7-representax.log"
+  run_one "$recipe" 7 representax "${gpus[0]}" "$prewarm_root" >"$log" 2>&1
 done
 
 declare -a lane_pids=()
