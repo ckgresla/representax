@@ -7,6 +7,7 @@ import jax.numpy as jnp
 import numpy as np
 from experiments.preflights.audio_text import (
     GRAD_CACHE_MICRO_BATCH,
+    GPU_GRAD_CACHE_MICRO_BATCH,
     PREFLIGHT_BATCH_SIZE,
     SAMPLE_RATE,
     AudioTextEvaluationCollator,
@@ -241,11 +242,14 @@ def test_representax_audio_scaling_probe_can_use_one_gpu_without_export(
         batch_size=PREFLIGHT_BATCH_SIZE,
         world_size=1,
         export_enabled=False,
+        grad_cache_micro_batch=GPU_GRAD_CACHE_MICRO_BATCH,
     )
 
     assert job.training.mesh.axis_shapes == (1,)
     assert type(job.training.sharding) is DDPConfig
     assert job.training.batch.micro_batch_size == PREFLIGHT_BATCH_SIZE
+    assert job.training.grad_cache is not None
+    assert job.training.grad_cache.micro_batch_size == 1
     assert not job.export.enabled
     assert job.export.huggingface is None
 
