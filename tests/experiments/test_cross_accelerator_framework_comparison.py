@@ -507,7 +507,7 @@ def test_recipe_command_uses_validated_single_gpu_media_batches(tmp_path: Path) 
     video_command = module._recipe_command(video)
     vjepa_command = module._recipe_command(vjepa)
 
-    assert video_command[video_command.index("--batch-size") + 1] == "128"
+    assert video_command[video_command.index("--batch-size") + 1] == "2"
     assert vjepa_command[vjepa_command.index("--batch-size") + 1] == "1"
 
 
@@ -596,7 +596,10 @@ def test_audio_gpu_recipe_keeps_the_frozen_batch(tmp_path: Path) -> None:
 
     command = module._recipe_command(arguments)
 
-    assert command[command.index("--batch-size") + 1] == "256"
+    assert command[command.index("--batch-size") + 1] == str(
+        module.GPU_AUDIO_GLOBAL_BATCH_SIZE
+    )
+    assert module.GPU_AUDIO_GLOBAL_BATCH_SIZE == 32
 
 
 def test_video_recipe_keeps_frozen_batch_and_negative_scope(tmp_path: Path) -> None:

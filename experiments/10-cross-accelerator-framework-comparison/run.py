@@ -37,7 +37,8 @@ REPRESENTAX_CHUNK_SIZE = 32
 REFERENCE_CHUNK_SIZE = 128
 TPU_AUDIO_GLOBAL_BATCH_SIZE = 48
 TPU_VIDEO_GLOBAL_BATCH_SIZE = 112
-GPU_VIDEO_GLOBAL_BATCH_SIZE = 128
+GPU_AUDIO_GLOBAL_BATCH_SIZE = 32
+GPU_VIDEO_GLOBAL_BATCH_SIZE = 2
 TPU_VJEPA_GLOBAL_BATCH_SIZE = 128
 GPU_VJEPA_GLOBAL_BATCH_SIZE = 1
 EXPERIMENT_DIRECTORY = Path(__file__).resolve().parent
@@ -1090,7 +1091,7 @@ def _recipe_command(arguments: argparse.Namespace) -> list[str]:
                 (
                     str(TPU_AUDIO_GLOBAL_BATCH_SIZE)
                     if arguments.platform == "tpu"
-                    else "256"
+                    else str(GPU_AUDIO_GLOBAL_BATCH_SIZE)
                 ),
                 "--sharding",
                 "ddp",
