@@ -476,18 +476,26 @@ def _representax_job(
             else None
         ),
         logging=LoggingConfig(console_every=1, timing=True, accelerator=True),
-        evaluation=EvaluationConfig(
-            data=data(evaluation_path, evaluation=True),
-            batch_size=MICRO_BATCH_SIZE,
-            evaluators=(evaluator,),
-            every_steps=max(2, steps // 4),
-            on_start=True,
-            on_end=True,
-            primary_metric=primary_metric,
-            primary_metric_mode="max",
-            save_best=False,
+        evaluation=(
+            EvaluationConfig(
+                data=data(evaluation_path, evaluation=True),
+                batch_size=MICRO_BATCH_SIZE,
+                evaluators=(evaluator,),
+                every_steps=max(2, steps // 4),
+                on_start=True,
+                on_end=True,
+                primary_metric=primary_metric,
+                primary_metric_mode="max",
+                save_best=False,
+            )
+            if lifecycle
+            else None
         ),
-        export=ExportConfig(selection="final"),
+        export=(
+            ExportConfig(selection="final")
+            if lifecycle
+            else ExportConfig(enabled=False)
+        ),
     )
 
 
@@ -673,7 +681,7 @@ def _representax_worker(
     sick_initial = None
     similarity_curve = None
     processor = None
-    if workload == "semantic-similarity" and platform == "gpu":
+    if workload == "semantic-similarity" and platform == "gpu" and lifecycle:
         initial_model, processor = _model_and_processor(checkpoint, contract)
         stsb_initial = _similarity_metrics(
             initial_model,
@@ -741,7 +749,7 @@ def _representax_worker(
         float(row["metrics"].get("perf/compilation_and_first_step_seconds", 0.0))
         for row in training
     )
-    if platform == "tpu":
+    if platform == "tpu" or not lifecycle:
         return {
             "schema_version": "representax-semantic-pair-worker-v1",
             "framework": "representax",
@@ -760,6 +768,7 @@ def _representax_worker(
             "final_training": training[-1]["metrics"],
             "resumed": False,
             "inference_bundle": None,
+            "training_only": True,
         }
     if completed.inference_bundle is None:
         raise RuntimeError("Representax did not export the final inference bundle")
@@ -956,7 +965,6 @@ def _sentence_transformers_worker(
     from sentence_transformers.sentence_transformer.losses.contrastive import (
         SiameseDistanceMetric,
     )
-    from transformers import TrainerCallback
 
     contract = frozen_contract(workload, model_name)
     training_batch_size = execution_batch_size(workload, contract)
@@ -983,9 +991,13 @@ def _sentence_transformers_worker(
     ]
     if removable:
         train_dataset = train_dataset.remove_columns(removable)
-    evaluators = _reference_evaluators(workload, data_directory, MICRO_BATCH_SIZE)
+    evaluators = (
+        _reference_evaluators(workload, data_directory, MICRO_BATCH_SIZE)
+        if lifecycle and platform == "gpu"
+        else ()
+    )
     initial_evaluation = (
-        _run_reference_evaluation(evaluators, model) if platform == "gpu" else None
+        _run_reference_evaluation(evaluators, model) if evaluators else None
     )
     similarity_curve = (
         [_reference_similarity_point(0, initial_evaluation)]
@@ -1040,40 +1052,14 @@ def _sentence_transformers_worker(
     )
 
     timer = CudaStepTimer()
-    quarter_steps = {steps // 4, steps // 2, 3 * steps // 4}
-
-    class PeriodicEvaluation(TrainerCallback):
-        trainer: Any = None
-
-        def on_step_end(self, args: Any, state: Any, control: Any, **_: Any) -> Any:
-            del args
-            update = int(state.global_step)
-            if update not in quarter_steps or update == steps:
-                return control
-            if self.trainer is None:
-                raise RuntimeError("periodic evaluator has no trainer")
-            metrics = _run_reference_evaluation(evaluators, self.trainer.model)
-            assert similarity_curve is not None
-            similarity_curve.append(
-                _reference_similarity_point(update, metrics)
-                if workload == "semantic-similarity"
-                else {"update": update, **metrics}
-            )
-            timer.restart()
-            return control
-
-    periodic = None if lifecycle or platform == "tpu" else PeriodicEvaluation()
-    callbacks = [timer.callback()] if periodic is None else [timer.callback(), periodic]
     trainer = SentenceTransformerTrainer(
         model=model,
         args=arguments,
         train_dataset=train_dataset,
         loss=loss,
         data_collator=_fixed_length_collator(model, contract.maximum_length),
-        callbacks=callbacks,
+        callbacks=[timer.callback()],
     )
-    if periodic is not None:
-        periodic.trainer = trainer
     torch_reset_peak_memory()
     started = time.perf_counter()
     output = trainer.train()
@@ -1084,7 +1070,7 @@ def _sentence_transformers_worker(
         for row in trainer.state.log_history
         if row.get("loss") is not None
     ]
-    if platform == "tpu":
+    if platform == "tpu" or not lifecycle:
         return {
             "schema_version": "representax-semantic-pair-worker-v1",
             "framework": "sentence-transformers",
@@ -1103,13 +1089,14 @@ def _sentence_transformers_worker(
             "steady_state": reference_steady_state(
                 timer.rows,
                 training_batch_size,
-                excluded_steps=(1, 2),
+                excluded_steps=(1, 2) if platform == "tpu" else (1,),
             ),
             "step_timings": [
                 {"step": step, "seconds": duration} for step, duration in timer.rows
             ],
             "losses": losses,
             "inference_bundle": None,
+            "training_only": True,
             **torch_device_report(),
         }
     trained_model = trainer.model

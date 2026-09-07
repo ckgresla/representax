@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 from experiments.preflights.semantic_pair import (
     PairEvaluationCollator,
+    _representax_job,
     frozen_contract,
     normalize_sts_score,
     representax_steady_state,
@@ -93,3 +94,19 @@ def test_steady_state_uses_completed_steps_after_compilation():
         "median_step_seconds": 3.0,
         "aggregate_examples_per_second": 4.0,
     }
+
+
+def test_serious_job_is_an_uninterrupted_training_trajectory(tmp_path):
+    job = _representax_job(
+        "semantic-similarity",
+        model_name="mpnet-base",
+        lifecycle=False,
+        checkpoint=tmp_path / "checkpoint",
+        data_directory=tmp_path / "data",
+        steps=22,
+        seed=7,
+    )
+
+    assert job.checkpointing is None
+    assert job.evaluation is None
+    assert not job.export.enabled
