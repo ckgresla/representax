@@ -242,7 +242,8 @@ def _materialize_canonical_evidence(
         )
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
     native_metrics = sorted(
-        [*output.glob("process-*/metrics.jsonl")]
+        [*(output / "run").glob("metrics.jsonl")]
+        + [*output.glob("process-*/metrics.jsonl")]
         + [*(output / "run").glob("process-*/metrics.jsonl")]
     )
     native_events = sorted(

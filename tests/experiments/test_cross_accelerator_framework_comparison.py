@@ -243,6 +243,27 @@ def test_materialized_rank_zero_evidence_is_promoted(tmp_path: Path) -> None:
     ).read_text()
 
 
+def test_materialized_single_process_native_metrics_are_promoted(
+    tmp_path: Path,
+) -> None:
+    module = _module()
+    output = tmp_path / "run"
+    native_run = output / "run"
+    native_run.mkdir(parents=True)
+    (output / "summary.json").write_text(json.dumps({"losses": [1.0]}))
+    (native_run / "metrics.jsonl").write_text(
+        json.dumps({"event": "training_step", "iteration": 1}) + "\n"
+    )
+    (output / "worker.log").write_text("worker output\n")
+
+    run = module._materialize_canonical_evidence(output, {})
+
+    assert run["native_metrics_source"] == "run/metrics.jsonl"
+    assert (output / "metrics.jsonl").read_text() == (
+        native_run / "metrics.jsonl"
+    ).read_text()
+
+
 def _write_aggregate_run(
     module,
     root: Path,
