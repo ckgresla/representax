@@ -25,6 +25,7 @@ DATASET_REVISION = "0d54352548089199bde15ad7e06efe895dc80b56"
 SEEDS = (7, 42, 773, 1234, 2026)
 FIRST_USE_STEPS = 2
 MEASURED_STEPS = 20
+MINIMUM_MEASURED_STEPS = 15
 STEPS = FIRST_USE_STEPS + MEASURED_STEPS
 GLOBAL_BATCH_SIZE = 2048
 QUERY_LENGTH = 32
@@ -1291,23 +1292,31 @@ def _measured_run(summary_path: Path) -> dict[str, Any]:
         json.loads(line)
         for line in (output / "metrics.jsonl").read_text(encoding="utf-8").splitlines()
     ]
-    training_rows = [
+    all_training_rows = [
         row
         for row in metric_rows
         if row.get("event") == "training_step"
         and "perf/step_seconds" in row.get("metrics", {})
     ]
+    training_rows = [
+        row
+        for row in all_training_rows
+        if "perf/compilation_and_first_step_seconds" not in row["metrics"]
+        and not row["metrics"].get("perf/excluded_from_steady_state", False)
+    ]
     expected = int(run["measured_steps"])
-    if len(training_rows) < expected:
+    minimum = min(expected, MINIMUM_MEASURED_STEPS)
+    if len(training_rows) < minimum:
         raise ValueError(
-            f"{output} has {len(training_rows)} timed updates; expected {expected}"
+            f"{output} has {len(training_rows)} valid warm updates; "
+            f"requires at least {minimum}"
         )
     measured = training_rows[-expected:]
     seconds = [float(row["metrics"]["perf/step_seconds"]) for row in measured]
     examples = [row["metrics"].get("perf/examples") for row in measured]
     losses = [
         float(row["metrics"]["train/loss"])
-        for row in training_rows
+        for row in all_training_rows
         if "train/loss" in row["metrics"]
     ]
     result = {

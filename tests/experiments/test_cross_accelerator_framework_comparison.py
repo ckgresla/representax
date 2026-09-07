@@ -278,6 +278,7 @@ def _write_aggregate_run(
             "metrics": {
                 "perf/step_seconds": duration,
                 "perf/examples": 8,
+                "perf/excluded_from_steady_state": step == 1,
                 "train/loss": float(4 - step),
             },
         }
@@ -309,6 +310,40 @@ def test_aggregate_uses_complete_measured_intervals(tmp_path: Path) -> None:
     assert "| dense-retrieval | 4.000 | 2.667 | 1.500x | 1 |" in module._render_results(
         results
     )
+
+
+def test_aggregate_excludes_compilation_outside_the_initial_updates(
+    tmp_path: Path,
+) -> None:
+    module = _module()
+    _write_aggregate_run(
+        module,
+        tmp_path,
+        framework="representax",
+        seed=7,
+        seconds=(1.0, 3.0),
+    )
+    metrics = next(tmp_path.rglob("metrics.jsonl"))
+    rows = [json.loads(line) for line in metrics.read_text().splitlines()]
+    rows.insert(
+        2,
+        {
+            "event": "training_step",
+            "iteration": 3,
+            "metrics": {
+                "perf/compilation_and_first_step_seconds": 90.0,
+                "perf/step_seconds": 90.0,
+                "perf/examples": 8,
+                "train/loss": 1.5,
+            },
+        },
+    )
+    metrics.write_text("".join(json.dumps(row) + "\n" for row in rows))
+
+    result = module._aggregate_runs(tmp_path)["runs"][0]
+
+    assert result["measured_updates"] == 2
+    assert result["examples_per_second"] == 4.0
 
 
 def test_aggregate_ignores_preserved_noncanonical_runs(tmp_path: Path) -> None:
