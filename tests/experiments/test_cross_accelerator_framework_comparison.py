@@ -139,6 +139,34 @@ def test_campaign_exposes_every_frozen_recipe() -> None:
     )
 
 
+def test_gpu_launcher_shares_caches_and_pins_the_jax_environment() -> None:
+    path = (
+        Path(__file__).parents[2]
+        / "experiments/10-cross-accelerator-framework-comparison/run_gpu.sh"
+    )
+    source = path.read_text(encoding="utf-8")
+
+    assert 'JAX_COMPILATION_CACHE_DIR="$cache_root/jax/$recipe"' in source
+    assert 'TORCHINDUCTOR_CACHE_DIR="$cache_root/torchinductor/$recipe"' in source
+    assert 'JAX_DEFAULT_MATMUL_PRECISION=highest' in source
+    assert '--unset=XLA_FLAGS' in source
+    assert 'flock --exclusive' in source
+    assert 'gpu-$gpu/$recipe' not in source
+
+
+def test_asset_stager_builds_the_bert_sentence_transformer_bundle() -> None:
+    path = (
+        Path(__file__).parents[2]
+        / "experiments/10-cross-accelerator-framework-comparison/stage_assets.sh"
+    )
+    source = path.read_text(encoding="utf-8")
+
+    assert "bert-base-source" in source
+    assert 'BERT_OUTPUT="$asset_root/bert-base"' in source
+    assert "SentenceTransformer(str(source)" in source
+    assert 'output / "modules.json"' in source
+
+
 def test_reference_metric_rows_preserve_every_interval() -> None:
     module = _module()
 

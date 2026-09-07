@@ -1059,6 +1059,7 @@ def _sentence_transformers_worker(
                 if workload == "semantic-similarity"
                 else {"update": update, **metrics}
             )
+            timer.restart()
             return control
 
     periodic = None if lifecycle or platform == "tpu" else PeriodicEvaluation()

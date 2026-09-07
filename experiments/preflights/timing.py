@@ -37,6 +37,12 @@ class CudaStepTimer:
             self._stream.close()
             self._stream = None
 
+    def restart(self) -> None:
+        """Start the next interval after untimed evaluation or checkpoint work."""
+
+        torch_synchronize()
+        self._started = time.perf_counter()
+
     def callback(self, *, stop_after: int | None = None) -> Any:
         from transformers import TrainerCallback
 
@@ -63,6 +69,18 @@ class CudaStepTimer:
                 owner._started = completed_at
                 if stop_after is not None and int(state.global_step) >= stop_after:
                     control.should_training_stop = True
+                return control
+
+            def on_evaluate(
+                self, _args: Any, _state: Any, control: Any, **_: Any
+            ) -> Any:
+                owner.restart()
+                return control
+
+            def on_save(
+                self, _args: Any, _state: Any, control: Any, **_: Any
+            ) -> Any:
+                owner.restart()
                 return control
 
         return Callback()

@@ -59,7 +59,10 @@ readonly isolated_recipes=(audio-text video-text v-jepa)
 readonly pair_count=$((${#gpus[@]} / 2))
 readonly cache_root="$output_root/caches"
 readonly inductor_root="${output_root}-torchinductor"
-mkdir -p "$output_root/orchestrator" "$cache_root" "$inductor_root/orchestrator"
+mkdir -p \
+  "$output_root/orchestrator" \
+  "$cache_root/locks" \
+  "$inductor_root/orchestrator"
 
 variant() {
   local recipe=$1
@@ -131,12 +134,33 @@ run_one() {
 
   printf '[%s] gpu=%s recipe=%s seed=%s framework=%s compile=%s\n' \
     "$(date -Is)" "$gpu" "$recipe" "$seed" "$framework" "$compile"
-  CUDA_VISIBLE_DEVICES="$gpu" \
-  HF_HUB_OFFLINE=1 \
-  TRANSFORMERS_OFFLINE=1 \
-  JAX_COMPILATION_CACHE_DIR="$cache_root/jax/gpu-$gpu/$recipe" \
-  TORCHINDUCTOR_CACHE_DIR="$cache_root/torchinductor/gpu-$gpu/$recipe" \
-    "${command[@]}"
+  local lock=
+  if [[ $framework == representax ]]; then
+    lock="$cache_root/locks/jax-$recipe.lock"
+  elif [[ $compile == true ]]; then
+    lock="$cache_root/locks/torchinductor-$recipe.lock"
+  fi
+  local -a environment=(
+    env
+    --unset=XLA_FLAGS
+    --unset=XLA_PYTHON_CLIENT_ALLOCATOR
+    CUDA_VISIBLE_DEVICES="$gpu"
+    HF_HUB_OFFLINE=1
+    TRANSFORMERS_OFFLINE=1
+    JAX_DEFAULT_MATMUL_PRECISION=highest
+    XLA_PYTHON_CLIENT_PREALLOCATE=true
+    XLA_PYTHON_CLIENT_MEM_FRACTION=0.90
+    JAX_COMPILATION_CACHE_DIR="$cache_root/jax/$recipe"
+    TORCHINDUCTOR_CACHE_DIR="$cache_root/torchinductor/$recipe"
+  )
+  if [[ -n $lock ]]; then
+    (
+      flock --exclusive 9
+      "${environment[@]}" "${command[@]}"
+    ) 9>"$lock"
+  else
+    "${environment[@]}" "${command[@]}"
+  fi
   prune_run_artifacts "$output"
 }
 
