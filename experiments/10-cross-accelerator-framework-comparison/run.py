@@ -1427,20 +1427,25 @@ def _render_results(results: Mapping[str, Any]) -> str:
     lines = [
         "# Framework Comparison",
         "",
-        "Each seed rate is total examples divided by the sum of its 20 measured "
-        "optimizer-step intervals. The table reports the median seed rate.",
+        "Each seed rate is total examples divided by the sum of its accepted "
+        "measured optimizer-step intervals. The table reports the median seed rate.",
         "",
         "| Recipe | Representax ex/s | Reference ex/s | Ratio | Seeds |",
         "|---|---:|---:|---:|---:|",
     ]
     for row in results["aggregates"]:
         frameworks = row["frameworks"]
+        if not frameworks:
+            continue
         native = frameworks.get("representax", {})
         reference = frameworks.get("reference", {})
         native_rate = native.get("median_examples_per_second")
         reference_rate = reference.get("median_examples_per_second")
         ratio = row.get("representax_to_reference_ratio")
-        seed_count = min(native.get("seed_count", 0), reference.get("seed_count", 0))
+        seed_counts = [
+            value.get("seed_count", 0) for value in (native, reference) if value
+        ]
+        seed_count = min(seed_counts)
         lines.append(
             "| {recipe} | {native} | {reference} | {ratio} | {seeds} |".format(
                 recipe=row["recipe"],

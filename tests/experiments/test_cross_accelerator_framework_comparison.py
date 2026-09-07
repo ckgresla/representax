@@ -354,6 +354,29 @@ def test_aggregate_uses_complete_measured_intervals(tmp_path: Path) -> None:
     )
 
 
+def test_render_results_handles_a_reference_only_control() -> None:
+    module = _module()
+    results = {
+        "aggregates": [
+            {
+                "recipe": "dense-retrieval",
+                "frameworks": {
+                    "reference": {
+                        "median_examples_per_second": 12.0,
+                        "seed_count": 5,
+                    }
+                },
+            },
+            {"recipe": "cross-encoder", "frameworks": {}},
+        ]
+    }
+
+    rendered = module._render_results(results)
+
+    assert "| dense-retrieval | - | 12.000 | - | 5 |" in rendered
+    assert "cross-encoder" not in rendered
+
+
 def test_aggregate_excludes_compilation_outside_the_initial_updates(
     tmp_path: Path,
 ) -> None:
