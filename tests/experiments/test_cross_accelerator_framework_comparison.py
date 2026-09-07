@@ -254,6 +254,9 @@ def test_materialized_single_process_native_metrics_are_promoted(
     (native_run / "metrics.jsonl").write_text(
         json.dumps({"event": "training_step", "iteration": 1}) + "\n"
     )
+    (native_run / "events.jsonl").write_text(
+        json.dumps({"event": "optimizer_step", "iteration": 1}) + "\n"
+    )
     (output / "worker.log").write_text("worker output\n")
 
     run = module._materialize_canonical_evidence(output, {})
@@ -261,6 +264,10 @@ def test_materialized_single_process_native_metrics_are_promoted(
     assert run["native_metrics_source"] == "run/metrics.jsonl"
     assert (output / "metrics.jsonl").read_text() == (
         native_run / "metrics.jsonl"
+    ).read_text()
+    assert run["native_event_sources"] == ["run/events.jsonl"]
+    assert (native_run / "events.jsonl").read_text() in (
+        output / "events.jsonl"
     ).read_text()
 
 

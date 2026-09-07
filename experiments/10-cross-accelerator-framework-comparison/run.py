@@ -247,7 +247,8 @@ def _materialize_canonical_evidence(
         + [*(output / "run").glob("process-*/metrics.jsonl")]
     )
     native_events = sorted(
-        [*output.glob("process-*/events.jsonl")]
+        [*(output / "run").glob("events.jsonl")]
+        + [*output.glob("process-*/events.jsonl")]
         + [*(output / "run").glob("process-*/events.jsonl")]
     )
     metrics_path = output / "metrics.jsonl"
