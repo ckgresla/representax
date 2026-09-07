@@ -201,6 +201,13 @@ run_lane() {
   done
 }
 
+# Seed 7 is both a measured run and the cache warm-up. Running these native jobs
+# serially prevents multiple XLA compilers from oversubscribing the host CPU.
+for recipe in "${parallel_recipes[@]}" "${isolated_recipes[@]}"; do
+  log="$output_root/orchestrator/$recipe-seed-7-representax.log"
+  run_one "$recipe" 7 representax "${gpus[0]}" >"$log" 2>&1
+done
+
 declare -a lane_pids=()
 for ((lane = 0; lane < pair_count; lane += 1)); do
   run_lane "$lane" &
