@@ -58,6 +58,35 @@ stage data/audio-text audio-data
 stage data/video-text video-data
 stage data/vjepa vjepa-data-2816
 
+if [[ ! -f $asset_root/vjepa-data-2816/official-initialization.npz ]]; then
+  "$python" -m experiments.preflights.vjepa convert-checkpoint \
+    --input "$asset_root/vjepa-data-2816/official-initialization.pth.tar" \
+    --output "$asset_root/vjepa-data-2816/official-initialization.npz"
+fi
+VJEPA_DATA="$asset_root/vjepa-data-2816" "$python" - <<'PY'
+import hashlib
+import json
+import os
+from pathlib import Path
+
+data = Path(os.environ["VJEPA_DATA"])
+source = data / "official-initialization.pth.tar"
+converted = data / "official-initialization.npz"
+manifest_path = data / "manifest.json"
+manifest = json.loads(manifest_path.read_text())
+
+def sha256(path: Path) -> str:
+    with path.open("rb") as stream:
+        return "sha256:" + hashlib.file_digest(stream, "sha256").hexdigest()
+
+
+source_hash = sha256(source)
+if manifest["files"][source.name] != source_hash:
+    raise RuntimeError("staged V-JEPA initialization does not match its manifest")
+manifest["files"][converted.name] = sha256(converted)
+manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+PY
+
 BERT_SOURCE="$asset_root/bert-base-source" BERT_OUTPUT="$asset_root/bert-base" \
   "$python" - <<'PY'
 import os
