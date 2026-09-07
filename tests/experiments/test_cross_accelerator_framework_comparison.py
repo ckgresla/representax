@@ -192,6 +192,20 @@ def test_reference_metric_rows_preserve_every_interval() -> None:
     assert rows[2]["metrics"]["perf/examples_per_second"] == 32.0
 
 
+def test_reference_metric_rows_use_training_metric_losses() -> None:
+    module = _module()
+
+    rows = module._reference_metric_rows(
+        {
+            "global_batch_size": 8,
+            "timing": {"steps": [{"step": 1, "seconds": 2.0}]},
+            "training_metrics": [{"step": 1, "loss": 0.75}],
+        }
+    )
+
+    assert rows[0]["metrics"]["train/loss"] == 0.75
+
+
 def test_materialized_reference_evidence_is_content_addressed(tmp_path: Path) -> None:
     module = _module()
     output = tmp_path / "run"

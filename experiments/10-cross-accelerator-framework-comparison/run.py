@@ -204,6 +204,8 @@ def _reference_metric_rows(summary: Mapping[str, Any]) -> list[dict[str, Any]]:
             )
         if offset < len(losses):
             metrics["train/loss"] = float(losses[offset])
+        elif "loss" in training_metrics.get(step, {}):
+            metrics["train/loss"] = float(training_metrics[step]["loss"])
         for name, value in training_metrics.get(step, {}).items():
             if name in {"step", "epoch", "loss"} or not isinstance(
                 value, (bool, int, float)
@@ -1423,7 +1425,7 @@ def _aggregate_runs(input_root: Path) -> dict[str, Any]:
 
 def _render_results(results: Mapping[str, Any]) -> str:
     lines = [
-        "# TPU Framework Comparison",
+        "# Framework Comparison",
         "",
         "Each seed rate is total examples divided by the sum of its 20 measured "
         "optimizer-step intervals. The table reports the median seed rate.",
