@@ -46,7 +46,9 @@ PREFLIGHT_BATCH_SIZE = 2
 PREFLIGHT_TRAINING_VIDEOS = 8
 PREFLIGHT_EVALUATION_QUERIES = 8
 PREFLIGHT_EVALUATION_DOCUMENTS = 32
-GRAD_CACHE_MICRO_BATCH = 2
+GPU_GRAD_CACHE_MICRO_BATCH = 1
+TPU_GRAD_CACHE_MICRO_BATCH = 2
+GRAD_CACHE_MICRO_BATCH = TPU_GRAD_CACHE_MICRO_BATCH
 EVALUATION_BATCH_SIZE = 1
 VIDEO_HEIGHT = 224
 VIDEO_WIDTH = 224
@@ -473,6 +475,7 @@ def _representax_job(
     export_enabled: bool = True,
     negative_scope: str = "global",
     rematerialization: str = "none",
+    grad_cache_micro_batch: int = GRAD_CACHE_MICRO_BATCH,
 ) -> Any:
     if steps < 4 or steps % 2:
         raise ValueError("steps must be an even integer of at least four")
@@ -579,7 +582,7 @@ def _representax_job(
             mesh=MeshConfig(axis_shapes=(1,), axis_names=("data",)),
             sharding=DDPConfig(axis="data"),
             batch=BatchConfig(micro_batch_size=batch_size),
-            grad_cache=GradCacheConfig(micro_batch_size=GRAD_CACHE_MICRO_BATCH),
+            grad_cache=GradCacheConfig(micro_batch_size=grad_cache_micro_batch),
             adapter=LoRAConfig(rank=4, alpha=8.0, target_pattern="text"),
             activation_rematerialization=rematerialization,
             donate_buffers=True,
@@ -683,6 +686,11 @@ def _representax_worker(
     from representax.precision import precision_context, resolve_precision_policy
     from representax.train import run_job
 
+    grad_cache_micro_batch = (
+        TPU_GRAD_CACHE_MICRO_BATCH
+        if platform == "tpu"
+        else GPU_GRAD_CACHE_MICRO_BATCH
+    )
     job = _representax_job(
         checkpoint=checkpoint,
         data_directory=data_directory,
@@ -692,6 +700,7 @@ def _representax_worker(
         export_enabled=platform == "gpu",
         negative_scope=negative_scope,
         rematerialization="full" if platform == "tpu" else "none",
+        grad_cache_micro_batch=grad_cache_micro_batch,
     )
     if platform == "tpu":
         job = data_parallel_job(
@@ -818,7 +827,7 @@ def _representax_worker(
         "steps": steps,
         "global_batch_size": batch_size,
         "frozen_global_batch_size": frozen_contract().global_batch_size,
-        "grad_cache_micro_batch_size": GRAD_CACHE_MICRO_BATCH,
+        "grad_cache_micro_batch_size": grad_cache_micro_batch,
         "elapsed_seconds": time.perf_counter() - started,
         "timing": _timing(rows, batch_size),
         "initial_evaluation": {
@@ -952,6 +961,11 @@ def _sentence_transformers_worker(
     if batch_size % world_size:
         raise ValueError("global batch must divide the accelerator count")
     local_batch_size = batch_size // world_size
+    grad_cache_micro_batch = (
+        TPU_GRAD_CACHE_MICRO_BATCH
+        if platform == "tpu"
+        else GPU_GRAD_CACHE_MICRO_BATCH
+    )
     if platform == "tpu":
         run_directory = run_directory / f"process-{torch_rank()}"
     if sentence_transformers.__version__ != contract.reference_version:
@@ -1022,7 +1036,7 @@ def _sentence_transformers_worker(
         else CachedMultipleNegativesRankingLoss(
             model,
             scale=20.0,
-            mini_batch_size=GRAD_CACHE_MICRO_BATCH,
+            mini_batch_size=grad_cache_micro_batch,
         )
     )
     arguments = SentenceTransformerTrainingArguments(
@@ -1195,7 +1209,7 @@ def _sentence_transformers_worker(
         "steps": steps,
         "global_batch_size": batch_size,
         "frozen_global_batch_size": contract.global_batch_size,
-        "grad_cache_micro_batch_size": GRAD_CACHE_MICRO_BATCH,
+        "grad_cache_micro_batch_size": grad_cache_micro_batch,
         "training_seconds": training_seconds,
         "timing": {
             "execution": "eager",

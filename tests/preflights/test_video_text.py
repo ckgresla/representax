@@ -8,7 +8,7 @@ import jax.numpy as jnp
 import numpy as np
 import optax
 from experiments.preflights.video_text import (
-    GRAD_CACHE_MICRO_BATCH,
+    GPU_GRAD_CACHE_MICRO_BATCH,
     PREFLIGHT_BATCH_SIZE,
     VIDEO_FPS,
     VideoTextEvaluationCollator,
@@ -293,6 +293,7 @@ def test_representax_video_job_uses_one_gpu_grad_cache_and_verified_export(
         data_directory=data,
         steps=4,
         seed=7,
+        grad_cache_micro_batch=GPU_GRAD_CACHE_MICRO_BATCH,
     )
 
     assert job.model.target == "representax.models.qwen2_5_omni:load_qwen2_5_omni"
@@ -305,7 +306,7 @@ def test_representax_video_job_uses_one_gpu_grad_cache_and_verified_export(
     assert type(job.training.sharding) is DDPConfig
     assert job.training.batch.micro_batch_size == PREFLIGHT_BATCH_SIZE
     assert job.training.grad_cache is not None
-    assert job.training.grad_cache.micro_batch_size == GRAD_CACHE_MICRO_BATCH
+    assert job.training.grad_cache.micro_batch_size == 1
     assert type(job.training.adapter) is LoRAConfig
     assert job.training.adapter.target_pattern == "text"
     assert job.checkpointing is not None and job.checkpointing.every == 2
