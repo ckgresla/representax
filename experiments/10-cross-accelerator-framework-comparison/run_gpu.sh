@@ -86,7 +86,7 @@ prune_run_artifacts() {
       \( -type d \( -name checkpoints -o -name final-model -o -name flat-index \) \
       -o -type f -name final-model.pt \) -prune -print0
   )
-  (( ${#paths[@]} )) || return
+  (( ${#paths[@]} )) || return 0
   printf '%s\n' "${paths[@]}" >"$output/pruned-artifacts.txt"
   for path in "${paths[@]}"; do
     find "$path" -xdev -depth -delete
