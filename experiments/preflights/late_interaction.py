@@ -133,7 +133,7 @@ def _read_jsonl(path: Path) -> tuple[dict[str, Any], ...]:
 
 
 def select_training_rows(
-    rows: Iterable[Mapping[str, Any]], *, count: int
+    rows: Iterable[Mapping[str, Any]], *, count: int, negative_field: str | None = None
 ) -> tuple[dict[str, Any], ...]:
     """Take deterministic MS MARCO rows with unique queries and positives."""
 
@@ -147,9 +147,15 @@ def select_training_rows(
             continue
         queries.add(query)
         positives.add(positive)
-        selected.append(
-            {"source_index": source_index, "query": query, "positive": positive}
-        )
+        value = {"source_index": source_index, "query": query, "positive": positive}
+        if negative_field is not None:
+            negative = str(row[negative_field]).strip()
+            if not negative or negative == positive:
+                raise ValueError(
+                    "mined negative must be nonempty and differ from positive"
+                )
+            value[negative_field] = negative
+        selected.append(value)
         if len(selected) == count:
             break
     if len(selected) != count:
@@ -180,6 +186,7 @@ def prepare_data(
     training_parquet: Path,
     nanobeir_directory: Path,
     training_rows: int,
+    negative_field: str | None = None,
 ) -> dict[str, Any]:
     """Materialize deterministic train and complete NanoMSMARCO transfer views."""
 
@@ -188,7 +195,9 @@ def prepare_data(
         raise ValueError("training rows must contain at least one frozen global batch")
     output.mkdir(parents=True, exist_ok=False)
     training = select_training_rows(
-        _parquet_rows(training_parquet), count=training_rows
+        _parquet_rows(training_parquet),
+        count=training_rows,
+        negative_field=negative_field,
     )
     train_path = output / "train.jsonl"
     _write_jsonl(train_path, training)
@@ -233,6 +242,7 @@ def prepare_data(
             "sha256": _sha256(train_path),
             "duplicate_queries": 0,
             "duplicate_positives": 0,
+            "negative_field": negative_field,
         },
         "evaluation": {
             "dataset": "NanoMSMARCO",
@@ -665,7 +675,12 @@ def _encoding_timings(
 
 
 def _representax_maxsim(
-    queries: Sequence[np.ndarray], documents: Sequence[np.ndarray]
+    queries: Sequence[np.ndarray],
+    documents: Sequence[np.ndarray],
+    *,
+    score_dtype: str = "bfloat16",
+    query_length: int | None = None,
+    document_length: int | None = None,
 ) -> tuple[np.ndarray, dict[str, Any]]:
     import jax
     import jax.numpy as jnp
@@ -674,6 +689,15 @@ def _representax_maxsim(
     from representax.tasks.late_interaction.scoring import maxsim_scores
 
     contract = frozen_contract()
+    query_length = (
+        contract.maximum_query_length if query_length is None else query_length
+    )
+    document_length = (
+        contract.maximum_document_length if document_length is None else document_length
+    )
+    if score_dtype not in {"float32", "bfloat16"}:
+        raise ValueError("MaxSim score dtype must be float32 or bfloat16")
+    dtype = getattr(jnp, score_dtype)
 
     @jax.jit
     def score(
@@ -685,10 +709,8 @@ def _representax_maxsim(
             document_chunk_size=DOCUMENT_SCORE_BATCH,
         )
 
-    document_values, document_valid = _pad_embeddings(
-        documents, length=contract.maximum_document_length
-    )
-    document_values_device = jnp.asarray(document_values, dtype=jnp.bfloat16)
+    document_values, document_valid = _pad_embeddings(documents, length=document_length)
+    document_values_device = jnp.asarray(document_values, dtype=dtype)
     document_valid_device = jnp.asarray(document_valid)
     result = np.empty((len(queries), len(documents)), dtype=np.float32)
     compile_seconds = None
@@ -698,11 +720,11 @@ def _representax_maxsim(
             queries,
             start=query_start,
             count=QUERY_SCORE_BATCH,
-            length=contract.maximum_query_length,
+            length=query_length,
         )
         began = time.perf_counter()
         block = score(
-            jnp.asarray(q_values, dtype=jnp.bfloat16),
+            jnp.asarray(q_values, dtype=dtype),
             jnp.asarray(q_valid),
             document_values_device,
             document_valid_device,
@@ -721,6 +743,7 @@ def _representax_maxsim(
     )
     return result, {
         "backend": "jax-exact-maxsim",
+        "score_dtype": score_dtype,
         "compilation_and_first_tile_seconds": float(compile_seconds or 0.0),
         "warm_score_seconds": sum(warm_seconds),
         "warm_query_document_comparisons": float(warm_comparisons),
@@ -736,6 +759,9 @@ def _representax_evaluation(
     data_directory: Path,
     *,
     index_directory: Path | None,
+    score_dtype: str = "bfloat16",
+    query_buckets: tuple[int, ...] = QUERY_BUCKETS,
+    document_buckets: tuple[int, ...] = DOCUMENT_BUCKETS,
 ) -> dict[str, Any]:
     from representax.config import PrecisionConfig
     from representax.core import Route
@@ -750,14 +776,14 @@ def _representax_evaluation(
         processor,
         [str(row["text"]) for row in queries],
         route=Route.QUERY,
-        sequence_lengths=QUERY_BUCKETS,
+        sequence_lengths=query_buckets,
     )
     document_embeddings, document_encoding = _representax_encode(
         compute_model,
         processor,
         [str(row["text"]) for row in corpus],
         route=Route.DOCUMENT,
-        sequence_lengths=DOCUMENT_BUCKETS,
+        sequence_lengths=document_buckets,
     )
     index = (
         None
@@ -768,7 +794,13 @@ def _representax_evaluation(
             document_embeddings,
         )
     )
-    scores, scoring = _representax_maxsim(query_embeddings, document_embeddings)
+    scores, scoring = _representax_maxsim(
+        query_embeddings,
+        document_embeddings,
+        score_dtype=score_dtype,
+        query_length=max(query_buckets),
+        document_length=max(document_buckets),
+    )
     return {
         "metrics": _retrieval_metrics(
             scores,

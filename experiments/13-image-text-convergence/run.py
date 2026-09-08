@@ -19,9 +19,11 @@ if str(ROOT) not in sys.path:
 
 from experiments.preflights.image_text import (  # noqa: E402
     EVALUATION_BATCH_SIZE,
+    GRAD_CACHE_MICRO_BATCH,
     ImageTextEvaluationCollator,
     _batch_unique_caption_order,
     ensure_bidirectional_flickr_evaluation,
+    frozen_contract,
 )
 
 PYTHON = Path(
@@ -37,18 +39,18 @@ OUTPUT = PAPER_ROOT / "13-image-text-convergence"
 DATA = ASSET_ROOT / "image-text-convergence"
 CHECKPOINT = ASSET_ROOT / "clip-vit-b-32"
 
-MODEL_ID = "sentence-transformers/clip-ViT-B-32"
-MODEL_REVISION = "327ab6726d33c0e22f920c83f2ff9e4bd38ca37f"
-DATASET_ID = "phiyodr/coco2017"
-DATASET_REVISION = "036f3f8291db64d17faad9b09e59dd30bb65c4d7"
-EVALUATION_ID = "mteb/flickr30kt2i"
-EVALUATION_REVISION = "e819702b287bfbe084e129a61f308a802b7c108e"
+WORKER_CONTRACT = frozen_contract()
+MODEL_ID = WORKER_CONTRACT.model_id
+MODEL_REVISION = WORKER_CONTRACT.model_revision
+DATASET_ID = WORKER_CONTRACT.train_dataset["repo_id"]
+DATASET_REVISION = WORKER_CONTRACT.train_dataset["revision"]
+EVALUATION_ID = WORKER_CONTRACT.evaluation_dataset["repo_id"]
+EVALUATION_REVISION = WORKER_CONTRACT.evaluation_dataset["revision"]
 SEEDS = (7, 42, 773)
-GLOBAL_BATCH_SIZE = 512
+GLOBAL_BATCH_SIZE = WORKER_CONTRACT.global_batch_size
 TRAINING_IMAGES = 117_760
 CAPTIONS_PER_IMAGE = 5
 STEPS = TRAINING_IMAGES * CAPTIONS_PER_IMAGE // GLOBAL_BATCH_SIZE
-GRAD_CACHE_MICRO_BATCH = 8
 WARMUP_STEPS = round(STEPS * 0.06)
 
 
@@ -69,7 +71,7 @@ def contract() -> dict[str, Any]:
         "seeds": list(SEEDS),
         "optimizer_steps": STEPS,
         "global_batch_size": GLOBAL_BATCH_SIZE,
-        "image_shape": [3, 224, 224],
+        "image_shape": list(WORKER_CONTRACT.image_shape),
         "grad_cache_micro_batch_size": GRAD_CACHE_MICRO_BATCH,
         "loss": {
             "name": "mnr",

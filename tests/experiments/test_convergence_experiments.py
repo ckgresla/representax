@@ -72,7 +72,7 @@ def test_dense_transfer_commands_are_explicit() -> None:
 def test_late_interaction_contract_and_command_are_frozen() -> None:
     experiment = _experiment(12, "late-interaction-convergence")
     contract = experiment.contract()
-    command = experiment.worker_command(773, 2)
+    command = experiment.worker_command(773)
 
     assert contract["model"] == {
         "id": "lightonai/GTE-ModernColBERT-v1",
@@ -83,9 +83,14 @@ def test_late_interaction_contract_and_command_are_frozen() -> None:
     assert contract["query_sequence_length_buckets"] == [16, 32]
     assert contract["document_sequence_length_buckets"] == [32, 64, 128, 256]
     assert contract["training_presentations"] == 512_000
-    assert _argument(command, "--steps") == "1000"
-    assert _argument(command, "--warmup-steps") == "60"
-    assert _argument(command, "--negative-scope") == "global"
+    job = experiment.job_config(773)
+    assert job.training.max_steps == 1000
+    assert job.optimization.schedule.parameters["warmup_steps"] == 60
+    assert job.loss.negative_scope == "global"
+    assert contract["training_data"]["configuration"] == "triplet-hard"
+    assert _argument(command, "--seed") == "773"
+    assert "--launch" not in command
+    assert command[1].endswith("12-late-interaction-convergence/run.py")
 
 
 def test_image_text_contract_and_command_are_frozen() -> None:
@@ -136,9 +141,11 @@ def test_image_text_bidirectional_evaluation_commands_are_explicit() -> None:
 
     assert parser.parse_args(["prepare-evaluation"]).command == "prepare-evaluation"
     assert parser.parse_args(["evaluate-seed", "--seed", "42", "--gpu", "1"]).seed == 42
-    assert parser.parse_args(
-        ["evaluate-all", "--gpus", "0", "1", "2"]
-    ).gpus == [0, 1, 2]
+    assert parser.parse_args(["evaluate-all", "--gpus", "0", "1", "2"]).gpus == [
+        0,
+        1,
+        2,
+    ]
 
 
 @pytest.mark.parametrize(

@@ -40,8 +40,8 @@ SEQUENCE_BUCKETS = (16, 96, 128)
 QUERY_CHUNK_SIZE = 128
 DOCUMENT_CHUNK_SIZE = 64
 LOSS_ROW_CHUNK_SIZE = 64
-WARMUP_RATIO = 0.06
 SOURCE_SHARDS = 39
+TRAINING_EVALUATION_BATCH_SIZE = 128
 EVALUATION_BATCH_SIZE = 4_096
 TREC_DATASET_ID = "msmarco-passage/trec-dl-2019/judged"
 TREC_DATASET_VERSION = "0.5.11"
@@ -50,8 +50,8 @@ NQ_DATASET_REVISION = "b84726e65fd226125cf7c0cbeeb5c214d49e8187"
 TransferDataset = Literal["trec-dl-2019", "natural-questions"]
 
 
-def contract() -> dict[str, Any]:
-    return {
+def contract(*, job: Any = None) -> dict[str, Any]:
+    result = {
         "experiment": "11-dense-retrieval-convergence",
         "model": {"id": MODEL_ID, "revision": MODEL_REVISION},
         "training_data": {
@@ -70,24 +70,66 @@ def contract() -> dict[str, Any]:
             "document_micro_batch_size": DOCUMENT_CHUNK_SIZE,
             "loss_row_chunk_size": LOSS_ROW_CHUNK_SIZE,
         },
-        "loss": {"name": "mnr", "scale": 20.0, "symmetric": False},
-        "optimization": {
-            "optimizer": "adamw",
-            "learning_rate": 2e-5,
-            "weight_decay": 0.0,
-            "warmup_ratio": WARMUP_RATIO,
-            "schedule": "cosine",
-            "gradient_clip_norm": 1.0,
-            "precision": "bfloat16-compute-float32-parameters",
+        "worker_configuration": {
+            "source": "run/run.json#/config",
+            "resolved": job is not None,
         },
         "evaluation": {
             "during_training": ["NanoMSMARCO-start", "NanoMSMARCO-final"],
+            "during_training_batch_size": TRAINING_EVALUATION_BATCH_SIZE,
             "post_training": ["TREC-DL-2019", "Natural-Questions"],
             "batch_size": EVALUATION_BATCH_SIZE,
         },
-        "checkpoint_progress": [0.5, 1.0],
-        "export": "representax-and-huggingface",
+        "checkpointing": {
+            "every": "optimizer_steps // 2",
+            "save_final": True,
+        },
+        "export": "representax",
     }
+    if job is not None:
+        # Use the serialized worker configuration, not a second scientific recipe.
+        result.update(
+            optimizer_steps=job.training.max_steps,
+            loss=job.loss.model_dump(mode="json"),
+            optimization=job.optimization.model_dump(mode="json"),
+            precision=job.training.precision.model_dump(mode="json"),
+            checkpointing=(
+                None
+                if job.checkpointing is None
+                else {
+                    **job.checkpointing.model_dump(mode="json"),
+                    "iterations": [
+                        step
+                        for step in range(1, job.training.max_steps + 1)
+                        if job.checkpointing.should_save(
+                            step, final=step == job.training.max_steps
+                        )
+                    ],
+                }
+            ),
+            export=(
+                "disabled"
+                if not job.export.enabled
+                else (
+                    "representax"
+                    if job.export.huggingface is None
+                    else "representax-and-huggingface"
+                )
+            ),
+        )
+    return result
+
+
+def _worker_job(seed: int) -> Any:
+    """Read only the worker's recorded configuration, without loading its model."""
+
+    from representax.config import JobConfig
+
+    path = OUTPUT / "runs" / f"seed-{seed}" / "run" / "run.json"
+    job = JobConfig.model_validate(json.loads(path.read_text())["config"])
+    if job.training.seed != seed:
+        raise ValueError(f"worker configuration has the wrong seed: {path}")
+    return job
 
 
 def _sha256(path: Path) -> str:
@@ -580,7 +622,7 @@ def worker_command(seed: int, gpu: int, *, steps: int | None = None) -> list[str
         "--grad-cache-implementation",
         "custom_vjp",
         "--evaluation-batch-size",
-        "128",
+        str(TRAINING_EVALUATION_BATCH_SIZE),
         "--data-threads",
         "4",
         "--prefetch-buffer-size",
@@ -628,10 +670,13 @@ def run_seed(seed: int, gpu: int) -> None:
         raise FileExistsError(f"run already exists: {run}")
     run.mkdir(parents=True)
     command = worker_command(seed, gpu)
-    _write_json(
-        run / "launch.json",
-        {"contract": contract(), "git": _git_state(), "command": command, "gpu": gpu},
-    )
+    launch = {
+        "contract": contract(),
+        "git": _git_state(),
+        "command": command,
+        "gpu": gpu,
+    }
+    _write_json(run / "launch.json", launch)
     print(shlex.join(command), flush=True)
     with (run / "worker.log").open("x", encoding="utf-8") as stream:
         subprocess.run(
@@ -642,6 +687,9 @@ def run_seed(seed: int, gpu: int) -> None:
             stderr=subprocess.STDOUT,
             check=True,
         )
+    _write_json(
+        run / "launch.json", {**launch, "contract": contract(job=_worker_job(seed))}
+    )
 
 
 def run_all(gpus: tuple[int, ...]) -> None:
@@ -660,12 +708,14 @@ def run_all(gpus: tuple[int, ...]) -> None:
 
 def aggregate() -> None:
     reports = {}
+    worker_contracts = {}
     transfer_evaluations = {}
     for seed in SEEDS:
         path = OUTPUT / "runs" / f"seed-{seed}" / "report.json"
         if not path.is_file():
             raise FileNotFoundError(f"missing seed report: {path}")
         reports[str(seed)] = json.loads(path.read_text())
+        worker_contracts[str(seed)] = contract(job=_worker_job(seed))
         seed_transfer = {}
         for dataset in ("trec-dl-2019", "natural-questions"):
             transfer_path = (
@@ -684,7 +734,11 @@ def aggregate() -> None:
         raise FileNotFoundError(
             "transfer evaluation must be complete for all three paper seeds"
         )
-    summary = {"contract": contract(), "runs": reports}
+    summary = {
+        "contract": contract(),
+        "worker_contracts": worker_contracts,
+        "runs": reports,
+    }
     if transfer_evaluations:
         summary["transfer_evaluations"] = transfer_evaluations
     _write_json(OUTPUT / "summary.json", summary)
@@ -693,7 +747,8 @@ def aggregate() -> None:
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    commands.add_parser("contract")
+    contract_command = commands.add_parser("contract")
+    contract_command.add_argument("--seed", type=int, choices=SEEDS)
     commands.add_parser("prepare")
     commands.add_parser("prepare-transfer")
     run = commands.add_parser("run")
@@ -712,7 +767,8 @@ def _parser() -> argparse.ArgumentParser:
 def main() -> None:
     arguments = _parser().parse_args()
     if arguments.command == "contract":
-        print(json.dumps(contract(), indent=2, sort_keys=True))
+        job = None if arguments.seed is None else _worker_job(arguments.seed)
+        print(json.dumps(contract(job=job), indent=2, sort_keys=True))
     elif arguments.command == "prepare":
         prepare_checkpoint()
         prepare_evaluation_data()
