@@ -90,3 +90,28 @@ def test_integration_job_uses_library_pipeline_and_explicit_probe_settings():
     assert job.checkpointing.every == 4
     assert bindings[f"{module.DATA_MODULE}.map_audio"].keywords == {"seconds": 2.0}
     assert bindings[f"{module.DATA_MODULE}.map_video"].keywords == {"frames": 2}
+
+
+@pytest.mark.parametrize("execution", ["rematerialized", "custom_vjp"])
+def test_integration_execution_options_reach_job_config(execution):
+    from representax.config import JobConfig
+
+    module = importlib.import_module("experiments.14-text-to-any-modality.run")
+    paths = {
+        name: f"/data/{name}.jsonl" for name in ("image", "audio", "video", "text")
+    }
+    job, _ = module.integration_job(
+        paths, execution=execution, chunk_size=1, matryoshka=True
+    )
+    restored = JobConfig.model_validate_json(job.model_dump_json())
+    assert restored.training.grad_cache.implementation == execution
+    assert restored.training.grad_cache.micro_batch_size == 1
+    assert restored.training.global_batch_size == 2
+    assert restored.loss_modifiers[0].dimensions == (32, 64, 128, 256, 512, 768)
+
+
+@pytest.mark.parametrize("options", [{"chunk_size": 0}, {"execution": "unknown"}])
+def test_integration_rejects_invalid_execution_options(options):
+    module = importlib.import_module("experiments.14-text-to-any-modality.run")
+    with pytest.raises(ValueError):
+        module.integration_job({}, **options)
