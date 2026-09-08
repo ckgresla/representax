@@ -128,6 +128,9 @@ def worker(root, index):
         "error": error,
         "wall_seconds": time.perf_counter() - started,
         "device": str(jax.devices()[0]),
+        "revision": subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True
+        ).strip(),
         "jax_memory_stats": jax.devices()[0].memory_stats(),
         **summarize(directory),
     }
@@ -165,7 +168,7 @@ def main():
     revision = subprocess.check_output(
         ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True
     ).strip()
-    (root / "provenance.json").write_text(
+    (root / f"provenance-{revision[:8]}.json").write_text(
         json.dumps(
             {
                 "revision": revision,
@@ -173,7 +176,10 @@ def main():
                 "global_batch": GLOBAL_BATCH,
                 "updates": UPDATES,
                 "cells": CELLS,
-                "purpose": "capacity/timing probe, text-only LoRA, not convergence or full-finetuning acceptance",
+                "purpose": (
+                    "capacity/timing probe, text-only LoRA, "
+                    "not convergence or full-finetuning acceptance"
+                ),
             },
             indent=2,
         )
@@ -184,7 +190,8 @@ def main():
         directory.mkdir(parents=True, exist_ok=True)
         report_path = directory / "result.json"
         if report_path.exists():
-            raise FileExistsError(f"refusing to overwrite existing probe: {directory}")
+            reports.append(json.loads(report_path.read_text()))
+            continue
         env = dict(
             os.environ,
             CUDA_VISIBLE_DEVICES=GPU,
@@ -192,6 +199,12 @@ def main():
             XLA_PYTHON_CLIENT_MEM_FRACTION="0.90",
             JAX_COMPILATION_CACHE_DIR=str(root / "jax-cache"),
             TOKENIZERS_PARALLELISM="false",
+            XLA_FLAGS=(
+                os.environ.get("XLA_FLAGS", "")
+                + f" --xla_dump_to={directory / 'hlo'}"
+                + " --xla_dump_hlo_as_text"
+                + " --xla_dump_hlo_module_re=jit_compiled_step"
+            ),
         )
         print(f"START {modality} chunk={chunk}", flush=True)
         with (directory / "worker.log").open("w") as log:
@@ -229,7 +242,8 @@ def main():
         reports.append(report)
         (root / "summary.json").write_text(json.dumps(reports, indent=2))
         print(
-            f"END {modality} chunk={chunk}: {report['status']}, {report.get('warm_examples_per_second')} examples/s",
+            f"END {modality} chunk={chunk}: {report['status']}, "
+            f"{report.get('warm_examples_per_second')} examples/s",
             flush=True,
         )
 
