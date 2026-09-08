@@ -43,6 +43,23 @@ def test_information_retrieval_metrics_cover_distinct_ranking_geometries():
     np.testing.assert_allclose(metrics["mrr@4"], 2 / 3)
 
 
+def test_information_retrieval_ndcg_preserves_graded_relevance():
+    metrics = information_retrieval_metrics(
+        np.asarray([[20, 21]]),
+        np.asarray([10]),
+        {10: {20: 1, 21: 3}},
+        accuracy_at_k=(1,),
+        precision_recall_at_k=(1,),
+        mrr_at_k=(1,),
+        ndcg_at_k=(2,),
+        map_at_k=(2,),
+    )
+
+    actual = 1.0 + 3.0 / np.log2(3)
+    ideal = 3.0 + 1.0 / np.log2(3)
+    np.testing.assert_allclose(metrics["ndcg@2"], actual / ideal)
+
+
 def _retrieval_batches():
     yield retrieval_evaluation_batch(
         jnp.asarray([[1.0, 0.0], [0.0, 1.0]]),

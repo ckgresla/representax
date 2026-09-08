@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, TypeAlias
 
 import equinox as eqx
 import jax.numpy as jnp
@@ -16,6 +16,7 @@ from representax.core import Encoder, Route, encode
 RetrievalInputKind = Literal["query", "document"]
 RetrievalScoreFunction = Literal["cosine", "dot"]
 RETRIEVAL_SCORE_FUNCTIONS: tuple[RetrievalScoreFunction, ...] = ("cosine", "dot")
+RelevanceJudgments: TypeAlias = frozenset[int] | set[int] | Mapping[int, float | int]
 
 
 class RetrievalEvaluationBatch(eqx.Module):
@@ -74,16 +75,26 @@ def _positive_ks(values: Sequence[int], name: str) -> tuple[int, ...]:
     return resolved
 
 
-def _dcg(relevance: Sequence[int], k: int) -> float:
+def _dcg(relevance: Sequence[float | int], k: int) -> float:
     return float(
         sum(value / np.log2(index + 2) for index, value in enumerate(relevance[:k]))
     )
 
 
+def _graded_relevance(judgments: RelevanceJudgments) -> dict[int, float]:
+    if isinstance(judgments, Mapping):
+        return {
+            int(document_id): float(relevance)
+            for document_id, relevance in judgments.items()
+            if relevance > 0
+        }
+    return {int(document_id): 1.0 for document_id in judgments}
+
+
 def information_retrieval_metrics(
     ranked_document_ids: np.ndarray,
     query_ids: np.ndarray,
-    relevant_documents: Mapping[int, frozenset[int] | set[int]],
+    relevant_documents: Mapping[int, RelevanceJudgments],
     *,
     accuracy_at_k: Sequence[int] = (1, 3, 5, 10),
     precision_recall_at_k: Sequence[int] = (1, 3, 5, 10),
@@ -91,7 +102,7 @@ def information_retrieval_metrics(
     ndcg_at_k: Sequence[int] = (10,),
     map_at_k: Sequence[int] = (100,),
 ) -> dict[str, float]:
-    """Compute binary-relevance IR metrics with Sentence Transformers semantics."""
+    """Compute IR metrics, preserving graded judgments for nDCG."""
 
     ranked = np.asarray(ranked_document_ids)
     queries = np.asarray(query_ids)
@@ -119,9 +130,10 @@ def information_retrieval_metrics(
         **{f"map@{k}": 0.0 for k in map_ks},
     }
     for query_id, row in zip(queries.tolist(), ranked, strict=True):
-        relevant = frozenset(relevant_documents.get(int(query_id), ()))
-        if not relevant:
+        relevance = _graded_relevance(relevant_documents.get(int(query_id), ()))
+        if not relevance:
             raise ValueError(f"query {query_id!r} has no relevant documents")
+        relevant = frozenset(relevance)
         if len(set(row.tolist())) != len(row):
             raise ValueError(f"query {query_id!r} has duplicate ranked documents")
 
@@ -143,11 +155,9 @@ def information_retrieval_metrics(
                 0.0,
             )
         for k in ndcg_ks:
-            predicted = [int(document_id) in relevant for document_id in row[:k]]
-            totals[f"ndcg@{k}"] += _dcg(predicted, k) / _dcg(
-                [1] * len(relevant),
-                k,
-            )
+            predicted = [relevance.get(int(document_id), 0.0) for document_id in row]
+            ideal = sorted(relevance.values(), reverse=True)
+            totals[f"ndcg@{k}"] += _dcg(predicted, k) / _dcg(ideal, k)
         for k in map_ks:
             correct = 0
             precision_sum = 0.0
@@ -214,7 +224,7 @@ class _RetrievalAccumulator:
 class InformationRetrievalEvaluator:
     """Stream corpus batches through bounded top-k state after encoding queries."""
 
-    relevant_documents: Mapping[int, frozenset[int] | set[int]]
+    relevant_documents: Mapping[int, RelevanceJudgments]
     name: str = "retrieval"
     score_functions: tuple[RetrievalScoreFunction, ...] = ("cosine",)
     main_score_function: RetrievalScoreFunction = "cosine"

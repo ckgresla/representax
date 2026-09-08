@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import argparse
+import csv
+import gc
 import hashlib
 import json
 import os
 import shlex
 import subprocess
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 ROOT = Path(__file__).resolve().parents[2]
 PYTHON = Path(
@@ -24,6 +26,7 @@ ASSET_ROOT = Path(
 OUTPUT = PAPER_ROOT / "11-dense-retrieval-convergence"
 DATA = Path("/raid/representax/data/dense-retrieval-msmarco-v1")
 TRAINING_DATA = ASSET_ROOT / "dense-msmarco-full-unique"
+TRANSFER_DATA = ASSET_ROOT / "dense-transfer-evaluation"
 CHECKPOINT = ASSET_ROOT / "ettin-encoder-150m"
 
 MODEL_ID = "jhu-clsp/ettin-encoder-150m"
@@ -39,6 +42,12 @@ DOCUMENT_CHUNK_SIZE = 64
 LOSS_ROW_CHUNK_SIZE = 64
 WARMUP_RATIO = 0.06
 SOURCE_SHARDS = 39
+EVALUATION_BATCH_SIZE = 256
+TREC_DATASET_ID = "msmarco-passage/trec-dl-2019/judged"
+TREC_DATASET_VERSION = "0.5.11"
+NQ_DATASET_ID = "mteb/nq"
+NQ_DATASET_REVISION = "b84726e65fd226125cf7c0cbeeb5c214d49e8187"
+TransferDataset = Literal["trec-dl-2019", "natural-questions"]
 
 
 def contract() -> dict[str, Any]:
@@ -237,6 +246,290 @@ def prepare_training_data(output: Path = TRAINING_DATA) -> dict[str, Any]:
     return manifest
 
 
+def prepare_transfer_data(output: Path = TRANSFER_DATA) -> dict[str, Any]:
+    """Resolve the complete pinned TREC DL and Natural Questions sources."""
+
+    import ir_datasets
+    from huggingface_hub import hf_hub_download
+
+    if ir_datasets.__version__ != TREC_DATASET_VERSION:
+        raise ValueError(
+            f"TREC DL requires ir_datasets {TREC_DATASET_VERSION}, "
+            f"found {ir_datasets.__version__}"
+        )
+    output.mkdir(parents=True, exist_ok=True)
+    nq = output / "natural-questions"
+    nq.mkdir(exist_ok=True)
+    nq_files = {}
+    for filename in ("queries.jsonl", "corpus.jsonl", "qrels/test.tsv"):
+        path = Path(
+            hf_hub_download(
+                repo_id=NQ_DATASET_ID,
+                repo_type="dataset",
+                revision=NQ_DATASET_REVISION,
+                filename=filename,
+                local_dir=nq,
+            )
+        )
+        nq_files[filename] = {
+            "path": str(path.resolve()),
+            "bytes": path.stat().st_size,
+            "sha256": _sha256(path),
+        }
+
+    trec = ir_datasets.load(TREC_DATASET_ID)
+    queries = [
+        {"query_id": query.query_id, "text": query.text}
+        for query in trec.queries_iter()
+    ]
+    qrels = [
+        {
+            "query_id": qrel.query_id,
+            "document_id": qrel.doc_id,
+            "relevance": int(qrel.relevance),
+        }
+        for qrel in trec.qrels_iter()
+    ]
+    # Opening the iterator resolves and verifies the complete MS MARCO collection.
+    first_document = next(iter(trec.docs_iter()))
+    if first_document is None:  # pragma: no cover - upstream dataset invariant
+        raise ValueError("TREC DL corpus is empty")
+    trec_directory = output / "trec-dl-2019"
+    _write_json(trec_directory / "queries.json", queries)
+    _write_json(trec_directory / "qrels.json", qrels)
+    manifest = {
+        "trec_dl_2019": {
+            "source": "ir_datasets",
+            "version": TREC_DATASET_VERSION,
+            "dataset_id": TREC_DATASET_ID,
+            "queries": len(queries),
+            "documents": int(trec.docs_count()),
+            "qrels": len(qrels),
+            "queries_sha256": _sha256(trec_directory / "queries.json"),
+            "qrels_sha256": _sha256(trec_directory / "qrels.json"),
+        },
+        "natural_questions": {
+            "id": NQ_DATASET_ID,
+            "revision": NQ_DATASET_REVISION,
+            "files": nq_files,
+        },
+    }
+    _write_json(output / "manifest.json", manifest)
+    return manifest
+
+
+def _numbered_identifier(value: str, prefix: str) -> int:
+    if not value.startswith(prefix) or not value[len(prefix) :].isdecimal():
+        raise ValueError(f"expected {prefix!r}-prefixed numeric identifier: {value!r}")
+    return int(value[len(prefix) :])
+
+
+def _natural_questions_data() -> tuple[
+    tuple[tuple[int, str], ...], dict[int, dict[int, int]], Any
+]:
+    directory = TRANSFER_DATA / "natural-questions"
+    queries = []
+    with (directory / "queries.jsonl").open(encoding="utf-8") as stream:
+        for line in stream:
+            row = json.loads(line)
+            queries.append(
+                (_numbered_identifier(str(row["_id"]), "test"), str(row["text"]))
+            )
+    relevance: dict[int, dict[int, int]] = {}
+    with (directory / "qrels/test.tsv").open(encoding="utf-8", newline="") as stream:
+        for row in csv.DictReader(stream, delimiter="\t"):
+            score = int(row["score"])
+            if score > 0:
+                query_id = _numbered_identifier(row["query-id"], "test")
+                document_id = _numbered_identifier(row["corpus-id"], "doc")
+                relevance.setdefault(query_id, {})[document_id] = score
+
+    def documents():
+        with (directory / "corpus.jsonl").open(encoding="utf-8") as stream:
+            for line in stream:
+                row = json.loads(line)
+                yield _numbered_identifier(str(row["_id"]), "doc"), str(row["text"])
+
+    return tuple(queries), relevance, documents
+
+
+def _trec_data() -> tuple[tuple[tuple[int, str], ...], dict[int, dict[int, int]], Any]:
+    import ir_datasets
+
+    dataset = ir_datasets.load(TREC_DATASET_ID)
+    queries = tuple(
+        (int(query.query_id), str(query.text)) for query in dataset.queries_iter()
+    )
+    relevance: dict[int, dict[int, int]] = {}
+    for qrel in dataset.qrels_iter():
+        score = int(qrel.relevance)
+        if score > 0:
+            relevance.setdefault(int(qrel.query_id), {})[int(qrel.doc_id)] = score
+
+    def documents():
+        for document in dataset.docs_iter():
+            yield int(document.doc_id), str(document.text)
+
+    return queries, relevance, documents
+
+
+def _transfer_data(dataset: TransferDataset):
+    if dataset == "trec-dl-2019":
+        return _trec_data()
+    return _natural_questions_data()
+
+
+def _evaluation_batches(processor, dataset: TransferDataset):
+    import jax.numpy as jnp
+    import numpy as np
+
+    from representax.core import Route
+    from representax.evaluation import retrieval_evaluation_batch
+
+    queries, _, documents = _transfer_data(dataset)
+
+    def batches(rows, *, kind: str, route: Route):
+        values = []
+        for row in rows:
+            values.append(row)
+            if len(values) < EVALUATION_BATCH_SIZE:
+                continue
+            identifiers, texts = zip(*values, strict=True)
+            yield retrieval_evaluation_batch(
+                processor(texts, route=route),
+                jnp.asarray(identifiers, dtype=jnp.int32),
+                kind=kind,
+            )
+            values = []
+        if values:
+            count = len(values)
+            values.extend([(-1, "")] * (EVALUATION_BATCH_SIZE - count))
+            identifiers, texts = zip(*values, strict=True)
+            yield retrieval_evaluation_batch(
+                processor(texts, route=route),
+                jnp.asarray(identifiers, dtype=jnp.int32),
+                kind=kind,
+                valid=jnp.asarray(
+                    np.arange(EVALUATION_BATCH_SIZE) < count, dtype=jnp.bool_
+                ),
+            )
+
+    yield from batches(queries, kind="query", route=Route.QUERY)
+    yield from batches(documents(), kind="document", route=Route.DOCUMENT)
+
+
+def evaluate_transfer(seed: int, dataset: TransferDataset) -> dict[str, Any]:
+    """Evaluate one trained seed over one complete held-out retrieval corpus."""
+
+    import jax
+
+    from representax import load_inference_bundle
+    from representax.config import PrecisionConfig
+    from representax.evaluation import InformationRetrievalEvaluator
+    from representax.precision import resolve_precision_policy
+    from representax.train import EvaluationRunner
+    from representax.train.job import load_model
+
+    if not (TRANSFER_DATA / "manifest.json").is_file():
+        raise FileNotFoundError("prepare transfer evaluation data first")
+    artifact = OUTPUT / "runs" / f"seed-{seed}" / "run" / "final-model"
+    model, job = load_inference_bundle(artifact)
+    initial_model, processor = load_model(
+        job.model,
+        key=jax.random.key(seed),
+        activation_rematerialization=job.training.activation_rematerialization,
+    )
+    del initial_model
+    gc.collect()
+    if processor is None:
+        raise RuntimeError("dense retrieval export did not restore its processor")
+    queries, relevance, _ = _transfer_data(dataset)
+    missing = {query_id for query_id, _ in queries} - set(relevance)
+    if missing:
+        raise ValueError(f"{dataset} has queries without positive judgments: {missing}")
+    evaluator = InformationRetrievalEvaluator(
+        name=dataset,
+        relevant_documents=relevance,
+        score_functions=("cosine",),
+        main_score_function="cosine",
+        accuracy_at_k=(1, 10),
+        precision_recall_at_k=(1, 10, 100),
+        mrr_at_k=(10,),
+        ndcg_at_k=(10,),
+        map_at_k=(100,),
+    )
+    result = EvaluationRunner(
+        evaluator,
+        precision=resolve_precision_policy(PrecisionConfig.bfloat16_mixed()),
+    ).run(
+        model,
+        _evaluation_batches(processor, dataset),
+        iteration=_training_steps(seed),
+    )
+    report = {
+        "dataset": dataset,
+        "seed": seed,
+        "artifact": str(artifact.resolve()),
+        "data_manifest": str((TRANSFER_DATA / "manifest.json").resolve()),
+        "data_manifest_sha256": _sha256(TRANSFER_DATA / "manifest.json"),
+        "evaluation_batch_size": EVALUATION_BATCH_SIZE,
+        "queries": len(queries),
+        "encoded_examples": result.examples,
+        "batches": result.batches,
+        "duration_seconds": result.duration_seconds,
+        "compilation_seconds": result.compilation_seconds,
+        "data_wait_seconds": result.data_wait_seconds,
+        "placement_seconds": result.placement_seconds,
+        "dispatch_seconds": result.dispatch_seconds,
+        "metrics": {name: float(value) for name, value in result.metrics.items()},
+    }
+    path = OUTPUT / "runs" / f"seed-{seed}" / "transfer" / f"{dataset}.json"
+    _write_json(path, report)
+    return report
+
+
+def evaluate_all(gpus: tuple[int, ...]) -> None:
+    if len(gpus) != len(SEEDS) or len(set(gpus)) != len(gpus):
+        raise ValueError("evaluate-all requires three distinct GPU indices")
+    processes = []
+    for seed, gpu in zip(SEEDS, gpus, strict=True):
+        run = OUTPUT / "runs" / f"seed-{seed}"
+        log = run / "transfer" / "worker.log"
+        log.parent.mkdir(parents=True, exist_ok=True)
+        if log.exists():
+            raise FileExistsError(f"transfer log already exists: {log}")
+        stream = log.open("x", encoding="utf-8")
+        command = [
+            str(PYTHON),
+            __file__,
+            "evaluate-seed",
+            "--seed",
+            str(seed),
+        ]
+        process = subprocess.Popen(
+            command,
+            cwd=ROOT,
+            env={
+                **_environment(gpu),
+                "IR_DATASETS_HOME": os.environ.get(
+                    "IR_DATASETS_HOME", "/raid/.cache/ir_datasets"
+                ),
+            },
+            stdout=stream,
+            stderr=subprocess.STDOUT,
+        )
+        processes.append((seed, process, stream))
+    failures = []
+    for seed, process, stream in processes:
+        code = process.wait()
+        stream.close()
+        if code:
+            failures.append((seed, code))
+    if failures:
+        raise RuntimeError(f"dense transfer evaluation workers failed: {failures}")
+    aggregate()
+
+
 def _training_steps(seed: int) -> int:
     manifest = json.loads((TRAINING_DATA / "manifest.json").read_text())
     record = manifest["seed_files"][str(seed)]
@@ -362,12 +655,34 @@ def run_all(gpus: tuple[int, ...]) -> None:
 
 def aggregate() -> None:
     reports = {}
+    transfer_evaluations = {}
     for seed in SEEDS:
         path = OUTPUT / "runs" / f"seed-{seed}" / "report.json"
         if not path.is_file():
             raise FileNotFoundError(f"missing seed report: {path}")
         reports[str(seed)] = json.loads(path.read_text())
-    _write_json(OUTPUT / "summary.json", {"contract": contract(), "runs": reports})
+        seed_transfer = {}
+        for dataset in ("trec-dl-2019", "natural-questions"):
+            transfer_path = (
+                OUTPUT / "runs" / f"seed-{seed}" / "transfer" / f"{dataset}.json"
+            )
+            if transfer_path.is_file():
+                seed_transfer[dataset] = json.loads(transfer_path.read_text())
+        if seed_transfer:
+            if len(seed_transfer) != 2:
+                raise FileNotFoundError(
+                    f"seed {seed} has an incomplete transfer evaluation: "
+                    f"{sorted(seed_transfer)}"
+                )
+            transfer_evaluations[str(seed)] = seed_transfer
+    if transfer_evaluations and len(transfer_evaluations) != len(SEEDS):
+        raise FileNotFoundError(
+            "transfer evaluation must be complete for all three paper seeds"
+        )
+    summary = {"contract": contract(), "runs": reports}
+    if transfer_evaluations:
+        summary["transfer_evaluations"] = transfer_evaluations
+    _write_json(OUTPUT / "summary.json", summary)
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -375,11 +690,16 @@ def _parser() -> argparse.ArgumentParser:
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("contract")
     commands.add_parser("prepare")
+    commands.add_parser("prepare-transfer")
     run = commands.add_parser("run")
     run.add_argument("--seed", type=int, choices=SEEDS, required=True)
     run.add_argument("--gpu", type=int, required=True)
     all_runs = commands.add_parser("all")
     all_runs.add_argument("--gpus", type=int, nargs=3, required=True)
+    evaluate_seed = commands.add_parser("evaluate-seed")
+    evaluate_seed.add_argument("--seed", type=int, choices=SEEDS, required=True)
+    evaluate_all_runs = commands.add_parser("evaluate-all")
+    evaluate_all_runs.add_argument("--gpus", type=int, nargs=3, required=True)
     commands.add_parser("aggregate")
     return parser
 
@@ -392,10 +712,23 @@ def main() -> None:
         prepare_checkpoint()
         prepare_evaluation_data()
         print(json.dumps(prepare_training_data(), indent=2, sort_keys=True))
+    elif arguments.command == "prepare-transfer":
+        print(json.dumps(prepare_transfer_data(), indent=2, sort_keys=True))
     elif arguments.command == "run":
         run_seed(arguments.seed, arguments.gpu)
     elif arguments.command == "all":
         run_all(tuple(arguments.gpus))
+    elif arguments.command == "evaluate-seed":
+        for dataset in ("trec-dl-2019", "natural-questions"):
+            print(
+                json.dumps(
+                    evaluate_transfer(arguments.seed, dataset),
+                    indent=2,
+                    sort_keys=True,
+                )
+            )
+    elif arguments.command == "evaluate-all":
+        evaluate_all(tuple(arguments.gpus))
     else:
         aggregate()
 

@@ -52,6 +52,19 @@ def test_dense_retrieval_contract_and_command_are_frozen() -> None:
     ] == ["16", "96", "128"]
 
 
+def test_dense_transfer_commands_are_explicit() -> None:
+    experiment = _experiment(11, "dense-retrieval-convergence")
+    parser = experiment._parser()
+
+    assert parser.parse_args(["prepare-transfer"]).command == "prepare-transfer"
+    assert parser.parse_args(["evaluate-seed", "--seed", "42"]).seed == 42
+    assert parser.parse_args(["evaluate-all", "--gpus", "0", "1", "2"]).gpus == [
+        0,
+        1,
+        2,
+    ]
+
+
 def test_late_interaction_contract_and_command_are_frozen() -> None:
     experiment = _experiment(12, "late-interaction-convergence")
     contract = experiment.contract()
