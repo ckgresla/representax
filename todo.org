@@ -1102,6 +1102,16 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
         Full timings, source snapshots and HLO:
         =/raid/representax-paper/14-text-to-any-modality/grad-cache-regression-unified=.
 
+      - Real-media capacity sweep: =chunk_sweep.py= fixes batch 32, six updates,
+        custom VJP and Matryoshka; chunks =1,2,4,8,16,32= for each of text,
+        image, audio and video. All 24 cells execute serially on GPU 0, with a
+        fresh process per cell. Uses the proposed full input caps below, but
+        current text-only LoRA rank 4/alpha 8, not all three final strategies.
+        Outputs: =/raid/representax-paper/14-text-to-any-modality/chunk-sweep=.
+        Retain complete step intervals, cold first-use time, finite/skipped
+        flags, raw logs and process-lifetime JAX live-memory peak. This bounded
+        repeated-data probe is not a convergence result.
+
       Proposed final settings, awaiting joint review (not executable promises):
       - Nine jobs, unchanged Nano revision and seeds; uniform weights as above.
       - Bidirectional InfoNCE, temperature =0.02=, Matryoshka prefix dimensions

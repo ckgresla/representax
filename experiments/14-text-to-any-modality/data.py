@@ -34,7 +34,9 @@ def map_video(row, *, frames: int):
     }
 
 
-def integration_sources(directory: Path, *, assets: Path) -> dict[str, str]:
+def integration_sources(
+    directory: Path, *, assets: Path, sample_count: int = 8
+) -> dict[str, str]:
     """Write tiny metadata-only integration inputs; never a convergence dataset.
 
     Image/video rows use distinct media and captions; all source media stays in
@@ -43,6 +45,8 @@ def integration_sources(directory: Path, *, assets: Path) -> dict[str, str]:
     import pyarrow.parquet as pq
     from huggingface_hub import snapshot_download
 
+    if sample_count <= 0:
+        raise ValueError("sample_count must be positive")
     directory.mkdir(parents=True, exist_ok=True)
     manifest = json.loads(
         (ROOT / "benchmarks/configs/paper-multimodal-jepa-v1.json").read_text()
@@ -76,10 +80,12 @@ def integration_sources(directory: Path, *, assets: Path) -> dict[str, str]:
             seen_captions.add(row["caption"])
             row["image"] = str(image_root / row["image"])
             selected.append(row)
-            if len(selected) == 8:
+            if len(selected) == sample_count:
                 break
-    if len(selected) != 8:
-        raise ValueError("integration check requires eight distinct COCO images")
+    if len(selected) != sample_count:
+        raise ValueError(
+            f"integration check requires {sample_count} distinct COCO images"
+        )
     paths = {"image": write("image", selected)}
 
     selected = []
@@ -97,10 +103,12 @@ def integration_sources(directory: Path, *, assets: Path) -> dict[str, str]:
                 "video": str(snapshots["video"] / "raw_videos" / row["video"]),
             }
         )
-        if len(selected) == 8:
+        if len(selected) == sample_count:
             break
-    if len(selected) != 8:
-        raise ValueError("integration check requires eight distinct MSR-VTT videos")
+    if len(selected) != sample_count:
+        raise ValueError(
+            f"integration check requires {sample_count} distinct MSR-VTT videos"
+        )
     paths["video"] = write("video", selected)
     audio_path = sorted((snapshots["audio"] / "data").glob("train-*.parquet"))[0]
     audio_table = pq.read_table(
@@ -113,7 +121,16 @@ def integration_sources(directory: Path, *, assets: Path) -> dict[str, str]:
         raise ValueError("integration audio shard has duplicate captions")
     paths["audio"] = str(audio_path)
     text_file = assets / "dense-msmarco-full-unique/seed-7.parquet"
-    text_rows = next(pq.ParquetFile(text_file).iter_batches(batch_size=8)).to_pylist()
+    text_rows = next(
+        pq.ParquetFile(text_file).iter_batches(batch_size=sample_count)
+    ).to_pylist()
+    if (
+        len(text_rows) != sample_count
+        or len({row["query"] for row in text_rows}) != sample_count
+    ):
+        raise ValueError(
+            f"integration check requires {sample_count} distinct text queries"
+        )
     paths["text"] = write("text", text_rows)
     (directory / "sources.json").write_text(
         json.dumps(
