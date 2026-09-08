@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import shlex
+import statistics
 import subprocess
 import sys
 from pathlib import Path
@@ -16,7 +17,12 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from experiments.preflights.image_text import _batch_unique_caption_order  # noqa: E402
+from experiments.preflights.image_text import (  # noqa: E402
+    EVALUATION_BATCH_SIZE,
+    ImageTextEvaluationCollator,
+    _batch_unique_caption_order,
+    ensure_bidirectional_flickr_evaluation,
+)
 
 PYTHON = Path(
     os.environ.get(
@@ -206,6 +212,10 @@ def prepare_data() -> None:
     _write_json(manifest_path, manifest)
 
 
+def prepare_evaluation_data() -> None:
+    ensure_bidirectional_flickr_evaluation(DATA)
+
+
 def worker_command(seed: int, gpu: int) -> list[str]:
     run = OUTPUT / "runs" / f"seed-{seed}"
     return [
@@ -291,7 +301,146 @@ def run_all(gpus: tuple[int, ...]) -> None:
     failed = [(seed, code) for seed, code in failures if code]
     if failed:
         raise RuntimeError(f"image-text convergence workers failed: {failed}")
+    evaluate_all(gpus)
+
+
+def _evaluation_batches(processor: Any):
+    rows = [
+        json.loads(line)
+        for line in (DATA / "evaluation-image-to-text.jsonl").read_text().splitlines()
+        if line
+    ]
+    collator = ImageTextEvaluationCollator(
+        processor=processor,
+        root_directory=DATA,
+        direction="image-to-text",
+    )
+    for start in range(0, len(rows), EVALUATION_BATCH_SIZE):
+        yield collator(rows[start : start + EVALUATION_BATCH_SIZE])
+
+
+def _evaluate(model: Any, processor: Any) -> dict[str, Any]:
+    from representax.config import PrecisionConfig
+    from representax.evaluation import InformationRetrievalEvaluator
+    from representax.precision import resolve_precision_policy
+    from representax.train.evaluation import EvaluationRunner
+
+    manifest = json.loads((DATA / "manifest.json").read_text())
+    direction = manifest["evaluation_directions"]["image-to-text"]
+    relevant = {
+        int(query): frozenset(int(document) for document in documents)
+        for query, documents in direction["relevant_documents"].items()
+    }
+    runner = EvaluationRunner(
+        InformationRetrievalEvaluator(
+            relevant_documents=relevant,
+            name="flickr30k-image-to-text",
+            score_functions=("cosine",),
+            main_score_function="cosine",
+            accuracy_at_k=(1, 5, 10),
+            precision_recall_at_k=(1, 5, 10),
+            mrr_at_k=(10,),
+            ndcg_at_k=(10,),
+            map_at_k=(10,),
+        ),
+        precision=resolve_precision_policy(PrecisionConfig.bfloat16_mixed()),
+    )
+    result = runner.run(model, _evaluation_batches(processor))
+    return {
+        "batches": result.batches,
+        "examples": result.examples,
+        "duration_seconds": result.duration_seconds,
+        "compilation_seconds": result.compilation_seconds,
+        "metrics": dict(result.metrics),
+    }
+
+
+def evaluation_worker(seed: int) -> None:
+    import jax.numpy as jnp
+
+    from representax import load_inference_bundle
+    from representax.models.clip import load_clip
+
+    path = OUTPUT / "runs" / f"seed-{seed}" / "image-to-text-evaluation.json"
+    if path.exists():
+        raise FileExistsError(f"evaluation already exists: {path}")
+    report = json.loads(
+        (OUTPUT / "runs" / f"seed-{seed}" / "report.json").read_text()
+    )
+    initial_model, processor = load_clip(
+        CHECKPOINT,
+        revision=MODEL_REVISION,
+        local_files_only=True,
+        parameter_dtype=jnp.float32,
+        compute_dtype=jnp.bfloat16,
+        rematerialization="none",
+    )
+    final_model, _ = load_inference_bundle(report["inference_bundle"])
+    result = {
+        "direction": "image-to-text",
+        "dataset": {"id": EVALUATION_ID, "revision": EVALUATION_REVISION},
+        "seed": seed,
+        "initial": _evaluate(initial_model, processor),
+        "final": _evaluate(final_model, processor),
+        "git": _git_state(),
+    }
+    _write_json(path, result)
+    print(json.dumps(result, indent=2, sort_keys=True))
+
+
+def evaluate_seed(seed: int, gpu: int) -> None:
+    prepare_evaluation_data()
+    command = [str(PYTHON), __file__, "evaluation-worker", "--seed", str(seed)]
+    log = OUTPUT / "runs" / f"seed-{seed}" / "image-to-text-evaluation.log"
+    with log.open("x", encoding="utf-8") as stream:
+        subprocess.run(
+            command,
+            cwd=ROOT,
+            env=_environment(gpu),
+            stdout=stream,
+            stderr=subprocess.STDOUT,
+            check=True,
+        )
+
+
+def evaluate_all(gpus: tuple[int, ...]) -> None:
+    if len(gpus) != len(SEEDS) or len(set(gpus)) != len(gpus):
+        raise ValueError("evaluate-all requires three distinct GPU indices")
+    prepare_evaluation_data()
+    processes = []
+    for seed, gpu in zip(SEEDS, gpus, strict=True):
+        command = [
+            str(PYTHON),
+            __file__,
+            "evaluation-worker",
+            "--seed",
+            str(seed),
+        ]
+        log = OUTPUT / "runs" / f"seed-{seed}" / "image-to-text-evaluation.log"
+        stream = log.open("x", encoding="utf-8")
+        process = subprocess.Popen(
+            command,
+            cwd=ROOT,
+            env=_environment(gpu),
+            stdout=stream,
+            stderr=subprocess.STDOUT,
+        )
+        processes.append((seed, process, stream))
+    failures = []
+    for seed, process, stream in processes:
+        failures.append((seed, process.wait()))
+        stream.close()
+    failed = [(seed, code) for seed, code in failures if code]
+    if failed:
+        raise RuntimeError(f"image-to-text evaluations failed: {failed}")
     aggregate()
+
+
+def _summary(values: list[float]) -> dict[str, float]:
+    return {
+        "mean": statistics.fmean(values),
+        "sample_standard_deviation": statistics.stdev(values),
+    }
 
 
 def aggregate() -> None:
@@ -300,8 +449,66 @@ def aggregate() -> None:
         path = OUTPUT / "runs" / f"seed-{seed}" / "report.json"
         if not path.is_file():
             raise FileNotFoundError(f"missing seed report: {path}")
-        reports[str(seed)] = json.loads(path.read_text())
-    _write_json(OUTPUT / "summary.json", {"contract": contract(), "runs": reports})
+        report = json.loads(path.read_text())
+        inverse_path = path.with_name("image-to-text-evaluation.json")
+        if inverse_path.is_file():
+            report["image_to_text_evaluation"] = json.loads(
+                inverse_path.read_text()
+            )
+        reports[str(seed)] = report
+    throughput = [
+        float(report["steady_state"]["examples_per_second"])
+        for report in reports.values()
+    ]
+    text_to_image_initial = [
+        float(report["initial_evaluation"]["valid/flickr30k/cosine_ndcg@10"])
+        for report in reports.values()
+    ]
+    text_to_image_final = [
+        float(report["final_evaluation"]["valid/flickr30k/cosine_ndcg@10"])
+        for report in reports.values()
+    ]
+    results: dict[str, Any] = {
+        "steady_state_examples_per_second": _summary(throughput),
+        "text_to_image_ndcg@10": {
+            "initial": _summary(text_to_image_initial),
+            "final": _summary(text_to_image_final),
+            "delta": _summary(
+                [
+                    final - initial
+                    for initial, final in zip(
+                        text_to_image_initial, text_to_image_final, strict=True
+                    )
+                ]
+            ),
+        },
+    }
+    if all("image_to_text_evaluation" in report for report in reports.values()):
+        prefix = "valid/flickr30k-image-to-text/cosine_ndcg@10"
+        image_to_text_initial = [
+            float(report["image_to_text_evaluation"]["initial"]["metrics"][prefix])
+            for report in reports.values()
+        ]
+        image_to_text_final = [
+            float(report["image_to_text_evaluation"]["final"]["metrics"][prefix])
+            for report in reports.values()
+        ]
+        results["image_to_text_ndcg@10"] = {
+            "initial": _summary(image_to_text_initial),
+            "final": _summary(image_to_text_final),
+            "delta": _summary(
+                [
+                    final - initial
+                    for initial, final in zip(
+                        image_to_text_initial, image_to_text_final, strict=True
+                    )
+                ]
+            ),
+        }
+    _write_json(
+        OUTPUT / "summary.json",
+        {"contract": contract(), "results": results, "runs": reports},
+    )
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -309,11 +516,21 @@ def _parser() -> argparse.ArgumentParser:
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("contract")
     commands.add_parser("prepare")
+    commands.add_parser("prepare-evaluation")
     run = commands.add_parser("run")
     run.add_argument("--seed", type=int, choices=SEEDS, required=True)
     run.add_argument("--gpu", type=int, required=True)
     all_runs = commands.add_parser("all")
     all_runs.add_argument("--gpus", type=int, nargs=3, required=True)
+    evaluate = commands.add_parser("evaluate-seed")
+    evaluate.add_argument("--seed", type=int, choices=SEEDS, required=True)
+    evaluate.add_argument("--gpu", type=int, required=True)
+    evaluate_all_runs = commands.add_parser("evaluate-all")
+    evaluate_all_runs.add_argument("--gpus", type=int, nargs=3, required=True)
+    evaluation_worker_parser = commands.add_parser("evaluation-worker")
+    evaluation_worker_parser.add_argument(
+        "--seed", type=int, choices=SEEDS, required=True
+    )
     commands.add_parser("aggregate")
     return parser
 
@@ -324,10 +541,18 @@ def main() -> None:
         print(json.dumps(contract(), indent=2, sort_keys=True))
     elif arguments.command == "prepare":
         prepare_data()
+    elif arguments.command == "prepare-evaluation":
+        prepare_evaluation_data()
     elif arguments.command == "run":
         run_seed(arguments.seed, arguments.gpu)
     elif arguments.command == "all":
         run_all(tuple(arguments.gpus))
+    elif arguments.command == "evaluate-seed":
+        evaluate_seed(arguments.seed, arguments.gpu)
+    elif arguments.command == "evaluate-all":
+        evaluate_all(tuple(arguments.gpus))
+    elif arguments.command == "evaluation-worker":
+        evaluation_worker(arguments.seed)
     else:
         aggregate()
 

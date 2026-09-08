@@ -12,9 +12,11 @@ from experiments.preflights.image_text import (
     _batch_unique_caption_order,
     _distinct_captions,
     _download_image,
+    _image_to_text_evaluation,
     _parser,
     _representax_job,
     _select_coco_rows,
+    ensure_bidirectional_flickr_evaluation,
     frozen_contract,
 )
 from PIL import Image
@@ -145,6 +147,118 @@ def test_image_text_collators_preserve_modalities_and_validity(tmp_path) -> None
     assert documents.kind == "document"
     np.testing.assert_array_equal(queries.valid, [True, False])
     np.testing.assert_array_equal(documents.ids, [20])
+
+    inverse = ImageTextEvaluationCollator(
+        processor=processor,
+        root_directory=tmp_path,
+        direction="image-to-text",
+    )
+    image_queries = inverse(
+        (
+            {
+                "kind": "query",
+                "identifier": 20,
+                "text": "",
+                "image": "image.jpg",
+                "valid": True,
+            },
+        )
+    )
+    text_documents = inverse(
+        (
+            {
+                "kind": "document",
+                "identifier": 10,
+                "text": "caption",
+                "image": "",
+                "valid": True,
+            },
+        )
+    )
+    assert image_queries.kind == "query"
+    assert text_documents.kind == "document"
+
+
+def test_flickr_image_to_text_records_invert_relevance() -> None:
+    records, relevant = _image_to_text_evaluation(
+        (
+            {
+                "kind": "query",
+                "identifier": 10,
+                "text": "first",
+                "image": "",
+                "valid": True,
+            },
+            {
+                "kind": "query",
+                "identifier": 11,
+                "text": "second",
+                "image": "",
+                "valid": True,
+            },
+        ),
+        (
+            {
+                "kind": "document",
+                "identifier": 20,
+                "text": "",
+                "image": "image.jpg",
+                "valid": True,
+            },
+        ),
+        {10: {20}, 11: {20}},
+    )
+
+    assert relevant == {20: {10, 11}}
+    assert [row["kind"] for row in records if row["valid"]] == [
+        "query",
+        "document",
+        "document",
+    ]
+
+
+def test_bidirectional_flickr_evaluation_is_materialized(tmp_path) -> None:
+    evaluation = tmp_path / "evaluation.jsonl"
+    evaluation.write_text(
+        "\n".join(
+            json.dumps(row)
+            for row in (
+                {
+                    "kind": "query",
+                    "identifier": 10,
+                    "text": "caption",
+                    "image": "",
+                    "valid": True,
+                },
+                {
+                    "kind": "document",
+                    "identifier": 20,
+                    "text": "",
+                    "image": "flickr-images/0000.jpg",
+                    "valid": True,
+                },
+            )
+        )
+        + "\n"
+    )
+    (tmp_path / "manifest.json").write_text(
+        json.dumps(
+            {
+                "files": {
+                    "evaluation.jsonl": {"rows": 2, "sha256": "test"},
+                },
+                "relevant_documents": {"10": [20]},
+            }
+        )
+    )
+
+    manifest = ensure_bidirectional_flickr_evaluation(tmp_path)
+
+    inverse = manifest["evaluation_directions"]["image-to-text"]
+    assert inverse["queries"] == 1
+    assert inverse["documents"] == 1
+    assert inverse["relevant_documents"] == {"20": [10]}
+    assert manifest["files"]["evaluation-image-to-text.jsonl"]["rows"] == 64
 
 
 def test_image_collator_preprocesses_only_process_local_rows(

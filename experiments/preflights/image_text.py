@@ -18,7 +18,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 
@@ -46,6 +46,7 @@ CAPTIONS_PER_IMAGE = 4
 GRAD_CACHE_MICRO_BATCH = 8
 DOWNLOAD_WORKERS = 64
 EVALUATION_BATCH_SIZE = 32
+EvaluationDirection = Literal["text-to-image", "image-to-text"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -310,6 +311,102 @@ def _prepare_coco(
     return tuple(directory / str(record["image"]) for record in records)
 
 
+def _pad_evaluation_records(
+    records: list[dict[str, Any]],
+    *,
+    kind: str,
+    image: str,
+) -> None:
+    remainder = len(records) % EVALUATION_BATCH_SIZE
+    for _ in range((-remainder) % EVALUATION_BATCH_SIZE):
+        records.append(
+            {
+                "kind": kind,
+                "identifier": -1,
+                "text": "",
+                "image": image,
+                "valid": False,
+            }
+        )
+
+
+def _image_to_text_evaluation(
+    text_queries: Sequence[Mapping[str, Any]],
+    image_documents: Sequence[Mapping[str, Any]],
+    text_to_image_relevant: Mapping[int, set[int]],
+) -> tuple[list[dict[str, Any]], dict[int, set[int]]]:
+    image_queries = [{**row, "kind": "query"} for row in image_documents]
+    text_documents = [{**row, "kind": "document"} for row in text_queries]
+    relevant: dict[int, set[int]] = {}
+    for text_id, image_ids in text_to_image_relevant.items():
+        for image_id in image_ids:
+            relevant.setdefault(image_id, set()).add(text_id)
+    if set(relevant) != {int(row["identifier"]) for row in image_queries}:
+        raise ValueError("Flickr30k captions do not cover every image")
+    _pad_evaluation_records(
+        image_queries,
+        kind="query",
+        image=str(Path("flickr-images") / "0000.jpg"),
+    )
+    _pad_evaluation_records(
+        text_documents,
+        kind="document",
+        image=str(Path("flickr-images") / "0000.jpg"),
+    )
+    return [*image_queries, *text_documents], relevant
+
+
+def ensure_bidirectional_flickr_evaluation(directory: Path) -> dict[str, Any]:
+    """Materialize the inverse Flickr30k retrieval direction from pinned records."""
+
+    manifest_path = directory / "manifest.json"
+    manifest = _document(manifest_path)
+    records = _read_jsonl(directory / "evaluation.jsonl")
+    text_queries = [
+        row for row in records if row["kind"] == "query" and row["valid"]
+    ]
+    image_documents = [
+        row for row in records if row["kind"] == "document" and row["valid"]
+    ]
+    text_to_image = {
+        int(query): set(int(document) for document in documents)
+        for query, documents in manifest["relevant_documents"].items()
+    }
+    image_to_text_records, image_to_text = _image_to_text_evaluation(
+        text_queries,
+        image_documents,
+        text_to_image,
+    )
+    path = directory / "evaluation-image-to-text.jsonl"
+    _write_jsonl(path, image_to_text_records)
+    manifest["evaluation_directions"] = {
+        "text-to-image": {
+            "file": "evaluation.jsonl",
+            "queries": len(text_queries),
+            "documents": len(image_documents),
+            "relevant_documents": {
+                str(query): sorted(documents)
+                for query, documents in text_to_image.items()
+            },
+        },
+        "image-to-text": {
+            "file": path.name,
+            "queries": len(image_documents),
+            "documents": len(text_queries),
+            "relevant_documents": {
+                str(query): sorted(documents)
+                for query, documents in image_to_text.items()
+            },
+        },
+    }
+    manifest["files"][path.name] = {
+        "rows": len(image_to_text_records),
+        "sha256": _sha256(path),
+    }
+    _write_json(manifest_path, manifest)
+    return manifest
+
+
 def _prepare_flickr(directory: Path) -> tuple[tuple[Path, ...], dict[int, set[int]]]:
     import datasets
 
@@ -374,21 +471,16 @@ def _prepare_flickr(directory: Path) -> tuple[tuple[Path, ...], dict[int, set[in
     if set(relevant) != {int(row["identifier"]) for row in query_records}:
         raise ValueError("Flickr30k qrels do not cover every query")
 
-    def pad(records: list[dict[str, Any]], *, kind: str) -> None:
-        remainder = len(records) % EVALUATION_BATCH_SIZE
-        for _ in range((-remainder) % EVALUATION_BATCH_SIZE):
-            records.append(
-                {
-                    "kind": kind,
-                    "identifier": -1,
-                    "text": "",
-                    "image": str(Path("flickr-images") / "0000.jpg"),
-                    "valid": False,
-                }
-            )
-
-    pad(query_records, kind="query")
-    pad(documents, kind="document")
+    _pad_evaluation_records(
+        query_records,
+        kind="query",
+        image=str(Path("flickr-images") / "0000.jpg"),
+    )
+    _pad_evaluation_records(
+        documents,
+        kind="document",
+        image=str(Path("flickr-images") / "0000.jpg"),
+    )
     _write_jsonl(directory / "evaluation.jsonl", (*query_records, *documents))
     return tuple(image_paths), relevant
 
@@ -439,7 +531,7 @@ def prepare_data(
         "flickr_image_tree_sha256": _tree_sha256(flickr_images, output),
     }
     _write_json(output / "manifest.json", manifest)
-    return manifest
+    return ensure_bidirectional_flickr_evaluation(output)
 
 
 def _validate_training_manifest(manifest: Mapping[str, Any]) -> None:
@@ -515,15 +607,25 @@ class ImageTextRetrievalCollator:
 class ImageTextEvaluationCollator:
     """Build homogeneous caption-query or image-document evaluation batches."""
 
-    def __init__(self, *, processor: Any, root_directory: str | Path) -> None:
+    def __init__(
+        self,
+        *,
+        processor: Any,
+        root_directory: str | Path,
+        direction: EvaluationDirection = "text-to-image",
+    ) -> None:
+        if direction not in ("text-to-image", "image-to-text"):
+            raise ValueError(f"unknown image-text evaluation direction {direction!r}")
         self.processor = processor
         self.root_directory = Path(root_directory).resolve()
+        self.direction = direction
 
     def data_contract(self) -> Mapping[str, Any]:
         return {
             "schema_version": "representax-image-text-evaluation-collator-v1",
             "processor": self.processor.data_contract(),
             "root_directory": str(self.root_directory),
+            "direction": self.direction,
         }
 
     def __call__(self, rows: Sequence[Mapping[str, Any]]) -> Any:
@@ -536,17 +638,18 @@ class ImageTextEvaluationCollator:
         if len(kinds) != 1:
             raise ValueError("image-text evaluation batches must be homogeneous")
         kind = kinds.pop()
-        if kind == "query":
+        text_kind = "query" if self.direction == "text-to-image" else "document"
+        if kind == text_kind:
             inputs = self.processor(
                 tuple(str(row["text"]) for row in rows),
-                route=Route.QUERY,
+                route=Route.QUERY if kind == "query" else Route.DOCUMENT,
             )
-        elif kind == "document":
+        elif kind in ("query", "document"):
             inputs = self.processor(
                 tuple(
                     _open_image(self.root_directory / str(row["image"])) for row in rows
                 ),
-                route=Route.DOCUMENT,
+                route=Route.QUERY if kind == "query" else Route.DOCUMENT,
             )
         else:
             raise ValueError(f"unknown image-text evaluation kind {kind!r}")
@@ -1345,6 +1448,7 @@ __all__ = [
     "FrozenContract",
     "ImageTextEvaluationCollator",
     "ImageTextRetrievalCollator",
+    "ensure_bidirectional_flickr_evaluation",
     "frozen_contract",
     "prepare_data",
 ]

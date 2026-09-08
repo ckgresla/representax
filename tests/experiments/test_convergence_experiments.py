@@ -130,6 +130,17 @@ def test_image_text_order_distributes_repeated_captions_across_batches() -> None
     assert all(len({row["caption"] for row in batch}) == 3 for batch in batches)
 
 
+def test_image_text_bidirectional_evaluation_commands_are_explicit() -> None:
+    experiment = _experiment(13, "image-text-convergence")
+    parser = experiment._parser()
+
+    assert parser.parse_args(["prepare-evaluation"]).command == "prepare-evaluation"
+    assert parser.parse_args(["evaluate-seed", "--seed", "42", "--gpu", "1"]).seed == 42
+    assert parser.parse_args(
+        ["evaluate-all", "--gpus", "0", "1", "2"]
+    ).gpus == [0, 1, 2]
+
+
 @pytest.mark.parametrize(
     ("number", "name"),
     (
