@@ -436,10 +436,12 @@ class MNRTask(eqx.Module):
         ],
         batch: RetrievalBatch,
         *,
+        key: PRNGKeyArray | None = None,
         row_chunk_size: int | None = None,
     ) -> LossOutput:
         """Evaluate MNR from the task-generic representation boundary."""
 
+        del key
         queries, documents = representations
         return self.loss_from_embeddings(
             queries,

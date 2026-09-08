@@ -44,6 +44,11 @@ from .execution import _LOCAL_EXECUTION_CONTEXT, ExecutionContext
 
 
 def _leading_batch_size(inputs: Any, *, role: str) -> int:
+    if callable(getattr(inputs, "batch_to_scan", None)):
+        batch_size = inputs.batch_size
+        if batch_size <= 0:
+            raise ValueError(f"{role} inputs must contain at least one row")
+        return batch_size
     leaves = [leaf for leaf in jax.tree.leaves(inputs) if eqx.is_array(leaf)]
     if not leaves:
         raise ValueError(f"{role} inputs must contain arrays")
@@ -56,6 +61,10 @@ def _leading_batch_size(inputs: Any, *, role: str) -> int:
 
 
 def _pad_and_chunk(inputs: Any, *, batch_size: int, chunk_size: int) -> Any:
+    # Structured media batches own the axes and index rebasing of their layout.
+    chunk_inputs = getattr(inputs, "batch_to_scan", None)
+    if callable(chunk_inputs):
+        return chunk_inputs(local_chunk_size=chunk_size)
     leaves = jax.tree.leaves(inputs)
     if not leaves:
         raise ValueError("GradCache inputs must contain arrays")
@@ -238,13 +247,14 @@ def _replay_encoder_gradients(
 
 def _custom_vjp_mnr_values(
     model: Any,
-    task: MNRTask,
+    task: MNRTask | MatryoshkaTask,
     batch: RetrievalBatch,
     *,
     key: PRNGKeyArray | None,
     query_chunk_size: int,
     document_chunk_size: int,
     loss_row_chunk_size: int,
+    loss_key: PRNGKeyArray | None = None,
 ) -> tuple[Any, Any, LossOutput]:
     if key is None:
         query_key = document_key = None
@@ -270,10 +280,10 @@ def _custom_vjp_mnr_values(
         key=document_key,
         rematerialize=False,
     )
-    output = task.loss_from_embeddings(
-        queries,
-        documents,
+    output = task.loss_from_representations(
+        (queries, documents),
         batch,
+        key=loss_key,
         row_chunk_size=loss_row_chunk_size,
     )
     return queries, documents, output
@@ -282,7 +292,7 @@ def _custom_vjp_mnr_values(
 @eqx.filter_custom_vjp
 def _custom_vjp_mnr_evaluate(
     model: Any,
-    task: MNRTask,
+    task: MNRTask | MatryoshkaTask,
     batch: RetrievalBatch,
     *,
     key: PRNGKeyArray | None,
@@ -290,6 +300,7 @@ def _custom_vjp_mnr_evaluate(
     document_chunk_size: int,
     loss_row_chunk_size: int,
     precision: PrecisionPolicy | None,
+    loss_key: PRNGKeyArray | None = None,
 ) -> LossOutput:
     scope = nullcontext() if precision is None else precision_context(precision)
     with scope:
@@ -301,6 +312,7 @@ def _custom_vjp_mnr_evaluate(
             query_chunk_size=query_chunk_size,
             document_chunk_size=document_chunk_size,
             loss_row_chunk_size=loss_row_chunk_size,
+            loss_key=loss_key,
         )[2]
 
 
@@ -308,7 +320,7 @@ def _custom_vjp_mnr_evaluate(
 def _custom_vjp_mnr_evaluate_forward(
     perturbed: Any,
     model: Any,
-    task: MNRTask,
+    task: MNRTask | MatryoshkaTask,
     batch: RetrievalBatch,
     *,
     key: PRNGKeyArray | None,
@@ -316,6 +328,7 @@ def _custom_vjp_mnr_evaluate_forward(
     document_chunk_size: int,
     loss_row_chunk_size: int,
     precision: PrecisionPolicy | None,
+    loss_key: PRNGKeyArray | None = None,
 ) -> tuple[LossOutput, tuple[Any, Any]]:
     del perturbed
     scope = nullcontext() if precision is None else precision_context(precision)
@@ -328,6 +341,7 @@ def _custom_vjp_mnr_evaluate_forward(
             query_chunk_size=query_chunk_size,
             document_chunk_size=document_chunk_size,
             loss_row_chunk_size=loss_row_chunk_size,
+            loss_key=loss_key,
         )
     return output, (queries, documents)
 
@@ -338,7 +352,7 @@ def _custom_vjp_mnr_evaluate_backward(
     output_cotangent: LossOutput,
     perturbed: Any,
     model: Any,
-    task: MNRTask,
+    task: MNRTask | MatryoshkaTask,
     batch: RetrievalBatch,
     *,
     key: PRNGKeyArray | None,
@@ -346,6 +360,7 @@ def _custom_vjp_mnr_evaluate_backward(
     document_chunk_size: int,
     loss_row_chunk_size: int,
     precision: PrecisionPolicy | None,
+    loss_key: PRNGKeyArray | None = None,
 ) -> Any:
     queries, documents = residuals
     scope = nullcontext() if precision is None else precision_context(precision)
@@ -356,10 +371,10 @@ def _custom_vjp_mnr_evaluate_backward(
             return gradients
 
         def representation_loss(query_values: Any, document_values: Any) -> Any:
-            return task.loss_from_embeddings(
-                query_values,
-                document_values,
+            return task.loss_from_representations(
+                (query_values, document_values),
                 batch,
+                key=loss_key,
                 row_chunk_size=loss_row_chunk_size,
             ).loss
 
@@ -641,9 +656,9 @@ class GradCache:
                 "CrossMNRTask, "
                 "or a supported representation modifier"
             )
-        if self.implementation == "custom_vjp" and not isinstance(task, MNRTask):
+        if self.implementation == "custom_vjp" and not isinstance(base_task, MNRTask):
             raise TypeError(
-                "custom-VJP GradCache currently requires an unmodified MNRTask"
+                "custom-VJP GradCache requires MNRTask or MatryoshkaTask(MNRTask)"
             )
 
     def evaluate(
@@ -796,13 +811,14 @@ class GradCache:
                 )
             return _custom_vjp_mnr_evaluate(
                 cast(Encoder, model),
-                base_task,
+                task,
                 batch,
                 key=representation_key,
                 query_chunk_size=self.query_chunk_size,
                 document_chunk_size=self.resolved_document_chunk_size,
                 loss_row_chunk_size=self.resolved_loss_row_chunk_size,
                 precision=active_precision_policy(),
+                loss_key=modifier_key,
             )
         if axis_name is not None and representation_key is not None:
             representation_key = jax.random.fold_in(

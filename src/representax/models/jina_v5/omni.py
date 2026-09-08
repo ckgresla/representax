@@ -38,6 +38,8 @@ class JinaV5OmniBatch(eqx.Module):
     position_interpolation_weights: Float[Array, "corner patch"] | None = None
     visual_token_indices: Int[Array, " visual"] | None = None
     visual_token_valid: Bool[Array, " visual"] | None = None
+    # Processor-built lookup into flattened merge groups; -1 denotes padding.
+    visual_group_indices: Int[Array, "batch visual_capacity"] | None = None
 
     input_features: Float[Array, "batch chunk mel feature"] | None = None
     audio_feature_valid: Bool[Array, "batch chunk feature"] | None = None
@@ -50,6 +52,12 @@ class JinaV5OmniBatch(eqx.Module):
     def batch_size(self) -> int:
         return self.input_ids.shape[0]
 
+    def batch_to_scan(self, *, local_chunk_size: int) -> JinaV5OmniBatch:
+        """Return scan-major chunks with local media indices and edge-padded rows."""
+        from .chunking import batch_to_scan
+
+        return batch_to_scan(self, local_chunk_size=local_chunk_size)
+
     def __post_init__(self) -> None:
         if self.input_ids.ndim != 2:
             raise ValueError("input_ids must have shape [batch, sequence]")
@@ -60,6 +68,14 @@ class JinaV5OmniBatch(eqx.Module):
             *self.input_ids.shape,
         ):
             raise ValueError("position_ids must have shape [3, batch, sequence]")
+        if self.visual_group_indices is not None and (
+            self.pixel_values is None
+            or self.visual_group_indices.ndim != 2
+            or self.visual_group_indices.shape[0] != self.batch_size
+        ):
+            raise ValueError(
+                "visual_group_indices requires vision and batch-major rows"
+            )
 
         vision = (
             self.patch_valid,

@@ -20,6 +20,7 @@ from representax.precision import (
     precision_context,
     resolve_precision_policy,
 )
+from representax.tasks.modifiers import MatryoshkaTask
 from representax.tasks.pairwise import CosineRegressionTask, pairwise_batch
 from representax.tasks.retrieval import MNRTask, retrieval_batch
 from representax.train import GradCache, build_train_step, init_train_state
@@ -253,12 +254,15 @@ def test_bfloat16_gradient_accumulation_matches_full_batch_update():
 
 
 @pytest.mark.parametrize("implementation", ["rematerialized", "custom_vjp"])
-def test_bfloat16_grad_cache_matches_direct_update(implementation: str):
+@pytest.mark.parametrize("modified", [False, True])
+def test_bfloat16_grad_cache_matches_direct_update(implementation: str, modified: bool):
     policy = resolve_precision_policy(PrecisionConfig.bfloat16_mixed())
     model = DenseEncoder(4, 3, key=jax.random.key(7), normalize=False)
     optimizer = optax.adamw(1e-3, weight_decay=0.0)
     state = init_train_state(model, optimizer, precision=policy)
     task = MNRTask(scale=5.0, symmetric=True)
+    if modified:
+        task = MatryoshkaTask(task, (2, 3), weights=(1.0, 2.0))
     batch = _retrieval_batch()
     direct = build_train_step(
         task,
@@ -281,14 +285,21 @@ def test_bfloat16_grad_cache_matches_direct_update(implementation: str):
     _assert_bfloat16_equivalent(cached, direct)
 
 
-def test_custom_vjp_grad_cache_backward_preserves_precision_context():
+@pytest.mark.parametrize("modified", [False, True])
+def test_custom_vjp_grad_cache_backward_preserves_precision_context(modified: bool):
     policy = resolve_precision_policy(PrecisionConfig.bfloat16_mixed())
     model = _PrecisionCheckingEncoder()
+    if modified:
+        # Identity embeddings have zero prefixes, where L2 normalization is singular.
+        model = eqx.tree_at(lambda m: m.weight, model, model.weight + 0.125)
     optimizer = optax.adamw(1e-3, weight_decay=0.0)
     state = init_train_state(model, optimizer, precision=policy)
 
+    task = MNRTask(scale=5.0)
+    if modified:
+        task = MatryoshkaTask(task, (2, 3))
     result = build_train_step(
-        MNRTask(scale=5.0),
+        task,
         optimizer,
         max_grad_norm=None,
         execution=GradCache(query_chunk_size=2, implementation="custom_vjp"),

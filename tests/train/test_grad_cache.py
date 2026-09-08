@@ -108,9 +108,20 @@ def test_grad_cache_matches_direct_full_optimizer_update(
 
 @pytest.mark.runtime
 @pytest.mark.parametrize("symmetric", [False, True])
-def test_custom_vjp_grad_cache_matches_direct_full_optimizer_update(symmetric: bool):
+@pytest.mark.parametrize("dimensions_per_step", [None, -1, 1])
+def test_custom_vjp_grad_cache_matches_direct_full_optimizer_update(
+    symmetric: bool,
+    dimensions_per_step: int | None,
+):
     model = DenseEncoder(4, 3, key=jax.random.key(0), normalize=False)
     task = MNRTask(scale=7.0, symmetric=symmetric)
+    if dimensions_per_step is not None:
+        task = MatryoshkaTask(
+            task,
+            (2, 3),
+            weights=(1.0, 2.0),
+            dimensions_per_step=dimensions_per_step,
+        )
     optimizer = optax.adamw(learning_rate=1e-3, weight_decay=1e-2)
     state = init_train_state(model, optimizer)
     batch = _nontrivial_batch()
@@ -193,17 +204,26 @@ def _explicit_chunked_encode(
 
 
 @pytest.mark.parametrize("implementation", ["rematerialized", "custom_vjp"])
-def test_grad_cache_replays_stochastic_chunks_exactly(implementation: str):
+@pytest.mark.parametrize("matryoshka", [False, True])
+def test_grad_cache_replays_stochastic_chunks_exactly(
+    implementation: str,
+    matryoshka: bool,
+):
     model = _StochasticEncoder(key=jax.random.key(1))
     batch = _nontrivial_batch()
     task = MNRTask(scale=3.0, symmetric=True)
+    if matryoshka:
+        task = MatryoshkaTask(task, (2, 3), weights=(1.0, 2.0), dimensions_per_step=1)
     execution = GradCache(
         query_chunk_size=2,
         document_chunk_size=3,
         implementation=implementation,
     )
     key = jax.random.key(29)
-    query_key, document_key = jax.random.split(key)
+    representation_key, modifier_key = (
+        jax.random.split(key) if matryoshka else (key, None)
+    )
+    query_key, document_key = jax.random.split(representation_key)
 
     def explicit_loss(candidate: _StochasticEncoder) -> jax.Array:
         queries = _explicit_chunked_encode(
@@ -220,6 +240,12 @@ def test_grad_cache_replays_stochastic_chunks_exactly(implementation: str):
             chunk_size=3,
             key=document_key,
         )
+        if matryoshka:
+            return task.loss_from_representations(
+                (queries, documents),
+                batch,
+                key=modifier_key,
+            ).loss
         return task.loss_from_embeddings(queries, documents, batch).loss
 
     def cached_loss(candidate: _StochasticEncoder) -> jax.Array:
@@ -263,14 +289,9 @@ def test_grad_cache_rejects_unknown_implementation():
         GradCache(query_chunk_size=2, implementation="unknown")  # type: ignore[arg-type]
 
 
-def test_custom_vjp_grad_cache_rejects_modified_mnr():
-    execution = GradCache(query_chunk_size=2, implementation="custom_vjp")
-    task = MatryoshkaTask(MNRTask(), (2, 3))
+def test_custom_vjp_grad_cache_rejects_non_mnr_modifier():
+    from representax.tasks.late_interaction import LateInteractionTask
 
-    with pytest.raises(TypeError, match="unmodified MNRTask"):
-        execution.evaluate(
-            task,
-            DenseEncoder(4, 3, key=jax.random.key(0)),
-            _nontrivial_batch(),
-            key=None,
-        )
+    execution = GradCache(query_chunk_size=2, implementation="custom_vjp")
+    with pytest.raises(TypeError, match="custom-VJP GradCache requires"):
+        execution.validate(LateInteractionTask())

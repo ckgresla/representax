@@ -394,7 +394,25 @@ def batch_from_processor_output(
         if visual_indices.size != visual_count:
             raise ValueError("vision placeholders and merged patches do not match")
         visual_bucket = patch_bucket // config.vision.spatial_merge_unit
+        owners = visual_indices // sequence_bucket
+        counts = np.bincount(owners, minlength=input_ids.shape[0])
+        sample_patch_bucket = select_static_shape_bucket(
+            (int(counts.max()) * config.vision.spatial_merge_unit,),
+            tuple((value,) for value in patch_count_buckets),
+        )[0]
+        group_table = np.full(
+            (
+                input_ids.shape[0],
+                sample_patch_bucket // config.vision.spatial_merge_unit,
+            ),
+            -1,
+            dtype=np.int32,
+        )
+        for row in range(input_ids.shape[0]):
+            groups = np.flatnonzero(owners == row)
+            group_table[row, : groups.size] = groups
         values.update(
+            visual_group_indices=jnp.asarray(group_table),
             pixel_values=jnp.asarray(pixels),
             patch_valid=jnp.asarray(layout["patch_valid"]),
             vision_segment_ids=jnp.asarray(layout["vision_segment_ids"]),
