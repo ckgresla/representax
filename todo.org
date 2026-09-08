@@ -1111,12 +1111,52 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
         Retain complete step intervals, cold first-use time, finite/skipped
         flags, raw logs and process-lifetime JAX live-memory peak. This bounded
         repeated-data probe is not a convergence result.
+      - Completed 2026-09-08: 22/24 cells passed six finite/non-skipped updates,
+        each with five warm observations; video chunks 16/32 OOM. All use
+        =activation_rematerialization="full"= in addition to custom-VJP replay,
+        FP32 parameters/BF16 compute, AdamW 1e-5, weight decay 0.01, seed 7.
+        Warm pairs/s include input wait, exclude first compilation/execution:
+        | Chunk |   Text |  Image | Audio | Video |
+        |-------+--------+--------+-------+-------|
+        |     1 |  55.60 |  40.77 | 17.91 | 17.69 |
+        |     2 |  98.33 |  77.78 | 25.92 | 17.87 |
+        |     4 | 168.32 |  97.96 | 32.64 | 17.84 |
+        |     8 | 241.62 | 104.22 | 32.30 | 16.88 |
+        |    16 | 283.10 | 102.96 | 32.10 |   OOM |
+        |    32 | 312.20 | 108.49 | 47.55 |   OOM |
+        Peak allocator-live GiB (not the 21.17 GiB reserved BFC pool):
+        | Chunk | Text | Image | Audio | Video |
+        |-------+------+-------+-------+-------|
+        |     1 | 3.78 |  3.88 |  4.81 |  4.21 |
+        |     2 | 3.79 |  4.06 |  5.04 |  4.62 |
+        |     4 | 3.81 |  4.12 |  5.09 |  5.48 |
+        |     8 | 3.84 |  4.33 |  5.16 |  8.93 |
+        |    16 | 3.92 |  5.19 |  5.32 |   OOM |
+        |    32 | 4.14 |  9.73 |  5.74 |   OOM |
+      - Memory inspection: =memory_report.py= summarizes XLA buffer assignments,
+        counting aliased buffers once. Retained state is 3.54 GiB; temporaries
+        at chunk 32 are 0.60 GiB text, 2.17 GiB audio and 5.06 GiB image.
+        Video chunk 16 requires 24.92 GiB temporaries (28.65 GiB total), including
+        individual =f32[12,16384,16384]= vision attention values of 12 GiB.
+        Video chunk 32 fails autotuning while requesting 48.02 GiB, before a
+        final buffer assignment exists. Keep its compiler/OOM logs, not a
+        fabricated memory total. Successful cells lacking dumps use a separate
+        one-update memory-only replay; original timing observations remain intact.
+      - Limits: video has material input waiting; another CPU compilation job
+        overlapped according to the user. Rates are bounded capacity-screen
+        observations, not isolated paper results or cross-modality efficiency
+        comparisons. Different chunks are not strict BF16 trajectory-parity tests.
+        Text/image/video repeat 32 distinct real pairs; audio reads an original
+        training shard. All three final adaptation strategies remain unvalidated.
+        Candidate follow-up, not yet run: same GradCache with layer checkpointing
+        disabled, keeping batch and science fixed. Per-modality chunk selection
+        is not yet wired into the mixed-source job (one scalar chunk setting).
 
       Proposed final settings, awaiting joint review (not executable promises):
       - Nine jobs, unchanged Nano revision and seeds; uniform weights as above.
       - Bidirectional InfoNCE, temperature =0.02=, Matryoshka prefix dimensions
-        =32,64,128,256,512,768=. Target global batch =32= using direct execution,
-        pending capacity checks for every modality and adaptation strategy.
+        =32,64,128,256,512,768=. Target global batch =32=; final execution settings
+        still require capacity checks for every adaptation strategy.
       - Text maximum =1024=, sequence buckets =128,512,1024=; image budget
         =256*256= pixels; video eight uniformly selected frames at =224*224=
         pixels per frame; audio mono 16 kHz, up to ten seconds. These differ
@@ -1127,11 +1167,11 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
       - Initially =2000= updates per seed; evaluations at 0, 10%, 25%, 50%, 75%
         and 100%; resumable checkpoints at 50% and 100%. Exact held-out panels
         and the full training-source construction must still be frozen.
-      - Do not silently enable GradCache in the serious recipe: layout and
-        Matryoshka support now pass the toy gates above, but full-model real-media
-        chunk sizes, memory and throughput need measuring. The existing real-data
-        canary only proves direct execution. Keep the scientific batch unchanged
-        while selecting execution chunk sizes.
+      - Do not silently enable GradCache in the serious recipe: the batch-2
+        real-media custom-VJP/Matryoshka canary completed eight updates including
+        checkpoint/resume at tiny input caps. The batch-32 capacity sweep above
+        covers proposed input caps, but only text LoRA. Keep the scientific batch
+        unchanged while selecting execution chunk sizes for the final strategies.
       - Training parameter selection still needs implementing/verification for
         connector-only and connectors+LoRA. Generic LoRAConfig selects only LoRA
         arrays, not connectors or delimiter embeddings; it does not implement
