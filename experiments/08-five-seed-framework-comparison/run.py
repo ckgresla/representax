@@ -9,13 +9,11 @@ import os
 import shutil
 import statistics
 import subprocess
-import sys
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 PYTHON = REPOSITORY_ROOT / "experiments/.venv/bin/python"
@@ -32,31 +30,25 @@ BUCKETS = (16, 32, 64, 128, 256)
 
 MPNET = Path("/raid/representax/oracles/all-mpnet-base-v2")
 DENSE_DATA = Path("/raid/representax/data/dense-retrieval-msmarco-v1")
-PAIR_ROOT = Path(
-    "/raid/representax-paper/02-semantic-similarity-pair-classification"
-)
+DENSE_TRAINING_DATA = Path("/raid/representax-paper-assets/dense-msmarco-unique-v1")
+PAIR_ROOT = Path("/raid/representax-paper/02-semantic-similarity-pair-classification")
 CROSS_CHECKPOINT = Path(
     "/raid/.cache/huggingface/hub/models--cross-encoder--ms-marco-MiniLM-L6-v2/"
     "snapshots/233902d25c440f23af6f7d6e94d2946bac0bee0a"
 )
 CROSS_DATA = Path(
-    "/raid/representax-paper/03-cross-encoder-reranking/"
-    "screen-30-seed-7/data-v2"
+    "/raid/representax-paper/03-cross-encoder-reranking/screen-30-seed-7/data-v2"
 )
 LATE_CHECKPOINT = Path(
     "/raid/.cache/huggingface/hub/models--lightonai--GTE-ModernColBERT-v1/"
     "snapshots/cbbe53366e564450558f5e639dd499171f127538"
 )
-LATE_DATA = Path(
-    "/raid/representax-paper/04-late-interaction/screen-30-seed-7/data"
-)
+LATE_DATA = Path("/raid/representax-paper/04-late-interaction/screen-30-seed-7/data")
 QWEN = Path(
     "/raid/.cache/huggingface/hub/models--Qwen--Qwen3-0.6B/"
     "snapshots/c1899de289a04d12100db370d81485cdf75e47ca"
 )
-REWARD_ROOT = Path(
-    "/raid/representax-paper/05-reward-modeling/screen-30-seed-7"
-)
+REWARD_ROOT = Path("/raid/representax-paper/05-reward-modeling/screen-30-seed-7")
 MULTIMODAL_ROOT = Path(
     "/raid/representax-paper/06-multimodal-retrieval/screen-30-seed-7"
 )
@@ -93,6 +85,8 @@ class Recipe:
                 str(MPNET),
                 "--data-directory",
                 str(DENSE_DATA),
+                "--training-parquet",
+                str(DENSE_TRAINING_DATA / f"seed-{seed}.parquet"),
                 "--batch-size",
                 "2048",
                 "--steps",
@@ -385,7 +379,9 @@ def run(gpus: tuple[int, ...]) -> None:
                 launched = False
                 for index, (recipe, seed) in enumerate(pending):
                     cache_warmed = any(
-                        (OUTPUT_ROOT / recipe.name / f"seed-{value}/summary.json").is_file()
+                        (
+                            OUTPUT_ROOT / recipe.name / f"seed-{value}/summary.json"
+                        ).is_file()
                         for value in SEEDS
                     )
                     if (
@@ -399,8 +395,9 @@ def run(gpus: tuple[int, ...]) -> None:
                     future = executor.submit(_run_one, recipe, seed, assigned)
                     futures[future] = (recipe, assigned)
                     pending.pop(index)
+                    gpu_list = ",".join(map(str, assigned))
                     print(
-                        f"launch {recipe.name} seed={seed} gpus={','.join(map(str, assigned))}",
+                        f"launch {recipe.name} seed={seed} gpus={gpu_list}",
                         flush=True,
                     )
                     launched = True
@@ -443,7 +440,11 @@ def _representax_rows(
     report = summary["representax"]
     dense_metrics = artifact_directory / "runs/representax/metrics.jsonl"
     if dense_metrics.is_file():
-        return [row for row in _metric_rows(dense_metrics) if row.get("event") == "training_step"]
+        return [
+            row
+            for row in _metric_rows(dense_metrics)
+            if row.get("event") == "training_step"
+        ]
     bundle = report.get("inference_bundle") or report.get("exported_bundle")
     if bundle:
         run = Path(bundle).parent
@@ -474,7 +475,10 @@ def _completion_throughput(
     batch = float(
         report.get(
             "batch_size",
-            report.get("global_batch_size", summary.get("configuration", {}).get("batch_size", 1)),
+            report.get(
+                "global_batch_size",
+                summary.get("configuration", {}).get("batch_size", 1),
+            ),
         )
     )
     for previous, current in zip(rows, rows[1:], strict=False):
@@ -528,9 +532,7 @@ def _reference_throughput(
         ]
     excluded = {1, STEPS // 2 + 1}
     durations = [
-        float(row["seconds"])
-        for row in timings
-        if int(row["step"]) not in excluded
+        float(row["seconds"]) for row in timings if int(row["step"]) not in excluded
     ]
     batch = float(
         reference.get(
@@ -558,9 +560,7 @@ def _losses(report: dict[str, Any]) -> list[float]:
     return []
 
 
-def _reference_losses(
-    report: dict[str, Any], artifact_directory: Path
-) -> list[float]:
+def _reference_losses(report: dict[str, Any], artifact_directory: Path) -> list[float]:
     values = _losses(report)
     if values:
         return values
@@ -569,8 +569,7 @@ def _reference_losses(
         return [
             float(row["metrics"]["train/loss"])
             for row in _metric_rows(metrics)
-            if row.get("event") == "training_step"
-            and "train/loss" in row["metrics"]
+            if row.get("event") == "training_step" and "train/loss" in row["metrics"]
         ][-STEPS:]
     return []
 
@@ -740,19 +739,20 @@ def aggregate() -> None:
         for seed in SEEDS:
             path = OUTPUT_ROOT / recipe.name / f"seed-{seed}/summary.json"
             if not path.is_file():
-                failures.append({"recipe": recipe.name, "seed": seed, "reason": "missing"})
+                failures.append(
+                    {"recipe": recipe.name, "seed": seed, "reason": "missing"}
+                )
                 continue
             try:
                 summary = _read_json(path)
                 reference_name, reference = _reference(summary)
                 artifact_directory = path.parent
-                native_rate, native_durations, native_input_wait = _completion_throughput(
-                    summary, artifact_directory
+                native_rate, native_durations, native_input_wait = (
+                    _completion_throughput(summary, artifact_directory)
                 )
                 reference_rate, reference_durations = _reference_throughput(
                     summary, reference, artifact_directory
                 )
-                native = summary["representax"]
                 native_losses = _representax_losses(summary, artifact_directory)
                 reference_losses = _reference_losses(reference, artifact_directory)
                 rows.append(
@@ -818,9 +818,7 @@ def aggregate() -> None:
                 "median_reference_examples_per_second": statistics.median(
                     row["reference_examples_per_second"] for row in values
                 ),
-                "median_throughput_ratio": statistics.median(
-                    ratios
-                ),
+                "median_throughput_ratio": statistics.median(ratios),
                 "minimum_throughput_ratio": min(ratios),
                 "maximum_throughput_ratio": max(ratios),
                 "throughput_ratio_median_absolute_deviation": (
@@ -873,9 +871,7 @@ def aggregate() -> None:
         "failures": failures,
     }
     _write_json(OUTPUT_ROOT / "summary.json", result)
-    (OUTPUT_ROOT / "results.md").write_text(
-        _render_markdown(result), encoding="utf-8"
-    )
+    (OUTPUT_ROOT / "results.md").write_text(_render_markdown(result), encoding="utf-8")
     print(json.dumps(by_recipe, indent=2, sort_keys=True))
 
 

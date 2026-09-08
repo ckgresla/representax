@@ -38,6 +38,9 @@ def test_run_command_pins_the_accepted_scientific_contract(tmp_path: Path) -> No
     assert command[command.index("--steps") + 1] == "256"
     assert command[command.index("--cache-chunk-size") + 1] == "32"
     assert command[command.index("--seed") + 1] == "42"
+    assert command[command.index("--training-parquet") + 1].endswith(
+        "dense-msmarco-unique-v1/seed-42.parquet"
+    )
     assert command[-4:] == [
         "--representax-gpu",
         "0",
@@ -154,7 +157,4 @@ def test_shell_runner_schedules_seed_pairs_in_waves(
     invocations = calls.read_text(encoding="utf-8").splitlines()
     assert len(invocations) == 4
     assert invocations[3].endswith("run.py aggregate")
-    assert {
-        row.partition("run.py ")[2]
-        for row in invocations[:3]
-    } == expected
+    assert {row.partition("run.py ")[2] for row in invocations[:3]} == expected

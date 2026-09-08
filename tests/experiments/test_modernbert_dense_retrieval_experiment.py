@@ -29,7 +29,10 @@ def test_trajectory_commands_share_the_scientific_recipe(tmp_path: Path) -> None
         assert command[command.index("--batch-size") + 1] == "128"
         assert command[command.index("--steps") + 1] == "30"
         assert command[command.index("--maximum-length") + 1] == "128"
-        assert command[command.index("--seed") + 1] == "17"
+        assert command[command.index("--seed") + 1] == "7"
+        assert command[command.index("--training-parquet") + 1].endswith(
+            "dense-msmarco-unique-v1/seed-7.parquet"
+        )
         assert "--mixed-precision" in command
 
     assert "custom_vjp" in commands["custom-vjp"]

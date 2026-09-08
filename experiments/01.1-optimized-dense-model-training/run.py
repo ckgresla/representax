@@ -20,6 +20,7 @@ DEFAULT_ARTIFACT_ROOT = (
 )
 DEFAULT_CHECKPOINT = Path("/raid/representax/oracles/all-mpnet-base-v2")
 DEFAULT_DATA = Path("/raid/representax/data/dense-retrieval-msmarco-v1")
+UNIQUE_TRAINING_DATA = Path("/raid/representax-paper-assets/dense-msmarco-unique-v1")
 SEQUENCE_LENGTH_BUCKETS = (16, 32, 64, 128, 256)
 QUALITY_SEEDS = (7, 42, 773)
 FINAL_STEPS = 256
@@ -86,6 +87,8 @@ def _scientific_arguments(
         str(checkpoint),
         "--data-directory",
         str(data),
+        "--training-parquet",
+        str(UNIQUE_TRAINING_DATA / f"seed-{seed}.parquet"),
         "--batch-size",
         "2048",
         "--steps",

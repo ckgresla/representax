@@ -8,12 +8,12 @@ import os
 import subprocess
 from pathlib import Path
 
-
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 PYTHON = REPOSITORY_ROOT / "experiments/.venv/bin/python"
-ARTIFACT_ROOT = Path(
-    os.environ.get("REPRESENTAX_PAPER_ROOT", "/raid/representax-paper")
-) / "09-modernbert-dense-retrieval"
+ARTIFACT_ROOT = (
+    Path(os.environ.get("REPRESENTAX_PAPER_ROOT", "/raid/representax-paper"))
+    / "09-modernbert-dense-retrieval"
+)
 SOURCE_CHECKPOINT = Path(
     "/raid/.cache/huggingface/hub/"
     "models--jhu-clsp--ettin-encoder-150m/"
@@ -21,10 +21,11 @@ SOURCE_CHECKPOINT = Path(
 )
 CHECKPOINT = ARTIFACT_ROOT / "checkpoints/ettin-encoder-150m"
 DATA = Path("/raid/representax/data/dense-retrieval-msmarco-v1")
-SEEDS = (17, 42, 73)
+UNIQUE_TRAINING_DATA = Path("/raid/representax-paper-assets/dense-msmarco-unique-v1")
+SEEDS = (7, 42, 773)
 REPRESENTAX_BUCKETS = (16, 96, 128)
-TRAJECTORY_ROOT = ARTIFACT_ROOT / "real-trajectory-30-step" / "seed-17"
-PADDING_ABLATION_ROOT = ARTIFACT_ROOT / "padding-ablation-30-step" / "seed-17"
+TRAJECTORY_ROOT = ARTIFACT_ROOT / "real-trajectory-30-step" / "seed-7"
+PADDING_ABLATION_ROOT = ARTIFACT_ROOT / "padding-ablation-30-step" / "seed-7"
 
 
 def _prepare_checkpoint() -> None:
@@ -49,7 +50,9 @@ def _prepare_checkpoint() -> None:
             {
                 "model_id": "jhu-clsp/ettin-encoder-150m",
                 "revision": "45d08642849e5c5701b162671ac811b7654bfd9f",
-                "conversion": "ModernBertModel.save_pretrained(safe_serialization=True)",
+                "conversion": (
+                    "ModernBertModel.save_pretrained(safe_serialization=True)"
+                ),
             },
             indent=2,
         )
@@ -69,6 +72,8 @@ def _pair_command(seed: int, gpus: tuple[int, int]) -> list[str]:
         str(CHECKPOINT),
         "--data-directory",
         str(DATA),
+        "--training-parquet",
+        str(UNIQUE_TRAINING_DATA / f"seed-{seed}.parquet"),
         "--batch-size",
         "128",
         "--steps",
@@ -154,6 +159,8 @@ def _trajectory_command(
         str(CHECKPOINT),
         "--data-directory",
         str(DATA),
+        "--training-parquet",
+        str(UNIQUE_TRAINING_DATA / "seed-7.parquet"),
         "--batch-size",
         "128",
         "--steps",
@@ -163,7 +170,7 @@ def _trajectory_command(
         "--evaluation-batch-size",
         "128",
         "--seed",
-        "17",
+        "7",
         "--mixed-precision",
         "--telemetry",
         "--cache-chunk-size",
@@ -283,9 +290,7 @@ def _parallel_workers(
 
 def _trajectory(gpus: tuple[int, ...], output: Path) -> None:
     names = ("custom-vjp", "rematerialized", "st-eager", "st-inductor")
-    commands = tuple(
-        (name, _trajectory_command(name, output / name)) for name in names
-    )
+    commands = tuple((name, _trajectory_command(name, output / name)) for name in names)
     _parallel_workers(gpus, output, commands)
 
 

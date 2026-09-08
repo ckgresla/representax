@@ -50,6 +50,9 @@ def test_candidate_commands_keep_the_scientific_contract_fixed(tmp_path: Path) -
     assert command[command.index("--cache-chunk-size") + 1] == "64"
     assert command[command.index("--data-threads") + 1] == "8"
     assert command[command.index("--seed") + 1] == "7"
+    assert command[command.index("--training-parquet") + 1].endswith(
+        "dense-msmarco-unique-v1/seed-7.parquet"
+    )
     assert "--mixed-precision" in command
     assert [
         command[index + 1]

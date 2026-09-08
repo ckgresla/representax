@@ -7,11 +7,8 @@ from types import ModuleType
 
 import pytest
 
-
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
-LAUNCHER = (
-    REPOSITORY_ROOT / "experiments/08-five-seed-framework-comparison/run.py"
-)
+LAUNCHER = REPOSITORY_ROOT / "experiments/08-five-seed-framework-comparison/run.py"
 
 
 def _launcher() -> ModuleType:
@@ -36,6 +33,9 @@ def test_every_recipe_routes_its_assigned_gpus(tmp_path: Path) -> None:
         if recipe.name == "dense-retrieval":
             assert _option(command, "--representax-gpu") == "4"
             assert _option(command, "--sentence-transformers-gpu") == "5"
+            assert _option(command, "--training-parquet").endswith(
+                "dense-msmarco-unique-v1/seed-7.parquet"
+            )
         elif recipe.name.startswith(("semantic-similarity-", "pair-classification-")):
             assert _option(command, "--representax-gpu") == "4"
             assert _option(command, "--reference-gpu") == "5"
