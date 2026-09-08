@@ -51,6 +51,22 @@ def test_training_captions_are_distinct_and_nonempty() -> None:
     ) == ("first", "second", "third", "fourth")
 
 
+def test_distinct_captions_checks_exclusions_without_copying_them() -> None:
+    class MembershipOnly:
+        def __contains__(self, value):
+            return value == "blocked"
+
+        def __iter__(self):
+            raise AssertionError("the global exclusion collection must not be copied")
+
+        def __len__(self):
+            return 1
+
+    assert _distinct_captions(
+        ("blocked", "kept"), count=1, excluded=MembershipOnly()
+    ) == ("kept",)
+
+
 def test_coco_selection_skips_duplicate_media_and_captions() -> None:
     rows = (
         {"image_id": 1, "captions": ("a", "b", "c", "d")},

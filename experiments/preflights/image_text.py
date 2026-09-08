@@ -158,10 +158,10 @@ def _distinct_captions(
     excluded: Collection[str] = (),
 ) -> tuple[str, ...]:
     selected = []
-    seen = set(excluded)
+    seen = set()
     for value in values:
         caption = str(value).strip()
-        if not caption or caption in seen:
+        if not caption or caption in seen or caption in excluded:
             continue
         seen.add(caption)
         selected.append(caption)
