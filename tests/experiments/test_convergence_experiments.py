@@ -42,6 +42,7 @@ def test_dense_retrieval_contract_and_command_are_frozen() -> None:
         "document_micro_batch_size": 64,
         "loss_row_chunk_size": 64,
     }
+    assert contract["evaluation"]["batch_size"] == 4_096
     assert _argument(command, "--steps") == "3817"
     assert _argument(command, "--training-parquet").endswith("seed-42.parquet")
     assert _argument(command, "--checkpoint-every") == "1908"

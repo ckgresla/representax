@@ -42,7 +42,7 @@ DOCUMENT_CHUNK_SIZE = 64
 LOSS_ROW_CHUNK_SIZE = 64
 WARMUP_RATIO = 0.06
 SOURCE_SHARDS = 39
-EVALUATION_BATCH_SIZE = 256
+EVALUATION_BATCH_SIZE = 4_096
 TREC_DATASET_ID = "msmarco-passage/trec-dl-2019/judged"
 TREC_DATASET_VERSION = "0.5.11"
 NQ_DATASET_ID = "mteb/nq"
@@ -83,6 +83,7 @@ def contract() -> dict[str, Any]:
         "evaluation": {
             "during_training": ["NanoMSMARCO-start", "NanoMSMARCO-final"],
             "post_training": ["TREC-DL-2019", "Natural-Questions"],
+            "batch_size": EVALUATION_BATCH_SIZE,
         },
         "checkpoint_progress": [0.5, 1.0],
         "export": "representax-and-huggingface",
