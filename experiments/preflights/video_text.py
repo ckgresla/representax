@@ -182,6 +182,34 @@ def _save_video(path: Path, video: np.ndarray) -> None:
     os.replace(temporary, path)
 
 
+def _select_training_rows(
+    rows: Iterable[Mapping[str, Any]], *, count: int
+) -> tuple[tuple[int, Mapping[str, Any], str], ...]:
+    selected = []
+    video_ids: set[str] = set()
+    captions: set[str] = set()
+    for source_index, row in enumerate(rows):
+        video_id = str(row["video_id"])
+        if video_id in video_ids:
+            continue
+        caption = next(
+            (
+                value
+                for item in row["caption"]
+                if (value := str(item).strip()) and value not in captions
+            ),
+            None,
+        )
+        if caption is None:
+            continue
+        video_ids.add(video_id)
+        captions.add(caption)
+        selected.append((source_index, row, caption))
+        if len(selected) == count:
+            return tuple(selected)
+    raise ValueError(f"MSR-VTT contains only {len(selected)} unique usable rows")
+
+
 def _prepare_training(directory: Path, count: int) -> tuple[Path, ...]:
     import datasets
     from huggingface_hub import hf_hub_download
@@ -194,14 +222,10 @@ def _prepare_training(directory: Path, count: int) -> tuple[Path, ...]:
         split=contract.train_dataset["split"],
         streaming=True,
     )
-    rows = tuple(source.take(count))
-    if len(rows) != count:
-        raise ValueError(
-            f"MSR-VTT produced {len(rows)} training rows; expected {count}"
-        )
+    rows = _select_training_rows(source, count=count)
     records = []
     paths = []
-    for source_index, row in enumerate(rows):
+    for source_index, row, caption in rows:
         filename = str(row["video"])
         source_path = Path(
             hf_hub_download(
@@ -215,17 +239,12 @@ def _prepare_training(directory: Path, count: int) -> tuple[Path, ...]:
         relative = Path("video/train") / f"{row['video_id']}.npy"
         path = directory / relative
         _save_video(path, _decode_video(source_path, frames=contract.video_frames))
-        captions = tuple(
-            str(value).strip() for value in row["caption"] if str(value).strip()
-        )
-        if not captions:
-            raise ValueError(f"MSR-VTT training row {source_index} has no caption")
         paths.append(path)
         records.append(
             {
                 "source_index": source_index,
                 "video_id": str(row["video_id"]),
-                "caption": captions[0],
+                "caption": caption,
                 "video": str(relative),
             }
         )
@@ -324,13 +343,14 @@ def prepare_data(
         )
     }
     manifest = {
-        "schema_version": "representax-video-text-preflight-data-v1",
         "contract": asdict(frozen_contract()),
         "video_frames": frozen_contract().video_frames,
         "video_fps": VIDEO_FPS,
         "video_shape": [VIDEO_HEIGHT, VIDEO_WIDTH, 3],
         "training_videos": training_videos,
         "training_presentations": training_videos,
+        "unique_video_ids": True,
+        "unique_captions": True,
         "evaluation_queries": evaluation_queries,
         "evaluation_documents": evaluation_documents,
         "relevant_documents": {
@@ -342,6 +362,13 @@ def prepare_data(
     }
     _write_json(output / "manifest.json", manifest)
     return manifest
+
+
+def _validate_training_manifest(manifest: Mapping[str, Any]) -> None:
+    if not manifest.get("unique_video_ids") or not manifest.get("unique_captions"):
+        raise ValueError(
+            "video-text training data predates duplicate-free preparation; rebuild it"
+        )
 
 
 def _load_video(root: Path, relative: str) -> np.ndarray:
@@ -373,7 +400,6 @@ class VideoTextRetrievalCollator:
 
     def data_contract(self) -> Mapping[str, Any]:
         return {
-            "schema_version": "representax-video-text-collator-v1",
             "processor": self.processor.data_contract(),
             "root_directory": str(self.root_directory),
         }
@@ -423,7 +449,6 @@ class VideoTextEvaluationCollator:
 
     def data_contract(self) -> Mapping[str, Any]:
         return {
-            "schema_version": "representax-video-text-evaluation-collator-v1",
             "processor": self.processor.data_contract(),
             "root_directory": str(self.root_directory),
         }
@@ -505,8 +530,11 @@ def _representax_job(
     from representax.tasks.retrieval import MNRConfig, RetrievalConfig
 
     manifest = _document(data_directory / "manifest.json")
-    if int(manifest["training_presentations"]) < batch_size * steps:
-        raise ValueError("preflight data does not contain enough presentations")
+    _validate_training_manifest(manifest)
+    if int(manifest["training_presentations"]) < batch_size:
+        raise ValueError(
+            "preflight data does not contain one complete contrastive batch"
+        )
     relevant = {
         int(query): frozenset(int(document) for document in documents)
         for query, documents in manifest["relevant_documents"].items()
@@ -687,9 +715,7 @@ def _representax_worker(
     from representax.train import run_job
 
     grad_cache_micro_batch = (
-        TPU_GRAD_CACHE_MICRO_BATCH
-        if platform == "tpu"
-        else GPU_GRAD_CACHE_MICRO_BATCH
+        TPU_GRAD_CACHE_MICRO_BATCH if platform == "tpu" else GPU_GRAD_CACHE_MICRO_BATCH
     )
     job = _representax_job(
         checkpoint=checkpoint,
@@ -742,7 +768,6 @@ def _representax_worker(
     )
     if platform == "tpu":
         return {
-            "schema_version": "representax-video-text-worker-v1",
             "framework": "representax",
             "steps": steps,
             "global_batch_size": batch_size,
@@ -822,7 +847,6 @@ def _representax_worker(
     ):
         raise RuntimeError("Representax produced no finite nonzero update")
     return {
-        "schema_version": "representax-video-text-worker-v1",
         "framework": "representax",
         "steps": steps,
         "global_batch_size": batch_size,
@@ -962,9 +986,7 @@ def _sentence_transformers_worker(
         raise ValueError("global batch must divide the accelerator count")
     local_batch_size = batch_size // world_size
     grad_cache_micro_batch = (
-        TPU_GRAD_CACHE_MICRO_BATCH
-        if platform == "tpu"
-        else GPU_GRAD_CACHE_MICRO_BATCH
+        TPU_GRAD_CACHE_MICRO_BATCH if platform == "tpu" else GPU_GRAD_CACHE_MICRO_BATCH
     )
     if platform == "tpu":
         run_directory = run_directory / f"process-{torch_rank()}"
@@ -1103,7 +1125,6 @@ def _sentence_transformers_worker(
             excluded_steps=(1, 2),
         )
         return {
-            "schema_version": "representax-video-text-worker-v1",
             "framework": "sentence-transformers",
             "framework_version": sentence_transformers.__version__,
             "transformers_version": transformers.__version__,
@@ -1202,7 +1223,6 @@ def _sentence_transformers_worker(
         excluded_steps=(1, midpoint_step + 1),
     )
     return {
-        "schema_version": "representax-video-text-worker-v1",
         "framework": "sentence-transformers",
         "framework_version": sentence_transformers.__version__,
         "transformers_version": transformers.__version__,
@@ -1240,6 +1260,7 @@ def _sentence_transformers_worker(
 
 
 def _worker(arguments: argparse.Namespace) -> None:
+    _validate_training_manifest(_document(arguments.data_directory / "manifest.json"))
     function = (
         _representax_worker
         if arguments.framework == "representax"
@@ -1341,7 +1362,6 @@ def _pair(arguments: argparse.Namespace) -> None:
             )
         reports[framework] = _document(report)
     summary = {
-        "schema_version": "representax-video-text-preflight-v1",
         "scope": "bounded-readiness-preflight-not-paper-result",
         "contract": {
             **asdict(frozen_contract()),

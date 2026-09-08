@@ -6,8 +6,8 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 from experiments.preflights.audio_text import (
-    GRAD_CACHE_MICRO_BATCH,
     GPU_GRAD_CACHE_MICRO_BATCH,
+    GRAD_CACHE_MICRO_BATCH,
     PREFLIGHT_BATCH_SIZE,
     SAMPLE_RATE,
     AudioTextEvaluationCollator,
@@ -16,6 +16,7 @@ from experiments.preflights.audio_text import (
     _parser,
     _ReferenceAudioTransform,
     _representax_job,
+    _select_training_rows,
     frozen_contract,
 )
 
@@ -60,6 +61,19 @@ def test_audio_normalization_is_mono_resampled_and_fixed_length() -> None:
     assert np.isfinite(actual).all()
     assert np.any(actual[:SAMPLE_RATE] != 0)
     assert np.all(actual[-SAMPLE_RATE:] == 0)
+
+
+def test_audio_training_selection_skips_duplicate_media_and_captions() -> None:
+    rows = (
+        {"audiocap_id": 1, "caption": "first"},
+        {"audiocap_id": 1, "caption": "second"},
+        {"audiocap_id": 2, "caption": "first"},
+        {"audiocap_id": 3, "caption": "third"},
+    )
+
+    selected = _select_training_rows(rows, count=2)
+
+    assert [index for index, _ in selected] == [0, 3]
 
 
 def test_audio_text_collators_preserve_routes_and_validity(tmp_path) -> None:
@@ -158,6 +172,8 @@ def test_representax_audio_job_uses_ddp_grad_cache_and_verified_export(
         json.dumps(
             {
                 "training_presentations": 128,
+                "unique_audio_ids": True,
+                "unique_captions": True,
                 "relevant_documents": {"0": [0]},
             }
         )
@@ -200,7 +216,9 @@ def test_audio_job_can_enable_full_rematerialization(tmp_path) -> None:
     (data / "manifest.json").write_text(
         json.dumps(
             {
-                "training_presentations": 32,
+                "training_presentations": PREFLIGHT_BATCH_SIZE,
+                "unique_audio_ids": True,
+                "unique_captions": True,
                 "relevant_documents": {"0": [0]},
             }
         )
@@ -227,6 +245,8 @@ def test_representax_audio_scaling_probe_can_use_one_gpu_without_export(
         json.dumps(
             {
                 "training_presentations": 128,
+                "unique_audio_ids": True,
+                "unique_captions": True,
                 "relevant_documents": {"0": [0]},
             }
         )
@@ -261,6 +281,8 @@ def test_representax_audio_job_retains_fsdp_capacity_fallback(tmp_path) -> None:
         json.dumps(
             {
                 "training_presentations": 128,
+                "unique_audio_ids": True,
+                "unique_captions": True,
                 "relevant_documents": {"0": [0]},
             }
         )

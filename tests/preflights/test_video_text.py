@@ -16,6 +16,7 @@ from experiments.preflights.video_text import (
     _parser,
     _reference_video,
     _representax_job,
+    _select_training_rows,
     frozen_contract,
 )
 from tests.models.qwen2_5_omni.test_model import tiny_config
@@ -59,6 +60,21 @@ def test_frozen_video_text_contract() -> None:
     assert contract.video_frames == 16
 
 
+def test_video_training_selection_skips_duplicate_media_and_captions() -> None:
+    rows = (
+        {"video_id": "v1", "caption": ("first", "alternate")},
+        {"video_id": "v1", "caption": ("second",)},
+        {"video_id": "v2", "caption": ("first", "second")},
+    )
+
+    selected = _select_training_rows(rows, count=2)
+
+    assert [(index, caption) for index, _, caption in selected] == [
+        (0, "first"),
+        (2, "second"),
+    ]
+
+
 def test_video_text_job_accepts_device_local_negatives(tmp_path) -> None:
     data = tmp_path / "data"
     data.mkdir()
@@ -66,6 +82,8 @@ def test_video_text_job_accepts_device_local_negatives(tmp_path) -> None:
         json.dumps(
             {
                 "training_presentations": PREFLIGHT_BATCH_SIZE * 4,
+                "unique_video_ids": True,
+                "unique_captions": True,
                 "relevant_documents": {"0": [0]},
             }
         )
@@ -89,6 +107,8 @@ def test_video_text_job_can_enable_full_rematerialization(tmp_path) -> None:
         json.dumps(
             {
                 "training_presentations": PREFLIGHT_BATCH_SIZE * 4,
+                "unique_video_ids": True,
+                "unique_captions": True,
                 "relevant_documents": {"0": [0]},
             }
         )
@@ -281,6 +301,8 @@ def test_representax_video_job_uses_one_gpu_grad_cache_and_verified_export(
         json.dumps(
             {
                 "training_presentations": 8,
+                "unique_video_ids": True,
+                "unique_captions": True,
                 "relevant_documents": {"0": [0]},
             }
         )

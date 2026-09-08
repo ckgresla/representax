@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pytest
 from experiments.preflights.bert_scaling import (
     ACTIVE_UPDATE_BYTES_PER_PARAMETER,
     DEFAULT_ARTIFACT_ROOT,
@@ -17,6 +18,7 @@ from experiments.preflights.bert_scaling import (
     TRAIN_DATASET_ID,
     TRAIN_DATASET_REVISION,
     EvaluationData,
+    ScheduledRetrievalCollator,
     _parser,
     _timings,
     _visible_physical_gpus,
@@ -31,6 +33,17 @@ from scripts.validate_bert_scaling import bert_parameter_count
 
 from representax.config import FSDPConfig
 from representax.models.bert import BertConfig
+
+
+class _ScheduledProcessor:
+    def data_contract(self):
+        return {"kind": "test"}
+
+    def __call__(self, values, *, route, sequence_length):
+        import jax.numpy as jnp
+
+        del route
+        return jnp.zeros((len(values), sequence_length), dtype=jnp.int32)
 
 
 def _evaluation() -> EvaluationData:
@@ -132,6 +145,28 @@ def test_training_slice_keeps_first_distinct_queries_in_source_order() -> None:
         {"query": "q1", "positive": "p1"},
         {"query": "q2", "positive": "p2"},
     )
+
+
+def test_scheduled_retrieval_collator_selects_one_length_per_batch() -> None:
+    collator = ScheduledRetrievalCollator(processor=_ScheduledProcessor())
+
+    batch = collator(
+        (
+            {"query": "q0", "positive": "p0", "sequence_length": 128},
+            {"query": "q1", "positive": "p1", "sequence_length": 128},
+        )
+    )
+
+    assert batch.query.shape == (2, 128)
+    assert batch.document.shape == (2, 128)
+    assert batch.positive_mask.tolist() == [[True, False], [False, True]]
+    with pytest.raises(ValueError, match="cannot cross"):
+        collator(
+            (
+                {"query": "q", "positive": "p", "sequence_length": 128},
+                {"query": "q", "positive": "p", "sequence_length": 512},
+            )
+        )
 
 
 def test_job_uses_mnr_evaluation_export_and_two_way_fsdp(tmp_path) -> None:

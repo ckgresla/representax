@@ -47,7 +47,6 @@ FRAMEWORKS = ("representax", "sentence-transformers")
 SAMPLE_RATE = 16_000
 PREFLIGHT_BATCH_SIZE = 8
 PREFLIGHT_TRAINING_AUDIOS = 32
-PREFLIGHT_TRAINING_REPEATS = 4
 PREFLIGHT_EVALUATION_QUERIES = 16
 PREFLIGHT_EVALUATION_DOCUMENTS = 128
 GPU_GRAD_CACHE_MICRO_BATCH = 1
@@ -200,6 +199,25 @@ def _save_audio(path: Path, audio: np.ndarray) -> None:
     os.replace(temporary, path)
 
 
+def _select_training_rows(
+    rows: Iterable[Mapping[str, Any]], *, count: int
+) -> tuple[tuple[int, Mapping[str, Any]], ...]:
+    selected = []
+    audio_ids: set[int] = set()
+    captions: set[str] = set()
+    for source_index, row in enumerate(rows):
+        audio_id = int(row["audiocap_id"])
+        caption = str(row["caption"]).strip()
+        if not caption or audio_id in audio_ids or caption in captions:
+            continue
+        audio_ids.add(audio_id)
+        captions.add(caption)
+        selected.append((source_index, row))
+        if len(selected) == count:
+            return tuple(selected)
+    raise ValueError(f"AudioCaps contains only {len(selected)} unique usable rows")
+
+
 def _prepare_training(directory: Path, count: int) -> tuple[Path, ...]:
     import datasets
 
@@ -210,12 +228,10 @@ def _prepare_training(directory: Path, count: int) -> tuple[Path, ...]:
         split=contract.train_dataset["split"],
         streaming=True,
     ).cast_column("audio", datasets.Audio(decode=False))
-    rows = tuple(source.take(count))
-    if len(rows) != count:
-        raise ValueError(f"AudioCaps produced {len(rows)} rows; expected {count}")
+    rows = _select_training_rows(source, count=count)
     records = []
     paths = []
-    for source_index, row in enumerate(rows):
+    for source_index, row in rows:
         payload = row["audio"].get("bytes")
         if payload is None:
             payload = Path(row["audio"]["path"]).read_bytes()
@@ -234,12 +250,7 @@ def _prepare_training(directory: Path, count: int) -> tuple[Path, ...]:
                 "audio": str(relative),
             }
         )
-    presentations = (
-        {**record, "presentation_cycle": cycle}
-        for cycle in range(PREFLIGHT_TRAINING_REPEATS)
-        for record in records
-    )
-    _write_jsonl(directory / "train.jsonl", presentations)
+    _write_jsonl(directory / "train.jsonl", records)
     return tuple(paths)
 
 
@@ -364,12 +375,12 @@ def prepare_data(
         )
     }
     manifest = {
-        "schema_version": "representax-audio-text-preflight-data-v1",
         "contract": asdict(frozen_contract()),
         "sample_rate": SAMPLE_RATE,
         "training_audios": training_audios,
-        "training_repeats": PREFLIGHT_TRAINING_REPEATS,
-        "training_presentations": training_audios * PREFLIGHT_TRAINING_REPEATS,
+        "training_presentations": training_audios,
+        "unique_audio_ids": True,
+        "unique_captions": True,
         "evaluation_queries": evaluation_queries,
         "evaluation_documents": evaluation_documents,
         "relevant_documents": {
@@ -381,6 +392,13 @@ def prepare_data(
     }
     _write_json(output / "manifest.json", manifest)
     return manifest
+
+
+def _validate_training_manifest(manifest: Mapping[str, Any]) -> None:
+    if not manifest.get("unique_audio_ids") or not manifest.get("unique_captions"):
+        raise ValueError(
+            "audio-text training data predates duplicate-free preparation; rebuild it"
+        )
 
 
 def _load_audio(root: Path, relative: str) -> np.ndarray:
@@ -396,7 +414,6 @@ class AudioTextRetrievalCollator:
 
     def data_contract(self) -> Mapping[str, Any]:
         return {
-            "schema_version": "representax-audio-text-collator-v1",
             "processor": self.processor.data_contract(),
             "root_directory": str(self.root_directory),
         }
@@ -446,7 +463,6 @@ class AudioTextEvaluationCollator:
 
     def data_contract(self) -> Mapping[str, Any]:
         return {
-            "schema_version": "representax-audio-text-evaluation-collator-v1",
             "processor": self.processor.data_contract(),
             "root_directory": str(self.root_directory),
         }
@@ -548,8 +564,11 @@ def _representax_job(
     from representax.tasks.retrieval import MNRConfig, RetrievalConfig
 
     manifest = _document(data_directory / "manifest.json")
-    if int(manifest["training_presentations"]) < batch_size * steps:
-        raise ValueError("preflight data does not contain enough presentations")
+    _validate_training_manifest(manifest)
+    if int(manifest["training_presentations"]) < batch_size:
+        raise ValueError(
+            "preflight data does not contain one complete contrastive batch"
+        )
     relevant = {
         int(query): frozenset(int(document) for document in documents)
         for query, documents in manifest["relevant_documents"].items()
@@ -737,9 +756,7 @@ def _representax_worker(
 
     world_size = jax.device_count()
     grad_cache_micro_batch = (
-        TPU_GRAD_CACHE_MICRO_BATCH
-        if platform == "tpu"
-        else GPU_GRAD_CACHE_MICRO_BATCH
+        TPU_GRAD_CACHE_MICRO_BATCH if platform == "tpu" else GPU_GRAD_CACHE_MICRO_BATCH
     )
     job = _representax_job(
         checkpoint=checkpoint,
@@ -853,7 +870,6 @@ def _representax_worker(
     ):
         raise RuntimeError("Representax produced no finite nonzero update")
     return {
-        "schema_version": "representax-audio-text-worker-v1",
         "framework": "representax",
         "steps": steps,
         "global_batch_size": batch_size,
@@ -1003,9 +1019,7 @@ def _sentence_transformers_worker(
         raise ValueError("global batch must divide the accelerator count")
     local_batch_size = batch_size // world_size
     grad_cache_micro_batch = (
-        TPU_GRAD_CACHE_MICRO_BATCH
-        if platform == "tpu"
-        else GPU_GRAD_CACHE_MICRO_BATCH
+        TPU_GRAD_CACHE_MICRO_BATCH if platform == "tpu" else GPU_GRAD_CACHE_MICRO_BATCH
     )
     if platform == "tpu":
         run_directory = run_directory / f"process-{torch_rank()}"
@@ -1117,7 +1131,6 @@ def _sentence_transformers_worker(
     ]
     if platform == "tpu":
         return {
-            "schema_version": "representax-audio-text-worker-v1",
             "framework": "sentence-transformers",
             "framework_version": sentence_transformers.__version__,
             "transformers_version": transformers.__version__,
@@ -1190,7 +1203,6 @@ def _sentence_transformers_worker(
     if not np.array_equal(expected, actual) or not np.all(np.isfinite(midpoint_probe)):
         raise RuntimeError("Sentence Transformers checkpoint or export reload failed")
     return {
-        "schema_version": "representax-audio-text-worker-v1",
         "framework": "sentence-transformers",
         "framework_version": sentence_transformers.__version__,
         "transformers_version": transformers.__version__,
@@ -1225,6 +1237,7 @@ def _sentence_transformers_worker(
 
 
 def _worker(arguments: argparse.Namespace) -> None:
+    _validate_training_manifest(_document(arguments.data_directory / "manifest.json"))
     function = (
         _representax_worker
         if arguments.framework == "representax"
@@ -1339,7 +1352,6 @@ def _pair(arguments: argparse.Namespace) -> None:
             )
         reports[framework] = _document(report)
     summary = {
-        "schema_version": "representax-audio-text-preflight-v1",
         "scope": "bounded-readiness-preflight-not-paper-result",
         "contract": {
             **asdict(frozen_contract()),

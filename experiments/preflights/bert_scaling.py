@@ -489,7 +489,6 @@ def prepare_inputs(
         local_dir=tokenizer_path,
     )
     manifest = {
-        "schema_version": "representax-bert-scaling-retrieval-inputs-v1",
         "msmarco": msmarco,
         "nq_confirmation": nq,
         "tokenizer": {
@@ -520,6 +519,68 @@ def make_bert_ladder_processor(
         batch_builder=BertEncoder.make_batch,
         sequence_length_buckets=(sequence_length,),
     )
+
+
+class ScheduledRetrievalCollator:
+    """Collate one retrieval batch at its declared static sequence length."""
+
+    def __init__(
+        self,
+        *,
+        processor: Any,
+        sequence_length_field: str = "sequence_length",
+        admitted_lengths: Sequence[int] = (128, 512),
+    ) -> None:
+        self.processor = processor
+        self.sequence_length_field = sequence_length_field
+        self.admitted_lengths = tuple(sorted(set(admitted_lengths)))
+        if not self.admitted_lengths or any(
+            length <= 0 for length in self.admitted_lengths
+        ):
+            raise ValueError("admitted_lengths must contain positive integers")
+
+    def data_contract(self) -> Mapping[str, Any]:
+        return {
+            "processor": self.processor.data_contract(),
+            "sequence_length_field": self.sequence_length_field,
+            "admitted_lengths": list(self.admitted_lengths),
+        }
+
+    def __call__(self, examples: Sequence[Mapping[str, Any]]) -> Any:
+        import numpy as np
+
+        from representax.core import Route
+        from representax.tasks.retrieval import retrieval_batch
+
+        if not examples:
+            raise ValueError("scheduled retrieval batches must be non-empty")
+        lengths = {
+            int(example[self.sequence_length_field]) for example in examples
+        }
+        if len(lengths) != 1:
+            raise ValueError("one training batch cannot cross a sequence-length phase")
+        sequence_length = lengths.pop()
+        if sequence_length not in self.admitted_lengths:
+            raise ValueError(
+                f"sequence length {sequence_length} is not admitted by "
+                f"{self.admitted_lengths!r}"
+            )
+        queries = tuple(str(example["query"]) for example in examples)
+        documents = tuple(str(example["positive"]) for example in examples)
+        size = len(examples)
+        return retrieval_batch(
+            query=self.processor(
+                queries,
+                route=Route.QUERY,
+                sequence_length=sequence_length,
+            ),
+            document=self.processor(
+                documents,
+                route=Route.DOCUMENT,
+                sequence_length=sequence_length,
+            ),
+            positive_mask=np.eye(size, dtype=np.bool_),
+        )
 
 
 def load_bert_ladder_model(
@@ -1131,7 +1192,6 @@ def run_size(
         _write_json(
             output / "failure.json",
             {
-                "schema_version": "representax-bert-scaling-failure-v1",
                 "status": "failed_incomplete",
                 "size": entry.name,
                 "phase": "native_export_reload_parity",
@@ -1156,7 +1216,6 @@ def run_size(
     jax.block_until_ready(reloaded_model)
     elapsed_seconds = time.perf_counter() - started
     result = {
-        "schema_version": "representax-bert-scaling-retrieval-result-v1",
         "status": "accepted",
         "size": entry.name,
         "architecture": asdict(entry),
@@ -1294,7 +1353,6 @@ def four_b_feasibility(
         reasons.append("projected-active-update-hbm-exceeds-85-percent-reserve")
     admitted = not reasons
     return {
-        "schema_version": "representax-bert-4b-retrieval-feasibility-v1",
         "size": "bert-4b",
         "status": (
             "admitted_pending_four_gpu_canary" if admitted else "not_run"
@@ -1416,7 +1474,6 @@ def run_sweep(
             results[name] = _document(output / "result.json")
         else:
             failure = {
-                "schema_version": "representax-bert-scaling-retrieval-failure-v1",
                 "status": "failed",
                 "size": name,
                 "returncode": process.returncode,
@@ -1434,7 +1491,6 @@ def run_sweep(
     _write_json(runs / "bert-4b" / "feasibility.json", feasibility)
     results["bert-4b"] = feasibility
     summary = {
-        "schema_version": "representax-bert-scaling-retrieval-campaign-v1",
         "artifact_root": str(artifact_root),
         "manifest": str(LADDER_MANIFEST),
         "sequence_length": sequence_length,
@@ -1491,7 +1547,6 @@ def summarize_existing(
     if feasibility.get("size") != "bert-4b":
         raise ValueError("conditional feasibility record must describe bert-4b")
     summary = {
-        "schema_version": "representax-bert-scaling-retrieval-campaign-v1",
         "runner": {
             "path": str(Path(__file__).resolve()),
             "sha256": _sha256(Path(__file__)),
