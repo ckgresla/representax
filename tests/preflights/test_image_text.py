@@ -179,7 +179,7 @@ def test_representax_job_uses_run_job_grad_cache_and_verified_export(tmp_path) -
             {
                 "training_presentations": 2048,
                 "unique_image_ids": True,
-                "unique_captions": True,
+                "batch_unique_captions": True,
                 "relevant_documents": {"1000": [0]},
             }
         )
