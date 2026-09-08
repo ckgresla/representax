@@ -8,7 +8,7 @@ Keep decisions and work items here; record evidence in commits, tests, and
 benchmark artifacts rather than duplicating the roadmap elsewhere.
 
 * Papers
-** Representax paper [6/18] [33%]
+** Representax paper [6/10] [60%]
   This section is the finite acceptance program for the Representax
   systems whitepaper. Establish numerical and scientific equivalence first,
   then demonstrate statistically supported systems improvements on shared
@@ -38,7 +38,78 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   locked paper environment under =experiments/= and keep machine scheduling in
   a flat shell file beside each numbered experiment's Python launcher.
 
-*** DONE Define measurable monotonic-improvement gates over existing trainers :research:
+*** Paper draft
+**** 1. Introduction
+     Motivate representation-learning research as a systems problem spanning
+     text, image, audio and video workloads. State the paper's claim narrowly:
+     Representax provides a portable JAX training surface that often improves
+     steady-state throughput while preserving the intended optimization work;
+     it does not promise a universal speedup.
+**** 2. Representax
+     Describe the model/processor bundle, task and loss surface, one canonical
+     training entrypoint, exact GradCache, static-shape bucketing, prefetch,
+     checkpoint/resume/export, shared evaluation, and explicit JAX sharding.
+**** 3. Experimental protocol
+     Define the paired-work contract, five seeds, complete optimizer-step and
+     examples-per-second metrics, separate compilation and lifecycle costs,
+     exact source revisions, GPU and TPU environments, and short-trajectory
+     numerical checks. Preserve raw logs so alternate summaries remain
+     computable after the runs.
+**** 4. Framework and accelerator comparison
+     Twelve concrete recipes are complete across five seeds, both frameworks,
+     six RTX 4090 GPUs and one 16-chip multi-host v5e slice. The old
+     late-interaction row remains systems-only because its source-order MS MARCO
+     data was severely duplicated; promote it only after the duplicate-free
+     correction below. Show per-recipe speedup with uncertainty, GPU-versus-TPU
+     speedup, trajectory correlation, and the capability/reproducibility table.
+     Report BERT Base, TPU audio and compiled dense retrieval as explicit limits.
+**** 5. End-to-end representation learning [9/12]
+     Run three independent Representax seeds (=7, 42, 773=) for each of four
+     canonical workloads. These runs establish useful held-out representations
+     and complete convergence trajectories; Section 4 already supplies the
+     matched reference-framework throughput evidence.
+     - Dense retrieval: ModernBERT on duplicate-free MS MARCO, evaluated with
+       the shared retrieval evaluator on held-out MS MARCO/TREC data.
+     - Late interaction: GTE-ModernColBERT on duplicate-free MS MARCO, evaluated
+       with one shared NanoMSMARCO indexing and retrieval protocol.
+     - Image-text: CLIP ViT-B/32 on COCO, evaluated on Flickr30k retrieval.
+     - Any-modality: Jina v5 Omni over a deterministic balanced schedule of
+       COCO image-text, AudioCaps audio-text and MSR-VTT video-text updates,
+       evaluated separately on all three modalities. Freeze the Nano/Small model
+       and connector-only, connector-plus-LoRA and full-fine-tuning study scope
+       at the Experiment 14 configuration gate. Call this fine-tuning, not
+       from-scratch pretraining.
+**** 6. Scaling and sharding [0/9]
+     Run a canonical BERT-style masked-language-model workload with the 500M
+     controlled encoder for seeds =7, 42, 773= at 1, 2 and 4 GPUs. Hold examples,
+     non-padding tokens, optimizer updates, masking, precision and global batch
+     fixed: this is strong scaling, not weak scaling. Use the same FSDP policy at
+     every device count, with one device as the degenerate case, and report
+     steps/s, tokens/s, scaling efficiency, compilation, peak HBM and collective
+     time. Use the original BERT phase structure: 90% of updates at length 128
+     and 10% at length 512, preserving a constant global token batch.
+
+     Emphasize JAX's sharding surface in the main text, not only the appendix.
+     Add one bounded, unseeded capacity frontier showing the largest model or
+     batch that fails replicated execution but trains with FSDP or a hybrid
+     data/model mesh. Keep the nine fixed-work runs as the scaling statistic;
+     the capacity probe is a separate feasibility result.
+**** 7. Design analysis
+     Reuse the accepted GradCache implementation, bucketing-versus-padding,
+     prefetch and layer-unroll measurements. Keep only ablations that explain a
+     material end-to-end result; place detailed compilation tradeoffs in the
+     appendix.
+**** 8. Capabilities, limitations and reproducibility
+     Publish the model/modality table, GPU and multi-host TPU execution,
+     checkpoint/resume/export and evaluation coverage, exact reference commits,
+     environment locks, commands and artifact hashes. State unsupported or
+     reference-limited paths directly.
+**** 9. Related work and conclusion
+     Position Representax as a representation-learning toolkit and portable JAX
+     systems contribution, not new compiler work. Summarize the measured
+     frontier and the scientific work the framework enables.
+
+*** DONE Define measurable systems-comparison gates over existing trainers :research:
    This is a paper-protocol decision, not an implementation backlog. Freeze a
    small set of shared training workloads that execute in Representax and a
    maintained incumbent such as Sentence Transformers or PyLate. Give each
@@ -47,16 +118,17 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
    frontier. Do not combine unrelated tasks into one opaque average.
 
 **** Intended claim
-     For a declared shared workload, Representax is a monotonic systems
-     improvement when it performs the same scientific training job, preserves
-     held-out quality, and then demonstrates one or more of:
-     higher sustained training throughput, lower steady-state latency, a larger
-     feasible scientific workload, or better accelerator feeding/utilization on
-     the same hardware. A capacity improvement means using less live memory for
-     the same work or enabling larger models, batches or inputs; efficient FSDP
-     and arbitrary sharding are first-class capacity evidence. Compilation is
-     disclosed separately and excluded from the primary systems verdict. The
-     nine shared sections compare against the relevant maintained incumbent:
+     Representax often provides favorable training-throughput improvements over
+     maintained reference frameworks while preserving the intended scientific
+     training trajectory. The paper reports where this holds and where it does
+     not; it does not claim a universal speedup. Additional systems evidence may
+     include lower steady-state latency, a larger feasible scientific workload,
+     or better accelerator feeding/utilization on the same hardware. A capacity
+     improvement means using less live memory for the same work or enabling
+     larger models, batches or inputs; efficient FSDP and arbitrary sharding are
+     first-class capacity evidence. Compilation is disclosed separately and
+     excluded from the primary steady-state verdict. The nine shared sections
+     compare against the relevant maintained incumbent:
      Sentence Transformers where it implements the workload, PyLate for late
      interaction, and task-specific maintained references for reward modeling
      and V-JEPA rather than forcing every claim through one framework.
@@ -73,13 +145,33 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      separately visible. No separate numerical-parity or dry-run certification
      is required for the paper comparison.
 
+     Randomize training order independently between seeds, but give both
+     frameworks the identical example order within a seed. Draw from the full
+     declared training source rather than materializing a fixed subset; a short
+     run's exposure is simply global batch times optimizer updates. Use a bounded
+     deterministic subset only when accessing the complete source would impose
+     a material download or storage cost, and disclose that exception.
+
+     For GPU comparisons, let each framework use its best native batching under
+     the same examples, maximum lengths and scientific batch: fixed sequence
+     buckets for Representax and dynamic per-batch padding where the reference
+     supports it. Record padded positions so different batching efficiency is
+     visible. For TPU comparisons, assign both implementations the same small
+     static bucket schedule for variable-length text so neither result is
+     dominated by accidental shape recompilation. Fixed-size image, audio and
+     video recipes do not need sequence bucketing.
+
 **** Evidence policy
-     Use the three paired full-training runs as the independent systems timing
-     processes. Record host timings for every step without adding a device
+     Use each paired seed run as an independent systems timing process: five
+     seeds for the bounded framework sweep and three or more for promoted
+     full-training results. Record host timings for every step without adding a device
      synchronization to the critical path; use synchronization already required
      by evaluation, checkpointing and run completion to bound completed work.
-     Use =perf/tokens_per_second= for non-padding training tokens; keep
-     validation quality under =valid/*=.
+     Center the systems tables on complete optimizer steps per second and
+     training examples per second. These intervals include input wait, placement
+     and framework execution. Also report =perf/tokens_per_second= for
+     non-padding training tokens and retain input-wait time as a separate
+     diagnostic; keep validation quality under =valid/*=.
      Derive warmup exclusions and summaries after collecting the raw trajectory.
      Do not launch duplicate timing-only processes for the primary comparison.
      Short timing-only runs are reserved for 1/2/4-device scaling and capacity
@@ -90,6 +182,11 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      and device inventory, compact raw metrics, summary, reproduction command and
      scoped verdict. Throughput measured on different hardware or under a
      different scientific objective is contextual evidence, not a paired claim.
+     Every result bundle must record the exact Representax and reference Git
+     commits, working-tree patches, package lock and versions, dataset revisions
+     and content hashes, accelerator topology, complete command and environment
+     variables needed to reproduce the run. Carry these values into the paper's
+     reproducibility appendix rather than reconstructing them afterward.
 
 **** Shared experiment sections
      - Dense bi-encoder retrieval: MNR and exact GradCache against Sentence
@@ -383,7 +480,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
    lives under
    =/raid/representax/paper-campaign-v1/preflight/packing/20260828/= and compact
    evidence under =benchmarks/results/paper-packing-preflight-20260828/=.
-*** NEXT Benchmark quality, throughput, feasible workload, utilization, and model coverage :research:benchmark:
+*** NEXT Complete the final paper experiments [24/27] [89%] :research:benchmark:
 **** DONE Repeat seed-7 MPNet/MS MARCO with the default reference collator
      The accepted fair-padding run uses Representax length buckets and Sentence
      Transformers' standard dynamic collator. Across the identical warmed
@@ -427,7 +524,14 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      365.9 W. Batch 4,096 improves native throughput only 0.9%; GradCache chunk
      64 improves it only 0.4%. Keep the frozen batch 2,048, chunk 32 operating
      point rather than optimizing for memory occupancy.
-**** DONE Complete the three-seed MPNet/MS MARCO serious result
+
+     A later data audit found that this runner consumed source triplet rows in
+     order after dropping the mined-negative column. The 524,288-row schedule
+     contains only 10,696 distinct query-positive pairs; 97.96% of rows are
+     duplicates, and each batch of 2,048 averages only 42.76 distinct positives.
+     Retain the paired throughput and systems measurements, but do not use this
+     run as representation-quality or convergence evidence.
+**** DONE Complete the three-seed MPNet/MS MARCO serious systems result
      Seeds 7, 42 and 773 all complete the frozen 256-update exact-GradCache
      pair, export both final artifacts, and pass the shared Representax
      NanoMSMARCO evaluator. Across matched warmed updates, Representax achieves
@@ -437,9 +541,12 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      observed systems result favors Representax.
 
      The mean final nDCG@10 difference is +0.00262 with interval
-     [-0.01897, +0.02420]. Its sign changes across seeds, supporting comparable
-     quality rather than a systematic gain or loss. The aggregate records and
-     fingerprints each input and its exact source commits. Seed 7 used
+     [-0.01897, +0.02420], so the implementations react similarly to the same
+     inputs. It is not an accepted quality result: duplicate-heavy batches impose
+     an average irreducible MNR loss floor of 3.880, and mean NanoMSMARCO nDCG@10
+     falls from 0.6373 to 0.5850 in Representax and from 0.6345 to 0.5822 in
+     Sentence Transformers. The aggregate records and fingerprints each input
+     and its exact source commits. Seed 7 used
      =913cc82e2bb131cd6ff19708776190cbf5696aa9=; seeds 42 and 773 used
      =ec50f99f24906041467928ae781fde175b0d7e0d=. Their only repository
      difference is this roadmap result record.
@@ -449,6 +556,120 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      =/raid/representax-paper/01-dense-model-training/=. The three completed raw
      trees are linked there without copying their model exports; future runs
      write to that directory directly.
+**** DONE Record the tuned MPNet reference controls
+     The optimized-control sweep did not reproduce a Representax regression.
+     Native MPNet remained stable at 343.20 examples/s in the accepted
+     three-seed result and 345.97 examples/s in the tuning run. What changed was
+     the Sentence Transformers execution recipe.
+
+     With both frameworks using GradCache chunk 32 and Sentence Transformers
+     running eagerly, Representax reaches 345.97 versus 283.13 examples/s
+     (1.222x). Tuning only the eager reference to chunk 128 reverses the result:
+     Sentence Transformers reaches 400.89 examples/s, or 1.159x the Representax
+     rate. Enabling TorchInductor at reference chunk 128 reaches 594.87
+     examples/s, or 1.719x the Representax rate. These are 16-update tuning
+     measurements, not a completed 30-update or convergence result.
+
+     Therefore the primary default-library result remains a Representax win,
+     while the best-eager and TorchInductor controls expose unresolved GradCache
+     and kernel-efficiency work. Report all three configurations explicitly;
+     do not describe the optimized-reference reversal as a native throughput
+     regression. Exact candidates, scientific settings and source revisions are
+     recorded in
+     =/raid/representax-paper/01.1-optimized-dense-model-training/tuning/summary.json=.
+
+     A follow-up text-only ModernBERT control uses the exact 149M-parameter
+     =jhu-clsp/ettin-encoder-150m= checkpoint underlying ModernVBERT. Across
+     three 100-update paired runs, Representax reaches 332.27 examples/s versus
+     617.49 for Sentence Transformers with TorchInductor, a 0.538x ratio. The
+     loss-curve correlations are 0.933, 0.983 and 0.978. Mean final
+     NanoMSMARCO nDCG@10 is 0.1052 versus 0.0900, but the duplicate-heavy data
+     and short run do not support a quality claim. The public reproducer and
+     compact report are in =experiments/09-modernbert-dense-retrieval/=; full
+     evidence is under
+     =/raid/representax-paper/09-modernbert-dense-retrieval/=.
+
+     A fixed-shape control removes that comparison's padding confound by
+     repeating one deterministic all-valid length-128 pair across batch 128.
+     The accepted =GradCache(implementation="custom_vjp")= replays encoder
+     chunks into one gradient accumulator and preserves the BF16 policy inside
+     its custom backward. Four-process mean throughput at chunks 32, 64 and 128
+     is 221.83, 221.41 and 260.79 examples/s. The corresponding gains are
+     1.585x, 1.505x and 1.872x over eager Sentence Transformers, and 1.415x,
+     1.272x and 1.573x over TorchInductor. Chunk 128 uses full layer
+     rematerialization and peaks at 4.84 GiB; chunks 32 and 64 use none.
+
+     The work fixed two measured defects: custom differentiation had lost the
+     outer BF16 precision context, and the normal ModernBERT scan retained all
+     21 layer outputs despite needing only the final one. Exact FP32 optimizer
+     and stochastic-replay tests pass, as do BF16, model, and training tests.
+     The control therefore shows that the earlier 0.538x variable-length result
+     is not an intrinsic ModernBERT encoder or GradCache limit. Evidence is in
+     the experiment's =fixed-shape-control/= artifact directory.
+
+     A matched real-data seed then ran 30 BF16 updates with custom VJP,
+     rematerialized GradCache, eager Sentence Transformers, and TorchInductor.
+     Custom VJP reaches 361.08 examples/s, 1.058x the rematerialized rate, while
+     eager and Inductor reach 391.69 and 667.90 examples/s. Its loss trajectory
+     remains close to eager (Pearson 0.989, MAE 0.0368). Representax pads 35.5%
+     of token positions versus 22.0% for the reference, executing 20.9% more
+     positions per update; normalized by padded positions it is 1.115x faster
+     than eager. The remaining real-data throughput blocker is therefore static
+     padding granularity, while Inductor also retains a 1.53x kernel-rate lead.
+     Full evidence is in =real-trajectory-30-step/=.
+
+     A causal padding ablation confirms that diagnosis. Forcing Sentence
+     Transformers to the same query-16/document-128 tensors lowers eager
+     throughput from 391.69 to 346.35 examples/s; coarse Representax is then
+     1.043x faster. Finer Representax buckets lower executed positions per
+     example from 144.0 to 129.2 and raise throughput from 361.08 to 393.16
+     examples/s, effectively matching native-padding eager at 391.69. Inductor
+     remains faster at 667.90 examples/s, so padding explains the eager
+     crossover but not its compiler/kernel advantage. The reproducible command
+     is =experiments/09-modernbert-dense-retrieval/run.py padding-ablation= and
+     evidence is in =padding-ablation-30-step/=.
+
+     A September 4 pipeline pass resolves the eager-reference gap. Input-major
+     scanned weights, shared broadcast RoPE tables, query/document GradCache
+     chunks 128/64, and full layer unrolling raise the accepted six-bucket run
+     to 582.82 warm examples/s. A subsequent equivalent two-signature run after
+     simplifying static layer dispatch reaches 618.67 examples/s: 1.579x eager
+     Sentence Transformers at 391.69 and 0.926x TorchInductor at 667.90. Full
+     unrolling contributes the decisive
+     fixed-shape gain, 382.68 to 542.42 examples/s, while lowering allocator-live
+     memory from about 12.6 GB to 9.37 GB. Eight-token buckets are rejected:
+     they reduce padding but fall to 561.09 examples/s. Compilation remains
+     fully recorded but is not a steady-state rejection criterion because it
+     amortizes over long jobs. The current Experiment 09 launcher contains the
+     accepted recipe; optimization artifacts are under its =optimization/=
+     directory. A short-sequence attention shortcut reached 599.14 examples/s
+     but was removed because its 2.8% gain did not justify the specialization.
+**** DONE Complete semantic-similarity and pair-classification serious results
+     The frozen MPNet primary and BERT Base control each complete four data
+     presentations for seeds 7, 42 and 773 in both frameworks. All 12 paired
+     cells train to their exact step budget, export and reload both artifacts,
+     and use Representax as the shared held-out evaluator.
+
+     MPNet improves mean steady-state throughput by 1.122x on STS-B similarity
+     training and 1.170x on Sprint pair classification. Mean shared-evaluator
+     quality differences are +0.000217 STS-B Spearman and +0.000128 Sprint
+     average precision. The BERT controls match quality but expose architecture
+     work still needed: Representax reaches 0.537x and 0.581x reference
+     throughput, with quality differences of +0.000394 and -0.004001.
+
+     The initial parallel launch exposed two acceptance issues. A finite Grain
+     source stopped after one presentation; training sources now repeat complete
+     batches deterministically while =max_steps= remains authoritative, including
+     checkpointed iterator state. Concurrent XLA compilation also depressed the
+     MPNet reference timing, so the accepted aggregate uses separate
+     framework-only timing waves and retains concurrent measurements only as
+     diagnostics. The rejected finite-source artifacts remain under
+     =/raid/representax-paper/02-semantic-similarity-pair-classification/rejected-finite-source-20260902-140046/=.
+
+     The public reproducer is
+     =experiments/02-semantic-similarity-pair-classification/run.py=. Canonical
+     evidence and the compact corrected =three-seed-summary.json= live under
+     =/raid/representax-paper/02-semantic-similarity-pair-classification/=.
 **** DONE Run the paired dense-retrieval campaign preflight
      Run 64 updates of the frozen MPNet/MS MARCO exact-GradCache workload at
      global batch 2048 and length 256 in Representax and Sentence Transformers
@@ -475,6 +696,11 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      =/raid/representax/paper-campaign-v1/preflight/shared-offline-pair-smoke-v3-20260831/=
      also proves that the shared Representax evaluator reloads both final
      artifacts and emits identical metric names.
+
+     This preflight shares the duplicate-heavy ordered MS MARCO materialization
+     used by the serious dense run. Its lifecycle and same-input systems results
+     remain valid; its loss and quality movement are not scientific training
+     evidence.
 **** DONE Add opt-in timing and accelerator telemetry to the canonical job log
      =logging.timing= records startup, every completed training step, non-padding
      text-token and example throughput, evaluation phases, and export through the
@@ -529,6 +755,10 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      15--24 it reaches 456.99 versus 397.27 examples/s (1.150x), with 7.260 GiB
      peak live JAX allocation versus 5.755 GiB PyTorch allocated and 8.016 GiB
      reserved. The 24-update quality values are only a systems diagnostic.
+
+     The raw MS MARCO triplet source repeats query-positive pairs in source
+     order. Treat every direct-MNR number in this section as a systems or
+     implementation measurement until duplicate-free batch construction is used.
 **** DONE Preflight semantic similarity and pair classification
      Both frozen MPNet workloads now use global batch 256 as eight exact
      batch-32 gradient-accumulation microbatches. Semantic similarity passes
@@ -638,6 +868,136 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      gate for a separate four-GPU 4B capacity canary; no 4B allocation has yet
      occurred. Compact evidence lives in
      =benchmarks/results/bert-scaling-ladder-msmarco-20260831/=.
+**** DONE Reject the paired controlled BERT parameter-scaling screen as scientific evidence
+     The numbered launcher at =experiments/07-bert-parameter-scaling/run.py=
+     initializes both frameworks from the same frozen state and fixes the real
+     MS MARCO rows, global batch, asymmetric cosine MNR objective, AdamW policy,
+     BF16 compute, and seed. The 1,000-update runs use fixed length 128 for
+     updates 1--900 and fixed length 512 for updates 901--1,000. This is
+     random-initialized retrieval training with a BERT-style systems schedule,
+     not masked-language-model pretraining.
+
+     The data program is invalid for MNR. It takes the first 64,000 rows from a
+     triplet file, discards each mined negative, and preserves grouped source
+     order. Those rows contain only 1,306 distinct query-positive pairs; 97.96%
+     are duplicates. A batch of 64 averages 2.29 distinct positives and has an
+     average irreducible duplicate-positive loss floor of 3.509. The 500M and
+     1B curves remain at the random-batch value =ln(64) = 4.159=; the 30M model
+     primarily learns to distinguish the two or three groups in each batch.
+     Therefore no quality, convergence, or model-scaling conclusion is valid.
+     Same-row throughput remains a record of executing the named shapes and
+     topologies, not an accepted paper comparison.
+
+     The completed rows below are retained as topology-specific observations,
+     not as one canonical scaling curve. The topology-selection rule was not
+     applied consistently: the 30M and 110M DDP rows were promoted while full
+     single-GPU rows also existed and were substantially better for the
+     reference framework.
+
+     | Size | Topology | Representax 128 ex/s | Reference 128 ex/s | Ratio | Representax 512 ex/s | Reference 512 ex/s | Ratio |
+     |------+----------+-----------------------+--------------------+-------+-----------------------+--------------------+-------|
+     | 30M  | 1 GPU      |                263.21 |             413.73 | 0.64x |                105.10 |             300.14 | 0.35x |
+     | 30M  | 2-GPU DDP  |                466.22 |             363.37 | 1.28x |                193.94 |             315.53 | 0.61x |
+     | 110M | 1 GPU      |                178.29 |             189.71 | 0.94x |                 46.76 |              94.87 | 0.49x |
+     | 110M | 2-GPU DDP  |                162.27 |              75.93 | 2.14x |                 69.66 |              66.37 | 1.05x |
+     | 500M | 1 GPU      |                 41.38 |              70.37 | 0.59x |                 11.26 |              21.52 | 0.52x |
+     | 1B   | 4-GPU FSDP |                  3.16 |               5.98 | 0.53x |                  3.18 |               5.67 | 0.56x |
+
+     Every row fixes global batch 64, so each same-row pair performs the same
+     optimizer work on the same device count. That is a valid direct comparison
+     for the named topology. It is fixed-work strong scaling, however: local
+     batch falls as device count rises. It does not measure weak scaling,
+     per-device efficiency, or the benefit of increasing global batch with more
+     hardware. Because device count and sharding also change across sizes, raw
+     throughput must not be compared across rows as model-size scaling. The
+     original selection mixed distributed-capability testing, native throughput
+     selection, and memory feasibility; no general framework-speed claim should
+     be drawn from the selected subset.
+
+     The 30M, 110M and 500M rows completed paired training, export/reload, and
+     shared Representax evaluation. Representax completed the full 1B lifecycle;
+     Sentence Transformers completed all 1,000 timed updates, but Accelerate's
+     legacy FSDP full-state export deadlocked after training, so no paired 1B
+     quality claim is made. The timing trace is complete and retained. A corrected
+     all-rank CPU gather and rank-zero export passed an independent two-GPU 30M
+     reload canary, and reference timing and loss rows now flush durably.
+
+     The conditional 4B row did not complete one update. Four-GPU FSDP failed
+     after rematerialization at a 22.31 GiB executable footprint, and six-GPU
+     FSDP still failed a 617.91 MiB allocation while XLA reported forced
+     replication around the 39-head attention layout. Further parameter/head
+     sharding work is deferred. Durable runs, rejected attempts, source snapshots,
+     and logs live beneath
+     =/raid/representax-paper/07-bert-parameter-scaling/=.
+**** TODO Rerun late interaction with duplicate-free MS MARCO pairs
+     Rebuild the late-interaction data with unique queries and positives, then
+     rerun the five-seed Representax/PyLate GPU comparison. Treat the retained TPU
+     measurement as a same-shape systems diagnostic unless a bounded TPU rerun is
+     inexpensive; do not use the old duplicate-heavy loss trajectory as training
+     evidence.
+**** TODO Run the twelve end-to-end representation-learning jobs [9/12] [75%]
+     Run only Representax for seeds =7, 42, 773= on the four frozen Section 5
+     recipes: ModernBERT dense retrieval, GTE-ModernColBERT late interaction,
+     CLIP ViT-B/32 image-text training, and Jina v5 Omni mixed-modality
+     adapter fine-tuning. Use a real data presentation or the frozen update
+     budget, retain every training metric, evaluate the initial and final model
+     with the shared held-out protocol, and save resumable checkpoints at 50%
+     and 100%. Intermediate evaluation is optional where it is cheap; learning
+     curves are not a primary paper figure. Section 4 already supplies the paired
+     reference comparisons; do not launch reference workers here.
+
+***** DONE Train and evaluate dense retrieval for three seeds
+      ETTIN Encoder 150M completed =3,817= updates per seed on duplicate-free MS
+      MARCO at a mean warm rate of =415.57 examples/s=. Mean nDCG@10 is =0.5794=
+      on NanoMSMARCO, =0.5404= on TREC DL 2019 and =0.2922= on Natural Questions.
+      The complete summary is
+      =/raid/representax-paper/11-dense-retrieval-convergence/summary.json=.
+***** DONE Train and evaluate late interaction for three seeds
+      GTE-ModernColBERT completed =1,000= updates per seed at a mean warm rate of
+      =216.61 examples/s=, with midpoint resume and exact native/Hugging Face
+      reload. NanoMSMARCO nDCG@10 fell from =0.7123= to =0.6869= on average, so
+      this is a retained negative scientific result: easy random in-batch
+      positives do not improve the already-trained checkpoint. The complete
+      summary is
+      =/raid/representax-paper/12-late-interaction-convergence/summary.json=.
+      The approved hard-negative recipe is running seeds =7, 42, 773= on GPUs
+      =0, 1, 2=, with batch =512= and =1,000= updates. Outputs are separate under
+      =/raid/representax-paper/12-late-interaction-convergence/hard-negatives/=.
+      Finish these unchanged. The user observed low/jumpy power, utilization
+      and memory-bandwidth readings. Afterwards, check larger GradCache replay
+      microbatches (currently =8=) while keeping the effective batch and scientific
+      settings fixed. Telemetry alone does not establish the bottleneck; compare
+      complete warm optimizer-step times before changing the recipe.
+***** DONE Train and evaluate image-text retrieval for three seeds
+      CLIP ViT-B/32 completed one five-caption COCO presentation, =1,150= updates
+      per seed, at =317.22 +/- 2.04 examples/s=. Mean Flickr30k nDCG@10 improved
+      from =0.7373= to =0.8148= for text-to-image and from =0.7168= to =0.7665=
+      for image-to-text. Every run resumed at 50%, exported both native and
+      Hugging Face artifacts and reloaded exactly. The complete summary is
+      =/raid/representax-paper/13-image-text-convergence/summary.json=.
+***** TODO Freeze the Jina v5 Omni any-modality configuration
+      Native Nano and Small loading, all modality paths, full-precision upstream
+      parity, training, resume and export/reload are accepted. Before launching,
+      choose the primary model and decide whether connector-only,
+      connector-plus-LoRA and full fine-tuning are three seeded study arms or
+      whether one is primary and the others are bounded ablations. Expanding all
+      three arms to three seeds changes Section 5 from twelve to eighteen jobs.
+**** TODO Run the nine BERT masked-language-model strong-scaling jobs [0/9] [0%]
+     Run only Representax with the controlled 500M BERT encoder and a real text
+     corpus for seeds =7, 42, 773= at 1, 2 and 4 GPUs. Hold the global token
+     batch and optimizer work fixed, use the same FSDP policy at each device
+     count, and do not run a weak-scaling variant. Preserve the canonical BERT
+     90% length-128 and 10% length-512 phase structure while keeping tokens per
+     optimizer update constant. Report optimizer steps/s, tokens/s, scaling
+     efficiency, compilation, peak HBM and collective time. This is a bounded
+     pretraining-like systems result, not a claim to reproduce full BERT
+     pretraining or downstream quality.
+
+     Separately run one deterministic capacity probe for a model or batch that
+     fails under replication but trains under FSDP or hybrid data/model
+     sharding. Feature this result in the main scaling section as evidence that
+     JAX exposes useful sharding choices; do not count it as another seeded
+     scaling cell.
 **** DONE Accept canonical LeJEPA bounded lifecycle on ImageNet-1K against stable-pretraining
      Use two global and six local views, the paper's convex loss weighting and
      per-view SIGReg, a distinct projector used only for training, and frozen
@@ -688,51 +1048,306 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      commits are recorded in
      =/raid/representax-paper/seed-7-30-step-screen/summary.json=; the rendered
      table is =/raid/representax-paper/seed-7-30-step-screen/results.md=.
-**** TODO Evaluate both frameworks' exported artifacts through Representax
-     Use one task-specific Representax offline evaluator and identical held-out
-     examples for the two final artifacts in every paired row. Framework-native
-     evaluators may remain diagnostic; they are not the paper's quality
-     denominator. The MPNet/MS MARCO runner now exports both artifacts and loads
-     both through the same Representax NanoMSMARCO evaluator; extend that exact
-     contract to the remaining task-specific runners as their serious runs begin.
-**** TODO Probe resource-constrained sharding and capacity for the appendix
-     On this six-by-24-GB topology, report which model, batch and sequence
-     combinations replicated, FSDP and hybrid sharding make feasible. Promote
-     this from an appendix only if the 1B/4B boundary produces a clear result.
-**** TODO Measure evaluation and checkpoint overhead separately from training steps
-*** TODO Benchmark compile time separately from steady-state step time :research:benchmark:
-*** TODO Benchmark direct MNR and GradCache at equal scientific semantics :research:benchmark:
-   Include an explicit distributed-direct-MNR contract: either lower the full
-   global relation without constructing an invalid repeated =data= sharding, or
-   reject that execution choice at configuration time and direct users to exact
-   global-negative GradCache. Do not let a low-level =P("data", "data")= layout
-   error define the public capability boundary.
-*** TODO Benchmark text retrieval against Sentence Transformers :research:benchmark:
-*** TODO Benchmark multimodal retrieval including audio and video :research:benchmark:
-   Treat text-image, audio-text, and video-text training as shared workloads
-   against Sentence Transformers rather than claiming that upstream cannot train
-   those modalities. Use the frozen model, data and training contract.
-*** TODO Benchmark late interaction and reranking against maintained systems oracles :research:benchmark:
-   Include exact flat indexing and bounded streaming retrieval with stable
-   document IDs. Report retrieval quality, index build time and size, query
-   throughput, memory, and pure-JAX MaxSim performance.
-*** TODO Benchmark reward modeling and JEPA workloads against their maintained systems oracles :research:benchmark:
-*** TODO Benchmark bounded streaming evaluation during training and checkpoint overlap :research:benchmark:
-   Evaluate a configured validation objective and reusable semantic-similarity,
-   query/corpus/qrels retrieval, reranking, and task-specific protocols both
-   during training and offline. Shard examples or corpus chunks over the named
-   data mesh axes, reduce metrics exactly, overlap bounded evaluation with
-   asynchronous checkpointing where safe, and prove that neither path starves
-   training or changes best-model selection.
-*** TODO Measure single-device and single-host multi-device scaling :research:benchmark:
-   Cover replicated DDP, exact global-negative GradCache, FSDP, and at least one
-   hybrid data/model plan. Measure larger sequences and batches plus a model
-   whose replicated optimizer state does not fit; record OOM boundaries,
-   feasible work, tokens/s, live memory, and collectives. Physical multi-host
-   and TPU claims remain deferred until the hardware is available.
+**** DONE Complete the five-seed 20-update framework decision sweep
+     All 65 paired runs are complete: 13 implemented comparison recipes, five
+     seeds (=7, 42, 773, 1234, 2026=), and 20 optimizer updates in each
+     framework. This is 100 updates per framework per recipe and 2,600 updates
+     across the accepted runs. Primary throughput is measured from optimizer
+     completion to optimizer completion, including input wait. First-use
+     compilation and intervals containing midpoint checkpoint or resume work
+     remain in the raw logs but are excluded from steady-state rates.
+
+     | Recipe                             | Median Representax/reference ratio | Loss direction |
+     |------------------------------------+-------------------------------------+----------------|
+     | Dense retrieval                    |                              0.740x | 5/5 agree      |
+     | Semantic similarity, MPNet         |                              1.172x | 5/5 agree      |
+     | Semantic similarity, BERT Base     |                              0.673x | 5/5 agree      |
+     | Pair classification, MPNet         |                              1.082x | 5/5 agree      |
+     | Pair classification, BERT Base     |                              0.666x | 5/5 agree      |
+     | Cross-encoder                      |                              1.705x | 5/5 agree      |
+     | Late interaction                   |                              2.452x | not comparable |
+     | Outcome reward                     |                              1.175x | 5/5 agree      |
+     | Process reward                     |                              3.309x | 5/5 agree      |
+     | Image-text                         |                              3.083x | 5/5 agree      |
+     | Audio-text                         |                              1.500x | 5/5 agree      |
+     | Video-text                         |                              2.447x | 5/5 agree      |
+     | V-JEPA 2.1                         |                              5.285x | 5/5 agree      |
+
+     Representax is faster in 10 of 13 median recipe comparisons. The losses
+     are optimized dense MPNet against TorchInductor and both BERT Base
+     controls. Every loss-comparable recipe moves in the same direction in all
+     five seeds. Late interaction exposes different framework reductions and
+     opposite raw loss directions, so its speed result requires held-out quality
+     before promotion. Median Representax input wait is below 0.1% in every
+     recipe after bounded prefetch and lazy preprocessing, so the remaining
+     losses are model/compiler execution gaps rather than data starvation.
+
+     These 20-update traces establish steady execution and short loss dynamics,
+     not converged held-out quality. Continue toward a selective systems paper,
+     not a universal speed claim. Promote the winning rows only after longer
+     shared-evaluator quality runs; retain dense and BERT as explicit limits.
+     LeJEPA is omitted because its current reference is an experiment-owned
+     timm oracle using stable-pretraining components rather than the external
+     stable-pretraining loop. NQ and MIRACL remain lifecycle checks without
+     paired external trainers.
+
+     The public launcher is
+     =experiments/08-five-seed-framework-comparison/run.py=. Aggregate JSON,
+     rendered results, raw logs, per-step metrics, per-seed summaries and
+     content-addressed reference provenance live under
+     =/raid/representax-paper/08-five-seed-framework-comparison/=.
+     On September 6, the reproducible checkpoints, exports, compiler caches,
+     media tensors and failed-attempt trees were deleted after verifying all 65
+     canonical summaries byte-for-byte. The retained evidence is 1.1 GB rather
+     than 777 GB; =PRUNING-MANIFEST.json= records every canonical summary hash.
+**** DONE Repeat the five-seed framework sweep across TPU and refreshed GPU controls
+     Put the reproducible launcher under
+     =experiments/10-cross-accelerator-framework-comparison/= and durable output
+     under the matching =/raid/representax-paper/= directory. Run the 13 concrete
+     recipes for seeds =7, 42, 773, 1234, 2026=, with 20 measured optimizer
+     updates per framework and seed after first-use compilation. Report complete
+     optimizer steps/s and examples/s including input wait; retain input wait,
+     non-padding tokens/s, padded positions, compilation, memory, loss and all
+     raw step intervals separately.
+
+     Preserve one resolved =run.json=, append-only =metrics.jsonl= and
+     =events.jsonl= streams, the complete process log, environment and package
+     inventory, command, source patch, and data manifest for every process.
+     Record per-step wall time, examples, valid and padded tokens or modality
+     units, shape/bucket, loss components, gradient/update norms, input wait,
+     preprocessing, placement, compilation/first use, checkpoint/evaluation
+     boundaries, peak host/device memory, utilization and power where available.
+     Treat =summary.json= and rendered tables as rebuildable products of those
+     raw files so later analyses can compute alternative warmup rules, quantiles,
+     variance, energy per example, shape-conditioned rates and scaling efficiency.
+
+     On TPU, run Representax and the applicable PyTorch/XLA reference
+     sequentially on the full =v5litepod-16= slice. This allocation is already a
+     multi-host TPU test; broader multi-node GPU work remains future work because
+     of cost. Canary each concrete integration before admitting it to the table.
+     Use matched static text buckets on TPU, global batch 64 and actual length
+     2,048 for process reward, and global batch 128 with a full 20-update SSV2
+     exposure for V-JEPA rather than the old tiny lifecycle probes.
+
+     Rerun the corresponding GPU recipes on the six-RTX-4090 host, including
+     eager and TorchInductor reference controls where supported. Use native
+     dynamic padding for eager PyTorch references and the accepted static bucket
+     schedule for Representax; retain a matched-shape control where padding could
+     explain a verdict. If any seed supplies fewer than 15 valid warm intervals
+     or has unusually unstable timing, stop and ask before extending either
+     framework to 40 updates. Record exact source commits and patches, dependency
+     versions and locks, data revisions and hashes, commands, environment,
+     topology and device inventory in every result bundle.
+***** DONE Establish the locked 16-chip multi-host TPU preflight
+      The =v5litepod-16= slice is healthy and exposes a 4x4 ICI torus through
+      four JAX processes with four local chips each. A compiled 16 MiB-per-chip
+      all-reduce measured 56.19 GB/s payload rate within each worker's 2x2 tile
+      and 39.86 GB/s over all 16 chips; these are effective collective payload
+      rates, not raw link-bandwidth claims.
+
+      Separate locked environments now install Representax/JAX on Python 3.13
+      and Sentence Transformers/PyTorch-XLA on system Python 3.10 without
+      unused CUDA wheels. An identical FP32 1024-to-256 dense projection trained
+      for 20 updates on both stacks with final losses 0.198249 and 0.198347.
+      The substrate smoke measured 16.83M examples/s for JAX and 2.32M for
+      PyTorch/XLA, but this simple projection is not a transformer speed claim.
+      The production =run_job= path also completed 20 symmetric-MNR updates
+      with DDP over all 16 chips, global batch 256, and rematerialized GradCache;
+      loss moved from 2.96009 to 2.84377 at a 10,258 examples/s median warm rate.
+
+      Code is commit =a837274eeb6634f898b3e5b34bf878b32fdd07a0= on
+      =codex/tpu-multihost-preflight=. Full logs and evidence live under
+      =/raid/representax-paper/10-cross-accelerator-framework-comparison/preflight/tpu-v5e-16-20260905/=.
+***** DONE Run the actual Sentence Transformers trainer over the 16-chip slice
+      Sentence Transformers 5.6.1 through Accelerate 1.14 and PyTorch/XLA 2.9
+      completed 20 FP32 MNR updates with a pinned 4.39M-parameter BERT model,
+      local batch 16 and global batch 256. Loss moved from 1.77237 to 0.970649
+      in 53.83 seconds, including first compilation and input work. Accelerate
+      reported =DistributedType.XLA=, and a post-training parameter probe had
+      zero spread over all 16 replicas, confirming synchronized updates.
+
+      The canary uses per-device in-batch negatives. Accelerate synchronizes
+      model gradients through XLA, but Sentence Transformers' optional
+      cross-device-negative helper requires an initialized =torch.distributed=
+      process group. Initializing PyTorch/XLA's documented =xla://= process
+      group and enabling =gather_across_devices= halted the TPU during the
+      first BERT forward, both with and without Trainer step logging. The
+      off-the-shelf Sentence Transformers/Accelerate XLA path therefore does
+      not currently support this global-negative multi-host comparison. Do not
+      compare it against Representax global negatives: either run both with
+      per-device negative pools and label that objective explicitly, or omit
+      the dense TPU row while retaining the matched GPU result. This result
+      proves the maintained Trainer executes coherently, not final MNR
+      scientific parity or paper throughput. Evidence is under
+      =/raid/representax-paper/10-cross-accelerator-framework-comparison/preflight/sentence-transformers-tpu-20260905/=.
+***** DONE Complete the five-seed 16-chip TPU framework sweep
+      All 13 recipes completed for seeds =7, 42, 773, 1234, 2026= in both
+      frameworks: 130 canonical processes and 2,600 measured optimizer updates.
+      Every process has 20 finite complete-step intervals and a finite loss.
+      Rates are total examples divided by those 20 completion-to-completion
+      intervals, including input stalls, followed by the median across seeds.
+
+      | Recipe                              | Representax examples/s | Reference examples/s | Ratio |
+      |-------------------------------------+------------------------+----------------------+-------|
+      | Dense retrieval                     |               2510.213 |             2506.150 | 1.002 |
+      | Semantic similarity, MPNet Base     |               4045.865 |              808.686 | 5.003 |
+      | Semantic similarity, BERT Base      |               3439.733 |              829.874 | 4.145 |
+      | Pair classification, MPNet Base     |               4124.540 |              773.708 | 5.331 |
+      | Pair classification, BERT Base      |               3478.858 |              758.164 | 4.589 |
+      | Cross-encoder                       |               2701.598 |              807.870 | 3.344 |
+      | Late interaction                    |               2765.341 |             1059.692 | 2.610 |
+      | Outcome reward                      |                103.871 |               59.927 | 1.733 |
+      | Process reward                      |                 85.259 |               24.311 | 3.507 |
+      | Image-text                          |               2259.882 |             1062.058 | 2.128 |
+      | Audio-text                          |                 11.247 |               13.451 | 0.836 |
+      | Video-text                          |                 80.699 |                8.465 | 9.534 |
+      | V-JEPA 2.1                          |                 87.589 |               59.633 | 1.469 |
+
+      Representax is faster in 11 rows, dense retrieval is effectively tied,
+      and PyTorch/XLA is 1.196x faster for audio-text. These are bounded
+      cross-accelerator execution, throughput and short numerical-trajectory
+      results, not converged-quality or universal-speedup claims. Dense retrieval
+      uses matched per-device negative pools because the maintained Sentence
+      Transformers multi-host TPU path cannot gather global negatives. Late
+      interaction's framework-native losses have different reductions, so its
+      throughput must not be promoted without a shared held-out evaluator.
+
+      Preserve two data-cache order effects in interpretation. Image-text native
+      seed 7 measured 974.665 examples/s versus 2259.760--2311.757 for the four
+      later seeds. V-JEPA native seed 7 measured 43.085 examples/s versus
+      85.269--88.134 later. Their reference runners materialize tensors before
+      starting the timed loop, while =run_job= streams them; seed 7 therefore paid
+      cold filesystem reads. The median remains a useful warm systems estimate,
+      but these rows require randomized process order or explicit cache control
+      before a final hardware claim. No run was silently replaced or extended to
+      40 updates.
+
+      Initial 3B reference capacity probes failed at global batch 64 for audio
+      and 128 for video when PyTorch/XLA could not reserve another 6.42 GB and
+      6.59 GB respectively. The accepted comparisons use global batch 48 for
+      audio and 112 for video in both frameworks; the rejected attempts remain
+      in the worker artifact trees.
+
+      Three video reference attempts were retained after =libtpu= terminated in
+      runtime metric aggregation following consecutive 3B-model processes. Guest
+      reboots cleared that process-runtime state and all five canonical seeds then
+      completed with matching loss behavior. Treat this as a PyTorch/XLA runtime
+      reliability caveat, not a model or numerical failure.
+
+      The final recipe fixes are commits =924453f=, =63207d0=, =3dc2ff2=,
+      =5b0d216=, =1471cbc= and =3491fb0=. Reference provenance pins
+      Sentence Transformers =7d3eb16a65f62045226e08082ade63cbc71c97a4=,
+      PyLate =346ea2b9c273256919809ac35b3a055970780c9c=, TRL
+      =a7be897f5c8d7b52161f9f8a47d8e6242456b898= and V-JEPA 2
+      =204698b45b3712590f06245fbfba32d3be539812=. Every result bundle also
+      records package versions, source patch, command, environment and data hash.
+
+      The verified four-worker raw copy and aggregate live under
+      =/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/=.
+      =results.json= has SHA-256
+      =67d6d42bf0abb7a8c87fc59937d0eb559460e5d0203a089666f5df98025e1ccc=;
+      =RESULTS.md= has SHA-256
+      =5112d5931d1dd932ea293aefa2e2a5f5d45e6c9bfa3892ced45703ffb6a44c2d=.
+***** DONE Complete the five-seed RTX 4090 framework sweep
+      All 13 recipes completed for seeds =7, 42, 773, 1234, 2026= in both
+      frameworks: 130 canonical processes. Each run executes 22 optimizer
+      updates and the aggregate uses the final 20 non-compilation intervals;
+      the native late-interaction rows contribute 15 valid intervals after
+      excluding first use for seven bucket signatures, which meets the frozen
+      acceptance threshold. No run was extended or silently replaced.
+
+      | Recipe                              | Representax examples/s | Reference examples/s | Ratio | Median loss correlation |
+      |-------------------------------------+------------------------+----------------------+-------+-------------------------|
+      | Dense retrieval                     |                305.348 |              211.222 | 1.446 |                   0.966 |
+      | Semantic similarity, MPNet Base     |                559.720 |              367.802 | 1.522 |                   0.996 |
+      | Semantic similarity, BERT Base      |                286.211 |              384.077 | 0.745 |                   0.999 |
+      | Pair classification, MPNet Base     |                552.810 |              361.943 | 1.527 |                   1.000 |
+      | Pair classification, BERT Base      |                296.207 |              382.917 | 0.774 |                   0.998 |
+      | Cross-encoder                       |                670.369 |              441.531 | 1.518 |                   0.987 |
+      | Late interaction                    |                262.290 |               40.455 | 6.484 |          not comparable |
+      | Outcome reward                      |                  8.001 |                6.513 | 1.229 |                   0.796 |
+      | Process reward                      |                 56.229 |                6.244 | 9.005 |                   0.938 |
+      | Image-text                          |                321.020 |              106.223 | 3.022 |                   1.000 |
+      | Audio-text                          |                  2.660 |                1.845 | 1.442 |                   0.995 |
+      | Video-text                          |                  3.482 |                1.490 | 2.337 |                   1.000 |
+      | V-JEPA 2.1                          |                  6.571 |                1.304 | 5.040 |                   1.000 |
+
+      Rates are total examples divided by complete optimizer-step time,
+      including input wait, followed by the median across seeds. Compilation,
+      checkpoint, evaluation and export intervals remain recorded separately.
+      Representax is faster in 11 of 13 eager/reference rows. The two losses are
+      the BERT Base sentence-pair controls. Ten recipes favor Representax on
+      both RTX 4090 and v5e TPU; BERT Base favors Representax only on TPU, while
+      audio-text favors it only on GPU. This supports a portable-systems result,
+      not a universal speed claim.
+
+      The additional dense TorchInductor control reaches 316.610 examples/s,
+      making Representax 0.964x as fast as the compiled reference while remaining
+      1.446x as fast as eager Sentence Transformers. All comparable recipes move
+      loss in the same direction for all five seeds. Late interaction retains a
+      throughput result only because its framework-native loss reductions differ;
+      it requires shared held-out quality before any optimization claim.
+
+      The complete aggregate passes status, content-hash, finite-timing and
+      minimum-observation validation for all 130 processes. Runs capture clean
+      Representax commit =7b7d27e3d8a61197b9a4e88094a096ff17192be5= and the
+      pinned Sentence Transformers, PyLate, TRL and V-JEPA revisions above.
+      Single-process canonical-log promotion and TRL loss preservation were
+      repaired afterward in commits =cb1b50b=, =a194e36=, =a0da720= and
+      =3b97c2b= without rerunning or changing measured values.
+
+      Canonical evidence is under
+      =/raid/representax-paper/10-cross-accelerator-framework-comparison/gpu-rtx4090/=;
+      its =results.json= SHA-256 is
+      =f140459f361239659e75029fe27ae6e1d23aeb7b62327b711f8f6d72d6ef62bc=
+      and =RESULTS.md= SHA-256 is
+      =ff67fdbe7aa682ed94a7576e76ab366d0a1226034127e16b2bcd911df39a86b9=.
+      The five-seed Inductor control is under the adjacent
+      =gpu-rtx4090-torchinductor/= directory; its aggregate hashes are
+      =8a9af905f7649c463b7a797b1a8c4726d66a41d2aaf50df049dc890f999bb878=
+      and =e5a97eb482ffa1208dba5aedd3dd0f9a198bd00115503102b0f6d57d5aeea2cc=.
+**** DONE Enforce duplicate-free batches for in-batch-negative objectives
+     Materialize one query-positive pair per query, deterministically shuffle
+     across enough source shards, and reject any MNR batch containing duplicate
+     positives. Preserve the mined-negative column only for objectives that use
+     explicit negatives. Add batch-level uniqueness statistics to every dense
+     experiment manifest before another MNR or BERT-scaling campaign is run.
+     The cross-accelerator dense runner now consumes five deterministic,
+     seed-specific 65,536-row tables with unique queries and positives. Every
+     accepted run reports zero duplicate queries and zero duplicate positives.
+     The pinned manifest SHA-256 is
+     =daa2b78def311e831435b22281441770ceeec0222c382ae54479166d48f1750e=.
+
+     The September 7 data-path audit extended this invariant to late interaction
+     and media retrieval. Late-interaction preparation now selects unique queries
+     and positives across the source stream. COCO, AudioCaps and MSR-VTT
+     preparation skips repeated media identifiers and text targets; COCO uses four
+     distinct captions per image instead of cloning the first caption. Finite
+     datasets are repeated only by the canonical =run_job= loader to satisfy
+     =max_steps=, not by copying rows during preparation. Paired dense launchers
+     now require and record the duplicate-free seed parquet explicitly.
+
 *** TODO Publish reproducible configs, manifests, tests, and benchmark artifacts :research:reproducibility:
-*** TODO Write the paper on the monotonic JAX representation-training system :research:paper:
+    Numbered launchers own executable settings; retain shared instructions here.
+    From the repository root, using the environment installed by
+    =experiments/setup.sh=:
+    #+begin_src sh
+    experiments/02-semantic-similarity-pair-classification/run.sh -g 0,1,2,3,4,5
+    experiments/.venv/bin/python experiments/08-five-seed-framework-comparison/run.py run --gpus 0 1 2 3 4 5
+    experiments/.venv/bin/python experiments/08-five-seed-framework-comparison/run.py aggregate
+    experiments/.venv/bin/python experiments/09-modernbert-dense-retrieval/run.py run --gpus 0 1 2 3 4 5
+    #+end_src
+    These commands use the current checked-in recipes. Historical measurements
+    retain their original data, seeds and source snapshots; do not relabel them
+    when a launcher changes. The aggregate command performs no training.
+*** TODO Write the paper on the portable JAX representation-training system :research:paper:
 *** TODO Release the Representax systems paper as an arXiv preprint :research:paper:
+**** TODO Delete retained Google Cloud paper assets after the final preprint is published
+     Once the final preprint and reproducibility package are complete, verify
+     that every required manifest and result is durable under =/raid=, then
+     delete =gs://representax-paper-assets-project-3fed1b4b=. Confirm that the
+     bucket, including soft-deleted objects, is gone and that the project has no
+     remaining billable resources.
 ** Profilax paper: =So you like to go fast?= [0/15] [0%]
   Profilax is a separate installable JAX profiling and semantics-preserving
   execution-planning project. Its paper must demonstrate portability beyond
@@ -916,208 +1531,6 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   Define native sparse representations, pooling, FLOPS regularization, task
   batches, cached losses, retrieval metrics, and one real checkpoint training
   gate. Sparse retrieval is intentionally outside the first paper.
-**** DONE Complete the five-seed 20-update framework decision sweep
-     All 65 paired runs are complete: 13 implemented comparison recipes, five
-     seeds (=7, 42, 773, 1234, 2026=), and 20 optimizer updates in each
-     framework. This is 100 updates per framework per recipe and 2,600 updates
-     across the accepted runs. Primary throughput is measured from optimizer
-     completion to optimizer completion, including input wait. First-use
-     compilation and intervals containing midpoint checkpoint or resume work
-     remain in the raw logs but are excluded from steady-state rates.
-
-     | Recipe                             | Median Representax/reference ratio | Loss direction |
-     |------------------------------------+-------------------------------------+----------------|
-     | Dense retrieval                    |                              0.740x | 5/5 agree      |
-     | Semantic similarity, MPNet         |                              1.172x | 5/5 agree      |
-     | Semantic similarity, BERT Base     |                              0.673x | 5/5 agree      |
-     | Pair classification, MPNet         |                              1.082x | 5/5 agree      |
-     | Pair classification, BERT Base     |                              0.666x | 5/5 agree      |
-     | Cross-encoder                      |                              1.705x | 5/5 agree      |
-     | Late interaction                   |                              2.452x | not comparable |
-     | Outcome reward                     |                              1.175x | 5/5 agree      |
-     | Process reward                     |                              3.309x | 5/5 agree      |
-     | Image-text                         |                              3.083x | 5/5 agree      |
-     | Audio-text                         |                              1.500x | 5/5 agree      |
-     | Video-text                         |                              2.447x | 5/5 agree      |
-     | V-JEPA 2.1                         |                              5.285x | 5/5 agree      |
-
-     Representax is faster in 10 of 13 median recipe comparisons. The losses
-     are optimized dense MPNet against TorchInductor and both BERT Base
-     controls. Every loss-comparable recipe moves in the same direction in all
-     five seeds. Late interaction exposes different framework reductions and
-     opposite raw loss directions, so its speed result requires held-out quality
-     before promotion. Median Representax input wait is below 0.1% in every
-     recipe after bounded prefetch and lazy preprocessing, so the remaining
-     losses are model/compiler execution gaps rather than data starvation.
-
-     These 20-update traces establish steady execution and short loss dynamics,
-     not converged held-out quality. Continue toward a selective systems paper,
-     not a universal speed claim. Promote the winning rows only after longer
-     shared-evaluator quality runs; retain dense and BERT as explicit limits.
-     LeJEPA is omitted because its current reference is an experiment-owned
-     timm oracle using stable-pretraining components rather than the external
-     stable-pretraining loop. NQ and MIRACL remain lifecycle checks without
-     paired external trainers.
-
-     The public launcher is
-     =experiments/08-five-seed-framework-comparison/run.py=. Aggregate JSON,
-     rendered results, raw logs, per-seed summaries, model artifacts and
-     content-addressed reference provenance live under
-     =/raid/representax-paper/08-five-seed-framework-comparison/=.
-**** TODO Repeat the five-seed framework sweep across TPU and refreshed GPU controls
-     Put the reproducible launcher under
-     =experiments/10-cross-accelerator-framework-comparison/= and durable output
-     under the matching =/raid/representax-paper/= directory. Run the 13 concrete
-     recipes for seeds =7, 42, 773, 1234, 2026=, with 20 measured optimizer
-     updates per framework and seed after first-use compilation. Report complete
-     optimizer steps/s and examples/s including input wait; retain input wait,
-     non-padding tokens/s, padded positions, compilation, memory, loss and all
-     raw step intervals separately.
-
-     Preserve one resolved =run.json=, append-only =metrics.jsonl= and
-     =events.jsonl= streams, the complete process log, environment and package
-     inventory, command, source patch, and data manifest for every process.
-     Record per-step wall time, examples, valid and padded tokens or modality
-     units, shape/bucket, loss components, gradient/update norms, input wait,
-     preprocessing, placement, compilation/first use, checkpoint/evaluation
-     boundaries, peak host/device memory, utilization and power where available.
-     Treat =summary.json= and rendered tables as rebuildable products of those
-     raw files so later analyses can compute alternative warmup rules, quantiles,
-     variance, energy per example, shape-conditioned rates and scaling efficiency.
-
-     On TPU, run Representax and the applicable PyTorch/XLA reference
-     sequentially on the full =v5litepod-16= slice. This allocation is already a
-     multi-host TPU test; broader multi-node GPU work remains future work because
-     of cost. Canary each concrete integration before admitting it to the table.
-     Use matched static text buckets on TPU, global batch 64 and actual length
-     2,048 for process reward, and global batch 128 with a full 20-update SSV2
-     exposure for V-JEPA rather than the old tiny lifecycle probes.
-
-     Rerun the corresponding GPU recipes on the six-RTX-4090 host, including
-     eager and TorchInductor reference controls where supported. Use native
-     dynamic padding for eager PyTorch references and the accepted static bucket
-     schedule for Representax; retain a matched-shape control where padding could
-     explain a verdict. If any seed supplies fewer than 15 valid warm intervals
-     or has unusually unstable timing, stop and ask before extending either
-     framework to 40 updates. Record exact source commits and patches, dependency
-     versions and locks, data revisions and hashes, commands, environment,
-     topology and device inventory in every result bundle.
-***** DONE Establish the locked 16-chip multi-host TPU preflight
-      The =v5litepod-16= slice is healthy and exposes a 4x4 ICI torus through
-      four JAX processes with four local chips each. A compiled 16 MiB-per-chip
-      all-reduce measured 56.19 GB/s payload rate within each worker's 2x2 tile
-      and 39.86 GB/s over all 16 chips; these are effective collective payload
-      rates, not raw link-bandwidth claims.
-
-      Separate locked environments now install Representax/JAX on Python 3.13
-      and Sentence Transformers/PyTorch-XLA on system Python 3.10 without
-      unused CUDA wheels. An identical FP32 1024-to-256 dense projection trained
-      for 20 updates on both stacks with final losses 0.198249 and 0.198347.
-      The substrate smoke measured 16.83M examples/s for JAX and 2.32M for
-      PyTorch/XLA, but this simple projection is not a transformer speed claim.
-      The production =run_job= path also completed 20 symmetric-MNR updates
-      with DDP over all 16 chips, global batch 256, and rematerialized GradCache;
-      loss moved from 2.96009 to 2.84377 at a 10,258 examples/s median warm rate.
-
-      Code is commit =a837274eeb6634f898b3e5b34bf878b32fdd07a0= on
-      =codex/tpu-multihost-preflight=. Full logs and evidence live under
-      =/raid/representax-paper/10-cross-accelerator-framework-comparison/preflight/tpu-v5e-16-20260905/=.
-***** DONE Run the actual Sentence Transformers trainer over the 16-chip slice
-      Sentence Transformers 5.6.1 through Accelerate 1.14 and PyTorch/XLA 2.9
-      completed 20 FP32 MNR updates with a pinned 4.39M-parameter BERT model,
-      local batch 16 and global batch 256. Loss moved from 1.77237 to 0.970649
-      in 53.83 seconds, including first compilation and input work. Accelerate
-      reported =DistributedType.XLA=, and a post-training parameter probe had
-      zero spread over all 16 replicas, confirming synchronized updates.
-
-      The canary uses per-device in-batch negatives. Accelerate synchronizes
-      model gradients through XLA, but Sentence Transformers' optional
-      cross-device-negative helper requires an initialized =torch.distributed=
-      process group. Initializing PyTorch/XLA's documented =xla://= process
-      group and enabling =gather_across_devices= halted the TPU during the
-      first BERT forward, both with and without Trainer step logging. The
-      off-the-shelf Sentence Transformers/Accelerate XLA path therefore does
-      not currently support this global-negative multi-host comparison. Do not
-      compare it against Representax global negatives: either run both with
-      per-device negative pools and label that objective explicitly, or omit
-      the dense TPU row while retaining the matched GPU result. This result
-      proves the maintained Trainer executes coherently, not final MNR
-      scientific parity or paper throughput. Evidence is under
-      =/raid/representax-paper/10-cross-accelerator-framework-comparison/preflight/sentence-transformers-tpu-20260905/=.
-***** DONE Complete the five-seed 16-chip TPU framework sweep
-      All 13 recipes completed for seeds =7, 42, 773, 1234, 2026= in both
-      frameworks: 130 canonical processes and 2,600 measured optimizer updates.
-      Every process has 20 finite complete-step intervals and a finite loss.
-      Rates are total examples divided by those 20 completion-to-completion
-      intervals, including input stalls, followed by the median across seeds.
-
-      | Recipe                              | Representax examples/s | Reference examples/s | Ratio |
-      |-------------------------------------+------------------------+----------------------+-------|
-      | Dense retrieval                     |               2510.213 |             2506.150 | 1.002 |
-      | Semantic similarity, MPNet Base     |               4045.865 |              808.686 | 5.003 |
-      | Semantic similarity, BERT Base      |               3439.733 |              829.874 | 4.145 |
-      | Pair classification, MPNet Base     |               4124.540 |              773.708 | 5.331 |
-      | Pair classification, BERT Base      |               3478.858 |              758.164 | 4.589 |
-      | Cross-encoder                       |               2701.598 |              807.870 | 3.344 |
-      | Late interaction                    |               2765.341 |             1059.692 | 2.610 |
-      | Outcome reward                      |                103.871 |               59.927 | 1.733 |
-      | Process reward                      |                 85.259 |               24.311 | 3.507 |
-      | Image-text                          |               2259.882 |             1062.058 | 2.128 |
-      | Audio-text                          |                 11.247 |               13.451 | 0.836 |
-      | Video-text                          |                 80.699 |                8.465 | 9.534 |
-      | V-JEPA 2.1                          |                 87.589 |               59.633 | 1.469 |
-
-      Representax is faster in 11 rows, dense retrieval is effectively tied,
-      and PyTorch/XLA is 1.196x faster for audio-text. These are bounded
-      cross-accelerator execution, throughput and short numerical-trajectory
-      results, not converged-quality or universal-speedup claims. Dense retrieval
-      uses matched per-device negative pools because the maintained Sentence
-      Transformers multi-host TPU path cannot gather global negatives. Late
-      interaction's framework-native losses have different reductions, so its
-      throughput must not be promoted without a shared held-out evaluator.
-
-      Preserve two data-cache order effects in interpretation. Image-text native
-      seed 7 measured 974.665 examples/s versus 2259.760--2311.757 for the four
-      later seeds. V-JEPA native seed 7 measured 43.085 examples/s versus
-      85.269--88.134 later. Their reference runners materialize tensors before
-      starting the timed loop, while =run_job= streams them; seed 7 therefore paid
-      cold filesystem reads. The median remains a useful warm systems estimate,
-      but these rows require randomized process order or explicit cache control
-      before a final hardware claim. No run was silently replaced or extended to
-      40 updates.
-
-      Initial 3B reference capacity probes failed at global batch 64 for audio
-      and 128 for video when PyTorch/XLA could not reserve another 6.42 GB and
-      6.59 GB respectively. The accepted comparisons use global batch 48 for
-      audio and 112 for video in both frameworks; the rejected attempts remain
-      in the worker artifact trees.
-
-      Three video reference attempts were retained after =libtpu= terminated in
-      runtime metric aggregation following consecutive 3B-model processes. Guest
-      reboots cleared that process-runtime state and all five canonical seeds then
-      completed with matching loss behavior. Treat this as a PyTorch/XLA runtime
-      reliability caveat, not a model or numerical failure.
-
-      The final recipe fixes are commits =924453f=, =63207d0=, =3dc2ff2=,
-      =5b0d216=, =1471cbc= and =3491fb0=. Reference provenance pins
-      Sentence Transformers =7d3eb16a65f62045226e08082ade63cbc71c97a4=,
-      PyLate =346ea2b9c273256919809ac35b3a055970780c9c=, TRL
-      =a7be897f5c8d7b52161f9f8a47d8e6242456b898= and V-JEPA 2
-      =204698b45b3712590f06245fbfba32d3be539812=. Every result bundle also
-      records package versions, source patch, command, environment and data hash.
-
-      The verified four-worker raw copy and aggregate live under
-      =/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/=.
-      =results.json= has SHA-256
-      =67d6d42bf0abb7a8c87fc59937d0eb559460e5d0203a089666f5df98025e1ccc=;
-      =RESULTS.md= has SHA-256
-      =5112d5931d1dd932ea293aefa2e2a5f5d45e6c9bfa3892ced45703ffb6a44c2d=.
-**** TODO Enforce duplicate-free batches for in-batch-negative objectives
-     Materialize one query-positive pair per query, deterministically shuffle
-     across enough source shards, and reject any MNR batch containing duplicate
-     positives. Preserve the mined-negative column only for objectives that use
-     explicit negatives. Add batch-level uniqueness statistics to every dense
-     experiment manifest before another MNR or BERT-scaling campaign is run.
 ** TODO Add sequence and multimodal packing where scientifically valid :data:performance:
   The paper diagnostic found that MPNet packing preserves embeddings, MNR loss,
   and gradients, but ordinary bucketing dominates compile-stable training
