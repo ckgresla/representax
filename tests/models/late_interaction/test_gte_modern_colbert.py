@@ -76,6 +76,22 @@ def test_real_checkpoint_preprocessing_projection_and_mask_match_pylate():
 
 
 @pytest.mark.parity
+def test_real_checkpoint_processor_truncates_to_the_largest_admitted_bucket():
+    _, processor = load_late_interaction_text_model(
+        GTE_MODERN_COLBERT_MODEL_ID,
+        revision=GTE_MODERN_COLBERT_REVISION,
+        local_files_only=True,
+        query_sequence_length_buckets=(16, 32),
+        document_sequence_length_buckets=(32, 64, 128, 256),
+    )
+
+    batch = processor(("retrieval " * 400,), route=Route.DOCUMENT)
+
+    assert batch.input_ids.shape == (1, 256)
+    assert batch.attention_mask.shape == (1, 256)
+
+
+@pytest.mark.parity
 @pytest.mark.runtime
 def test_real_checkpoint_trains_three_updates_and_exports_exactly(tmp_path):
     metadata = json.loads((_ORACLE / "metadata.json").read_text())

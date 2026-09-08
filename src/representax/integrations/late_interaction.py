@@ -258,8 +258,11 @@ def _make_processor(
         texts = tuple(artifacts)
         if not texts or any(not isinstance(text, str) for text in texts):
             raise TypeError("late-interaction text processor requires strings")
-        maximum = query_length if route is Route.QUERY else document_length
         buckets = query_buckets if route is Route.QUERY else document_buckets
+        maximum = min(
+            query_length if route is Route.QUERY else document_length,
+            max(buckets),
+        )
         prefix_id = prefix_ids[route]
         encoded = tokenizer(
             list(texts),
