@@ -604,12 +604,16 @@ def worker_command(seed: int, gpu: int, *, steps: int | None = None) -> list[str
 
 
 def _environment(gpu: int) -> dict[str, str]:
+    python_path = os.pathsep.join(
+        value for value in (str(ROOT), os.environ.get("PYTHONPATH")) if value
+    )
     return {
         **os.environ,
         "CUDA_VISIBLE_DEVICES": str(gpu),
         "HF_HOME": os.environ.get("HF_HOME", "/raid/.cache/huggingface"),
         "JAX_COMPILATION_CACHE_DIR": str(OUTPUT / "jax-cache"),
         "JAX_DEFAULT_MATMUL_PRECISION": "highest",
+        "PYTHONPATH": python_path,
         "TOKENIZERS_PARALLELISM": "false",
         "PYTHONUNBUFFERED": "1",
         "XLA_PYTHON_CLIENT_MEM_FRACTION": "0.90",

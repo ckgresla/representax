@@ -63,6 +63,9 @@ def test_dense_transfer_commands_are_explicit() -> None:
         1,
         2,
     ]
+    assert str(ROOT) in experiment._environment(0)["PYTHONPATH"].split(
+        experiment.os.pathsep
+    )
 
 
 def test_late_interaction_contract_and_command_are_frozen() -> None:
