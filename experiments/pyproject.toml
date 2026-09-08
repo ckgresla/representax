@@ -6,7 +6,7 @@ dependencies = []
 
 [dependency-groups]
 native = [
-    "representax[config,hf,performance,wandb,cuda12]",
+    "representax[config,hf,media,performance,wandb,cuda12]",
 ]
 sentence-transformers = [
     "accelerate==1.14.0",
@@ -56,7 +56,7 @@ conflicts = [
 
 [tool.uv.sources]
 # Installs this checkout editably, equivalent to:
-# pip install -e "..[config,hf,performance,wandb,cuda12]"
+# pip install -e "..[config,hf,media,performance,wandb,cuda12]"
 representax = { path = "..", editable = true }
 lejepa = { git = "https://github.com/galilai-group/lejepa", rev = "c293d291ca87cd4fddee9d3fffe4e914c7272052" }
 stable-pretraining = { git = "https://github.com/galilai-group/stable-pretraining", rev = "9aa93f8b6153eebb73f57d4853ccf8a13d848310" }

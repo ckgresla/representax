@@ -63,7 +63,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      correction below. Show per-recipe speedup with uncertainty, GPU-versus-TPU
      speedup, trajectory correlation, and the capability/reproducibility table.
      Report BERT Base, TPU audio and compiled dense retrieval as explicit limits.
-**** 5. End-to-end representation learning [9/12]
+**** 5. End-to-end representation learning [9/18]
      Run three independent Representax seeds (=7, 42, 773=) for each of four
      canonical workloads. These runs establish useful held-out representations
      and complete convergence trajectories; Section 4 already supplies the
@@ -73,12 +73,11 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      - Late interaction: GTE-ModernColBERT on duplicate-free MS MARCO, evaluated
        with one shared NanoMSMARCO indexing and retrieval protocol.
      - Image-text: CLIP ViT-B/32 on COCO, evaluated on Flickr30k retrieval.
-     - Any-modality: Jina v5 Omni over a deterministic balanced schedule of
-       COCO image-text, AudioCaps audio-text and MSR-VTT video-text updates,
-       evaluated separately on all three modalities. Freeze the Nano/Small model
-       and connector-only, connector-plus-LoRA and full-fine-tuning study scope
-       at the Experiment 14 configuration gate. Call this fine-tuning, not
-       from-scratch pretraining.
+     - Text-to-any-modality: Jina v5 Omni Nano with COCO text-image, AudioCaps
+       text-audio, MSR-VTT text-video and MS MARCO text-text data. Run three seeds
+       for each of connector-only, connector-plus-LoRA and full fine-tuning:
+       nine Experiment 14 jobs. Evaluate each target modality separately. This
+       is fine-tuning, not from-scratch pretraining or an any-to-any claim.
 **** 6. Scaling and sharding [0/9]
      Run a canonical BERT-style masked-language-model workload with the 500M
      controlled encoder for seeds =7, 42, 773= at 1, 2 and 4 GPUs. Hold examples,
@@ -935,11 +934,11 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      measurement as a same-shape systems diagnostic unless a bounded TPU rerun is
      inexpensive; do not use the old duplicate-heavy loss trajectory as training
      evidence.
-**** TODO Run the twelve end-to-end representation-learning jobs [9/12] [75%]
+**** TODO Run the eighteen end-to-end representation-learning jobs [9/18] [50%]
      Run only Representax for seeds =7, 42, 773= on the four frozen Section 5
      recipes: ModernBERT dense retrieval, GTE-ModernColBERT late interaction,
-     CLIP ViT-B/32 image-text training, and Jina v5 Omni mixed-modality
-     adapter fine-tuning. Use a real data presentation or the frozen update
+     CLIP ViT-B/32 image-text training, and Jina v5 Omni Nano text-to-any-modality
+     fine-tuning with three adaptation strategies. Use a real data presentation or the frozen update
      budget, retain every training metric, evaluate the initial and final model
      with the shared held-out protocol, and save resumable checkpoints at 50%
      and 100%. Intermediate evaluation is optional where it is cheap; learning
@@ -975,13 +974,127 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
       for image-to-text. Every run resumed at 50%, exported both native and
       Hugging Face artifacts and reloaded exactly. The complete summary is
       =/raid/representax-paper/13-image-text-convergence/summary.json=.
-***** TODO Freeze the Jina v5 Omni any-modality configuration
+***** TODO Freeze the Jina v5 Omni Nano text-to-any-modality configuration
       Native Nano and Small loading, all modality paths, full-precision upstream
-      parity, training, resume and export/reload are accepted. Before launching,
-      choose the primary model and decide whether connector-only,
-      connector-plus-LoRA and full fine-tuning are three seeded study arms or
-      whether one is primary and the others are bounded ablations. Expanding all
-      three arms to three seeds changes Section 5 from twelve to eighteen jobs.
+      parity, training, resume and export/reload are accepted. The agreed model
+      is =jinaai/jina-embeddings-v5-omni-nano-retrieval= at
+      =b7287f6b6b562e25bc4a28b939d1f936484b4137=. Run all nine jobs: seeds
+      =7, 42, 773= for connector-only, connectors plus LoRA across towers, and
+      full fine-tuning. Include text-text alongside text-image, text-audio and
+      text-video for the LoRA and full-fine-tuning arms. Connector-only samples
+      only the three media-text sources, retaining text-only evaluation.
+      The study does not claim training every modality combination.
+
+      Jina's paper, [[https://arxiv.org/html/2605.08384v1#S4][Section 4]], samples one
+      source dataset per batch by mixture weight, rather than mixing arbitrary
+      modality pairs within a batch. It uses bidirectional InfoNCE, temperature
+      =0.02=, Matryoshka dimensions =32,64,128,256,512,768= for Nano, batch
+      =256= and =15,000= steps. These are source-recipe facts, not yet our budget.
+      Agreed sampling weights are uniform per active source: =1/3= each for
+      connector-only media sources, =1/4= each including text-text for LoRA/full.
+      These are probabilities per update, not equal compute or exact counts.
+      Our loss, learning rates, input sizes, microbatches and budget remain
+      open. Agreed: a pure text-text batch bypasses trainable connectors, so
+      omit it from connector-only training and use text-only evaluation instead.
+      Report this training-distribution difference explicitly across strategies;
+      do not count a zero-gradient text-only forward as a learning update.
+
+      Dataset inventory at the pinned revisions: COCO2017 has =118,287= training
+      images and =5,000= validation images, generally five captions per image.
+      OpenSound/AudioCaps has =45,178= training rows, =2,223= validation caption
+      rows and =4,411= test caption rows; caption rows are not unique clip counts.
+      VLM2Vec/MSR-VTT =train_7k= has =7,010= videos and =140,200= captions;
+      its =test_1k= has =1,000= video-caption pairs. The currently pinned MTEB
+      MSR-VTT mirror instead exposes =879= test rows. Pick the evaluation
+      protocol and disjoint validation IDs explicitly. Prepared duplicate-free
+      MS MARCO contains =488,576= query-positive rows; reuse the NanoMSMARCO,
+      TREC DL and NQ evaluation paths, with final panel selection still open.
+      Existing local audio/video assets are bounded preflight subsets, not the
+      full training and evaluation sources for this convergence study.
+
+      Data preparation (2026-09-08):
+      - Cache the original pinned AudioCaps Parquets and MSR-VTT videos, not
+        expanded NumPy media or the old truncated preflight tables. Verified
+        repository sizes: AudioCaps =43.94 GB=, MSR-VTT =2.27 GB=; /raid has
+        sufficient space. Downloading the full repository does not add held-out
+        rows to training: use only the agreed training split (=train_7k= for
+        MSR-VTT), with validation/test sources kept separate.
+      - Reproducible command: =experiments/.venv/bin/python
+        experiments/14-text-to-any-modality/data.py=. Reuses the shared HF Hub
+        cache and the existing revision pins. Background tmux session
+        =representax-exp14-download= fetches audio then video; completion
+        records (source, revision, snapshot path) and errors go to
+        =/raid/representax-paper/14-text-to-any-modality/download.log=.
+        Both complete snapshots downloaded successfully.
+        Snapshot completion does not yet certify decoding every media file.
+      - Decode/resample/tokenize selected examples in bounded prefetched
+        batches. Full raw-media caching is deliberate here; do not describe it
+        as a demonstrated network-streaming training result. The built-in HF
+        resolver uses =streaming=False=. Real-media integration now passes;
+        the final input-size and processor configuration remains under review.
+      - Use one source per optimizer batch, selected by seeded mixture weights,
+        not example-level mixing or fixed round-robin. Library configuration is
+        =mix(..., sampling_unit="batch")=. It batches sources separately, repeats
+        them independently and checkpoints source cursors plus seeded PCG64 state.
+        Batch mode uses one producer and a bounded shared prefetch queue.
+        Default example mixing, serialization and fingerprints remain unchanged.
+        Removed the experiment-local sampler. Use the uniform weights above.
+      - Jina's existing processor handles text/image/audio/video payloads and
+        finite shapes. With approval, extended the library RetrievalCollator
+        to preserve query/document payloads rather than calling str(); the
+        processor owns modality handling and validation. Removed the duplicate
+        experiment-local PairedMediaCollator. Text strings remain unchanged;
+        callers wanting numeric values converted to text must map them explicitly.
+        Library =decode_image=, =decode_audio= and =decode_video= now decode
+        original cached media on demand; field mappings remain experiment-local.
+        Codec dependencies live in the =media= extra and experiments/uv.lock.
+        Shared uv environment synced successfully. Root all-group uv resolution
+        still has an unrelated pre-existing Transformers 5.5/5.6 legacy-parity
+        conflict; the experiment environment is independently locked and works.
+      - Validation: 142 data/collator/experiment CPU tests passed (one deselected),
+        plus five selected job/checkpoint/text integration tests. Default mixing,
+        weighted sampling, prefetch, iterator/Orbax round-trips and decoder
+        policies are covered. Tests do not establish convergence.
+      - Real GPU 0 integration: eight finite, non-skipped updates, checkpoint at
+        four, resumed to eight. Nonzero update norms at every step. Source order
+        =video,text,text,image,audio,text,image,text=. Separate real-processor
+        check reproduced the resumed batches exactly. Output directory:
+        =/raid/representax-paper/14-text-to-any-modality/integration-checkpoint-fix=.
+        This used batch two, BF16 compute/FP32 weights, text-tower LoRA rank four,
+        two-second audio, two video frames and 4096-pixel image/video limits.
+        These are integration-only settings, not the nine-run recipe.
+      - First attempt in =integration= failed saving PCG64's 128-bit state as
+        object arrays. RNG state now uses a lossless JSON string in the cursor;
+        three real Orbax round-trip cases and the GPU rerun pass. The rerun
+        emitted a nonfatal Orbax bool-metadata warning but restored successfully.
+      - Reproduce through =experiments/14-text-to-any-modality/run.py= commands
+        =prepare=, =inspect=, =check-data= (CPU) and =canary= (GPU). Use the same
+        =--output= for preparation and execution. No nine-run training launch yet.
+
+      Proposed final settings, awaiting joint review (not executable promises):
+      - Nine jobs, unchanged Nano revision and seeds; uniform weights as above.
+      - Bidirectional InfoNCE, temperature =0.02=, Matryoshka prefix dimensions
+        =32,64,128,256,512,768=. Target global batch =32= using direct execution,
+        pending capacity checks for every modality and adaptation strategy.
+      - Text maximum =1024=, sequence buckets =128,512,1024=; image budget
+        =256*256= pixels; video eight uniformly selected frames at =224*224=
+        pixels per frame; audio mono 16 kHz, up to ten seconds. These differ
+        deliberately from the tiny integration settings above.
+      - AdamW, weight decay =0.01=, clip norm =1=, 6% warmup then cosine decay;
+        proposed learning rates: connectors =2e-4=, connectors+LoRA =5e-5=,
+        full =1e-5=. LoRA rank =8=, alpha =16= across tower linear layers.
+      - Initially =2000= updates per seed; evaluations at 0, 10%, 25%, 50%, 75%
+        and 100%; resumable checkpoints at 50% and 100%. Exact held-out panels
+        and the full training-source construction must still be frozen.
+      - Do not silently enable GradCache: Jina positions have a coordinate-leading
+        axis and vision patches are flattened; generic GradCache requires
+        row-major arrays. A larger cached batch requires a separately reviewed
+        layout adaptation. The current canary only proves direct execution.
+      - Training parameter selection still needs implementing/verification for
+        connector-only and connectors+LoRA. Generic LoRAConfig selects only LoRA
+        arrays, not connectors or delimiter embeddings; it does not implement
+        those two proposed strategies by itself. Full fine-tuning is the default
+        no-adapter path but has not been capacity-tested at the proposed batch.
 **** TODO Run the nine BERT masked-language-model strong-scaling jobs [0/9] [0%]
      Run only Representax with the controlled 500M BERT encoder and a real text
      corpus for seeds =7, 42, 773= at 1, 2 and 4 GPUs. Hold the global token
