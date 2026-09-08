@@ -99,6 +99,9 @@ def main():
     if args.command == "backfill":
         for index, (modality, chunk) in enumerate(SWEEP.CELLS):
             directory = root / f"{modality}-chunk-{chunk}"
+            timing = json.loads((directory / "result.json").read_text())
+            if timing["status"] != "completed":
+                continue
             if assignments(directory):
                 continue
             replay = directory / "memory-replay"
@@ -139,7 +142,18 @@ def main():
     for modality, chunk in SWEEP.CELLS:
         directory = root / f"{modality}-chunk-{chunk}"
         reports = [buffer_memory(path) for path in assignments(directory)]
-        report.append({"modality": modality, "chunk": chunk, "executables": reports})
+        timing = json.loads((directory / "result.json").read_text())
+        report.append(
+            {
+                "modality": modality,
+                "chunk": chunk,
+                "execution_status": timing["status"],
+                "executables": reports,
+                "note": None
+                if reports
+                else "No completed compiler buffer assignment; see worker.log.",
+            }
+        )
     (root / "memory-summary.json").write_text(json.dumps(report, indent=2))
     print(f"Saved {root / 'memory-summary.json'}", flush=True)
 
