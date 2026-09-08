@@ -8,12 +8,16 @@ import json
 import os
 import shlex
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
-from experiments.preflights.image_text import _batch_unique_caption_order
-
 ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from experiments.preflights.image_text import _batch_unique_caption_order  # noqa: E402
+
 PYTHON = Path(
     os.environ.get(
         "REPRESENTAX_EXPERIMENT_PYTHON", ROOT / "experiments/.venv/bin/python"
