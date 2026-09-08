@@ -51,22 +51,20 @@ def qwen3_vl_weight_names(config: Qwen3VLConfig) -> frozenset[str]:
     }
     for index in range(config.text.num_hidden_layers):
         prefix = f"model.language_model.layers.{index}."
-        names.update(
-            prefix + suffix
-            for suffix in (
-                "input_layernorm.weight",
-                "post_attention_layernorm.weight",
-                "self_attn.q_proj.weight",
-                "self_attn.k_proj.weight",
-                "self_attn.v_proj.weight",
-                "self_attn.o_proj.weight",
-                "self_attn.q_norm.weight",
-                "self_attn.k_norm.weight",
-                "mlp.gate_proj.weight",
-                "mlp.up_proj.weight",
-                "mlp.down_proj.weight",
-            )
-        )
+        suffixes = [
+            "input_layernorm.weight",
+            "post_attention_layernorm.weight",
+            "self_attn.q_proj.weight",
+            "self_attn.k_proj.weight",
+            "self_attn.v_proj.weight",
+            "self_attn.o_proj.weight",
+            "mlp.gate_proj.weight",
+            "mlp.up_proj.weight",
+            "mlp.down_proj.weight",
+        ]
+        if config.text.qk_norm:
+            suffixes.extend(("self_attn.q_norm.weight", "self_attn.k_norm.weight"))
+        names.update(prefix + suffix for suffix in suffixes)
     for index in range(config.vision.depth):
         prefix = f"model.visual.blocks.{index}."
         names.update(
@@ -271,23 +269,31 @@ class Qwen3VLCheckpointAdapter:
                         output_size=text.hidden_size,
                         dtype=parameter_dtype,
                     ),
-                    query_norm=RMSNorm(
-                        _array(
-                            state_dict,
-                            prefix + "self_attn.q_norm.weight",
-                            (text.head_dimension,),
-                            parameter_dtype,
-                        ),
-                        text.norm_epsilon,
+                    query_norm=(
+                        RMSNorm(
+                            _array(
+                                state_dict,
+                                prefix + "self_attn.q_norm.weight",
+                                (text.head_dimension,),
+                                parameter_dtype,
+                            ),
+                            text.norm_epsilon,
+                        )
+                        if text.qk_norm
+                        else None
                     ),
-                    key_norm=RMSNorm(
-                        _array(
-                            state_dict,
-                            prefix + "self_attn.k_norm.weight",
-                            (text.head_dimension,),
-                            parameter_dtype,
-                        ),
-                        text.norm_epsilon,
+                    key_norm=(
+                        RMSNorm(
+                            _array(
+                                state_dict,
+                                prefix + "self_attn.k_norm.weight",
+                                (text.head_dimension,),
+                                parameter_dtype,
+                            ),
+                            text.norm_epsilon,
+                        )
+                        if text.qk_norm
+                        else None
                     ),
                     gate=_linear(
                         state_dict,
@@ -518,13 +524,14 @@ class Qwen3VLCheckpointAdapter:
                     prefix + "self_attn.k_proj.weight": layer.key.weight,
                     prefix + "self_attn.v_proj.weight": layer.value.weight,
                     prefix + "self_attn.o_proj.weight": layer.output.weight,
-                    prefix + "self_attn.q_norm.weight": layer.query_norm.weight,
-                    prefix + "self_attn.k_norm.weight": layer.key_norm.weight,
                     prefix + "mlp.gate_proj.weight": layer.gate.weight,
                     prefix + "mlp.up_proj.weight": layer.up.weight,
                     prefix + "mlp.down_proj.weight": layer.down.weight,
                 }
             )
+            if layer.query_norm is not None and layer.key_norm is not None:
+                state[prefix + "self_attn.q_norm.weight"] = layer.query_norm.weight
+                state[prefix + "self_attn.k_norm.weight"] = layer.key_norm.weight
         for index in range(model.vision.blocks.depth):
             block = jax.tree.map(
                 lambda value, index=index: value[index], model.vision.blocks.blocks

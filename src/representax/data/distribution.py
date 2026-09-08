@@ -445,6 +445,31 @@ def _json_fingerprint(value: Any) -> str:
     return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
+def _binding_contract(value: Any) -> Any:
+    data_contract = getattr(value, "data_contract", None)
+    if callable(data_contract):
+        return {
+            "callable": f"{type(value).__module__}.{type(value).__qualname__}",
+            "data_contract": _binding_contract(data_contract()),
+        }
+    if isinstance(value, Mapping):
+        return {str(name): _binding_contract(item) for name, item in value.items()}
+    if isinstance(value, (tuple, list)):
+        return [_binding_contract(item) for item in value]
+    if isinstance(value, Path):
+        return str(value)
+    return value
+
+
+def _partial_bindings(mapper: partial) -> dict[str, Any]:
+    return _binding_contract(
+        {
+            "args": mapper.args,
+            "keywords": mapper.keywords or {},
+        }
+    )
+
+
 def _mapper_id(mapper: Mapper) -> str:
     if isinstance(mapper, str):
         if not mapper:
@@ -465,11 +490,7 @@ def _mapper_id(mapper: Mapper) -> str:
         raise ValueError("data mappers must be named importable callables")
     identity = f"{module}.{qualname}"
     if isinstance(mapper, partial):
-        bindings = {
-            "args": mapper.args,
-            "keywords": mapper.keywords or {},
-        }
-        identity += ":partial:" + _json_fingerprint(bindings)
+        identity += ":partial:" + _json_fingerprint(_partial_bindings(mapper))
     return identity
 
 
@@ -499,9 +520,7 @@ def _implementation_contract(function: Callable[..., Any]) -> dict[str, str]:
         digest_kind: hashlib.sha256(implementation).hexdigest(),
     }
     if isinstance(function, partial):
-        contract["bindings_sha256"] = _json_fingerprint(
-            {"args": function.args, "keywords": function.keywords or {}}
-        )
+        contract["bindings_sha256"] = _json_fingerprint(_partial_bindings(function))
     state = getattr(function, "data_contract", None)
     if callable(state):
         contract["state_sha256"] = _json_fingerprint(state())

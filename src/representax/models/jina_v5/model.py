@@ -129,10 +129,11 @@ class JinaV5TextLayer(eqx.Module):
             repeats = config.num_attention_heads // config.num_key_value_heads
             key = jnp.repeat(key, repeats, axis=2)
             value = jnp.repeat(value, repeats, axis=2)
-        target = jnp.arange(sequence)[:, None]
-        source = jnp.arange(sequence)[None, :]
-        allowed = (source <= target)[None, None]
-        allowed = allowed & attention_mask[:, None, None, :].astype(bool)
+        allowed = attention_mask[:, None, None, :].astype(bool)
+        if config.causal_attention:
+            target = jnp.arange(sequence)[:, None]
+            source = jnp.arange(sequence)[None, :]
+            allowed = allowed & (source <= target)[None, None]
         attended = dot_product_attention(
             query.astype(value.dtype),
             key.astype(value.dtype),
@@ -179,13 +180,18 @@ class JinaV5TextTower(eqx.Module):
         self,
         batch: JinaV5TextBatch,
         *,
+        inputs_embeds: Float[Array, "batch sequence hidden"] | None = None,
         compute_dtype: jnp.dtype,
         attention_implementation: AttentionImplementation,
         rematerialization: RematerializationPolicy,
     ) -> Float[Array, "batch sequence hidden"]:
-        hidden = embedding_lookup(self.token_embedding, batch.input_ids).astype(
-            compute_dtype
-        )
+        hidden = (
+            embedding_lookup(self.token_embedding, batch.input_ids)
+            if inputs_embeds is None
+            else inputs_embeds
+        ).astype(compute_dtype)
+        if hidden.shape != (*batch.input_ids.shape, self.config.hidden_size):
+            raise ValueError("inputs_embeds must align with token inputs")
         batch_size, sequence = batch.input_ids.shape
         if sequence > self.config.max_position_embeddings:
             raise ValueError("sequence exceeds max_position_embeddings")

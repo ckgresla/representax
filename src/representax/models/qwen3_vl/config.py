@@ -33,6 +33,7 @@ class Qwen3VLTextConfig(FrozenConfig):
     mrope_section: tuple[int, int, int]
     norm_epsilon: float
     pad_token_id: int
+    qk_norm: bool = True
     initializer_range: float = 0.02
 
     @model_validator(mode="after")

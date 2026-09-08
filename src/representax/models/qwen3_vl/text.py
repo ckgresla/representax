@@ -70,8 +70,8 @@ class Qwen3VLTextLayer(eqx.Module):
     key: Linear
     value: Linear
     output: Linear
-    query_norm: RMSNorm
-    key_norm: RMSNorm
+    query_norm: RMSNorm | None
+    key_norm: RMSNorm | None
     gate: Linear
     up: Linear
     down: Linear
@@ -121,11 +121,15 @@ class Qwen3VLTextLayer(eqx.Module):
                 scale=config.initializer_range,
                 dtype=dtype,
             ),
-            query_norm=RMSNorm(
-                jnp.ones((config.head_dimension,), dtype), config.norm_epsilon
+            query_norm=(
+                RMSNorm(jnp.ones((config.head_dimension,), dtype), config.norm_epsilon)
+                if config.qk_norm
+                else None
             ),
-            key_norm=RMSNorm(
-                jnp.ones((config.head_dimension,), dtype), config.norm_epsilon
+            key_norm=(
+                RMSNorm(jnp.ones((config.head_dimension,), dtype), config.norm_epsilon)
+                if config.qk_norm
+                else None
             ),
             gate=Linear.init(
                 hidden,
@@ -181,8 +185,10 @@ class Qwen3VLTextLayer(eqx.Module):
             config.num_key_value_heads,
             config.head_dimension,
         )
-        query = self.query_norm(query)
-        key = self.key_norm(key)
+        if self.query_norm is not None:
+            query = self.query_norm(query)
+        if self.key_norm is not None:
+            key = self.key_norm(key)
         query = query * cosine[:, :, None] + _rotate_half(query) * sine[:, :, None]
         key = key * cosine[:, :, None] + _rotate_half(key) * sine[:, :, None]
         if config.num_attention_heads != config.num_key_value_heads:

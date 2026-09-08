@@ -14,7 +14,11 @@ import numpy as np
 from representax.core import Route
 from representax.models.processing import Processor, select_static_shape_bucket
 
-from .config import Qwen2_5OmniConfig, Qwen2_5OmniVisionConfig
+from .config import (
+    Qwen2_5OmniAudioConfig,
+    Qwen2_5OmniConfig,
+    Qwen2_5OmniVisionConfig,
+)
 from .model import Qwen2_5OmniBatch
 
 
@@ -135,9 +139,9 @@ def _video_frames(value: Any) -> tuple[np.ndarray, float]:
     return frames, fps
 
 
-def _process_videos(
+def process_video_frames(
     videos: Sequence[Any],
-    config: Qwen2_5OmniConfig,
+    config: Qwen2_5OmniVisionConfig,
     *,
     min_pixels: int,
     max_pixels: int,
@@ -148,9 +152,9 @@ def _process_videos(
 
     Image = import_module("PIL.Image")
 
-    patch = config.vision.patch_size
-    temporal = config.vision.temporal_patch_size
-    merge = config.vision.spatial_merge_size
+    patch = config.patch_size
+    temporal = config.temporal_patch_size
+    merge = config.spatial_merge_size
     factor = patch * merge
     mean = np.asarray(image_mean, dtype=np.float32)
     std = np.asarray(image_std, dtype=np.float32)
@@ -206,7 +210,7 @@ def _process_videos(
             merge,
             patch,
         ).transpose(0, 3, 6, 4, 7, 2, 1, 5, 8)
-        all_patches.append(values.reshape((-1, config.vision.patch_dimension)))
+        all_patches.append(values.reshape((-1, config.patch_dimension)))
         all_grids.append((grid_time, grid_height, grid_width))
         seconds_per_grid.append(temporal / fps)
     return {
@@ -328,24 +332,25 @@ def vision_layout(
 def audio_layout(
     input_features: np.ndarray,
     feature_attention_mask: np.ndarray,
-    config: Qwen2_5OmniConfig,
+    config: Qwen2_5OmniAudioConfig | Qwen2_5OmniConfig,
     *,
     chunk_count_buckets: Sequence[int],
     token_count_buckets: Sequence[int],
 ) -> dict[str, np.ndarray]:
     """Pack each audio into fixed row-major chunks and AvgPool index pairs."""
 
+    audio_config = config.audio if isinstance(config, Qwen2_5OmniConfig) else config
     features = np.asarray(input_features, dtype=np.float32)
     mask = np.asarray(feature_attention_mask, dtype=bool)
     if features.ndim != 3 or features.shape[:2] != (
         mask.shape[0],
-        config.audio.num_mel_bins,
+        audio_config.num_mel_bins,
     ):
         raise ValueError("audio features must have shape [audio, mel, feature]")
     if mask.shape != (features.shape[0], features.shape[2]):
         raise ValueError("feature_attention_mask must align with audio features")
-    chunk_size = 2 * config.audio.window_size
-    cnn_size = config.audio.window_size
+    chunk_size = 2 * audio_config.window_size
+    cnn_size = audio_config.window_size
     audio_chunks = []
     audio_chunk_lengths = []
     audio_pairs = []
@@ -357,7 +362,7 @@ def audio_layout(
         packed_indices = []
         for start in range(0, length, chunk_size):
             stop = min(start + chunk_size, length)
-            chunk = np.zeros((config.audio.num_mel_bins, chunk_size), np.float32)
+            chunk = np.zeros((audio_config.num_mel_bins, chunk_size), np.float32)
             chunk[:, : stop - start] = values[:, start:stop]
             chunk_index = len(chunks)
             chunks.append(chunk)
@@ -384,7 +389,7 @@ def audio_layout(
         (required_chunks,), tuple((value,) for value in chunk_count_buckets)
     )[0]
     padded_chunks = np.zeros(
-        (features.shape[0], chunk_bucket, config.audio.num_mel_bins, chunk_size),
+        (features.shape[0], chunk_bucket, audio_config.num_mel_bins, chunk_size),
         dtype=np.float32,
     )
     feature_valid = np.zeros((features.shape[0], chunk_bucket, chunk_size), dtype=bool)
@@ -575,7 +580,7 @@ def batch_from_processor_output(
         audio = audio_layout(
             np.asarray(features["input_features"]),
             np.asarray(features["feature_attention_mask"]),
-            config,
+            config.audio,
             chunk_count_buckets=audio_chunk_count_buckets,
             token_count_buckets=audio_token_count_buckets,
         )
@@ -876,9 +881,9 @@ def make_qwen2_5_omni_processor(
         video_features = (
             {}
             if not videos
-            else _process_videos(
+            else process_video_frames(
                 videos,
-                config,
+                config.vision,
                 min_pixels=video_min_pixels,
                 max_pixels=video_max_pixels,
                 image_mean=image_processor.image_mean,
@@ -948,5 +953,6 @@ __all__ = [
     "batch_from_processor_output",
     "make_qwen2_5_omni_processor",
     "multimodal_position_ids",
+    "process_video_frames",
     "vision_layout",
 ]

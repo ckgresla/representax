@@ -34,6 +34,7 @@ from .processing import (
     batch_from_processor_output,
     make_qwen2_5_omni_processor,
     multimodal_position_ids,
+    process_video_frames,
     vision_layout,
 )
 from .text import (
@@ -82,6 +83,7 @@ __all__ = [
     "load_qwen2_5_omni",
     "make_qwen2_5_omni_processor",
     "multimodal_position_ids",
+    "process_video_frames",
     "audio_layout",
     "batch_from_processor_output",
     "qwen2_5_omni_weight_names",

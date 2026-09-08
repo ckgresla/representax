@@ -32,6 +32,7 @@ from .audio import (
 from .config import (
     LCO_OMNI_3B_2605_MODEL_ID,
     LCO_OMNI_3B_2605_REVISION,
+    Qwen2_5OmniAudioConfig,
     Qwen2_5OmniConfig,
 )
 from .model import Qwen2_5OmniEncoder
@@ -189,6 +190,192 @@ def _required_bias(layer: Linear | LayerNorm) -> jax.Array:
     if layer.bias is None:
         raise AssertionError("checkpoint-compatible projection requires a bias")
     return layer.bias
+
+
+def qwen2_5_omni_audio_from_state_dict(
+    config: Qwen2_5OmniAudioConfig,
+    state_dict: Mapping[str, Any],
+    *,
+    parameter_dtype: jnp.dtype,
+    projection_prefix: str = "audio_tower.proj",
+) -> Qwen2_5OmniAudioTower:
+    """Build the shared Qwen2.5-Omni audio tower from one checkpoint layout."""
+
+    layers = []
+    for index in range(config.num_hidden_layers):
+        prefix = f"audio_tower.layers.{index}."
+        layers.append(
+            Qwen2_5OmniAudioLayer(
+                attention_norm=_layer_norm(
+                    state_dict,
+                    prefix + "self_attn_layer_norm",
+                    config.hidden_size,
+                    config.layer_norm_epsilon,
+                    parameter_dtype,
+                ),
+                attention=Qwen2_5OmniAudioAttention(
+                    query=_linear(
+                        state_dict,
+                        prefix + "self_attn.q_proj",
+                        input_size=config.hidden_size,
+                        output_size=config.hidden_size,
+                        dtype=parameter_dtype,
+                        bias=True,
+                    ),
+                    key=_linear(
+                        state_dict,
+                        prefix + "self_attn.k_proj",
+                        input_size=config.hidden_size,
+                        output_size=config.hidden_size,
+                        dtype=parameter_dtype,
+                    ),
+                    value=_linear(
+                        state_dict,
+                        prefix + "self_attn.v_proj",
+                        input_size=config.hidden_size,
+                        output_size=config.hidden_size,
+                        dtype=parameter_dtype,
+                        bias=True,
+                    ),
+                    output=_linear(
+                        state_dict,
+                        prefix + "self_attn.out_proj",
+                        input_size=config.hidden_size,
+                        output_size=config.hidden_size,
+                        dtype=parameter_dtype,
+                        bias=True,
+                    ),
+                ),
+                mlp_norm=_layer_norm(
+                    state_dict,
+                    prefix + "final_layer_norm",
+                    config.hidden_size,
+                    config.layer_norm_epsilon,
+                    parameter_dtype,
+                ),
+                up=_linear(
+                    state_dict,
+                    prefix + "fc1",
+                    input_size=config.hidden_size,
+                    output_size=config.intermediate_size,
+                    dtype=parameter_dtype,
+                    bias=True,
+                ),
+                down=_linear(
+                    state_dict,
+                    prefix + "fc2",
+                    input_size=config.intermediate_size,
+                    output_size=config.hidden_size,
+                    dtype=parameter_dtype,
+                    bias=True,
+                ),
+            )
+        )
+    return Qwen2_5OmniAudioTower(
+        conv1=Conv1D(
+            weight=_array(
+                state_dict,
+                "audio_tower.conv1.weight",
+                (config.hidden_size, config.num_mel_bins, 3),
+                parameter_dtype,
+            ),
+            bias=_array(
+                state_dict,
+                "audio_tower.conv1.bias",
+                (config.hidden_size,),
+                parameter_dtype,
+            ),
+            stride=1,
+        ),
+        conv2=Conv1D(
+            weight=_array(
+                state_dict,
+                "audio_tower.conv2.weight",
+                (config.hidden_size, config.hidden_size, 3),
+                parameter_dtype,
+            ),
+            bias=_array(
+                state_dict,
+                "audio_tower.conv2.bias",
+                (config.hidden_size,),
+                parameter_dtype,
+            ),
+            stride=2,
+        ),
+        layers=Qwen2_5OmniAudioLayerStack.from_layers(tuple(layers)),
+        final_norm=_layer_norm(
+            state_dict,
+            "audio_tower.ln_post",
+            config.hidden_size,
+            config.layer_norm_epsilon,
+            parameter_dtype,
+        ),
+        projection=_linear(
+            state_dict,
+            projection_prefix,
+            input_size=config.hidden_size,
+            output_size=config.output_size,
+            dtype=parameter_dtype,
+            bias=True,
+        ),
+        bos_eos_embedding=_array(
+            state_dict,
+            "audio_tower.audio_bos_eos_token.weight",
+            (2, int(state_dict["audio_tower.audio_bos_eos_token.weight"].shape[1])),
+            parameter_dtype,
+        ),
+        config=config,
+    )
+
+
+def qwen2_5_omni_audio_state_dict(
+    model: Qwen2_5OmniAudioTower,
+    *,
+    projection_prefix: str = "audio_tower.proj",
+) -> dict[str, jax.Array]:
+    """Map the shared audio tower back to a selected projection layout."""
+
+    state = {
+        "audio_tower.conv1.weight": model.conv1.weight,
+        "audio_tower.conv1.bias": model.conv1.bias,
+        "audio_tower.conv2.weight": model.conv2.weight,
+        "audio_tower.conv2.bias": model.conv2.bias,
+        "audio_tower.ln_post.weight": model.final_norm.weight,
+        "audio_tower.ln_post.bias": _required_bias(model.final_norm),
+        projection_prefix + ".weight": model.projection.weight,
+        projection_prefix + ".bias": _required_bias(model.projection),
+        "audio_tower.audio_bos_eos_token.weight": model.bos_eos_embedding,
+    }
+    for index in range(model.layers.depth):
+        layer = jax.tree.map(
+            lambda value, index=index: value[index],
+            model.layers.layers,
+        )
+        prefix = f"audio_tower.layers.{index}."
+        state.update(
+            {
+                prefix + "self_attn_layer_norm.weight": layer.attention_norm.weight,
+                prefix + "self_attn_layer_norm.bias": _required_bias(
+                    layer.attention_norm
+                ),
+                prefix + "final_layer_norm.weight": layer.mlp_norm.weight,
+                prefix + "final_layer_norm.bias": _required_bias(layer.mlp_norm),
+                prefix + "self_attn.q_proj.weight": layer.attention.query.weight,
+                prefix + "self_attn.q_proj.bias": _required_bias(layer.attention.query),
+                prefix + "self_attn.k_proj.weight": layer.attention.key.weight,
+                prefix + "self_attn.v_proj.weight": layer.attention.value.weight,
+                prefix + "self_attn.v_proj.bias": _required_bias(layer.attention.value),
+                prefix + "self_attn.out_proj.weight": layer.attention.output.weight,
+                prefix + "self_attn.out_proj.bias": _required_bias(
+                    layer.attention.output
+                ),
+                prefix + "fc1.weight": layer.up.weight,
+                prefix + "fc1.bias": _required_bias(layer.up),
+                prefix + "fc2.weight": layer.down.weight,
+                prefix + "fc2.bias": _required_bias(layer.down),
+            }
+        )
+    return state
 
 
 @dataclass(frozen=True, slots=True)
@@ -448,131 +635,10 @@ class Qwen2_5OmniCheckpointAdapter:
             config=vision,
         )
 
-        audio = config.audio
-        audio_layers = []
-        for index in range(audio.num_hidden_layers):
-            prefix = f"audio_tower.layers.{index}."
-            audio_layers.append(
-                Qwen2_5OmniAudioLayer(
-                    attention_norm=_layer_norm(
-                        state_dict,
-                        prefix + "self_attn_layer_norm",
-                        audio.hidden_size,
-                        audio.layer_norm_epsilon,
-                        parameter_dtype,
-                    ),
-                    attention=Qwen2_5OmniAudioAttention(
-                        query=_linear(
-                            state_dict,
-                            prefix + "self_attn.q_proj",
-                            input_size=audio.hidden_size,
-                            output_size=audio.hidden_size,
-                            dtype=parameter_dtype,
-                            bias=True,
-                        ),
-                        key=_linear(
-                            state_dict,
-                            prefix + "self_attn.k_proj",
-                            input_size=audio.hidden_size,
-                            output_size=audio.hidden_size,
-                            dtype=parameter_dtype,
-                        ),
-                        value=_linear(
-                            state_dict,
-                            prefix + "self_attn.v_proj",
-                            input_size=audio.hidden_size,
-                            output_size=audio.hidden_size,
-                            dtype=parameter_dtype,
-                            bias=True,
-                        ),
-                        output=_linear(
-                            state_dict,
-                            prefix + "self_attn.out_proj",
-                            input_size=audio.hidden_size,
-                            output_size=audio.hidden_size,
-                            dtype=parameter_dtype,
-                            bias=True,
-                        ),
-                    ),
-                    mlp_norm=_layer_norm(
-                        state_dict,
-                        prefix + "final_layer_norm",
-                        audio.hidden_size,
-                        audio.layer_norm_epsilon,
-                        parameter_dtype,
-                    ),
-                    up=_linear(
-                        state_dict,
-                        prefix + "fc1",
-                        input_size=audio.hidden_size,
-                        output_size=audio.intermediate_size,
-                        dtype=parameter_dtype,
-                        bias=True,
-                    ),
-                    down=_linear(
-                        state_dict,
-                        prefix + "fc2",
-                        input_size=audio.intermediate_size,
-                        output_size=audio.hidden_size,
-                        dtype=parameter_dtype,
-                        bias=True,
-                    ),
-                )
-            )
-        audio_tower = Qwen2_5OmniAudioTower(
-            conv1=Conv1D(
-                weight=_array(
-                    state_dict,
-                    "audio_tower.conv1.weight",
-                    (audio.hidden_size, audio.num_mel_bins, 3),
-                    parameter_dtype,
-                ),
-                bias=_array(
-                    state_dict,
-                    "audio_tower.conv1.bias",
-                    (audio.hidden_size,),
-                    parameter_dtype,
-                ),
-                stride=1,
-            ),
-            conv2=Conv1D(
-                weight=_array(
-                    state_dict,
-                    "audio_tower.conv2.weight",
-                    (audio.hidden_size, audio.hidden_size, 3),
-                    parameter_dtype,
-                ),
-                bias=_array(
-                    state_dict,
-                    "audio_tower.conv2.bias",
-                    (audio.hidden_size,),
-                    parameter_dtype,
-                ),
-                stride=2,
-            ),
-            layers=Qwen2_5OmniAudioLayerStack.from_layers(tuple(audio_layers)),
-            final_norm=_layer_norm(
-                state_dict,
-                "audio_tower.ln_post",
-                audio.hidden_size,
-                audio.layer_norm_epsilon,
-                parameter_dtype,
-            ),
-            projection=_linear(
-                state_dict,
-                "audio_tower.proj",
-                input_size=audio.hidden_size,
-                output_size=audio.output_size,
-                dtype=parameter_dtype,
-                bias=True,
-            ),
-            bos_eos_embedding=_array(
-                state_dict,
-                "audio_tower.audio_bos_eos_token.weight",
-                (2, audio.output_size),
-                parameter_dtype,
-            ),
-            config=audio,
+        audio_tower = qwen2_5_omni_audio_from_state_dict(
+            config.audio,
+            state_dict,
+            parameter_dtype=parameter_dtype,
         )
 
         return Qwen2_5OmniEncoder(
@@ -654,15 +720,6 @@ class Qwen2_5OmniCheckpointAdapter:
             "visual.merger.mlp.0.bias": _required_bias(model.vision.merger.up),
             "visual.merger.mlp.2.weight": model.vision.merger.down.weight,
             "visual.merger.mlp.2.bias": _required_bias(model.vision.merger.down),
-            "audio_tower.conv1.weight": model.audio.conv1.weight,
-            "audio_tower.conv1.bias": model.audio.conv1.bias,
-            "audio_tower.conv2.weight": model.audio.conv2.weight,
-            "audio_tower.conv2.bias": model.audio.conv2.bias,
-            "audio_tower.ln_post.weight": model.audio.final_norm.weight,
-            "audio_tower.ln_post.bias": _required_bias(model.audio.final_norm),
-            "audio_tower.proj.weight": model.audio.projection.weight,
-            "audio_tower.proj.bias": _required_bias(model.audio.projection),
-            "audio_tower.audio_bos_eos_token.weight": model.audio.bos_eos_embedding,
         }
         for index in range(model.text.layers.depth):
             layer = model.text.layers.layer(index)
@@ -711,39 +768,7 @@ class Qwen2_5OmniCheckpointAdapter:
                     prefix + "mlp.down_proj.bias": _required_bias(block.mlp.down),
                 }
             )
-        for index in range(model.audio.layers.depth):
-            layer = jax.tree.map(
-                lambda value, index=index: value[index],
-                model.audio.layers.layers,
-            )
-            prefix = f"audio_tower.layers.{index}."
-            state.update(
-                {
-                    prefix + "self_attn_layer_norm.weight": layer.attention_norm.weight,
-                    prefix + "self_attn_layer_norm.bias": _required_bias(
-                        layer.attention_norm
-                    ),
-                    prefix + "final_layer_norm.weight": layer.mlp_norm.weight,
-                    prefix + "final_layer_norm.bias": _required_bias(layer.mlp_norm),
-                    prefix + "self_attn.q_proj.weight": layer.attention.query.weight,
-                    prefix + "self_attn.q_proj.bias": _required_bias(
-                        layer.attention.query
-                    ),
-                    prefix + "self_attn.k_proj.weight": layer.attention.key.weight,
-                    prefix + "self_attn.v_proj.weight": layer.attention.value.weight,
-                    prefix + "self_attn.v_proj.bias": _required_bias(
-                        layer.attention.value
-                    ),
-                    prefix + "self_attn.out_proj.weight": layer.attention.output.weight,
-                    prefix + "self_attn.out_proj.bias": _required_bias(
-                        layer.attention.output
-                    ),
-                    prefix + "fc1.weight": layer.up.weight,
-                    prefix + "fc1.bias": _required_bias(layer.up),
-                    prefix + "fc2.weight": layer.down.weight,
-                    prefix + "fc2.bias": _required_bias(layer.down),
-                }
-            )
+        state.update(qwen2_5_omni_audio_state_dict(model.audio))
         return state
 
     def save(self, model: Qwen2_5OmniEncoder, directory: str | Path) -> Path:
@@ -776,4 +801,9 @@ class Qwen2_5OmniCheckpointAdapter:
         return target
 
 
-__all__ = ["Qwen2_5OmniCheckpointAdapter", "qwen2_5_omni_weight_names"]
+__all__ = [
+    "Qwen2_5OmniCheckpointAdapter",
+    "qwen2_5_omni_audio_from_state_dict",
+    "qwen2_5_omni_audio_state_dict",
+    "qwen2_5_omni_weight_names",
+]
