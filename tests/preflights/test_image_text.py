@@ -11,6 +11,7 @@ from experiments.preflights.image_text import (
     ImageTextRetrievalCollator,
     _batch_unique_caption_order,
     _distinct_captions,
+    _download_image,
     _parser,
     _representax_job,
     _select_coco_rows,
@@ -32,6 +33,17 @@ class _Processor:
 
 def _image(path) -> None:
     Image.fromarray(np.full((8, 8, 3), 127, dtype=np.uint8)).save(path)
+
+
+def test_image_download_reuses_a_verified_file(tmp_path, monkeypatch) -> None:
+    path = tmp_path / "image.jpg"
+    _image(path)
+
+    def fail(*args, **kwargs):
+        raise AssertionError((args, kwargs))
+
+    monkeypatch.setattr("urllib.request.urlopen", fail)
+    _download_image("https://invalid.example/image.jpg", path)
 
 
 def test_frozen_image_text_contract() -> None:

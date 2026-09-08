@@ -44,6 +44,7 @@ FRAMEWORKS = ("representax", "sentence-transformers")
 TRAINING_IMAGES = 512
 CAPTIONS_PER_IMAGE = 4
 GRAD_CACHE_MICRO_BATCH = 8
+DOWNLOAD_WORKERS = 64
 EVALUATION_BATCH_SIZE = 32
 
 
@@ -135,6 +136,14 @@ def _write_jsonl(path: Path, rows: Iterable[Mapping[str, Any]]) -> int:
 def _download_image(url: str, destination: Path) -> None:
     from PIL import Image
 
+    if destination.is_file():
+        try:
+            with Image.open(destination) as image:
+                image.verify()
+        except OSError:
+            pass
+        else:
+            return
     request = urllib.request.Request(url, headers={"User-Agent": "representax/1"})
     last_error: BaseException | None = None
     for attempt in range(4):
@@ -261,7 +270,7 @@ def _prepare_coco(
         captions_per_image=captions_per_image,
     )
     image_directory = directory / "coco-images"
-    image_directory.mkdir()
+    image_directory.mkdir(exist_ok=True)
 
     def materialize(
         item: tuple[int, Mapping[str, Any], tuple[str, ...]],
@@ -278,7 +287,7 @@ def _prepare_coco(
             "source_url": url,
         }
 
-    with ThreadPoolExecutor(max_workers=16) as executor:
+    with ThreadPoolExecutor(max_workers=DOWNLOAD_WORKERS) as executor:
         records = tuple(executor.map(materialize, rows))
     presentations = []
     for caption_index in range(captions_per_image):
@@ -322,7 +331,7 @@ def _prepare_flickr(directory: Path) -> tuple[tuple[Path, ...], dict[int, set[in
         split=dataset["split"],
     )
     image_directory = directory / "flickr-images"
-    image_directory.mkdir()
+    image_directory.mkdir(exist_ok=True)
     document_ids = {str(row["id"]): index for index, row in enumerate(corpus)}
     query_ids = {
         str(row["id"]): len(document_ids) + index for index, row in enumerate(queries)
@@ -396,7 +405,9 @@ def prepare_data(
         raise ValueError("training_images must be positive")
     if captions_per_image <= 0:
         raise ValueError("captions_per_image must be positive")
-    output.mkdir(parents=True, exist_ok=False)
+    if (output / "manifest.json").exists():
+        raise FileExistsError(f"prepared image-text data already exists: {output}")
+    output.mkdir(parents=True, exist_ok=True)
     coco_images = _prepare_coco(
         output,
         training_images,
