@@ -11,7 +11,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-import numpy as np
+from experiments.preflights.image_text import _batch_unique_caption_order
 
 ROOT = Path(__file__).resolve().parents[2]
 PYTHON = Path(
@@ -53,7 +53,7 @@ def contract() -> dict[str, Any]:
             "distinct_captions_per_image": CAPTIONS_PER_IMAGE,
             "presentations": TRAINING_IMAGES * CAPTIONS_PER_IMAGE,
             "batch_order": (
-                "seeded caption-cycle permutations with unique images per batch"
+                "seeded caption cycles with unique images and captions per batch"
             ),
         },
         "seeds": list(SEEDS),
@@ -148,10 +148,19 @@ def _seed_training_files() -> dict[str, Any]:
     for seed in SEEDS:
         ordered = []
         for caption_index, rows in grouped.items():
-            permutation = np.random.default_rng(seed + caption_index).permutation(
-                len(rows)
+            ordered.extend(
+                _batch_unique_caption_order(
+                    rows,
+                    batch_size=GLOBAL_BATCH_SIZE,
+                    seed=seed + caption_index,
+                )
             )
-            ordered.extend(rows[int(index)] for index in permutation)
+        for start in range(0, len(ordered), GLOBAL_BATCH_SIZE):
+            batch = ordered[start : start + GLOBAL_BATCH_SIZE]
+            if len({row["image_id"] for row in batch}) != len(batch):
+                raise RuntimeError("COCO training batch contains duplicate images")
+            if len({row["caption"] for row in batch}) != len(batch):
+                raise RuntimeError("COCO training batch contains duplicate captions")
         path = DATA / f"train-seed-{seed}.jsonl"
         _write_jsonl(path, ordered)
         seed_files[str(seed)] = {
@@ -159,6 +168,7 @@ def _seed_training_files() -> dict[str, Any]:
             "rows": len(ordered),
             "sha256": _sha256(path),
             "duplicate_images_within_batch": 0,
+            "duplicate_captions_within_batch": 0,
         }
     return seed_files
 

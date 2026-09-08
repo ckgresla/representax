@@ -9,6 +9,7 @@ from experiments.preflights.image_text import (
     GRAD_CACHE_MICRO_BATCH,
     ImageTextEvaluationCollator,
     ImageTextRetrievalCollator,
+    _batch_unique_caption_order,
     _distinct_captions,
     _parser,
     _representax_job,
@@ -51,23 +52,7 @@ def test_training_captions_are_distinct_and_nonempty() -> None:
     ) == ("first", "second", "third", "fourth")
 
 
-def test_distinct_captions_checks_exclusions_without_copying_them() -> None:
-    class MembershipOnly:
-        def __contains__(self, value):
-            return value == "blocked"
-
-        def __iter__(self):
-            raise AssertionError("the global exclusion collection must not be copied")
-
-        def __len__(self):
-            return 1
-
-    assert _distinct_captions(
-        ("blocked", "kept"), count=1, excluded=MembershipOnly()
-    ) == ("kept",)
-
-
-def test_coco_selection_skips_duplicate_media_and_captions() -> None:
+def test_coco_selection_skips_duplicate_media_and_local_captions() -> None:
     rows = (
         {"image_id": 1, "captions": ("a", "b", "c", "d")},
         {"image_id": 1, "captions": ("e", "f", "g", "h")},
@@ -79,8 +64,21 @@ def test_coco_selection_skips_duplicate_media_and_captions() -> None:
 
     assert [(index, captions) for index, _, captions in selected] == [
         (0, ("a", "b", "c", "d")),
-        (3, ("e", "f", "g", "h")),
+        (2, ("a", "i", "j", "k")),
     ]
+
+
+def test_repeated_captions_are_distributed_across_complete_batches() -> None:
+    rows = [
+        {"image_id": index, "caption": caption}
+        for index, caption in enumerate(("same", "same", "a", "b", "c", "d"))
+    ]
+
+    ordered = _batch_unique_caption_order(rows, batch_size=3, seed=7)
+
+    batches = (ordered[:3], ordered[3:])
+    assert all(len({row["image_id"] for row in batch}) == 3 for batch in batches)
+    assert all(len({row["caption"] for row in batch}) == 3 for batch in batches)
 
 
 def test_image_text_collators_preserve_modalities_and_validity(tmp_path) -> None:

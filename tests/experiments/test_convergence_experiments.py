@@ -112,6 +112,24 @@ def test_image_text_contract_and_command_are_frozen() -> None:
     assert "--symmetric" in command
 
 
+def test_image_text_order_distributes_repeated_captions_across_batches() -> None:
+    experiment = _experiment(13, "image-text-convergence")
+    previous_batch_size = experiment.GLOBAL_BATCH_SIZE
+    experiment.GLOBAL_BATCH_SIZE = 3
+    rows = [
+        {"image_id": index, "caption": caption}
+        for index, caption in enumerate(("same", "same", "a", "b", "c", "d"))
+    ]
+    try:
+        ordered = experiment._batch_unique_caption_order(rows, batch_size=3, seed=7)
+    finally:
+        experiment.GLOBAL_BATCH_SIZE = previous_batch_size
+
+    batches = (ordered[:3], ordered[3:])
+    assert all(len({row["image_id"] for row in batch}) == 3 for batch in batches)
+    assert all(len({row["caption"] for row in batch}) == 3 for batch in batches)
+
+
 @pytest.mark.parametrize(
     ("number", "name"),
     (

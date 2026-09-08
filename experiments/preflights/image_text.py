@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import gc
 import hashlib
+import heapq
 import io
 import json
 import os
@@ -13,7 +14,7 @@ import subprocess
 import sys
 import time
 import urllib.request
-from collections.abc import Collection, Iterable, Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -155,13 +156,12 @@ def _distinct_captions(
     values: Iterable[Any],
     *,
     count: int,
-    excluded: Collection[str] = (),
 ) -> tuple[str, ...]:
     selected = []
     seen = set()
     for value in values:
         caption = str(value).strip()
-        if not caption or caption in seen or caption in excluded:
+        if not caption or caption in seen:
             continue
         seen.add(caption)
         selected.append(caption)
@@ -180,7 +180,6 @@ def _select_coco_rows(
 ) -> tuple[tuple[int, Mapping[str, Any], tuple[str, ...]], ...]:
     selected = []
     image_ids: set[int] = set()
-    captions: set[str] = set()
     for source_index, row in enumerate(rows):
         image_id = int(row["image_id"])
         if image_id in image_ids:
@@ -189,16 +188,59 @@ def _select_coco_rows(
             chosen = _distinct_captions(
                 row["captions"],
                 count=captions_per_image,
-                excluded=captions,
             )
         except ValueError:
             continue
         image_ids.add(image_id)
-        captions.update(chosen)
         selected.append((source_index, row, chosen))
         if len(selected) == count:
             return tuple(selected)
     raise ValueError(f"COCO contains only {len(selected)} unique usable rows")
+
+
+def _batch_unique_caption_order(
+    rows: Sequence[dict[str, Any]],
+    *,
+    batch_size: int,
+    seed: int,
+) -> tuple[dict[str, Any], ...]:
+    if len(rows) % batch_size:
+        raise ValueError("each COCO caption cycle must contain complete batches")
+    batch_count = len(rows) // batch_size
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        grouped.setdefault(str(row["caption"]), []).append(row)
+    largest_group = max(map(len, grouped.values()))
+    if largest_group > batch_count:
+        raise ValueError(
+            "a repeated COCO caption cannot be distributed across unique batches: "
+            f"{largest_group} occurrences over {batch_count} batches"
+        )
+
+    random = np.random.default_rng(seed)
+    tie_order = random.permutation(batch_count)
+    batches: list[list[dict[str, Any]]] = [[] for _ in range(batch_count)]
+    available = [(0, int(tie_order[index]), index) for index in range(batch_count)]
+    heapq.heapify(available)
+    groups = sorted(
+        grouped.values(),
+        key=lambda group: (-len(group), int(random.integers(0, 2**31))),
+    )
+    for group in groups:
+        group_order = random.permutation(len(group))
+        selected_batches = [heapq.heappop(available) for _ in group]
+        for (_, tie, index), row_index in zip(
+            selected_batches, group_order, strict=True
+        ):
+            batches[index].append(group[int(row_index)])
+            heapq.heappush(available, (len(batches[index]), tie, index))
+    if any(len(batch) != batch_size for batch in batches):
+        raise RuntimeError("caption allocation did not produce complete COCO batches")
+
+    ordered = []
+    for batch in batches:
+        ordered.extend(batch[int(index)] for index in random.permutation(len(batch)))
+    return tuple(ordered)
 
 
 def _prepare_coco(
@@ -238,15 +280,23 @@ def _prepare_coco(
 
     with ThreadPoolExecutor(max_workers=16) as executor:
         records = tuple(executor.map(materialize, rows))
-    presentations = tuple(
-        {
-            **{name: value for name, value in record.items() if name != "captions"},
-            "caption": record["captions"][caption_index],
-            "caption_index": caption_index,
-        }
-        for caption_index in range(captions_per_image)
-        for record in records
-    )
+    presentations = []
+    for caption_index in range(captions_per_image):
+        cycle = [
+            {
+                **{name: value for name, value in record.items() if name != "captions"},
+                "caption": record["captions"][caption_index],
+                "caption_index": caption_index,
+            }
+            for record in records
+        ]
+        presentations.extend(
+            _batch_unique_caption_order(
+                cycle,
+                batch_size=frozen_contract().global_batch_size,
+                seed=caption_index,
+            )
+        )
     _write_jsonl(directory / "train.jsonl", presentations)
     return tuple(directory / str(record["image"]) for record in records)
 
@@ -366,7 +416,7 @@ def prepare_data(
         "captions_per_image": captions_per_image,
         "training_presentations": training_images * captions_per_image,
         "unique_image_ids": True,
-        "unique_captions": True,
+        "batch_unique_captions": True,
         "distinct_captions_per_image": True,
         "evaluation_queries": len(relevant),
         "evaluation_documents": len(flickr_images),
@@ -382,7 +432,10 @@ def prepare_data(
 
 
 def _validate_training_manifest(manifest: Mapping[str, Any]) -> None:
-    if not manifest.get("unique_image_ids") or not manifest.get("unique_captions"):
+    captions_are_safe = manifest.get("batch_unique_captions") or manifest.get(
+        "unique_captions"
+    )
+    if not manifest.get("unique_image_ids") or not captions_are_safe:
         raise ValueError(
             "image-text training data predates duplicate-free preparation; rebuild it"
         )
