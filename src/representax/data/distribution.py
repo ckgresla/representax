@@ -14,13 +14,13 @@ from dataclasses import dataclass, field, replace
 from functools import partial
 from pathlib import Path
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Self
+from typing import TYPE_CHECKING, Any, Literal, Self
 from urllib.parse import urlparse
 
 import grain
 import jax
 import numpy as np
-from pydantic import model_validator
+from pydantic import SerializerFunctionWrapHandler, model_serializer, model_validator
 
 from representax._config import FrozenConfig
 from representax.core import Modality
@@ -300,10 +300,9 @@ class DataIterator:
 class DataLoader:
     """Thin iterable metadata wrapper around a native Grain ``IterDataset``.
 
-    Representax does not define a dataset implementation. Configured sources
-    resolve into Grain, transformations remain native Grain operations, and
-    this wrapper only carries the batch-size and reproducibility contracts the
-    trainer needs for validation and checkpoint resume.
+    Configured sources resolve into Grain and source transformations remain
+    native Grain operations. This wrapper carries the batch-size and
+    reproducibility contracts the trainer needs for checkpoint resume.
     """
 
     dataset: grain.IterDataset[Any]
@@ -630,13 +629,25 @@ class DataDistributionConfig(FrozenConfig):
 
     The one-dataset case is a distribution with one source and implicit weight
     one. Mixtures and single sources are not separate concepts, so there is no
-    second recipe abstraction.
+    second recipe abstraction. ``sampling_unit='example'`` preserves Grain's
+    example mixing; ``'batch'`` draws one source per source-local batch in
+    :func:`build_data_loader`. ``shuffle`` controls only source record order.
     """
 
     sources: tuple[DataSourceConfig, ...]
     weights: tuple[float, ...]
     seed: int = 0
     shuffle: bool = True
+    sampling_unit: Literal["example", "batch"] = "example"
+
+    @model_serializer(mode="wrap")
+    def serialize_distribution(self, handler: SerializerFunctionWrapHandler) -> Any:
+        """Keep legacy config and checkpoint fingerprints for example mixing."""
+
+        value = handler(self)
+        if self.sampling_unit == "example":
+            value.pop("sampling_unit", None)
+        return value
 
     @model_validator(mode="before")
     @classmethod
@@ -701,6 +712,7 @@ def mix(
     weights: Sequence[float] | None = None,
     seed: int = 0,
     shuffle: bool = True,
+    sampling_unit: Literal["example", "batch"] = "example",
 ) -> DataDistributionConfig:
     """Declare a sampling policy; one source is the ordinary dataset case."""
 
@@ -718,6 +730,7 @@ def mix(
         weights=resolved_weights,
         seed=seed,
         shuffle=shuffle,
+        sampling_unit=sampling_unit,
     )
 
 
@@ -733,6 +746,22 @@ def build_dataset(
     schemes can be registered without changing distribution or task semantics.
     """
 
+    if distribution.sampling_unit == "batch":
+        raise ValueError(
+            "sampling_unit='batch' requires build_data_loader and batch_size"
+        )
+    datasets = _source_datasets(distribution, resolvers=resolvers, mappers=mappers)
+    if len(datasets) == 1:
+        return datasets[0]
+    return grain.MapDataset.mix(datasets, weights=distribution.normalized_weights)
+
+
+def _source_datasets(
+    distribution: DataDistributionConfig,
+    *,
+    resolvers: Mapping[str, ArtifactResolver] | None,
+    mappers: Mapping[str, Callable[[Any], Any]] | None,
+) -> list[grain.MapDataset[Any]]:
     resolver_registry = dict(BUILTIN_RESOLVERS)
     if resolvers is not None:
         resolver_registry.update(resolvers)
@@ -754,9 +783,82 @@ def build_dataset(
         if distribution.shuffle:
             dataset = dataset.shuffle()
         datasets.append(dataset)
-    if len(datasets) == 1:
-        return datasets[0]
-    return grain.MapDataset.mix(datasets, weights=distribution.normalized_weights)
+    return datasets
+
+
+class _RandomBatchIterDataset(grain.IterDataset[Any]):
+    """Lazy weighted selection over already batched, optionally repeated sources."""
+
+    def __init__(
+        self,
+        datasets: Sequence[grain.MapDataset[Any]],
+        distribution: DataDistributionConfig,
+    ) -> None:
+        super().__init__(datasets)
+        self._datasets = tuple(datasets)
+        self._weights = distribution.normalized_weights
+        self._seed = distribution.seed
+
+    def __iter__(self) -> grain.DatasetIterator[Any]:
+        return _RandomBatchIterator(self._datasets, self._weights, self._seed)
+
+
+class _RandomBatchIterator(grain.DatasetIterator[Any]):
+    def __init__(
+        self,
+        datasets: Sequence[grain.MapDataset[Any]],
+        weights: Sequence[float],
+        seed: int,
+    ) -> None:
+        super().__init__()
+        self._datasets = datasets
+        self._weights = weights
+        self._rng = np.random.Generator(np.random.PCG64(seed))
+        self._counts = [0] * len(datasets)
+        self._exhausted = False
+        self._is_closed = False
+
+    def __next__(self) -> Any:
+        if self._is_closed:
+            raise ValueError("cannot advance a closed batch sampling iterator")
+        if self._exhausted:
+            raise StopIteration
+        previous_rng = self._rng.bit_generator.state
+        source_index = int(self._rng.choice(len(self._datasets), p=self._weights))
+        dataset = self._datasets[source_index]
+        index = self._counts[source_index]
+        if index >= len(dataset):
+            self._exhausted = True
+            raise StopIteration
+        try:
+            batch = dataset[index]
+        except Exception:
+            self._rng.bit_generator.state = previous_rng
+            raise
+        self._counts[source_index] += 1
+        return batch
+
+    def get_state(self) -> dict[str, Any]:
+        return {
+            # PCG64's 128-bit integers become unsupported object leaves in Orbax.
+            "rng": json.dumps(self._rng.bit_generator.state),
+            "source_counts": list(self._counts),
+            "exhausted": self._exhausted,
+        }
+
+    def set_state(self, state: dict[str, Any]) -> None:
+        counts = list(state["source_counts"])
+        if len(counts) != len(self._datasets) or any(
+            not isinstance(count, int) or count < 0 for count in counts
+        ):
+            raise ValueError("invalid batch sampling source cursors")
+        self._rng.bit_generator.state = json.loads(state["rng"])
+        self._counts = counts
+        self._exhausted = state["exhausted"]
+
+    def close(self) -> None:
+        self._is_closed = True
+        super().close()
 
 
 def build_data_loader(
@@ -783,6 +885,17 @@ def build_data_loader(
     or ``IterDataset``. Direct datasets remain Grain objects rather than being
     copied into a Representax dataset class, but must provide ``data_contract``
     so checkpoint resume can identify their semantics.
+
+    With ``sampling_unit='batch'``, weights are probabilities for one seeded
+    random source draw per batch (even when ``shuffle=False``). Each source is
+    batched separately; ``drop_remainder`` applies per source. Without repeat,
+    iteration stops when the selected source is exhausted, like Grain mixing.
+    With repeat, each source repeats its batches independently and the caller
+    owns the step limit. Sources unable to produce a batch are rejected.
+    Batch sampling uses one background producer when ``num_threads > 0`` and
+    one shared prefetch queue, keeping memory independent of the source count.
+    Its memory budget reserves ``prefetch_buffer_size + 2`` model-ready slots
+    when prefetching: the queue, one in-flight batch, and the consumed batch.
     """
 
     if batch_size <= 0:
@@ -793,10 +906,14 @@ def build_data_loader(
         raise ValueError("prefetch_buffer_size must be non-negative")
     if host_memory_budget_bytes is not None and host_memory_budget_bytes <= 0:
         raise ValueError("host_memory_budget_bytes must be positive or None")
+    batch_sampling = (
+        isinstance(distribution, DataDistributionConfig)
+        and distribution.sampling_unit == "batch"
+    )
 
     def monitor_for(*, prefetched: bool) -> _BatchMonitor:
         slots = (
-            prefetch_buffer_size + 1
+            prefetch_buffer_size + (2 if batch_sampling else 1)
             if prefetched and num_threads > 0 and prefetch_buffer_size > 0
             else 1
         )
@@ -826,22 +943,42 @@ def build_data_loader(
         )
 
     if isinstance(distribution, DataDistributionConfig):
-        dataset = batch_dataset(
-            build_dataset(
-                distribution,
-                resolvers=resolvers,
-                mappers=mappers,
-            ),
-            prefetched=True,
-        )
-        if repeat:
-            dataset = dataset.repeat()
-        iterator = dataset.to_iter_dataset(
-            grain.ReadOptions(
-                num_threads=num_threads,
-                prefetch_buffer_size=prefetch_buffer_size,
+        if batch_sampling:
+            from grain.experimental import ThreadPrefetchIterDataset
+
+            datasets = []
+            for index, source_dataset in enumerate(
+                _source_datasets(distribution, resolvers=resolvers, mappers=mappers)
+            ):
+                dataset = batch_dataset(source_dataset, prefetched=True)
+                if not len(dataset):
+                    raise ValueError(
+                        f"batch sampling source {index} cannot produce a batch "
+                        "with the configured batch_size and drop_remainder"
+                    )
+                datasets.append(dataset.repeat() if repeat else dataset)
+            # Wrap even with no prefetch so execution settings share cursor format.
+            iterator = ThreadPrefetchIterDataset(
+                _RandomBatchIterDataset(datasets, distribution),
+                prefetch_buffer_size=prefetch_buffer_size if num_threads > 0 else 0,
             )
-        )
+        else:
+            dataset = batch_dataset(
+                build_dataset(
+                    distribution,
+                    resolvers=resolvers,
+                    mappers=mappers,
+                ),
+                prefetched=True,
+            )
+            if repeat:
+                dataset = dataset.repeat()
+            iterator = dataset.to_iter_dataset(
+                grain.ReadOptions(
+                    num_threads=num_threads,
+                    prefetch_buffer_size=prefetch_buffer_size,
+                )
+            )
         source_contract: Mapping[str, Any] = {
             "kind": "configured-distribution",
             "distribution": distribution.model_dump(mode="json"),

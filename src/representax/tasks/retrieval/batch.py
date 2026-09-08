@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
 
 class RetrievalCollator:
-    """Build aligned query/document batches with one model processor."""
+    """Build aligned pairs; the processor owns payload validation and modalities."""
 
     def __init__(
         self,
@@ -43,8 +43,8 @@ class RetrievalCollator:
 
     def __call__(self, examples: Sequence[Mapping[str, Any]]) -> RetrievalBatch:
         try:
-            queries = tuple(str(example[self.query_field]) for example in examples)
-            documents = tuple(str(example[self.document_field]) for example in examples)
+            queries = tuple(example[self.query_field] for example in examples)
+            documents = tuple(example[self.document_field] for example in examples)
         except KeyError as error:
             raise KeyError(
                 f"retrieval record is missing field {error.args[0]!r}"

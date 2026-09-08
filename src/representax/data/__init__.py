@@ -15,6 +15,7 @@ from .distribution import (
     mix,
     source,
 )
+from .media import decode_audio, decode_image, decode_video
 from .resolvers import (
     BUILTIN_ARTIFACT_READERS,
     ArtifactReader,
@@ -51,6 +52,9 @@ __all__ = [
     "RandomAccessSource",
     "build_data_loader",
     "build_dataset",
+    "decode_audio",
+    "decode_image",
+    "decode_video",
     "huggingface_dataset_id",
     "identity",
     "load_mapper",
