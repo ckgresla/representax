@@ -173,3 +173,25 @@ def test_chunk_sweep_timing_keeps_input_wait_and_excludes_first_use(tmp_path):
     assert result["warm_observations"] == 2
     assert result["cold_compile_and_first_seconds"] == 20
     assert result["all_updates_finite"] and not result["skipped_updates"]
+
+
+def test_memory_report_counts_aliased_buffers_once(tmp_path):
+    module = importlib.import_module(
+        "experiments.14-text-to-any-modality.memory_report"
+    )
+    path = tmp_path / "buffer-assignment.txt"
+    path.write_text(
+        "allocation 0: size 100, parameter 0, maybe-live-out:\n"
+        "allocation 1: size 30, parameter 1:\n"
+        "allocation 2: size 4, thread-local:\n"
+        "allocation 3: size 200, preallocated-temp:\n"
+        " value: <a @0> (size=150,offset=0): f32[37]\n"
+        " value: <b @0> (size=150,offset=0): f32[37]\n"
+    )
+    report = module.buffer_memory(path)
+    assert report["total_bytes"] == 330
+    assert report["bytes"]["state_aliased"] == 100
+    assert report["bytes"]["outputs"] == 0
+    assert report["bytes"]["temporaries"] == 200
+    assert report["thread_local_bytes_excluded"] == 4
+    assert len(report["largest_temporary_values"]) == 2
