@@ -567,6 +567,7 @@ class MPNetTower(eqx.Module):
         compute_dtype: jnp.dtype,
         attention_implementation: AttentionImplementation,
         rematerialization: RematerializationPolicy,
+        unroll_layers: bool = True,
     ) -> Float[Array, "batch sequence hidden"]:
         (
             hidden,
@@ -601,7 +602,7 @@ class MPNetTower(eqx.Module):
             rematerialize(apply_layer, rematerialization),
             hidden,
             (self.layers.blocks, layer_keys),
-            unroll=self.layers.depth,
+            unroll=self.layers.depth if unroll_layers else 1,
         )
         return hidden
 
@@ -654,6 +655,7 @@ class MPNetTower(eqx.Module):
         compute_dtype: jnp.dtype,
         attention_implementation: AttentionImplementation,
         rematerialization: RematerializationPolicy,
+        unroll_layers: bool = True,
     ) -> Float[Array, "layer batch sequence hidden"]:
         """Return embedding output followed by every encoder-layer output."""
 
@@ -693,7 +695,7 @@ class MPNetTower(eqx.Module):
             rematerialize(apply_layer, rematerialization),
             hidden,
             (self.layers.blocks, layer_keys),
-            unroll=self.layers.depth,
+            unroll=self.layers.depth if unroll_layers else 1,
         )
         return jnp.concatenate((hidden[None, ...], layer_outputs), axis=0)
 
@@ -712,6 +714,7 @@ class MPNetEncoder(eqx.Module):
     compute_dtype: Any = eqx.field(static=True)
     attention_implementation: AttentionImplementation = eqx.field(static=True)
     rematerialization: RematerializationPolicy = eqx.field(static=True)
+    unroll_layers: bool = eqx.field(static=True, default=True)
 
     @classmethod
     def init(
@@ -754,6 +757,7 @@ class MPNetEncoder(eqx.Module):
             compute_dtype=active_compute_dtype(self.compute_dtype),
             attention_implementation=self.attention_implementation,
             rematerialization=self.rematerialization,
+            unroll_layers=self.unroll_layers,
         )
 
     def hidden_states_by_layer(
@@ -772,6 +776,7 @@ class MPNetEncoder(eqx.Module):
             compute_dtype=active_compute_dtype(self.compute_dtype),
             attention_implementation=self.attention_implementation,
             rematerialization=self.rematerialization,
+            unroll_layers=self.unroll_layers,
         )
 
     @staticmethod

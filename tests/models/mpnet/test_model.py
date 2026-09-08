@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any, cast
 
 import equinox as eqx
@@ -143,6 +144,30 @@ def test_native_mpnet_is_statically_unrolled_jittable_and_dropout_is_keyed():
 
     lowered = cast(Any, hidden_only).lower(model, batch).as_text()
     assert "stablehlo.while" not in lowered
+
+
+def test_compact_and_fully_unrolled_layer_scans_match_outputs_and_gradients():
+    values = tiny_config().model_dump()
+    values.update(
+        hidden_dropout_probability=0.0,
+        attention_dropout_probability=0.0,
+    )
+    full = MPNetEncoder.init(MPNetConfig(**values), key=jax.random.key(8))
+    compact = replace(full, unroll_layers=False)
+    batch = tiny_batch()
+
+    @eqx.filter_value_and_grad
+    def objective(candidate):
+        return jnp.sum(candidate.hidden_states(batch))
+
+    full_value, full_gradient = objective(full)
+    compact_value, compact_gradient = objective(compact)
+    np.testing.assert_allclose(compact_value, full_value, rtol=2e-6, atol=2e-6)
+
+    full_leaves = jax.tree.leaves(eqx.filter(full_gradient, eqx.is_inexact_array))
+    compact_leaves = jax.tree.leaves(eqx.filter(compact_gradient, eqx.is_inexact_array))
+    for compact_leaf, full_leaf in zip(compact_leaves, full_leaves, strict=True):
+        np.testing.assert_allclose(compact_leaf, full_leaf, rtol=2e-5, atol=2e-5)
 
 
 def test_checkpoint_mapping_round_trips_the_depth_major_tree():

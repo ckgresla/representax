@@ -29,6 +29,11 @@ from representax.models.mpnet import (
     MPNetConfig,
     MPNetEncoder,
 )
+from representax.models.modernvbert import (
+    ModernVBERTTextCheckpointAdapter,
+    ModernVBERTTextConfig,
+    ModernVBERTTextEncoder,
+)
 from representax.models.sentence import SentenceEncoder
 from representax.tasks.pairwise import PairwiseCollator
 from representax.tasks.retrieval import RetrievalCollator
@@ -526,6 +531,89 @@ def _mpnet_checkpoint(path: Path) -> Path:
     return path
 
 
+def _modernbert_checkpoint(path: Path) -> Path:
+    config = ModernVBERTTextConfig(
+        vocab_size=17,
+        hidden_size=8,
+        intermediate_size=12,
+        num_hidden_layers=2,
+        num_attention_heads=2,
+        layer_types=("full_attention", "sliding_attention"),
+        local_attention=4,
+        full_attention_rope_theta=10_000.0,
+        sliding_attention_rope_theta=1_000.0,
+        norm_epsilon=1e-5,
+        max_position_embeddings=32,
+    )
+    native = ModernVBERTTextEncoder.init(config, key=jax.random.key(13))
+    adapter = ModernVBERTTextCheckpointAdapter(
+        model_id="test/modernbert",
+        revision="fixture",
+        weight_prefix="",
+    )
+    path.mkdir(parents=True)
+    save_file(
+        {name: np.asarray(value) for name, value in adapter.state_dict(native).items()},
+        path / "model.safetensors",
+    )
+    _write_json(
+        path / "config.json",
+        {
+            "model_type": "modernbert",
+            "vocab_size": config.vocab_size,
+            "hidden_size": config.hidden_size,
+            "intermediate_size": config.intermediate_size,
+            "num_hidden_layers": config.num_hidden_layers,
+            "num_attention_heads": config.num_attention_heads,
+            "max_position_embeddings": config.max_position_embeddings,
+            "global_attn_every_n_layers": 2,
+            "local_attention": config.local_attention,
+            "global_rope_theta": config.full_attention_rope_theta,
+            "local_rope_theta": config.sliding_attention_rope_theta,
+            "norm_eps": config.norm_epsilon,
+        },
+    )
+    _write_json(
+        path / "modules.json",
+        [
+            {
+                "idx": 0,
+                "name": "0",
+                "path": "",
+                "type": "sentence_transformers.models.Transformer",
+            },
+            {
+                "idx": 1,
+                "name": "1",
+                "path": "1_Pooling",
+                "type": "sentence_transformers.models.Pooling",
+            },
+            {
+                "idx": 2,
+                "name": "2",
+                "path": "2_Normalize",
+                "type": "sentence_transformers.models.Normalize",
+            },
+        ],
+    )
+    _write_json(
+        path / "config_sentence_transformers.json",
+        {"model_type": "SentenceTransformer", "similarity_fn_name": "cosine"},
+    )
+    _write_json(
+        path / "sentence_bert_config.json",
+        {"max_seq_length": 8, "do_lower_case": False},
+    )
+    _write_json(
+        path / "1_Pooling" / "config.json",
+        {
+            "word_embedding_dimension": config.hidden_size,
+            "pooling_mode_mean_tokens": True,
+        },
+    )
+    return path
+
+
 def test_standard_dense_graph_loads_without_upstream_runtime(tmp_path):
     checkpoint = _checkpoint(tmp_path / "sentence-model")
 
@@ -853,6 +941,22 @@ def test_mpnet_backbone_uses_its_native_token_contract(tmp_path):
     np.testing.assert_allclose(
         model.similarity(output, output),
         output @ output.T,
+        rtol=1e-6,
+        atol=1e-6,
+    )
+
+
+def test_modernbert_backbone_uses_the_standard_unprefixed_weights(tmp_path):
+    checkpoint = _modernbert_checkpoint(tmp_path / "sentence-modernbert")
+    model = load_sentence_transformer(checkpoint, processor=_Tokenizer())
+
+    output = model.embed(["a", "bc", "def"], batch_size=2)
+
+    assert isinstance(model.model.backbone, ModernVBERTTextEncoder)
+    assert output.shape == (3, 8)
+    np.testing.assert_allclose(
+        np.linalg.norm(output, axis=1),
+        np.ones((3,)),
         rtol=1e-6,
         atol=1e-6,
     )

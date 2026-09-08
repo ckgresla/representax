@@ -29,6 +29,7 @@ from representax.models.distilbert import (
     DistilBertEncoder,
 )
 from representax.models.mpnet import MPNetCheckpointAdapter, MPNetEncoder
+from representax.models.modernvbert import ModernVBERTTextCheckpointAdapter
 from representax.models.processing import make_text_processor
 from representax.models.sentence import (
     POOLING_MODES,
@@ -711,6 +712,18 @@ def _text_backbone(
             checkpoint,
             parameter_dtype=parameter_dtype,
             compute_dtype=compute_dtype,
+        )
+    if model_type == "modernbert":
+        return ModernVBERTTextCheckpointAdapter(
+            model_id=str(checkpoint),
+            revision="local",
+            weight_prefix="",
+        ).load(
+            checkpoint,
+            parameter_dtype=parameter_dtype,
+            compute_dtype=compute_dtype,
+            attention_implementation=attention_implementation,
+            rematerialization=rematerialization,
         )
     raise ValueError(f"Sentence Transformers backbone {model_type!r} is not supported")
 

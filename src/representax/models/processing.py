@@ -418,14 +418,23 @@ def make_text_processor(
             "",
         )
 
-    def tokenize(texts: Sequence[str]) -> Mapping[str, np.ndarray]:
+    def tokenize(
+        texts: Sequence[str],
+        *,
+        sequence_length: int | None = None,
+    ) -> Mapping[str, np.ndarray]:
         if not texts:
             raise ValueError("processor batches must be non-empty")
+        if sequence_length is not None and sequence_length not in lengths:
+            raise ValueError(
+                f"sequence_length must be one of the admitted buckets {lengths!r}"
+            )
+        tokenization_limit = maximum if sequence_length is None else sequence_length
         encoded = tokenizer(
             list(texts),
             padding=True,
             truncation=True,
-            max_length=maximum,
+            max_length=tokenization_limit,
             return_tensors="np",
         )
         if not isinstance(encoded, Mapping):
@@ -437,10 +446,14 @@ def make_text_processor(
             raise KeyError("tokenizer output is missing 'input_ids'") from error
         if input_ids.ndim != 2 or input_ids.shape[0] != len(texts):
             raise ValueError("tokenizer input_ids must have shape [batch, sequence]")
-        bucket_length = select_static_shape_bucket(
-            (input_ids.shape[1],),
-            tuple((length,) for length in lengths),
-        )[0]
+        bucket_length = (
+            select_static_shape_bucket(
+                (input_ids.shape[1],),
+                tuple((length,) for length in lengths),
+            )[0]
+            if sequence_length is None
+            else sequence_length
+        )
         pad_token_id = getattr(
             tokenizer,
             "pad_token_id",
@@ -490,6 +503,7 @@ def make_text_processor(
         seed: int | None,
         prompt_name: str | None = None,
         prompt: str | None = None,
+        sequence_length: int | None = None,
     ) -> Any:
         del seed
         texts = []
@@ -505,7 +519,10 @@ def make_text_processor(
             else:
                 raise TypeError("text processors require strings or artifacts")
         prefix = route_prompt(route, prompt_name, prompt)
-        encoded = tokenize(tuple(prefix + text for text in texts))
+        encoded = tokenize(
+            tuple(prefix + text for text in texts),
+            sequence_length=sequence_length,
+        )
         try:
             input_ids = encoded["input_ids"]
             attention_mask = encoded["attention_mask"]

@@ -17,6 +17,7 @@ from representax.models import (
     Processor,
     make_audio_processor,
     make_image_processor,
+    make_text_processor,
     make_video_processor,
     select_static_shape_bucket,
 )
@@ -37,6 +38,12 @@ class VideoInputs(eqx.Module):
     frame_mask: jax.Array
 
 
+class TextInputs(eqx.Module):
+    input_ids: jax.Array
+    attention_mask: jax.Array
+    token_type_ids: jax.Array | None
+
+
 def image_batch(*, pixel_values, pixel_mask):
     return ImageInputs(pixel_values=pixel_values, pixel_mask=pixel_mask)
 
@@ -47,6 +54,35 @@ def audio_batch(*, audio_values, audio_mask):
 
 def video_batch(*, pixel_values, frame_mask):
     return VideoInputs(pixel_values=pixel_values, frame_mask=frame_mask)
+
+
+def text_batch(*, input_ids, attention_mask, token_type_ids=None):
+    return TextInputs(
+        input_ids=input_ids,
+        attention_mask=attention_mask,
+        token_type_ids=token_type_ids,
+    )
+
+
+class TextTokenizer:
+    pad_token_id = 0
+    all_special_ids = (0, 1, 2)
+
+    def __call__(self, texts, *, padding, truncation, max_length, return_tensors):
+        assert padding is True
+        assert truncation is True
+        assert return_tensors == "np"
+        rows = [
+            [1, *(3 + index for index, _ in enumerate(text)), 2][:max_length]
+            for text in texts
+        ]
+        width = max(len(row) for row in rows)
+        input_ids = np.zeros((len(rows), width), dtype=np.int32)
+        attention_mask = np.zeros_like(input_ids)
+        for index, row in enumerate(rows):
+            input_ids[index, : len(row)] = row
+            attention_mask[index, : len(row)] = 1
+        return {"input_ids": input_ids, "attention_mask": attention_mask}
 
 
 def metadata_shape(artifact: Artifact, *, route: Route) -> tuple[int, ...]:
@@ -66,6 +102,23 @@ def test_processor_is_a_serializable_host_boundary():
     assert route.value == "generic"
     assert seed == 3
     assert processor.data_contract() == {"kind": "identity", "shape": [2]}
+
+
+def test_text_processor_can_select_one_declared_length_for_a_scheduled_batch():
+    processor = make_text_processor(
+        tokenizer=TextTokenizer(),
+        batch_builder=text_batch,
+        sequence_length_buckets=(4, 8),
+    )
+
+    short = processor(("abcdefgh",), sequence_length=4)
+    long = processor(("a",), sequence_length=8)
+
+    assert short.input_ids.shape == (1, 4)
+    assert long.input_ids.shape == (1, 8)
+    np.testing.assert_array_equal(long.input_ids[0, :3], [1, 3, 2])
+    with pytest.raises(ValueError, match="admitted buckets"):
+        processor(("a",), sequence_length=6)
 
 
 def test_image_processor_probes_before_lazy_decode_and_pads_one_bucket(tmp_path):
