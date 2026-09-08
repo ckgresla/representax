@@ -28,7 +28,7 @@ MODEL_ID = "jinaai/jina-embeddings-v5-omni-nano-retrieval"
 MODEL_REVISION = "b7287f6b6b562e25bc4a28b939d1f936484b4137"
 
 
-def integration_job(paths, *, execution="direct", chunk_size=1, matryoshka=False):
+def integration_job(paths):
     """Small real-data plumbing check, not a scientific convergence recipe."""
     from representax.config import (
         BatchConfig,
@@ -49,10 +49,6 @@ def integration_job(paths, *, execution="direct", chunk_size=1, matryoshka=False
     from representax.tasks.modifiers import MatryoshkaModifierConfig
     from representax.tasks.retrieval import MNRConfig, RetrievalConfig
 
-    if execution not in {"direct", "rematerialized", "custom_vjp"}:
-        raise ValueError("unknown integration execution mode")
-    if chunk_size <= 0:
-        raise ValueError("chunk_size must be positive")
     data = importlib.import_module(DATA_MODULE)
     bindings = {
         f"{DATA_MODULE}.map_image": data.map_image,
@@ -92,9 +88,7 @@ def integration_job(paths, *, execution="direct", chunk_size=1, matryoshka=False
         task=RetrievalConfig(),
         loss=MNRConfig(scale=50.0, symmetric=True),
         loss_modifiers=(
-            (MatryoshkaModifierConfig(dimensions=(32, 64, 128, 256, 512, 768)),)
-            if matryoshka
-            else ()
+            MatryoshkaModifierConfig(dimensions=(32, 64, 128, 256, 512, 768)),
         ),
         optimization=OptimizationConfig(
             optimizer=ComponentConfig(
@@ -117,13 +111,9 @@ def integration_job(paths, *, execution="direct", chunk_size=1, matryoshka=False
             max_steps=8,
             seed=7,
             batch=BatchConfig(micro_batch_size=2),
-            grad_cache=(
-                None
-                if execution == "direct"
-                else GradCacheConfig(
-                    implementation=execution,
-                    micro_batch_size=chunk_size,
-                )
+            grad_cache=GradCacheConfig(
+                implementation="custom_vjp",
+                micro_batch_size=1,
             ),
             adapter=LoRAConfig(rank=4, alpha=8, target_pattern="text"),
             precision=PrecisionConfig.bfloat16_mixed(),
@@ -142,13 +132,6 @@ def main():
     )
     parser.add_argument("--output", type=Path, default=OUTPUT / "integration")
     parser.add_argument("--resume", action="store_true")
-    parser.add_argument(
-        "--execution",
-        choices=("direct", "rematerialized", "custom_vjp"),
-        default="direct",
-    )
-    parser.add_argument("--chunk-size", type=int, default=1)
-    parser.add_argument("--matryoshka", action="store_true")
     args = parser.parse_args()
     data = importlib.import_module(DATA_MODULE)
     if args.command == "prepare":
@@ -159,12 +142,7 @@ def main():
         )
         return
     paths = json.loads((args.output / "data/sources.json").read_text())["sources"]
-    job, bindings = integration_job(
-        paths,
-        execution=args.execution,
-        chunk_size=args.chunk_size,
-        matryoshka=args.matryoshka,
-    )
+    job, bindings = integration_job(paths)
     if args.command == "inspect":
         print(job.model_dump_json(indent=2))
         return
@@ -179,8 +157,13 @@ def main():
         (args.output / "git-revision.txt").write_text(
             subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True)
         )
-        result = run_job(job, args.output / "run", mappers=bindings, stop_after=4)
-        assert result.completed_iterations == 4
+        result = run_job(
+            job,
+            args.output / "run",
+            mappers=bindings,
+            stop_after=job.checkpointing.every,
+        )
+        assert result.completed_iterations == job.checkpointing.every
         del result
         gc.collect()
     result = run_job(job, args.output / "run", mappers=bindings, resume=True)
@@ -232,12 +215,12 @@ def check_data(job, bindings, output):
     records = []
     with closing(iter(loader)) as iterator, closing(iter(loader)) as restored:
         for index in range(job.training.max_steps):
-            if index == 4:
+            if index == job.checkpointing.every:
                 restored.set_state(iterator.get_state())
             batch = next(iterator)
             leaves = jax.tree.leaves(batch)
             assert all(np.isfinite(np.asarray(x)).all() for x in leaves)
-            if index >= 4:
+            if index >= job.checkpointing.every:
                 replay = next(restored)
                 assert jax.tree.structure(batch) == jax.tree.structure(replay)
                 for left, right in zip(leaves, jax.tree.leaves(replay), strict=True):

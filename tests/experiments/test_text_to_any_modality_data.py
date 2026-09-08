@@ -85,33 +85,36 @@ def test_integration_job_uses_library_pipeline_and_explicit_probe_settings():
     assert job.data.collate.target == "representax.tasks.retrieval.RetrievalCollator"
     assert job.data.num_threads == job.data.prefetch_buffer_size == 2
     assert job.training.max_steps == 8 and job.training.global_batch_size == 2
-    assert job.training.grad_cache is None
+    assert job.training.grad_cache.implementation == "custom_vjp"
+    assert job.training.grad_cache.micro_batch_size == 1
     assert job.training.adapter.target_pattern == "text"
     assert job.checkpointing.every == 4
     assert bindings[f"{module.DATA_MODULE}.map_audio"].keywords == {"seconds": 2.0}
     assert bindings[f"{module.DATA_MODULE}.map_video"].keywords == {"frames": 2}
 
 
-@pytest.mark.parametrize("execution", ["rematerialized", "custom_vjp"])
-def test_integration_execution_options_reach_job_config(execution):
+def test_integration_config_round_trip_preserves_fixed_execution():
     from representax.config import JobConfig
 
     module = importlib.import_module("experiments.14-text-to-any-modality.run")
     paths = {
         name: f"/data/{name}.jsonl" for name in ("image", "audio", "video", "text")
     }
-    job, _ = module.integration_job(
-        paths, execution=execution, chunk_size=1, matryoshka=True
-    )
+    job, _ = module.integration_job(paths)
     restored = JobConfig.model_validate_json(job.model_dump_json())
-    assert restored.training.grad_cache.implementation == execution
+    assert restored.training.grad_cache.implementation == "custom_vjp"
     assert restored.training.grad_cache.micro_batch_size == 1
     assert restored.training.global_batch_size == 2
     assert restored.loss_modifiers[0].dimensions == (32, 64, 128, 256, 512, 768)
 
 
-@pytest.mark.parametrize("options", [{"chunk_size": 0}, {"execution": "unknown"}])
-def test_integration_rejects_invalid_execution_options(options):
+def test_integration_cli_has_no_hyperparameter_options(monkeypatch, capsys):
     module = importlib.import_module("experiments.14-text-to-any-modality.run")
-    with pytest.raises(ValueError):
-        module.integration_job({}, **options)
+    monkeypatch.setattr("sys.argv", ["run.py", "--help"])
+    with pytest.raises(SystemExit) as error:
+        module.main()
+    assert error.value.code == 0
+    help_text = capsys.readouterr().out
+    assert "--output" in help_text and "--resume" in help_text
+    for removed in ("--execution", "--chunk-size", "--matryoshka"):
+        assert removed not in help_text
