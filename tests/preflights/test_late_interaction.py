@@ -64,6 +64,8 @@ def test_training_selection_is_ordered_and_rejects_short_sources() -> None:
     rows = (
         {"query": "", "positive": "ignored"},
         {"query": "q1", "positive": "p1"},
+        {"query": "q1", "positive": "duplicate-query"},
+        {"query": "duplicate-positive", "positive": "p1"},
         {"query": "q2", "positive": "p2"},
     )
 
@@ -71,9 +73,9 @@ def test_training_selection_is_ordered_and_rejects_short_sources() -> None:
 
     assert selected == (
         {"source_index": 1, "query": "q1", "positive": "p1"},
-        {"source_index": 2, "query": "q2", "positive": "p2"},
+        {"source_index": 4, "query": "q2", "positive": "p2"},
     )
-    with pytest.raises(ValueError, match="only 2 usable rows"):
+    with pytest.raises(ValueError, match="only 2 unique usable rows"):
         select_training_rows(rows, count=3)
 
 
@@ -225,14 +227,16 @@ def test_job_uses_grad_cache_lifecycle_and_pylate_export(tmp_path: Path) -> None
     job = _representax_job(
         checkpoint=tmp_path / "checkpoint",
         data_directory=tmp_path / "data",
-        steps=4,
+        steps=100,
         seed=7,
+        warmup_steps=6,
     )
 
     assert job.training.global_batch_size == 512
     assert job.training.grad_cache is not None
     assert job.training.grad_cache.micro_batch_size == 8
-    assert job.checkpointing.every == 2
+    assert job.checkpointing.every == 50
+    assert job.optimization.schedule.parameters["warmup_steps"] == 6
     assert job.export.huggingface is not None
     assert "LateInteractionCheckpointAdapter" in job.export.huggingface.adapter.target
     assert job.model.parameters["query_sequence_length_buckets"] == [16, 32]
@@ -247,7 +251,9 @@ def test_job_uses_grad_cache_lifecycle_and_pylate_export(tmp_path: Path) -> None
 def test_timing_job_has_static_shapes_and_no_large_artifacts(tmp_path: Path) -> None:
     data = tmp_path / "data"
     data.mkdir()
-    (data / "manifest.json").write_text('{"training": {"rows": 2048}}')
+    (data / "manifest.json").write_text(
+        '{"training": {"rows": 2048, "duplicate_queries": 0, "duplicate_positives": 0}}'
+    )
 
     job = _representax_job(
         checkpoint=tmp_path / "checkpoint",
@@ -258,7 +264,8 @@ def test_timing_job_has_static_shapes_and_no_large_artifacts(tmp_path: Path) -> 
         static_shapes=True,
     )
 
-    assert len(job.data.distribution.sources) == 3
+    assert len(job.data.distribution.sources) == 1
+    assert job.data.distribution.sources[0].name == "ms-marco"
     assert job.model.parameters["query_sequence_length_buckets"] == [32]
     assert job.model.parameters["document_sequence_length_buckets"] == [256]
     assert job.checkpointing is None

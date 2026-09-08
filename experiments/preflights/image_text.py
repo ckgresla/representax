@@ -13,7 +13,7 @@ import subprocess
 import sys
 import time
 import urllib.request
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -41,7 +41,7 @@ CAMPAIGN_MANIFEST = ROOT / "benchmarks/configs/paper-campaign-v1.json"
 MULTIMODAL_MANIFEST = ROOT / "benchmarks/configs/paper-multimodal-jepa-v1.json"
 FRAMEWORKS = ("representax", "sentence-transformers")
 TRAINING_IMAGES = 512
-TRAINING_REPEATS = 4
+CAPTIONS_PER_IMAGE = 4
 GRAD_CACHE_MICRO_BATCH = 8
 EVALUATION_BATCH_SIZE = 32
 
@@ -151,7 +151,59 @@ def _download_image(url: str, destination: Path) -> None:
     raise RuntimeError(f"failed to download {url}") from last_error
 
 
-def _prepare_coco(directory: Path, count: int) -> tuple[Path, ...]:
+def _distinct_captions(
+    values: Iterable[Any],
+    *,
+    count: int,
+    excluded: Collection[str] = (),
+) -> tuple[str, ...]:
+    selected = []
+    seen = set(excluded)
+    for value in values:
+        caption = str(value).strip()
+        if not caption or caption in seen:
+            continue
+        seen.add(caption)
+        selected.append(caption)
+        if len(selected) == count:
+            return tuple(selected)
+    raise ValueError(
+        f"expected {count} distinct nonempty captions, found {len(selected)}"
+    )
+
+
+def _select_coco_rows(
+    rows: Iterable[Mapping[str, Any]],
+    *,
+    count: int,
+    captions_per_image: int = CAPTIONS_PER_IMAGE,
+) -> tuple[tuple[int, Mapping[str, Any], tuple[str, ...]], ...]:
+    selected = []
+    image_ids: set[int] = set()
+    captions: set[str] = set()
+    for source_index, row in enumerate(rows):
+        image_id = int(row["image_id"])
+        if image_id in image_ids:
+            continue
+        try:
+            chosen = _distinct_captions(
+                row["captions"],
+                count=captions_per_image,
+                excluded=captions,
+            )
+        except ValueError:
+            continue
+        image_ids.add(image_id)
+        captions.update(chosen)
+        selected.append((source_index, row, chosen))
+        if len(selected) == count:
+            return tuple(selected)
+    raise ValueError(f"COCO contains only {len(selected)} unique usable rows")
+
+
+def _prepare_coco(
+    directory: Path, count: int, *, captions_per_image: int
+) -> tuple[Path, ...]:
     import datasets
 
     contract = frozen_contract()
@@ -161,33 +213,38 @@ def _prepare_coco(directory: Path, count: int) -> tuple[Path, ...]:
         split=contract.train_dataset["split"],
         streaming=True,
     )
-    rows = tuple(source.take(count))
-    if len(rows) != count:
-        raise ValueError(f"COCO produced {len(rows)} rows; expected {count}")
+    rows = _select_coco_rows(
+        source,
+        count=count,
+        captions_per_image=captions_per_image,
+    )
     image_directory = directory / "coco-images"
     image_directory.mkdir()
 
-    def materialize(item: tuple[int, Mapping[str, Any]]) -> dict[str, Any]:
-        index, row = item
-        captions = row["captions"]
-        if not captions:
-            raise ValueError(f"COCO row {index} has no captions")
+    def materialize(
+        item: tuple[int, Mapping[str, Any], tuple[str, ...]],
+    ) -> dict[str, Any]:
+        index, row, captions = item
         relative = Path("coco-images") / f"{int(row['image_id']):012d}.jpg"
         url = str(row["coco_url"])
         _download_image(url, directory / relative)
         return {
             "source_index": index,
             "image_id": int(row["image_id"]),
-            "caption": str(captions[0]).strip(),
+            "captions": captions,
             "image": str(relative),
             "source_url": url,
         }
 
     with ThreadPoolExecutor(max_workers=16) as executor:
-        records = tuple(executor.map(materialize, enumerate(rows)))
+        records = tuple(executor.map(materialize, rows))
     presentations = tuple(
-        {**record, "presentation_cycle": cycle}
-        for cycle in range(TRAINING_REPEATS)
+        {
+            **{name: value for name, value in record.items() if name != "captions"},
+            "caption": record["captions"][caption_index],
+            "caption_index": caption_index,
+        }
+        for caption_index in range(captions_per_image)
         for record in records
     )
     _write_jsonl(directory / "train.jsonl", presentations)
@@ -281,13 +338,20 @@ def prepare_data(
     output: Path,
     *,
     training_images: int = TRAINING_IMAGES,
+    captions_per_image: int = CAPTIONS_PER_IMAGE,
 ) -> dict[str, Any]:
     """Materialize one deterministic preflight subset and the full held-out panel."""
 
     if training_images <= 0:
         raise ValueError("training_images must be positive")
+    if captions_per_image <= 0:
+        raise ValueError("captions_per_image must be positive")
     output.mkdir(parents=True, exist_ok=False)
-    coco_images = _prepare_coco(output, training_images)
+    coco_images = _prepare_coco(
+        output,
+        training_images,
+        captions_per_image=captions_per_image,
+    )
     flickr_images, relevant = _prepare_flickr(output)
     files = {
         name: {"rows": sum(1 for _ in path.open()), "sha256": _sha256(path)}
@@ -297,11 +361,13 @@ def prepare_data(
         )
     }
     manifest = {
-        "schema_version": "representax-image-text-preflight-data-v1",
         "contract": asdict(frozen_contract()),
         "training_images": training_images,
-        "training_repeats": TRAINING_REPEATS,
-        "training_presentations": training_images * TRAINING_REPEATS,
+        "captions_per_image": captions_per_image,
+        "training_presentations": training_images * captions_per_image,
+        "unique_image_ids": True,
+        "unique_captions": True,
+        "distinct_captions_per_image": True,
         "evaluation_queries": len(relevant),
         "evaluation_documents": len(flickr_images),
         "relevant_documents": {
@@ -313,6 +379,13 @@ def prepare_data(
     }
     _write_json(output / "manifest.json", manifest)
     return manifest
+
+
+def _validate_training_manifest(manifest: Mapping[str, Any]) -> None:
+    if not manifest.get("unique_image_ids") or not manifest.get("unique_captions"):
+        raise ValueError(
+            "image-text training data predates duplicate-free preparation; rebuild it"
+        )
 
 
 def _read_jsonl(path: Path) -> tuple[dict[str, Any], ...]:
@@ -431,6 +504,9 @@ def _representax_job(
     steps: int,
     seed: int,
     negative_scope: str = "global",
+    symmetric: bool = False,
+    warmup_steps: int = 1,
+    training_file: str = "train.jsonl",
 ) -> Any:
     if steps < 4 or steps % 2:
         raise ValueError("steps must be an even integer of at least four")
@@ -455,10 +531,13 @@ def _representax_job(
     from representax.tasks.retrieval import MNRConfig, RetrievalConfig
 
     contract = frozen_contract()
+    if warmup_steps < 0 or warmup_steps >= steps:
+        raise ValueError("warmup_steps must be non-negative and less than steps")
     manifest = _document(data_directory / "manifest.json")
-    if int(manifest["training_presentations"]) < contract.global_batch_size * steps:
+    _validate_training_manifest(manifest)
+    if int(manifest["training_presentations"]) < contract.global_batch_size:
         raise ValueError(
-            "preflight data does not contain enough training presentations"
+            "preflight data does not contain one complete contrastive batch"
         )
     relevant = {
         int(query): frozenset(int(document) for document in documents)
@@ -495,7 +574,7 @@ def _representax_job(
         task=RetrievalConfig(),
         loss=MNRConfig(
             scale=20.0,
-            symmetric=False,
+            symmetric=symmetric,
             negative_scope=negative_scope,
         ),
         optimization=OptimizationConfig(
@@ -513,7 +592,7 @@ def _representax_job(
                 parameters={
                     "init_value": 0.0,
                     "peak_value": 2e-5,
-                    "warmup_steps": 1,
+                    "warmup_steps": warmup_steps,
                     "decay_steps": steps,
                     "end_value": 0.0,
                 },
@@ -521,7 +600,7 @@ def _representax_job(
             max_gradient_norm=1.0,
         ),
         data=data(
-            data_directory / "train.jsonl",
+            data_directory / training_file,
             "experiments.preflights.image_text:ImageTextRetrievalCollator",
         ),
         training=TrainingConfig(
@@ -608,6 +687,9 @@ def _representax_worker(
     seed: int,
     platform: Platform = "gpu",
     negative_scope: str = "global",
+    symmetric: bool = False,
+    warmup_steps: int = 1,
+    training_file: str = "train.jsonl",
 ) -> dict[str, Any]:
     jax = initialize_jax(platform)
 
@@ -626,6 +708,9 @@ def _representax_worker(
         steps=steps,
         seed=seed,
         negative_scope=negative_scope,
+        symmetric=symmetric,
+        warmup_steps=warmup_steps,
+        training_file=training_file,
     )
     if jax.device_count() > 1:
         job = data_parallel_job(
@@ -799,6 +884,7 @@ def _reference_evaluation(
     ranked = document_ids[top]
     query_ids = np.asarray([int(row["identifier"]) for row in queries])
     manifest = _document(data_directory / "manifest.json")
+    _validate_training_manifest(manifest)
     relevant = {
         int(query): frozenset(int(document) for document in values)
         for query, values in manifest["relevant_documents"].items()
@@ -1008,6 +1094,7 @@ def _sentence_transformers_worker(
 
 
 def _worker(arguments: argparse.Namespace) -> None:
+    _validate_training_manifest(_document(arguments.data_directory / "manifest.json"))
     function = (
         _representax_worker
         if arguments.framework == "representax"
@@ -1023,6 +1110,9 @@ def _worker(arguments: argparse.Namespace) -> None:
     )
     if arguments.framework == "representax":
         parameters["negative_scope"] = arguments.negative_scope
+        parameters["symmetric"] = arguments.symmetric
+        parameters["warmup_steps"] = arguments.warmup_steps
+        parameters["training_file"] = arguments.training_file
     report = function(**parameters)
     if arguments.platform == "tpu":
         rank = (
@@ -1127,6 +1217,7 @@ def _parser() -> argparse.ArgumentParser:
     prepare = subparsers.add_parser("prepare")
     prepare.add_argument("--output", type=Path, required=True)
     prepare.add_argument("--training-images", type=int, default=TRAINING_IMAGES)
+    prepare.add_argument("--captions-per-image", type=int, default=CAPTIONS_PER_IMAGE)
 
     worker = subparsers.add_parser("worker")
     worker.add_argument("--framework", choices=FRAMEWORKS, required=True)
@@ -1140,6 +1231,9 @@ def _parser() -> argparse.ArgumentParser:
     worker.add_argument(
         "--negative-scope", choices=("local", "global"), default="global"
     )
+    worker.add_argument("--symmetric", action="store_true")
+    worker.add_argument("--warmup-steps", type=int, default=1)
+    worker.add_argument("--training-file", default="train.jsonl")
 
     pair = subparsers.add_parser("pair")
     pair.add_argument("--checkpoint", type=Path, required=True)
@@ -1159,6 +1253,7 @@ def main() -> None:
                 prepare_data(
                     arguments.output,
                     training_images=arguments.training_images,
+                    captions_per_image=arguments.captions_per_image,
                 ),
                 indent=2,
                 sort_keys=True,

@@ -256,15 +256,12 @@ def _evaluation_data(data_directory: Path) -> RetrievalEvaluationData:
 
 
 def _training_table(path: Path, rows: int) -> Any:
-    """Read only the row groups needed by one fixed benchmark job."""
+    """Read the available rows needed by one fixed benchmark job."""
 
     import pyarrow.parquet as parquet
 
     source = parquet.ParquetFile(path, memory_map=True)
-    if rows > source.metadata.num_rows:
-        raise ValueError(
-            f"benchmark requests {rows} rows from a {source.metadata.num_rows}-row file"
-        )
+    rows = min(rows, source.metadata.num_rows)
     groups = []
     available = 0
     for index in range(source.num_row_groups):
@@ -273,6 +270,36 @@ def _training_table(path: Path, rows: int) -> Any:
         if available >= rows:
             break
     return source.read_row_groups(groups, columns=("query", "positive")).slice(0, rows)
+
+
+def _validate_unique_training_pairs(path: Path, *, minimum_rows: int) -> int:
+    import pyarrow.parquet as parquet
+
+    queries: set[str] = set()
+    positives: set[str] = set()
+    rows = 0
+    for batch in parquet.ParquetFile(path, memory_map=True).iter_batches(
+        batch_size=4096,
+        columns=("query", "positive"),
+    ):
+        for row in batch.to_pylist():
+            query = str(row["query"])
+            positive = str(row["positive"])
+            if not query or not positive:
+                raise ValueError(f"training parquet contains an empty pair: {path}")
+            if query in queries or positive in positives:
+                raise ValueError(
+                    "paired MNR requires globally unique queries and positives; "
+                    f"prepare a duplicate-free --training-parquet instead of {path}"
+                )
+            queries.add(query)
+            positives.add(positive)
+            rows += 1
+    if rows < minimum_rows:
+        raise ValueError(
+            f"training parquet has {rows} rows; one batch requires {minimum_rows}"
+        )
+    return rows
 
 
 def _training_compile_summary(run_directory: Path) -> tuple[float, int]:
@@ -465,6 +492,7 @@ def _representax_report(
     spec: ModelSpec,
     *,
     data_directory: Path,
+    training_parquet: Path | None,
     run_directory: Path,
     batch_size: int,
     steps: int,
@@ -539,11 +567,13 @@ def _representax_report(
         evaluation_data.documents,
         batch_size=evaluation_batch_size,
     )
-    training_path = _artifact_path(
-        data_directory,
-        TRAIN_DATASET_ID,
-        TRAIN_DATASET_FILE,
+    training_path = (
+        _artifact_path(data_directory, TRAIN_DATASET_ID, TRAIN_DATASET_FILE)
+        if training_parquet is None
+        else training_parquet.expanduser().resolve()
     )
+    if not training_path.is_file():
+        raise FileNotFoundError(f"training parquet does not exist: {training_path}")
     training_data = DataConfig(
         distribution=mix(source(str(training_path), map=identity), shuffle=False),
         collate=ComponentConfig(
@@ -743,6 +773,8 @@ def _representax_report(
         "model": spec.name,
         "model_id": spec.model_id,
         "revision": spec.revision,
+        "training_parquet": str(training_path),
+        "training_parquet_sha256": _sha256(training_path),
         "parameter_count": parameter_count,
         "batch_size": batch_size,
         "steps": steps,
@@ -985,6 +1017,7 @@ def _sentence_transformers_report(
     spec: ModelSpec,
     *,
     data_directory: Path,
+    training_parquet: Path | None,
     run_directory: Path,
     batch_size: int,
     steps: int,
@@ -1063,11 +1096,13 @@ def _sentence_transformers_report(
         raise ValueError("fixed text lengths must be within the maximum length")
     checkpoint = _checkpoint(spec)
     evaluation_data = _evaluation_data(data_directory)
-    training_path = _artifact_path(
-        data_directory,
-        TRAIN_DATASET_ID,
-        TRAIN_DATASET_FILE,
+    training_path = (
+        _artifact_path(data_directory, TRAIN_DATASET_ID, TRAIN_DATASET_FILE)
+        if training_parquet is None
+        else training_parquet.expanduser().resolve()
     )
+    if not training_path.is_file():
+        raise FileNotFoundError(f"training parquet does not exist: {training_path}")
     load_started = time.perf_counter()
     model = SentenceTransformer(str(checkpoint), local_files_only=True)
     parameter_count = sum(parameter.numel() for parameter in model.parameters())
@@ -1371,6 +1406,8 @@ def _sentence_transformers_report(
         "model": spec.name,
         "model_id": spec.model_id,
         "revision": spec.revision,
+        "training_parquet": str(training_path),
+        "training_parquet_sha256": _sha256(training_path),
         "parameter_count": parameter_count,
         "batch_size": batch_size,
         "steps": steps,
@@ -1426,6 +1463,7 @@ def _worker(arguments: argparse.Namespace) -> None:
     spec = _model_spec(arguments)
     kwargs = {
         "data_directory": arguments.data_directory.resolve(),
+        "training_parquet": arguments.training_parquet,
         "run_directory": arguments.run_directory.resolve(),
         "batch_size": arguments.batch_size,
         "steps": arguments.steps,
@@ -1464,9 +1502,7 @@ def _worker(arguments: argparse.Namespace) -> None:
             spec,
             sequence_length_buckets=buckets,
             query_cache_chunk_size=arguments.representax_query_cache_chunk_size,
-            document_cache_chunk_size=(
-                arguments.representax_document_cache_chunk_size
-            ),
+            document_cache_chunk_size=(arguments.representax_document_cache_chunk_size),
             loss_row_chunk_size=arguments.representax_loss_row_chunk_size,
             grad_cache_implementation=arguments.grad_cache_implementation,
             packing=arguments.packing,
@@ -1844,6 +1880,15 @@ def _pair(arguments: argparse.Namespace) -> None:
         raise ValueError(
             "pair does not apply Representax-only checkpoint or resume controls"
         )
+    if arguments.training_parquet is None:
+        raise ValueError(
+            "pair requires a duplicate-free --training-parquet; the upstream "
+            "source-order shard contains repeated MNR queries and positives"
+        )
+    _validate_unique_training_pairs(
+        arguments.training_parquet.expanduser().resolve(),
+        minimum_rows=arguments.batch_size,
+    )
     result_directory = arguments.result_directory.expanduser().resolve()
     result_directory.mkdir(parents=True, exist_ok=False)
     reports = {
@@ -1872,6 +1917,8 @@ def _pair(arguments: argparse.Namespace) -> None:
         "--seed",
         str(arguments.seed),
     ]
+    if arguments.training_parquet is not None:
+        common.extend(("--training-parquet", str(arguments.training_parquet.resolve())))
     if arguments.evaluation_every_steps is not None:
         common.extend(
             ("--evaluation-every-steps", str(arguments.evaluation_every_steps))
@@ -2260,6 +2307,14 @@ def _worker_arguments(
     parser.add_argument("--model", choices=tuple(MODEL_SPECS), required=True)
     parser.add_argument("--checkpoint", type=Path, required=True)
     parser.add_argument("--data-directory", type=Path, required=True)
+    parser.add_argument(
+        "--training-parquet",
+        type=Path,
+        help=(
+            "Optional immutable training parquet; evaluation still uses "
+            "--data-directory"
+        ),
+    )
     parser.add_argument("--batch-size", type=int, default=32)
     if include_steps:
         parser.add_argument("--steps", type=int, default=100)

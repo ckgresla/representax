@@ -9,8 +9,10 @@ from experiments.preflights.image_text import (
     GRAD_CACHE_MICRO_BATCH,
     ImageTextEvaluationCollator,
     ImageTextRetrievalCollator,
+    _distinct_captions,
     _parser,
     _representax_job,
+    _select_coco_rows,
     frozen_contract,
 )
 from PIL import Image
@@ -41,6 +43,28 @@ def test_frozen_image_text_contract() -> None:
     assert contract.reference_version == "5.6.1"
     assert contract.global_batch_size == 512
     assert contract.image_shape == (3, 224, 224)
+
+
+def test_training_captions_are_distinct_and_nonempty() -> None:
+    assert _distinct_captions(
+        (" first ", "", "first", "second", "third", "fourth"), count=4
+    ) == ("first", "second", "third", "fourth")
+
+
+def test_coco_selection_skips_duplicate_media_and_captions() -> None:
+    rows = (
+        {"image_id": 1, "captions": ("a", "b", "c", "d")},
+        {"image_id": 1, "captions": ("e", "f", "g", "h")},
+        {"image_id": 2, "captions": ("a", "i", "j", "k")},
+        {"image_id": 3, "captions": ("e", "f", "g", "h")},
+    )
+
+    selected = _select_coco_rows(rows, count=2)
+
+    assert [(index, captions) for index, _, captions in selected] == [
+        (0, ("a", "b", "c", "d")),
+        (3, ("e", "f", "g", "h")),
+    ]
 
 
 def test_image_text_collators_preserve_modalities_and_validity(tmp_path) -> None:
@@ -128,6 +152,8 @@ def test_representax_job_uses_run_job_grad_cache_and_verified_export(tmp_path) -
         json.dumps(
             {
                 "training_presentations": 2048,
+                "unique_image_ids": True,
+                "unique_captions": True,
                 "relevant_documents": {"1000": [0]},
             }
         )
@@ -142,6 +168,9 @@ def test_representax_job_uses_run_job_grad_cache_and_verified_export(tmp_path) -
         data_directory=data,
         steps=4,
         seed=7,
+        symmetric=True,
+        warmup_steps=2,
+        training_file="train-seed-7.jsonl",
     )
 
     assert job.model.target == "representax.models.clip:load_clip"
@@ -149,6 +178,9 @@ def test_representax_job_uses_run_job_grad_cache_and_verified_export(tmp_path) -
     assert job.training.grad_cache is not None
     assert job.training.grad_cache.micro_batch_size == GRAD_CACHE_MICRO_BATCH
     assert job.loss.negative_scope == "global"
+    assert job.loss.symmetric
+    assert job.optimization.schedule.parameters["warmup_steps"] == 2
+    assert job.data.distribution.sources[0].uri.endswith("train-seed-7.jsonl")
     assert job.checkpointing is not None and job.checkpointing.every == 2
     assert job.evaluation is not None and job.evaluation.on_start
     assert job.evaluation.on_end

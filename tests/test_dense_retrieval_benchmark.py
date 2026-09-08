@@ -9,9 +9,9 @@ from pathlib import Path
 import pytest
 from benchmarks.dense_retrieval import (
     MODEL_SPECS,
-    _native_model_target,
     _aggregate,
     _framework_cache_chunk_size,
+    _native_model_target,
     _paired_steady_state_summary,
     _reference_steady_state_summary,
     _representax_worker_flags,
@@ -21,6 +21,7 @@ from benchmarks.dense_retrieval import (
     _time_to_quality_summary,
     _training_compile_summary,
     _training_steady_state_summary,
+    _validate_unique_training_pairs,
 )
 
 
@@ -61,6 +62,35 @@ def _summary(seed: int, speedup: float) -> dict:
 def _write_summary(path: Path, seed: int, speedup: float) -> Path:
     path.write_text(json.dumps(_summary(seed, speedup)))
     return path
+
+
+def test_paired_mnr_rejects_duplicate_queries_and_positives(tmp_path: Path) -> None:
+    import pyarrow as pa
+    import pyarrow.parquet as parquet
+
+    path = tmp_path / "train.parquet"
+    parquet.write_table(
+        pa.Table.from_pylist(
+            [
+                {"query": "q1", "positive": "p1"},
+                {"query": "q2", "positive": "p2"},
+            ]
+        ),
+        path,
+    )
+    assert _validate_unique_training_pairs(path, minimum_rows=2) == 2
+
+    parquet.write_table(
+        pa.Table.from_pylist(
+            [
+                {"query": "q1", "positive": "p1"},
+                {"query": "q1", "positive": "p2"},
+            ]
+        ),
+        path,
+    )
+    with pytest.raises(ValueError, match="globally unique"):
+        _validate_unique_training_pairs(path, minimum_rows=2)
 
 
 def test_three_run_interval_reports_student_t_confidence_bounds():
@@ -191,6 +221,7 @@ def test_native_model_target_honors_each_model_spec():
     assert _native_model_target(MODEL_SPECS["mpnet"], packing=False) == (
         "representax.models:SentenceEncoder.load_from_hf"
     )
+
 
 def test_compile_summary_counts_every_executable_first_use(tmp_path):
     run = tmp_path / "run"

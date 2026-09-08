@@ -135,21 +135,27 @@ def _read_jsonl(path: Path) -> tuple[dict[str, Any], ...]:
 def select_training_rows(
     rows: Iterable[Mapping[str, Any]], *, count: int
 ) -> tuple[dict[str, Any], ...]:
-    """Take the first deterministic query-positive pairs from MS MARCO."""
+    """Take deterministic MS MARCO rows with unique queries and positives."""
 
     selected = []
+    queries: set[str] = set()
+    positives: set[str] = set()
     for source_index, row in enumerate(rows):
         query = str(row["query"])
         positive = str(row["positive"])
-        if not query or not positive:
+        if not query or not positive or query in queries or positive in positives:
             continue
+        queries.add(query)
+        positives.add(positive)
         selected.append(
             {"source_index": source_index, "query": query, "positive": positive}
         )
         if len(selected) == count:
             break
     if len(selected) != count:
-        raise ValueError(f"MS MARCO source contains only {len(selected)} usable rows")
+        raise ValueError(
+            f"MS MARCO source contains only {len(selected)} unique usable rows"
+        )
     return tuple(selected)
 
 
@@ -218,7 +224,6 @@ def prepare_data(
     )
 
     manifest = {
-        "schema_version": "representax-late-interaction-preflight-data-v1",
         "contract": asdict(contract),
         "training": {
             "source": str(training_parquet.resolve()),
@@ -226,6 +231,8 @@ def prepare_data(
             "rows": len(training),
             "path": train_path.name,
             "sha256": _sha256(train_path),
+            "duplicate_queries": 0,
+            "duplicate_positives": 0,
         },
         "evaluation": {
             "dataset": "NanoMSMARCO",
@@ -258,6 +265,7 @@ def _representax_job(
     lifecycle: bool = True,
     static_shapes: bool = False,
     negative_scope: str = "global",
+    warmup_steps: int = 1,
 ) -> Any:
     from representax.config import (
         BatchConfig,
@@ -283,21 +291,22 @@ def _representax_job(
     contract = frozen_contract()
     if steps < 4 or steps % 2:
         raise ValueError("steps must be an even integer of at least four")
-    required_rows = contract.global_batch_size * steps
+    if warmup_steps < 0 or warmup_steps >= steps:
+        raise ValueError("warmup_steps must be non-negative and less than steps")
     manifest_path = data_directory / "manifest.json"
-    training_rows = (
-        int(_document(manifest_path)["training"]["rows"])
-        if manifest_path.is_file()
-        else required_rows
-    )
-    repeats = max(1, (required_rows + training_rows - 1) // training_rows)
-    sources = tuple(
-        source(
-            str(data_directory / "train.jsonl"),
-            map=identity,
-            name=f"ms-marco-{index}",
-        )
-        for index in range(repeats)
+    if manifest_path.is_file():
+        training = _document(manifest_path).get("training", {})
+        if (
+            training.get("duplicate_queries") != 0
+            or training.get("duplicate_positives") != 0
+        ):
+            raise ValueError(
+                "late-interaction data predates duplicate-free preparation; rebuild it"
+            )
+    training_source = source(
+        str(data_directory / "train.jsonl"),
+        map=identity,
+        name="ms-marco",
     )
     return JobConfig(
         name=(
@@ -346,7 +355,7 @@ def _representax_job(
                 parameters={
                     "init_value": 0.0,
                     "peak_value": 3e-6,
-                    "warmup_steps": 1,
+                    "warmup_steps": warmup_steps,
                     "decay_steps": steps,
                     "end_value": 0.0,
                 },
@@ -354,7 +363,7 @@ def _representax_job(
             max_gradient_norm=1.0,
         ),
         data=DataConfig(
-            distribution=mix(*sources, shuffle=False),
+            distribution=mix(training_source, shuffle=False),
             collate=ComponentConfig(
                 target="representax.tasks.retrieval:RetrievalCollator",
                 parameters={"document_field": "positive"},
@@ -785,6 +794,7 @@ def _representax_worker(
     resume_existing: bool = False,
     platform: Platform = "gpu",
     negative_scope: str = "global",
+    warmup_steps: int = 1,
 ) -> dict[str, Any]:
     jax = initialize_jax(platform)
 
@@ -824,6 +834,7 @@ def _representax_worker(
         lifecycle=platform == "gpu",
         static_shapes=platform == "tpu",
         negative_scope=negative_scope,
+        warmup_steps=warmup_steps,
     )
     if platform == "tpu":
         job = data_parallel_job(
@@ -1149,12 +1160,19 @@ def _reference_arguments(
     )
 
 
-def _reference_dataset(path: Path, *, rows: int) -> Any:
+def _reference_dataset(path: Path, *, minimum_rows: int) -> Any:
     import datasets
 
-    source = datasets.Dataset.from_json(str(path))
-    repeats = max(1, (rows + len(source) - 1) // len(source))
-    dataset = datasets.concatenate_datasets([source] * repeats).select(range(rows))
+    dataset = datasets.Dataset.from_json(str(path))
+    if len(dataset) < minimum_rows:
+        raise ValueError(
+            f"late-interaction data has {len(dataset)} rows; "
+            f"one batch requires {minimum_rows}"
+        )
+    queries = dataset["query"]
+    positives = dataset["positive"]
+    if len(set(queries)) != len(queries) or len(set(positives)) != len(positives):
+        raise ValueError("late-interaction training data contains duplicate pairs")
     return dataset.select_columns(["query", "positive"])
 
 
@@ -1203,8 +1221,10 @@ def _pylate_worker(
         )
     if steps < 4 or steps % 2:
         raise ValueError("steps must be an even integer of at least four")
-    required_rows = contract.global_batch_size * steps
-    train = _reference_dataset(data_directory / "train.jsonl", rows=required_rows)
+    train = _reference_dataset(
+        data_directory / "train.jsonl",
+        minimum_rows=contract.global_batch_size,
+    )
 
     def load_model(path: Path) -> Any:
         model = models.ColBERT(
@@ -1529,7 +1549,7 @@ def _pylate_training_profile(
     model.document_length = contract.maximum_document_length
     train = _reference_dataset(
         data_directory / "train.jsonl",
-        rows=contract.global_batch_size * steps,
+        minimum_rows=contract.global_batch_size,
     )
     timer = CudaStepTimer()
     loss = losses.CachedContrastive(
@@ -1817,6 +1837,7 @@ def _worker(arguments: argparse.Namespace) -> None:
     if arguments.framework == "representax":
         parameters["resume_existing"] = arguments.resume_existing
         parameters["negative_scope"] = arguments.negative_scope
+        parameters["warmup_steps"] = arguments.warmup_steps
     elif arguments.resume_existing:
         raise ValueError("--resume-existing is only available for Representax")
     report = function(**parameters)
@@ -2004,6 +2025,7 @@ def _parser() -> argparse.ArgumentParser:
     worker.add_argument(
         "--negative-scope", choices=("local", "global"), default="global"
     )
+    worker.add_argument("--warmup-steps", type=int, default=1)
 
     pair = subparsers.add_parser("pair")
     pair.add_argument("--checkpoint", type=Path, required=True)
