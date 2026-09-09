@@ -195,3 +195,37 @@ def test_memory_report_counts_aliased_buffers_once(tmp_path):
     assert report["bytes"]["temporaries"] == 200
     assert report["thread_local_bytes_excluded"] == 4
     assert len(report["largest_temporary_values"]) == 2
+
+
+@pytest.mark.parametrize("strategy", ["connectors", "connectors-lora", "full"])
+def test_strategy_preflight_freezes_parameter_recipe_and_source_coverage(strategy):
+    import numpy as np
+
+    module = importlib.import_module(
+        "experiments.14-text-to-any-modality.strategy_preflight"
+    )
+    paths = {
+        name: f"/data/{name}.jsonl" for name in ("image", "audio", "video", "text")
+    }
+    job, _ = module.strategy_job(paths, strategy)
+    assert job.training.global_batch_size == 32
+    assert job.training.grad_cache.micro_batch_size == 2
+    assert job.training.activation_rematerialization == "full"
+    assert job.training.max_steps == 8 and job.checkpointing.every == 4
+    sources = job.data.distribution.sources
+    names = {s.name for s in sources}
+    assert names == (
+        {"image", "audio", "video"} if strategy == "connectors" else set(paths)
+    )
+    choices = np.random.default_rng(7).choice(
+        len(sources), size=8, p=job.data.distribution.normalized_weights
+    )
+    assert set(choices) == set(range(len(sources)))
+    if strategy == "full":
+        assert job.training.trainable_pattern == ".*" and job.training.adapter is None
+        assert not job.training.trainable_embedding_rows
+    else:
+        assert job.training.trainable_embedding_rows == {
+            ".text.token_embedding": (128257, 128258)
+        }
+        assert (job.training.adapter is not None) == (strategy == "connectors-lora")

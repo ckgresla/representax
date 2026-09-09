@@ -255,6 +255,49 @@ def test_unquantized_adapter_bundle_reloads_native(tmp_path):
     _assert_array_trees_equal(native, model)
 
 
+def test_selected_embedding_rows_export_native_and_merged_huggingface(tmp_path):
+    from representax.models.components import EmbeddingRows
+    from representax.train.job import prepare_model
+
+    base_job = _job(tmp_path / "source")
+    seed = base_job.training.seed
+    source = build_tiny_bert(key=jax.random.fold_in(jax.random.key(seed), 0))
+    adapter = BertCheckpointAdapter(rematerialization="none")
+    adapter.save(source, tmp_path / "source")
+    job = base_job.model_copy(
+        update={
+            "training": base_job.training.model_copy(
+                update={
+                    "trainable_pattern": r"\.embeddings\.norm\.",
+                    "trainable_embedding_rows": {".tower.embeddings.word": (2, 5)},
+                }
+            )
+        }
+    )
+    model, _ = prepare_model(
+        source,
+        adapter=None,
+        key=jax.random.key(3),
+        trainable_pattern=job.training.trainable_pattern,
+        trainable_embedding_rows=job.training.trainable_embedding_rows,
+    )
+    model = eqx.tree_at(
+        lambda m: m.tower.embeddings.word.rows,
+        model,
+        model.tower.embeddings.word.rows + 0.1,
+    )
+    bundle = export_inference_bundle(model, job, tmp_path / "rows-bundle", iteration=1)
+    native, restored_job = load_inference_bundle(bundle.path)
+    assert restored_job == job and isinstance(
+        native.tower.embeddings.word, EmbeddingRows
+    )
+    _assert_array_trees_equal(native, model)
+    restored = adapter.load(bundle.huggingface_path)
+    np.testing.assert_array_equal(
+        restored.tower.embeddings.word, model.tower.embeddings.word.merge()
+    )
+
+
 def test_mixed_precision_full_model_bundle_reloads_master_parameters(tmp_path):
     base_job = _job(tmp_path / "unused")
     job = base_job.model_copy(

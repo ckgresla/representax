@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+import re
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -57,6 +58,7 @@ from representax.evaluation import (
     TripletEvaluator,
 )
 from representax.models import apply_lora, apply_quantized_lora, lora_parameter_filter
+from representax.models.components import EmbeddingRows
 from representax.models.processing import Processor
 from representax.precision import resolve_precision_policy
 from representax.tasks import build_task
@@ -148,26 +150,73 @@ def prepare_model(
     *,
     adapter: QuantizedLoRAConfig | LoRAConfig | None,
     key: Any,
+    trainable_pattern: str | None = None,
+    trainable_embedding_rows: Mapping[str, tuple[int, ...]] | None = None,
 ) -> tuple[eqx.Module, Any]:
     """Apply one scientific adapter recipe and return its trainable filter."""
 
-    if adapter is None:
+    if adapter is not None:
+        apply = (
+            apply_quantized_lora
+            if isinstance(adapter, QuantizedLoRAConfig)
+            else apply_lora
+        )
+        model = apply(
+            model,
+            rank=adapter.rank,
+            alpha=adapter.alpha,
+            key=key,
+            target_pattern=adapter.target_pattern,
+            initialization_scale=adapter.initialization_scale,
+        )
+    if trainable_embedding_rows:
+        unmatched = set(trainable_embedding_rows)
+
+        def select_rows(path, value):
+            name = jax.tree_util.keystr(path)
+            if name not in trainable_embedding_rows:
+                return value
+            if not eqx.is_inexact_array(value):
+                raise ValueError(f"{name}: expected a floating-point embedding table")
+            unmatched.remove(name)
+            return EmbeddingRows.from_array(value, trainable_embedding_rows[name])
+
+        model = jax.tree_util.tree_map_with_path(select_rows, model)
+        if unmatched:
+            raise ValueError(f"embedding paths not found: {sorted(unmatched)}")
+    if trainable_pattern is not None:
+        pattern = re.compile(trainable_pattern)
+        selected = jax.tree_util.tree_map_with_path(
+            lambda path, value: (
+                eqx.is_inexact_array(value)
+                and pattern.search(jax.tree_util.keystr(path)) is not None
+            ),
+            model,
+        )
+    elif adapter is not None:
+        selected = lora_parameter_filter(model)
+    else:
         training_filter = getattr(model, "training_filter", None)
-        if callable(training_filter):
-            return model, training_filter()
-        return model, eqx.is_inexact_array
-    apply = (
-        apply_quantized_lora if isinstance(adapter, QuantizedLoRAConfig) else apply_lora
-    )
-    adapted = apply(
-        model,
-        rank=adapter.rank,
-        alpha=adapter.alpha,
-        key=key,
-        target_pattern=adapter.target_pattern,
-        initialization_scale=adapter.initialization_scale,
-    )
-    return adapted, lora_parameter_filter(adapted)
+        selected = (
+            training_filter() if callable(training_filter) else eqx.is_inexact_array
+        )
+    if trainable_embedding_rows:
+        if callable(selected):
+            selected = jax.tree.map(selected, model)
+        for path in trainable_embedding_rows:
+            selected = jax.tree_util.tree_map_with_path(
+                lambda keys, value, path=path: (
+                    False
+                    if jax.tree_util.keystr(keys) == path + ".base"
+                    else True
+                    if jax.tree_util.keystr(keys) == path + ".rows"
+                    else value
+                ),
+                selected,
+            )
+    if trainable_pattern is not None and not any(jax.tree.leaves(selected)):
+        raise ValueError("trainable_pattern matched no floating-point parameters")
+    return model, selected
 
 
 def build_collate(
@@ -263,6 +312,8 @@ def build_job_runtime(
         model,
         adapter=job.training.adapter,
         key=jax.random.fold_in(key, 1),
+        trainable_pattern=job.training.trainable_pattern,
+        trainable_embedding_rows=job.training.trainable_embedding_rows,
     )
     startup_metrics["perf/adapter_preparation_seconds"] = (
         time.perf_counter() - phase_started

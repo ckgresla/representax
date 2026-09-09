@@ -71,12 +71,39 @@ def rematerialize(function: Any, policy: RematerializationPolicy) -> Any:
     )
 
 
+class EmbeddingRows(eqx.Module):
+    """Frozen vocabulary with a small independently optimized set of rows."""
+
+    base: Float[Array, "vocabulary hidden"]
+    rows: Float[Array, "selected hidden"]
+    row_ids: tuple[int, ...] = eqx.field(static=True)
+
+    @classmethod
+    def from_array(cls, table: Array, row_ids: tuple[int, ...]) -> EmbeddingRows:
+        if table.ndim != 2 or not row_ids or len(set(row_ids)) != len(row_ids):
+            raise ValueError("embedding rows require a matrix and unique nonempty IDs")
+        if min(row_ids) < 0 or max(row_ids) >= table.shape[0]:
+            raise ValueError("embedding row ID outside vocabulary")
+        return cls(table, table[jnp.asarray(row_ids)], row_ids)
+
+    def merge(self) -> Array:
+        return self.base.at[jnp.asarray(self.row_ids)].set(self.rows)
+
+
 def embedding_lookup(
-    table: Float[Array, "vocabulary hidden"],
+    table: Float[Array, "vocabulary hidden"] | EmbeddingRows,
     indices: Int[Array, "*batch"],
 ) -> Float[Array, "*batch hidden"]:
     """Gather embeddings; repeated-token gradients accumulate naturally."""
 
+    if isinstance(table, EmbeddingRows):
+        matches = indices[..., None] == jnp.asarray(table.row_ids)
+        replacements = embedding_lookup(table.rows, jnp.argmax(matches, axis=-1))
+        return jnp.where(
+            jnp.any(matches, axis=-1)[..., None],
+            replacements,
+            embedding_lookup(table.base, indices),
+        )
     output = table.at[indices].get(
         out_sharding=activation_out_sharding(indices.ndim + 1)
     )

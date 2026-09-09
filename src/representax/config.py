@@ -613,7 +613,7 @@ class PrecisionConfig(FrozenConfig):
 
 
 class LoRAConfig(FrozenConfig):
-    """Frozen base weights plus trainable low-rank adapters."""
+    """Insert low-rank adapters; by default only adapter arrays are trainable."""
 
     rank: PositiveInt
     alpha: PositiveFloat
@@ -650,6 +650,23 @@ class TrainingConfig(FrozenConfig):
     grad_cache: Execution[GradCacheConfig | None] = None
     mega_batch_mining: Execution[MegaBatchMiningConfig | None] = None
     adapter: Scientific[LoRAConfig | QuantizedLoRAConfig | None] = None
+    trainable_pattern: Scientific[NonEmptyString | None] = Field(
+        default=None,
+        description=(
+            "Regex search over JAX parameter paths after adapter insertion. "
+            "Selects floating-point array leaves; overrides default training filters. "
+            "None preserves model-defined or adapter-only selection."
+        ),
+    )
+    trainable_embedding_rows: Scientific[
+        dict[NonEmptyString, tuple[NonNegativeInt, ...]]
+    ] = Field(
+        default_factory=dict,
+        description=(
+            "Exact JAX paths of embedding tables mapped to trainable vocabulary IDs. "
+            "Other rows stay frozen, independently of trainable_pattern."
+        ),
+    )
     precision: Execution[PrecisionConfig] = PrecisionConfig()
     activation_rematerialization: Execution[RematerializationPolicy] = Field(
         default="full",
@@ -659,6 +676,26 @@ class TrainingConfig(FrozenConfig):
         ),
     )
     donate_buffers: Execution[bool] = True
+
+    @field_validator("trainable_pattern")
+    @classmethod
+    def validate_trainable_pattern(cls, pattern: str | None) -> str | None:
+        if pattern is not None:
+            try:
+                re.compile(pattern)
+            except re.error as error:
+                raise ValueError(f"invalid trainable_pattern: {error}") from error
+        return pattern
+
+    @field_validator("trainable_embedding_rows")
+    @classmethod
+    def validate_embedding_rows(cls, selections):
+        for path, rows in selections.items():
+            if not rows or len(set(rows)) != len(rows):
+                raise ValueError(
+                    f"{path}: embedding row IDs must be nonempty and unique"
+                )
+        return selections
 
     @model_validator(mode="after")
     def validate_loss_execution(self) -> Self:

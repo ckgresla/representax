@@ -81,6 +81,7 @@ def _export_huggingface(
 
     adapter = build_component(config.adapter)
     from representax.models import merge_quantized_lora
+    from representax.models.components import EmbeddingRows
 
     cpu = jax.devices("cpu")[0]
     with jax.default_device(cpu):
@@ -89,6 +90,11 @@ def _export_huggingface(
             model,
         )
         model = merge_quantized_lora(model)
+        model = jax.tree.map(
+            lambda value: value.merge() if isinstance(value, EmbeddingRows) else value,
+            model,
+            is_leaf=lambda value: isinstance(value, EmbeddingRows),
+        )
         jax.block_until_ready(model)
         source = _resolve_huggingface_source(config.source_checkpoint)
         shutil.copytree(source, target)
@@ -233,6 +239,8 @@ def load_inference_bundle(directory: str | Path) -> tuple[eqx.Module, JobConfig]
         template,
         adapter=job.training.adapter,
         key=jax.random.fold_in(jax.random.key(job.training.seed), 1),
+        trainable_pattern=job.training.trainable_pattern,
+        trainable_embedding_rows=job.training.trainable_embedding_rows,
     )
     template = prepare_master_model(
         template,
