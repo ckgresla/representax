@@ -1242,7 +1242,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
         needed. This does not certify larger chunks or unrestricted media.
         These are readiness checks, not convergence or throughput comparisons:
         source coverage is sparse and cold compilation/checkpoint intervals
-        are present. The nine final training runs have not been launched.
+        are present. These checks preceded the final launch recorded below.
         Orbax emitted an optional progress-metadata bool-dtype warning while
         restoring, and XLA emitted one autotuning timer warning in the full arm;
         both runs continued successfully. Preserve these warnings in the logs.
@@ -1251,6 +1251,15 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
         An existing mixed-precision BERT bundle test fails on the unused pooler
         FP32/BF16 reload template; reproduced with pre-change code and left
         outside this change. No claim that the entire test suite passed.
+      - Final dispatch launched from =044f690= on GPUs =0,1,2,3= under user service
+        =representax-14-nine-runs=. Seed 7 for connectors, connectors+LoRA and
+        full fine-tuning starts on GPUs 0, 1 and 2 respectively; GPU 3 takes a
+        warmed follow-on seed after ten updates. At launch verification all
+        three workers entered the initial held-out evaluation; no completed
+        optimizer updates or final results are claimed yet. Runtime status:
+        =/raid/representax-paper/14-text-to-any-modality/runs/dispatch.json=;
+        launcher log =/raid/representax-paper/14-text-to-any-modality/launch.log=.
+        Verified all 127,211 referenced nonempty media/shard paths exist.
 **** TODO Run the nine BERT masked-language-model strong-scaling jobs [0/9] [0%]
      Run only Representax with the controlled 500M BERT encoder and a real text
      corpus for seeds =7, 42, 773= at 1, 2 and 4 GPUs. Hold the global token
