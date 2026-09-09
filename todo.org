@@ -974,7 +974,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
       for image-to-text. Every run resumed at 50%, exported both native and
       Hugging Face artifacts and reloaded exactly. The complete summary is
       =/raid/representax-paper/13-image-text-convergence/summary.json=.
-***** TODO Freeze the Jina v5 Omni Nano text-to-any-modality configuration
+***** DONE Freeze the Jina v5 Omni Nano text-to-any-modality configuration
       Native Nano and Small loading, all modality paths, full-precision upstream
       parity, training, resume and export/reload are accepted. The agreed model
       is =jinaai/jina-embeddings-v5-omni-nano-retrieval= at
@@ -993,8 +993,8 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
       Agreed sampling weights are uniform per active source: =1/3= each for
       connector-only media sources, =1/4= each including text-text for LoRA/full.
       These are probabilities per update, not equal compute or exact counts.
-      Our loss, learning rates, input sizes, microbatches and budget remain
-      open. Agreed: a pure text-text batch bypasses trainable connectors, so
+      The final configuration below fixes loss, learning rates, input sizes,
+      microbatches and budget. A pure text-text batch bypasses trainable connectors, so
       omit it from connector-only training and use text-only evaluation instead.
       Report this training-distribution difference explicitly across strategies;
       do not count a zero-gradient text-only forward as a learning update.
@@ -1153,21 +1153,51 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
         disabled, keeping batch and science fixed. Per-modality chunk selection
         is not yet wired into the mixed-source job (one scalar chunk setting).
 
-      Proposed final settings, awaiting joint review (not executable promises):
+      Approved final settings, executable in =config.py=:
       - Nine jobs, unchanged Nano revision and seeds; uniform weights as above.
       - Bidirectional InfoNCE, temperature =0.02=, Matryoshka prefix dimensions
-        =32,64,128,256,512,768=. Target global batch =32=; final execution settings
-        still require capacity checks for every adaptation strategy.
+        =32,64,128,256,512,768=. Global batch =32= and chunk =2= for every
+        adaptation strategy; all three passed the capacity/lifecycle checks below.
       - Text maximum =1024=, sequence buckets =128,512,1024=; image budget
         =256*256= pixels; video eight uniformly selected frames at =224*224=
         pixels per frame; audio mono 16 kHz, up to ten seconds. These differ
         deliberately from the tiny integration settings above.
       - AdamW, weight decay =0.01=, clip norm =1=, 6% warmup then cosine decay;
-        proposed learning rates: connectors =2e-4=, connectors+LoRA =5e-5=,
+        learning rates: connectors =2e-4=, connectors+LoRA =5e-5=,
         full =1e-5=. LoRA rank =8=, alpha =16= across tower linear layers.
-      - Initially =2000= updates per seed; evaluations at 0, 10%, 25%, 50%, 75%
-        and 100%; resumable checkpoints at 50% and 100%. Exact held-out panels
-        and the full training-source construction must still be frozen.
+      - =2000= updates per seed; evaluations at 0, 25%, 50%, 75% and 100%;
+        resumable checkpoints at 50% and 100%, final native inference export.
+        Use the existing regular evaluation cadence: omit the proposed 10%
+        evaluation rather than changing the core training loop for this recipe.
+      - Full-source metadata manifests live in
+        =/raid/representax-paper/14-text-to-any-modality/training-data/=.
+        COCO reuses Experiment 13's 117,760 prepared images (not all 118,287
+        canonical images), with 588,800 pairs; AudioCaps uses all 45,178 available
+        training clips; MSR-VTT uses all 7,010 training videos with 129,809
+        distinct video/caption pairs, removing repeated captions per video.
+        Text reuses each seed's 488,576-query duplicate-free MS MARCO table.
+        Seeded metadata ordering prevents within-batch duplicate media/captions;
+        source mixing stays uniform and homogeneous at batch level. Grain does
+        not reshuffle the already ordered files. Incomplete source tails are
+        dropped, sources repeat as needed, and only consumed media are decoded.
+      - Held-out panels, no query/corpus truncation: Flickr30k test 5,000 text
+        queries / 1,000 images; OpenSound AudioCaps test 4,411 queries / 883 clips;
+        VLM2Vec MSR-VTT test_1k 1,000 queries / 1,000 videos; NanoMSMARCO 50 queries
+        / 5,043 documents. Audio/video train-test media IDs are disjoint.
+        Each panel has an independent native IR accumulator, full 768-dimensional
+        embeddings and cosine retrieval, reporting recall@1/5/10 and nDCG@10
+        plus the standard IR diagnostics. This is text-to-media evaluation,
+        not bidirectional or exhaustive MTEB evaluation.
+      - =run.py prepare-training= builds metadata without media copies;
+        =run.py inspect-training --strategy connectors --seed 7= prints the
+        executable config; =run.py launch --gpus 0 1 2 3= dispatches nine runs.
+        Start seed 7 per strategy, allow later seeds after ten updates, use one
+        shared compilation cache, and stop pending seeds of an arm if it fails.
+        =run.py train --strategy full --seed 7 --resume= resumes explicitly.
+        Source hashes, dataset pins, exact config, Git commit, package versions,
+        environment-lock hash, metrics and checkpoints remain under =/raid=.
+        This change is experiment wiring only; no core model/loss/optimizer code
+        was changed. Focused full-source/config/evaluator tests: 25 passed.
       - Do not silently enable GradCache in the serious recipe: the batch-2
         real-media custom-VJP/Matryoshka canary completed eight updates including
         checkpoint/resume at tiny input caps. The batch-32 capacity sweep above

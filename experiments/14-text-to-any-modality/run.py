@@ -1,14 +1,16 @@
-"""Experiment 14 integration runner; serious training settings await review."""
+"""Experiment 14: prepare, inspect, and run Jina text-to-any-modality training."""
 
 from __future__ import annotations
 
 import argparse
 import gc
+import hashlib
 import importlib
 import json
 import os
 import subprocess
 import sys
+import time
 from contextlib import closing
 from functools import partial
 from pathlib import Path
@@ -128,12 +130,40 @@ def integration_job(paths):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "command", choices=("prepare", "inspect", "check-data", "canary")
+        "command",
+        choices=(
+            "prepare",
+            "inspect",
+            "check-data",
+            "canary",
+            "prepare-training",
+            "inspect-training",
+            "train",
+            "launch",
+        ),
     )
     parser.add_argument("--output", type=Path, default=OUTPUT / "integration")
     parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--seed", type=int, choices=(7, 42, 773), default=7)
+    parser.add_argument(
+        "--strategy",
+        choices=("connectors", "connectors-lora", "full"),
+        default="connectors",
+    )
+    parser.add_argument("--gpus", type=int, nargs="+", default=[0, 1, 2, 3])
     args = parser.parse_args()
     data = importlib.import_module(DATA_MODULE)
+    if args.command == "prepare-training":
+        data.prepare_training(OUTPUT / "training-data", assets=ASSETS)
+        return
+    if args.command in {"inspect-training", "train", "launch"}:
+        if args.command == "launch":
+            launch_training(args.gpus)
+        elif args.command == "inspect-training":
+            print(serious_job(args.strategy, args.seed).model_dump_json(indent=2))
+        else:
+            train(args.strategy, args.seed, resume=args.resume)
+        return
     if args.command == "prepare":
         print(
             json.dumps(
@@ -238,6 +268,198 @@ def check_data(job, bindings, output):
     result = {"batches": records, "exact_resumed_batches": True}
     (output / "processor-check.json").write_text(json.dumps(result, indent=2) + "\n")
     print(json.dumps(result, indent=2))
+
+
+def serious_job(strategy, seed):
+    config = importlib.import_module("experiments.14-text-to-any-modality.config")
+    manifest = json.loads((OUTPUT / "training-data/manifest.json").read_text())
+    return config.training_job(manifest, strategy=strategy, seed=seed, assets=ASSETS)
+
+
+def train(strategy, seed, *, resume=False):
+    """Use the native lifecycle with independent per-modality IR accumulators."""
+    from importlib.metadata import distributions
+
+    import jax
+
+    from representax.precision import resolve_precision_policy
+    from representax.train.evaluation import EvaluationRunner
+    from representax.train.job import build_job_runtime
+    from representax.train.loop import run_training
+
+    data = importlib.import_module(DATA_MODULE)
+    evaluation = importlib.import_module(
+        "experiments.14-text-to-any-modality.evaluation"
+    )
+    directory = OUTPUT / "runs" / strategy / f"seed-{seed}"
+    directory.mkdir(parents=True, exist_ok=True)
+    if not resume and (directory / "job.json").exists():
+        raise FileExistsError(f"existing run: {directory}; resume explicitly")
+    job = serious_job(strategy, seed)
+    (directory / "job.json").write_text(job.model_dump_json(indent=2) + "\n")
+    if not resume:
+        (directory / "provenance.json").write_text(
+            json.dumps(
+                {
+                    "commit": subprocess.check_output(
+                        ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True
+                    ).strip(),
+                    "command": sys.argv,
+                    "gpu": os.environ.get("CUDA_VISIBLE_DEVICES"),
+                    "jax": jax.__version__,
+                    "devices": [str(d) for d in jax.devices()],
+                    "packages": sorted(
+                        f"{d.metadata['Name']}=={d.version}" for d in distributions()
+                    ),
+                    "data_manifest_sha256": hashlib.sha256(
+                        (OUTPUT / "training-data/manifest.json").read_bytes()
+                    ).hexdigest(),
+                    "environment_lock_sha256": hashlib.sha256(
+                        (ROOT / "experiments/uv.lock").read_bytes()
+                    ).hexdigest(),
+                },
+                indent=2,
+            )
+        )
+    runtime = build_job_runtime(
+        job,
+        mappers={
+            f"{DATA_MODULE}.map_audio": partial(data.map_audio, seconds=10.0),
+            f"{DATA_MODULE}.map_video": partial(data.map_video, frames=8),
+        },
+        place_initial_state=not resume,
+    )
+    runner = EvaluationRunner(
+        evaluation.make_evaluator(job.evaluation),
+        precision=resolve_precision_policy(job.training.precision),
+    )
+    result = run_training(
+        state=runtime.state,
+        step=runtime.step,
+        batches=runtime.batches,
+        job=job,
+        run_directory=directory / "run",
+        resume=resume,
+        place_state=runtime.place_state,
+        place_batch=runtime.place_batch,
+        evaluation_runners=(runner,),
+        evaluation_batches=lambda: evaluation.evaluation_batches(
+            job.evaluation, runtime.processor
+        ),
+        startup_metrics=runtime.startup_metrics,
+        export_inference=job.export.enabled,
+    )
+    assert result.completed_iterations == job.training.max_steps
+    (directory / "result.json").write_text(
+        json.dumps(
+            {
+                "completed_iterations": result.completed_iterations,
+                "resumed": result.resumed,
+                "inference_bundle": str(result.inference_bundle),
+                "memory": jax.devices()[0].memory_stats(),
+            },
+            indent=2,
+        )
+    )
+
+
+def launch_training(gpus):
+    """One worker per GPU; start later seeds after that strategy warms up."""
+    if not gpus or len(gpus) != len(set(gpus)) or any(g < 0 or g > 3 for g in gpus):
+        raise ValueError("provide distinct authorized GPUs from 0,1,2,3")
+    config = importlib.import_module("experiments.14-text-to-any-modality.config")
+    pending = [
+        (strategy, seed) for seed in config.SEEDS for strategy in config.LEARNING_RATES
+    ]
+    running, finished, failed = {}, [], []
+    warmed = set()
+    root = OUTPUT / "runs"
+    root.mkdir(parents=True, exist_ok=True)
+    env = dict(
+        os.environ,
+        HF_HOME="/raid/.cache/huggingface",
+        TOKENIZERS_PARALLELISM="false",
+        XLA_PYTHON_CLIENT_MEM_FRACTION="0.90",
+        OMP_NUM_THREADS="4",
+        JAX_COMPILATION_CACHE_DIR=str(OUTPUT / "training-jax-cache"),
+    )
+    while pending or running:
+        for gpu, (process, log, strategy, seed) in list(running.items()):
+            metrics = root / strategy / f"seed-{seed}/run/metrics.jsonl"
+            if metrics.exists():
+                for line in metrics.read_text().splitlines():
+                    try:
+                        row = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if (
+                        row.get("event") == "training_step"
+                        and row.get("iteration", 0) >= 10
+                    ):
+                        warmed.add(strategy)
+            status = process.poll()
+            if status is None:
+                continue
+            log.close()
+            del running[gpu]
+            (finished if status == 0 else failed).append((strategy, seed, status))
+            if status == 0:
+                warmed.add(strategy)
+            else:
+                # Preserve failure evidence and do not spend two more seeds on that arm.
+                pending = [item for item in pending if item[0] != strategy]
+            print(f"END gpu={gpu} {strategy} seed={seed} exit={status}", flush=True)
+        for gpu in gpus:
+            if gpu in running:
+                continue
+            index = next(
+                (i for i, (s, seed) in enumerate(pending) if seed == 7 or s in warmed),
+                None,
+            )
+            if index is None:
+                continue
+            strategy, seed = pending.pop(index)
+            directory = root / strategy / f"seed-{seed}"
+            directory.mkdir(parents=True, exist_ok=False)
+            log = (directory / "worker.log").open("w")
+            process = subprocess.Popen(
+                [
+                    sys.executable,
+                    "-u",
+                    __file__,
+                    "train",
+                    "--strategy",
+                    strategy,
+                    "--seed",
+                    str(seed),
+                ],
+                cwd=ROOT,
+                env=dict(env, CUDA_VISIBLE_DEVICES=str(gpu)),
+                stdout=log,
+                stderr=subprocess.STDOUT,
+            )
+            running[gpu] = process, log, strategy, seed
+            print(
+                f"START gpu={gpu} {strategy} seed={seed} pid={process.pid}", flush=True
+            )
+        (root / "dispatch.json").write_text(
+            json.dumps(
+                {
+                    "running": {
+                        str(g): {"pid": p.pid, "strategy": s, "seed": seed}
+                        for g, (p, _, s, seed) in running.items()
+                    },
+                    "pending": pending,
+                    "completed": finished,
+                    "failed": failed,
+                },
+                indent=2,
+            )
+        )
+        if running:
+            time.sleep(15)
+    if failed:
+        raise RuntimeError(f"failed training jobs: {failed}")
 
 
 if __name__ == "__main__":
