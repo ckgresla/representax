@@ -1147,7 +1147,8 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
         observations, not isolated paper results or cross-modality efficiency
         comparisons. Different chunks are not strict BF16 trajectory-parity tests.
         Text/image/video repeat 32 distinct real pairs; audio reads an original
-        training shard. All three final adaptation strategies remain unvalidated.
+        training shard. This sweep did not validate the three final adaptation
+        strategies; the separate strategy lifecycle checks are recorded below.
         Candidate follow-up, not yet run: same GradCache with layer checkpointing
         disabled, keeping batch and science fixed. Per-modality chunk selection
         is not yet wired into the mixed-source job (one scalar chunk setting).
@@ -1172,11 +1173,54 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
         checkpoint/resume at tiny input caps. The batch-32 capacity sweep above
         covers proposed input caps, but only text LoRA. Keep the scientific batch
         unchanged while selecting execution chunk sizes for the final strategies.
-      - Training parameter selection still needs implementing/verification for
-        connector-only and connectors+LoRA. Generic LoRAConfig selects only LoRA
-        arrays, not connectors or delimiter embeddings; it does not implement
-        those two proposed strategies by itself. Full fine-tuning is the default
-        no-adapter path but has not been capacity-tested at the proposed batch.
+      - Independent parameter selection landed in =c52afbe=. LoRA insertion and
+        trainability are separate: =training.trainable_pattern= selects floating
+        leaves by regex after adapter insertion; omitted settings preserve the
+        existing defaults. Connector selection is
+        =^\.(vision\.merger|audio\.projection)\.=; connectors+LoRA also selects
+        =\.lora_[ab]$=. Full fine-tuning selects all floating parameters.
+      - User approved training the active vocabulary delimiter rows as well:
+        =training.trainable_embedding_rows={".text.token_embedding": (128257, 128258)}=.
+        These are Nano's audio start/end tokens. Media placeholder embeddings
+        are replaced by features; the separate loaded audio BOS/EOS parameter
+        is unused by this forward path and is not selected as a connector.
+        Selected rows are stored independently of a frozen base vocabulary,
+        avoiding full-vocabulary gradients/moments and frozen-row weight decay.
+        Native inference bundles retain this representation; HF export merges
+        the selected rows into the standard embedding table.
+      - =strategy_preflight.py= runs the three strategies serially on GPU 0,
+        with eight updates, checkpoint after four and resume through eight.
+        Batch =32=, chunk =2=, full activation checkpointing, custom-VJP GradCache,
+        BF16 compute/FP32 parameters and the Matryoshka loss above. Preflight
+        learning rate is =1e-5= for all arms, not the proposed final arm-specific
+        rates. Sources are the bounded real-media capacity inputs described
+        above; connector-only omits text and the other arms include all four.
+        Evidence: =/raid/representax-paper/14-text-to-any-modality/strategy-preflight/=.
+        All three passed eight finite/non-skipped updates and checkpoint/resume:
+        | Strategy          | Trainable parameters | Peak live GiB |
+        |-------------------+----------------------+---------------|
+        | Connectors        |           12,787,200 |          5.13 |
+        | Connectors + LoRA |           21,675,520 |          5.67 |
+        | Full fine-tuning  |          947,615,232 |         18.82 |
+        Both partial-training arms changed connectors and selected delimiter
+        rows without changing any frozen leaf. The LoRA arm changed leaves in
+        text, vision and audio towers. Before/after parameter hashes, exact
+        JobConfig, step records, checkpoints and logs are retained per arm.
+        Memory is process-lifetime allocator-live peak, including load/compile
+        and resume, not reserved BFC memory or a static executable estimate.
+        Full fine-tuning fits on one RTX 4090 at these caps/chunks; no FSDP was
+        needed. This does not certify larger chunks or unrestricted media.
+        These are readiness checks, not convergence or throughput comparisons:
+        source coverage is sparse and cold compilation/checkpoint intervals
+        are present. The nine final training runs have not been launched.
+        Orbax emitted an optional progress-metadata bool-dtype warning while
+        restoring, and XLA emitted one autotuning timer warning in the full arm;
+        both runs continued successfully. Preserve these warnings in the logs.
+      - Focused validation: 11 selection/gradient/AdamW tests, one native/HF
+        sparse-row export test and 14 experiment-data/config tests passed.
+        An existing mixed-precision BERT bundle test fails on the unused pooler
+        FP32/BF16 reload template; reproduced with pre-change code and left
+        outside this change. No claim that the entire test suite passed.
 **** TODO Run the nine BERT masked-language-model strong-scaling jobs [0/9] [0%]
      Run only Representax with the controlled 500M BERT encoder and a real text
      corpus for seeds =7, 42, 773= at 1, 2 and 4 GPUs. Hold the global token
