@@ -63,21 +63,29 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      correction below. Show per-recipe speedup with uncertainty, GPU-versus-TPU
      speedup, trajectory correlation, and the capability/reproducibility table.
      Report BERT Base, TPU audio and compiled dense retrieval as explicit limits.
-**** 5. End-to-end representation learning [9/18]
+**** 5. End-to-end representation learning [18/18] [100%]
      Run three independent Representax seeds (=7, 42, 773=) for each of four
      canonical workloads. These runs establish useful held-out representations
-     and complete convergence trajectories; Section 4 already supplies the
+     and finite-budget learning trajectories; Section 4 already supplies the
      matched reference-framework throughput evidence.
-     - Dense retrieval: ModernBERT on duplicate-free MS MARCO, evaluated with
+     - Dense retrieval: ETTIN Encoder 150M on duplicate-free MS MARCO, evaluated with
        the shared retrieval evaluator on held-out MS MARCO/TREC data.
      - Late interaction: GTE-ModernColBERT on duplicate-free MS MARCO, evaluated
        with one shared NanoMSMARCO indexing and retrieval protocol.
+       Completed negative result retained in artifacts/history. User decision
+       2026-09-09: omit this from the main positive learning demonstrations and
+       stop recipe tuning for this submission. Do not claim all four recipes
+       improved or describe the untested explanation as proven.
      - Image-text: CLIP ViT-B/32 on COCO, evaluated on Flickr30k retrieval.
      - Text-to-any-modality: Jina v5 Omni Nano with COCO text-image, AudioCaps
        text-audio, MSR-VTT text-video and MS MARCO text-text data. Run three seeds
        for each of connector-only, connector-plus-LoRA and full fine-tuning:
        nine Experiment 14 jobs. Evaluate each target modality separately. This
        is fine-tuning, not from-scratch pretraining or an any-to-any claim.
+       Frame this as evidence that the toolkit supports effective multimodal
+       learning, not a new SOTA method. Report media improvements and text
+       forgetting explicitly; novel methods and recipe optimization are future
+       work. Fixed-budget gains do not establish an asymptotic plateau.
 **** 6. Scaling and sharding [0/9]
      Run a canonical BERT-style masked-language-model workload with the 500M
      controlled encoder for seeds =7, 42, 773= at 1, 2 and 4 GPUs. Hold examples,
@@ -479,7 +487,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
    lives under
    =/raid/representax/paper-campaign-v1/preflight/packing/20260828/= and compact
    evidence under =benchmarks/results/paper-packing-preflight-20260828/=.
-*** NEXT Complete the final paper experiments [24/27] [89%] :research:benchmark:
+*** NEXT Complete the final paper experiments [25/27] [93%] :research:benchmark:
 **** DONE Repeat seed-7 MPNet/MS MARCO with the default reference collator
      The accepted fair-padding run uses Representax length buckets and Sentence
      Transformers' standard dynamic collator. Across the identical warmed
@@ -934,9 +942,9 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      measurement as a same-shape systems diagnostic unless a bounded TPU rerun is
      inexpensive; do not use the old duplicate-heavy loss trajectory as training
      evidence.
-**** TODO Run the eighteen end-to-end representation-learning jobs [9/18] [50%]
+**** DONE Run the eighteen end-to-end representation-learning jobs [18/18] [100%]
      Run only Representax for seeds =7, 42, 773= on the four frozen Section 5
-     recipes: ModernBERT dense retrieval, GTE-ModernColBERT late interaction,
+     recipes: ETTIN dense retrieval, GTE-ModernColBERT late interaction,
      CLIP ViT-B/32 image-text training, and Jina v5 Omni Nano text-to-any-modality
      fine-tuning with three adaptation strategies. Use a real data presentation or the frozen update
      budget, retain every training metric, evaluate the initial and final model
@@ -959,10 +967,38 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
       positives do not improve the already-trained checkpoint. The complete
       summary is
       =/raid/representax-paper/12-late-interaction-convergence/summary.json=.
-      The approved hard-negative recipe is running seeds =7, 42, 773= on GPUs
-      =0, 1, 2=, with batch =512= and =1,000= updates. Outputs are separate under
+      The approved hard-negative recipe completed seeds =7, 42, 773=, with
+      batch =512= and =1,000= updates. Outputs are separate under
       =/raid/representax-paper/12-late-interaction-convergence/hard-negatives/=.
-      Finish these unchanged. The user observed low/jumpy power, utilization
+      All three have 1,000 recorded updates with no skipped/nonfinite steps.
+      The consistently scored initial nDCG@10 is =0.7103915=; final scores are
+      =0.6927199= (7), =0.6913334= (42), =0.6933328= (773), mean =0.6924620=
+      with sample SD =0.0010243=. Hard negatives did not reverse the decline:
+      retain this as a negative quality result, not positive convergence evidence.
+      Read-only follow-up 2026-09-09: all seeds have 999 nonzero updates; the
+      initial zero update is expected from the zero-start warmup. Mean loss
+      over the first/last 100 updates falls 0.0611/0.0385 (7), 0.0630/0.0404
+      (42), 0.0580/0.0360 (773). All seeds lose two net top-1 successes
+      (27/50 to 25/50) and one net top-10 success (46/50 to 45/50).
+      This is a reproducible small-panel decline, not evidence of a stalled
+      optimizer or a measured full-corpus quality collapse.
+      The checkpoint was distilled; this run uses hard-label contrastive loss
+      with one mined negative and in-batch candidates, without teacher scores.
+      Recipe-induced forgetting is a hypothesis, not an isolated cause.
+      Temperature 0.02 is explicitly documented by PyLate and is not itself
+      a bug. The pinned checkpoint's preprocessing metadata matches the local
+      copy; its limits are query 48/document 300, while our train and evaluation
+      consistently use 32/256. Evaluation encodes in BF16 and scores in FP32;
+      it is not a full-FP32 encoder evaluation. The evaluator saves aggregate
+      metrics, not query rankings, so paired per-query uncertainty requires
+      re-evaluation. Proposed next action, not launched: score saved initial
+      and final models with a consistent precision policy, save per-query
+      rankings, and add an untouched held-out retrieval panel before tuning.
+      Superseded by user decision 2026-09-09: no additional late-interaction
+      evaluation or retraining is required for submission; preserve the negative
+      evidence and omit it from the main positive learning demonstrations.
+      Do not interpret the small difference from the older =0.7123= initial
+      scoring protocol as training progress. The user observed low/jumpy power, utilization
       and memory-bandwidth readings. Afterwards, check larger GradCache replay
       microbatches (currently =8=) while keeping the effective batch and scientific
       settings fixed. Telemetry alone does not establish the bottleneck; compare
@@ -1260,8 +1296,424 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
         =/raid/representax-paper/14-text-to-any-modality/runs/dispatch.json=;
         launcher log =/raid/representax-paper/14-text-to-any-modality/launch.log=.
         Verified all 127,211 referenced nonempty media/shard paths exist.
-**** TODO Run the nine BERT masked-language-model strong-scaling jobs [0/9] [0%]
-     Run only Representax with the controlled 500M BERT encoder and a real text
+      - Completion reviewed 2026-09-09: all nine runs completed 2,000 updates,
+        all five scheduled evaluation passes and final native export. Verified
+        all nine export completion markers and checkpoint model/optimizer/progress
+        directories at steps 1,000 and 2,000. Across 18,000 updates there were
+        no skipped or nonfinite records. Dispatcher has no running/pending jobs;
+        service exited successfully. This verifies saved artifacts, not a new
+        final-model reload parity experiment. Runs themselves did not resume;
+        resume acceptance came from the prior three-strategy preflights.
+      - Aggregate source-hashed raw metrics, per-run provenance, all evaluation
+        histories and mean/sample-SD statistics are saved in
+        =/raid/representax-paper/14-text-to-any-modality/summary.json=.
+        Mean final nDCG@10 across three seeds:
+        | Strategy          | Flickr30k | AudioCaps | MSR-VTT | NanoMSMARCO |
+        |-------------------+-----------+-----------+---------+-------------|
+        | Initial, no LoRA  |    0.5724 |    0.4378 |  0.3731 |      0.6509 |
+        | Connectors        |    0.7121 |    0.4691 |  0.4772 |      0.6509 |
+        | Connectors + LoRA |    0.7466 |    0.4799 |  0.4984 |      0.6121 |
+        | Full fine-tuning  |    0.6987 |    0.5028 |  0.4733 |      0.5994 |
+        LoRA media baselines differ slightly (0.5723/0.4372/0.3743); saved deltas
+        use that arm's own initial values. All three media panels improve in
+        every seed. Connector-only preserves the frozen text result exactly;
+        LoRA/full lose 0.0387/0.0515 mean text nDCG despite text training.
+        LoRA gives the strongest image/video outcome; full gives the strongest
+        audio outcome. Late-stage media gains remain, especially for full tuning:
+        these are useful fixed-budget learning results, not proof of a plateau.
+      - Mean warm complete-step rates: connectors =11.55 +/- 0.06=,
+        connectors+LoRA =14.71 +/- 0.30=, full =14.42 +/- 0.18= pairs/s.
+        Include input wait; exclude recorded cold first-use steps. Do not compare
+        these as equal-work speedups: connector-only has three media sources,
+        whereas the other arms include cheaper text batches with probability 1/4.
+        The final Section 5 panel is complete (18 runs); the superseded three
+        original late-interaction runs are retained separately. Section 6 strong
+        scaling and the capacity-frontier probe remain unfinished.
+**** TODO Run the nine ModernBERT MLM strong-scaling jobs [0/9] [0%]
+     Proposed 48-hour closeout budget (not approved or launched): retain the
+     500M model, seeds 7/42/773 and 1/2/4 GPUs; bound each run to 300 updates,
+     270 at length 128 and 30 at length 512. Target 32,768 input tokens/update
+     (256 or 64 sequences respectively), conditional on single-GPU capacity.
+     Freeze token batches, masking, initialization, precision, optimizer and
+     layer-rematerialization policy across device counts. Measure phases
+     separately, including input wait and retaining cold-start observations.
+     The initial readiness audit found no encoder MLM task/head; the addition
+     approved on 2026-09-09 is now implemented and tested as described below.
+     Clarification 2026-09-09: the native ModernVBERTTextEncoder is already a
+     text-only ModernBERT implementation exposing per-token hidden_states.
+     Reuse that encoder unchanged with the new ModernBERTMaskedLM head and
+     registered masked_language_modeling task. This is not a new transformer.
+     A ModernBERT-based run must be labeled as such, not as reproduction of
+     the original BERT architecture/recipe. Final model size/configuration is
+     not yet approved; retain the nine-cell fixed-work scaling design.
+     Allow at most six hours for a separately approved MLM implementation and
+     parity/readiness gate, then decide with the user whether to proceed or
+     defer it. Do not silently substitute the old random-initialized retrieval
+     ladder. Reserve the final 12 hours for analysis and writing, not tuning.
+     Capacity proposal: one bounded replicated-versus-four-device-FSDP case,
+     with identical model/batch/dtypes; target 4B only if the canary fits.
+     Record a real OOM and successful warm updates rather than promise fit.
+     Implementation acceptance 2026-09-09:
+     - Sparse prediction gathers masked hidden positions before dense/GELU/norm
+       and the tied vocabulary decoder. The embedding table occurs once in
+       the parameter/optimizer tree. The old encoder and GradCache paths are
+       unchanged. No GradCache is needed for additive token cross entropy.
+     - FP32 masked-token CE and accuracy ignore -100 labels and invalid rows;
+       zero supervised tokens give zero loss/gradients. Gradient accumulation
+       weights each microbatch by its supervised-token count, not row count.
+     - Host masking uses seeded, fixed-count sampling without replacement,
+       ceil(0.15 * eligible_tokens), and 80/10/10 mask/random/unchanged corruption.
+       This is explicitly not Bernoulli masking. Special/padding tokens are
+       excluded as targets; target slots are padded statically with -100 labels.
+     - Tests pass for independent NumPy loss/gradient checks, ignored NaNs,
+       sparse/dense parameter-gradient equivalence, Transformers full-FP32
+       logits/loss/all-parameter-gradient parity, unequal and empty accumulation
+       groups, and two/four-device CPU DDP/FSDP versus one-device updates.
+       run_job checkpoint/resume is exactly equal to uninterrupted state;
+       native exported-model reload reproduces logits exactly. Focused existing
+       registry/dense/ModernVBERT tests also pass; no full repository suite run.
+     - GPU 0 synthetic probe: 505,072,128 parameters, batch 8, FP32 parameters,
+       BF16 compute, AdamW, full layer rematerialization, full static unroll,
+       xla attention, no state donation. Ten warm observations after one first
+       execution per shape: length 128 =0.21570 s/update=, =4,747 tokens/s=,
+       =80.27 s= compilation; length 512 =0.35095 s/update=, =11,671 tokens/s=,
+       =84.97 s= compilation. These repeat device-resident synthetic batches,
+       exclude input loading, and are not final accumulated-batch throughput.
+       HLO buffer sizes (arguments/output/temp; aliases zero): length 128
+       =6,060,875,056 / 6,060,866,118 / 2,638,458,368= bytes; length 512
+       =6,060,903,280 / 6,060,866,118 / 8,162,484,736= bytes. Process-lifetime
+       live peaks =17,001,409,280= and =22,521,869,312= bytes include setup.
+       HLO and per-update values are under
+       =/raid/representax-paper/15-modernbert-mlm-scaling/preflight-20260909-mlm-xla/=.
+     - Explicit cudnn attention failed before compilation with broadcast mask
+       shape [batch,1,1,sequence] (Bias must have same seq length as QKV).
+       Retained the existing xla route; no transformer change to work around it.
+       The new MLM path is verified; the real corpus/tokenizer, fixed-global-batch
+       accumulation and GPU scaling cells still need freezing and execution.
+     - Real-text canary approved and started 2026-09-09. Launcher:
+       =experiments/15-modernbert-mlm-scaling/canary.py=. This is a bounded
+       readiness check, not approval of the final nine scientific runs.
+       WikiText-2 raw training revision =b08601e04326c79dfdd32d625aee71d232d685c3=;
+       BERT uncased tokenizer revision =86b5e0934494bd15c9632b12f734a8a67f723594=.
+       Seed-shuffle the full nonempty training rows, tokenize, separate with SEP,
+       and form contiguous blocks. Keep the previous 505,072,128-parameter model
+       and its 32,768 vocabulary rows (tokenizer has 30,522 IDs). No pretrained
+       weights loaded; this is a ModernBERT architecture with a diagnostic BERT
+       tokenizer, not reproduction of the released ModernBERT recipe.
+       Six updates per device count: three length-128, three length-512;
+       32,768 input tokens/update, local microbatch eight, gradient accumulation,
+       BF16 compute/FP32 masters and AdamW, full layer rematerialization,
+       donated state. Exact data/masking hashes, source snapshots, compilation,
+       complete mask/transfer/update intervals and HLO buffers are retained under
+       =/raid/representax-paper/15-modernbert-mlm-scaling/canary-20260909-*=.
+       Four small-model GPU DDP/FSDP tests passed. An additional joint FSDP,
+       data-sharding and accumulation test passed on two GPUs against the global
+       FP32 AdamW update. The four-device case FAILED before execution: explicit
+       batch sharding cannot infer reshape [16@data,4] -> [2,8,4]. The shared
+       accumulation code reshapes first and supplies split sharding afterward;
+       it needs the output sharding at reshape time. Core change awaits user
+       approval. Do not declare the four-device scaling gate passed or launch
+       the nine-run campaign. Ten non-distributed MLM tests also passed here.
+       Full-model one-GPU length-128 passed: compile =159.77 s=, warm complete
+       update =1.32684 s=, =24,696 input tokens/s=; loss =10.6231 -> 9.1512=.
+       One-GPU length-512 also passed: compile =175.54 s=, warm complete update
+       =1.42942 s=, =22,924 input tokens/s=, final loss =8.56406=. Live peak
+       =21,329,434,624 bytes= (~19.86 GiB). All six updates finite/non-skipped.
+       Only two warm observations per shape: capacity/readiness evidence, not
+       a stable paper estimate. Two-GPU FSDP completed all six finite/non-skipped
+       updates: length 128 =8.30735 s/update=, =3,944 tokens/s=, compile =116.16 s=;
+       length 512 =2.65076 s/update=, =12,362 tokens/s=, compile =126.90 s=.
+       Both runs have identical scientific configurations and per-update hashes
+       for original tokens, corrupted tokens, positions and labels. Maximum
+       absolute loss difference =0.00012684=; final losses =8.5640583= versus
+       =8.5639668=. FSDP is slower than one GPU (0.160x / 0.539x speedup), so
+       the scaling performance gate is NOT passed. HLO has all-gathers inside
+       the accumulation loop; communication is a supported hypothesis, not a
+       separately profiled fraction of elapsed time. GPU 0/1 topology is NODE,
+       without NVLink. Next proposal: replicated DDP for this fits-on-one-GPU
+       model, reserving FSDP for capacity; first approve/fix the four-device
+       explicit-reshape issue. Four-GPU full-model launch remains held.
+       Summary: =canary-20260909-summary.json=; test failure evidence:
+       =canary-20260909-gates.json=; actual installed packages:
+       =canary-20260909-environment.txt=, all in the same experiment output root.
+       All canary processes exited and GPUs 0-3 were free after completion.
+     - Larger scientific-batch follow-up approved 2026-09-09: keep the 505M model,
+       seed 7, sequence length 128, optimizer, precision and source unchanged.
+       Compare 131,072 tokens/update (1,024 sequences, four times the previous
+       batch), with local microbatch 8 versus 32, on one and two GPUs. Each
+       device pair has identical global work; changing microbatch only changes
+       accumulation. The prior 32,768-token cells remain the smaller-batch
+       controls. Four updates per new cell, first execution excluded from warm
+       summaries; record all observations. Configurations are the named
+       =large-batch-micro8= and =large-batch-micro32= cases in =canary.py=.
+       Artifacts use matching case/device names in the experiment-15 output
+       root. No core training changes, no four-device reshape workaround, and
+       no additional scientific campaign launched. Two configuration/data tests
+       pass: selected token budget is consumed and microbatch changes preserve
+       exact supervised batches. All four initial cells completed; extended the
+       same fixed-global-batch configuration to local microbatch 64 in parallel.
+       Also repeated microbatch 32 and 64 on the original GPU 0/1 pair rather
+       than confound microbatch changes with GPU 2/3's different PCIe placement.
+       Eight runs / 32 optimizer updates completed, all finite and non-skipped.
+       No compiled-capacity rejection occurred: microbatch 64 fits both setups.
+       Results at length 128, tokens/s (one GPU / two-GPU FSDP on GPU 0/1):
+       | Global tokens/update | Local microbatch | One GPU | Two GPUs |
+       |----------------------+------------------+---------+----------|
+       |               32,768 |                8 |  24,696 |    3,944 |
+       |              131,072 |                8 |  25,522 |    3,954 |
+       |              131,072 |               32 |  32,127 |   13,501 |
+       |              131,072 |               64 |  31,184 |   22,018 |
+       The first row is the earlier short canary, not a new repeat. One-GPU
+       larger-batch micro8 used GPU 0; micro32/micro64 used GPU 4. All are RTX
+       4090s. Parallel GPU 2/3 rates were 10,412 and 18,198 tokens/s for micro32
+       and micro64; retain those separately, not as the original-pair controls.
+       Changing scientific batch via accumulation alone barely changes FSDP's
+       rate. Larger local microbatches improve it strongly: micro64 is 5.57x
+       faster than micro8 at the larger global batch, but best two-GPU rate is
+       still only 0.685x best one-GPU rate. This does not establish a universal
+       FSDP ceiling; overlap/compiler settings were held unchanged, not tuned.
+       Micro64 peak live memory: one GPU =19.847 GiB=; two GPUs maximum
+       =15.933 GiB/device=. All large-batch configurations share the exact
+       scientific settings apart from execution microbatch, core source hashes,
+       and per-step token/mask/position/label hashes. Maximum per-step loss
+       range across all eight runs =0.00046921= (BF16, not bitwise equality).
+       Each rate uses three warm complete mask/transfer/update intervals.
+       Concurrent probes can contend for host resources; these remain bounded
+       diagnostic measurements, not final repeated paper estimates.
+       Full raw/derived evidence: =large-batch-summary.json=, per-run result
+       JSON and HLO, =large-batch-topology.txt= and =large-batch-telemetry.csv=,
+       under the experiment-15 /raid output root. All workers and the telemetry
+       process exited; all six GPUs were free at completion. The four-device
+       small-accumulation reshape gate remains unresolved; no core change made.
+     - Sequence-length follow-up approved and launched 2026-09-09: compare
+       lengths 128, 512 and 1,024 at 131,072 global input tokens/update, seed 7,
+       unchanged 505M model, BF16 compute/FP32 AdamW and real WikiText-2 stream.
+       Start local microbatch 8 at every length; one GPU (2) and two-GPU FSDP
+       (0/1) run concurrently, with sequence lengths sequential within each
+       lane. This holds device placement and physical sequence microbatch fixed.
+       Four updates per cell; first execution excluded from warm summaries.
+       If compiled buffers exceed the configured allocator, preserve the failed
+       capacity result and retry BOTH device counts at microbatch 4, then 2.
+       Do not interpret mismatched microbatch rows as the causal length control.
+       Runner: =experiments/15-modernbert-mlm-scaling/sequence_screen.py=;
+       frozen cases remain in =canary.py=. Three configuration/data tests pass,
+       including exact input/masking equality across execution microbatches and
+       identical original token streams across lengths (masking/context changes
+       with sequence length, so numerical parity is tested WITHIN each pair).
+       Evidence: =/raid/representax-paper/15-modernbert-mlm-scaling/sequence-screen-20260909/=,
+       with commands/PIDs/GPU assignments in =dispatch.json= and per-cell logs,
+       HLO, source snapshots, memory and complete optimizer-step observations.
+       Completed: ten attempted cells, eight passed (32 finite, non-skipped
+       optimizer updates), two rejected by the compiled-memory precheck before
+       execution. All 253 core source files match the preceding batch screen.
+       | Length | Local microbatch 1/2 GPUs | One-GPU tokens/s | FSDP tokens/s | Ratio |
+       |--------+---------------------------+------------------+---------------+-------|
+       |    128 |                       8/8 |           24,918 |         3,987 | 0.160 |
+       |    512 |                       8/8 |           23,066 |        12,480 | 0.541 |
+       |  1,024 |                       2/2 |           17,282 |         7,107 | 0.411 |
+       |  1,024 |                       2/8 |           17,282 |        16,270 | 0.941 |
+       The last row uses independently sized execution microbatches, not the
+       matched-microbatch control; scientific global work remains identical.
+       At length 1,024, one-GPU micro8/micro4 require =24.79/26.72 GiB= compiled
+       buffers versus the =21.17 GiB= configured allocator budget. These are
+       capacity precheck rejections, NOT executed OOMs. Smaller microbatch did
+       not monotonically reduce compiler temporary memory. Micro2 fits at
+       =18.67 GiB= peak live. Two-GPU micro8/micro4/micro2 all passed, with rates
+       =16,270/11,773/7,107 tokens/s= and peak live per device
+       =15.06/11.35/8.05 GiB=. FSDP enables the larger tested physical
+       microbatch, but does not surpass the observed one-GPU throughput.
+       This is capacity evidence, not proof that no other replicated execution
+       setting can fit, and not an exhaustive tuning comparison.
+       Exact input/masking/position/label hashes match within each length across
+       device counts and fitting microbatches. Maximum per-step loss ranges:
+       =0.00005627= (128), =0.00006771= (512), =0.00058460= (1,024).
+       Startup intervals at length 128 were =11.22/12.54 s= including persistent
+       cache loading, NOT cold compilation. New shapes took =154-172 s= on one
+       GPU and =116-122 s= on two GPUs. Only three warm observations per rate;
+       concurrent lanes can contend for CPU resources. No paper-level stable
+       estimate, no core trainer changes and no final nine-run campaign.
+       =summary.json= and =report.md= retain the table, all attempted cases,
+       parity checks, memory and timing diagnostics. =telemetry.csv= retains
+       GPU utilization, memory and power samples. Workers and monitor exited;
+       GPU availability checked after completion.
+     - Approved follow-up: length 1,024, two-GPU FSDP on GPU 0/1, local
+       microbatch 16. Same 131,072 global tokens/update, seed 7, 505M model,
+       data/masking, precision and optimizer; four accumulation rounds rather
+       than micro8's eight. Four updates planned, three warm observations.
+       Fixed case =length-1024-micro16= in =canary.py=; four configuration/data
+       tests pass. Compiled-memory precheck remains enabled at the same 90%
+       allocator limit. Compare against the saved one-GPU micro2 and two-GPU
+       micro8 cells; no core source changes. Artifacts under
+       =sequence-screen-20260909/length-1024-micro16-two-gpu= in the same
+       experiment-15 /raid root, with its sibling log retained.
+       Completed: compiled-memory precheck rejected the executable before any
+       optimizer updates. Required =23.5878 GiB/device= versus =21.1660 GiB=
+       configured allocator limit; compilation =125.21 s=. No executed OOM,
+       throughput or loss-parity measurement for this case. Scientific config,
+       model, data provenance and all core source hashes match both saved
+       comparators. Best observed length-1,024 two-GPU rate therefore remains
+       =16,270 tokens/s= at micro8 versus one-GPU micro2 =17,282 tokens/s=.
+       =sequence-screen-20260909/micro16-summary.json= records the capacity
+       result and exact baseline artifact hashes; =micro16-telemetry.csv=
+       records GPU memory/utilization/power. Worker and monitor exited.
+     - Replicated-DDP control approved and launched: compare lengths 128/512
+       at local microbatch 8, and length 1,024 at local microbatch 2, against
+       the matched saved FSDP and one-GPU cells. Keep 131,072 global input
+       tokens/update, seed 7, 505M model, FP32 masters/AdamW, BF16 compute,
+       full activation rematerialization, masking and four-update budgets.
+       Reuse =ShardingPlan.ddp=; no core-library edits. Frozen =ddp-length-*=
+       cases differ only in the canary configuration's sharding field.
+       Five configuration/data tests pass, including exact supervision hashes.
+       =sequence_screen.py --screen ddp= refreshes one-GPU controls on GPU 2
+       concurrently with the two-GPU lane on GPU 0/1; lengths run sequentially
+       to preserve the previous PCIe placement and bound compiler contention.
+       Compiled-capacity precheck remains enabled; if needed, reduce matched
+       microbatches at 128/512 before continuing. No four-GPU launch here.
+       Artifacts: =/raid/representax-paper/15-modernbert-mlm-scaling/ddp-screen-20260909/=.
+       Completed all six runs and 24 finite/non-skipped optimizer updates;
+       three warm observations per run, no compiled-capacity rejections.
+       | Length | Local microbatch | One GPU | Two-GPU FSDP | Two-GPU DDP | DDP / one |
+       |--------+------------------+---------+--------------+-------------+-----------|
+       |    128 |                8 |  24,814 |        3,987 |       6,411 |     0.258 |
+       |    512 |                8 |  23,057 |       12,480 |      17,803 |     0.772 |
+       |  1,024 |                2 |  17,301 |        7,107 |      10,332 |     0.597 |
+       Rates are global input tokens/s. One-GPU controls are refreshed; FSDP
+       columns use the saved matched-microbatch GPU 0/1 cases. DDP is
+       =1.608/1.427/1.454x= faster than those FSDP controls, but does not recover
+       positive strong scaling. This is NOT an independently tuned best-case
+       comparison: FSDP's earlier length-1,024 micro8 result remains separate.
+       Data, masking, model and all 253 core source hashes match the saved
+       FSDP cells. DDP versus refreshed one-GPU maximum loss differences are
+       =0.00007343/0.00007534/0.00004959=. Maximum loss range across all three
+       strategies is =0.00007725=. No mathematical-supervision changes.
+       Optimized HLO has NO parameter all-gathers in these DDP executables,
+       but does contain large BF16 gradient all-reduces inside accumulation.
+       Loop bodies have =33/32/33= all-reduce-start instructions and run
+       =63/15/31= times after the first microbatch outside the loop. This
+       verifies repeated gradient synchronization, not a measured attribution
+       of elapsed time to communication. Next proposed core change, pending
+       approval: accumulate local gradients and synchronize after accumulation,
+       preserving correct global masked-token normalization and numerical
+       behavior. Do not infer an unavoidable hardware/JAX ceiling from this
+       current schedule. No core training changes made for this screen.
+       DDP cold compilations: =164.24/173.94/158.10 s=. One-GPU cache reuse:
+       =11.37/11.29/11.51 s= (not cold compilation). DDP peak live memory:
+       =10.41/19.82/19.05 GiB/device=. Complete step intervals include host
+       masking and device placement. The refreshed single-GPU rates remain
+       within 0.5% of their saved controls, but these remain short canaries.
+       =summary.json=, =report.md= and =collectives.json= retain results,
+       baseline hashes, parity checks, exact HLO line references and limits.
+       Raw per-step logs, HLO, source snapshots and =telemetry.csv= are kept.
+       All workers and the telemetry monitor exited; GPUs checked after exit.
+     - Follow-up approved 2026-09-10: seed-7 weak and strong DDP screens.
+       Frozen =weak-ddp-{1,2,4}gpu= cases use length 512, local batch 8,
+       no accumulation and global batches 8/16/32. This is explicitly weak
+       scaling, not evidence of faster execution at fixed global work.
+       =strong-ddp= keeps 131,072 tokens/update (256 sequences), local batch 8
+       and 32/16/8 accumulation rounds on 1/2/4 GPUs. Each screen uses 21
+       updates, with the first excluded from the 20-observation warm summary.
+       The strong screen explicitly repeats the seeded WikiText-2 stream when
+       its 2,752,512 requested tokens exceed the corpus; every topology sees
+       the same token stream and masking. No silent data truncation.
+       Weak workers launched at =weak-ddp-20260910/= under experiment 15's
+       /raid output root. GPU 2 and GPUs 0/1 run concurrently, then 0/1/2/3.
+       =scaling_screen.py= records commands, PIDs, telemetry and results.
+       Strong launch is gated on loss/update parity and compiled HLO showing
+       deferred gradient synchronization. The proposed implementation uses
+       public JAX reduced/unreduced shardings, not manual device collectives.
+       Core changes are restricted to explicit DDP with accumulation; the
+       explicit accumulation reshape also receives its output sharding before
+       reshaping, addressing the prior four-device readiness failure.
+       Weak screen completed: 63 finite/non-skipped updates, 20 warm per run.
+       | GPUs | Global batch | Tokens/s | Speedup | Efficiency |
+       |------+--------------+----------+---------+------------|
+       |    1 |            8 |   11,161 |   1.000 |     100.0% |
+       |    2 |           16 |   13,909 |   1.246 |      62.3% |
+       |    4 |           32 |   17,369 |   1.556 |      38.9% |
+       Weak step-time CV is 0.28-0.30%; cold compilations 87-91 seconds.
+       Compiled live requirements are 19.50-19.52 GiB/device. This is
+       positive but sublinear weak scaling; global batches/trajectories differ.
+       Strong screen completed in =strong-ddp-20260910/=: 63 finite/non-skipped
+       updates, 20 warm per run, fixed 131,072 tokens (256 sequences)/update.
+       | GPUs | Accumulation | Tokens/s | Speedup | Efficiency | Seconds/update |
+       |------+--------------+----------+---------+------------+----------------|
+       |    1 |           32 |   22,992 |   1.000 |     100.0% |         5.7007 |
+       |    2 |           16 |   37,827 |   1.645 |      82.3% |         3.4651 |
+       |    4 |            8 |   45,962 |   1.999 |      50.0% |         2.8517 |
+       This recovers positive strong scaling, not linear four-device scaling.
+       Compared with the earlier short two-GPU DDP control (17,803 tokens/s),
+       the new two-GPU rate is 2.125x; timing windows differ (20 versus 3 warm
+       observations). Current one-GPU control remains within 0.3% of the prior
+       23,057 tokens/s control. No claim of measured interconnect bandwidth.
+       Strong warm step-time CV is 0.22-0.47%; cold compilation is 173-175 s
+       per executable. Compiled memory is 19.87 GiB/device at all three counts.
+       Strong input/masking hashes match; 1/2-GPU maximum loss difference is
+       0.00241995 over 21 BF16 updates. This is not bitwise trajectory parity.
+       Across all three device counts, maximum absolute loss range is
+       0.00660896. Final losses are 7.235440/7.233020/7.238713. FP32 toy
+       loss/update parity passes unchanged tolerances; BF16 trajectories are
+       close, not identical. This is a single-seed systems screen, not final
+       three-seed evidence or a converged-pretraining result.
+       Two-GPU HLO has no million-element-or-larger gradient reduction inside
+       accumulation; matrix gradient reductions moved after the scan. Smaller
+       normalization-vector and scalar reductions remain, explicitly retained
+       because JAX reduced values cannot enter ordinary elementwise broadcasts.
+       Core regression checks: 49 CPU tests passed, a dedicated compiled-HLO
+       matrix-reduction placement test passed, and two GPU parity tests passed.
+       Initial test failures were reduced-vector typing and reduced-scalar
+       weighting requirements; both resolved without loosening tolerances.
+       Selected-parameter, empty-target and frozen-weight tests also pass.
+       =report_scaling.py RUN_DIR= rebuilds =aggregate.json= and =report.md=.
+       Both distributed strong executables passed the large-gradient HLO gate.
+       Additional BF16 precision checks and the seven configuration/data/HLO
+       parser tests pass; Ruff, type checks and git diff whitespace checks pass.
+       All six runs (126 updates total), dispatchers and telemetry processes
+       exited normally. All six GPUs verified idle after completion.
+     - User-approved synchronization cleanup, 2026-09-10: removed the two
+       accumulation parameter/gradient sharding arguments and the preset-name
+       eligibility flag. The existing trace-local data-axis context and actual
+       parameter layouts now determine whether reductions can be deferred.
+       The step differentiates a reduced view of replicated parameters,
+       accumulates local contributions, then synchronizes before clipping and
+       AdamW. The optimizer uses the original parameter tree; no restoration
+       cast, extra mesh axis or new experiment setting is needed.
+       Local, automatic-sharding and non-replicated parameter paths retain
+       their existing behavior. A custom replicated layout also receives the
+       same optimization, independent of its strategy name.
+       Verification: 44 focused CPU tests passed (four emulated devices),
+       including DDP/FSDP updates, selected/frozen parameters and empty targets.
+       Two compiled-HLO checks passed for DDP and custom replicated layouts:
+       large matrix-gradient reductions remain outside the accumulation loop.
+       Before/after two-device toy ModernBERT MLM controls have byte-identical
+       StableHLO and all 63 returned array leaves identical in both FP32 and
+       BF16. This establishes unchanged lowering for those controls, not a new
+       full-model throughput measurement. Ruff, type and whitespace checks pass.
+       Evidence: =accumulation-cleanup-20260910/{before,after,comparison.json}=
+       under experiment 15's /raid root. The initial failed validation log is
+       retained: reconstruction of an unreduced PartitionSpec required its
+       explicit =partitions= field; corrected without tolerance changes.
+       No benchmark configurations changed or new GPU training runs launched.
+       Follow-up naming cleanup: rebind =trainable_model= only inside
+       =differentiated_loss=; the outer optimizer-facing tree is unchanged.
+       Removed =gradient_model=. All 45 focused CPU tests pass, including both
+       reduction-placement checks. FP32/BF16 toy controls retain identical
+       returned arrays and optimized opcode/all-reduce counts, but IR text is
+       not byte-identical after moving the annotation into the helper. This is
+       not a new GPU timing measurement. Evidence is in the same root under
+       =local-rebinding/=. Ruff and type checks pass.
+     - Approved next screen, 2026-09-10: tune physical microbatch 8/16/32/64
+       on one GPU before comparing 1/2/4-device DDP. Keep the 505M model,
+       length 512, 131,072 tokens/update, seed 7, precision, checkpointing,
+       optimizer, data and 21-update schedule unchanged. Stop increasing the
+       microbatch at the compiled allocator-capacity boundary. Pick the highest
+       measured one-GPU warm rate, then run two/four GPUs concurrently on
+       disjoint devices, reducing accumulation at fixed global work.
+       =experiments/15-modernbert-mlm-scaling/tune.py= records the selection,
+       commands, telemetry, all rejected cases and the matched summary.
+       Output: =/raid/representax-paper/15-modernbert-mlm-scaling/tuned-ddp-20260910/=.
+       This remains a single-seed tuning/systems screen; do not label it the
+       completed nine-run panel or a proven global performance optimum.
+     Run only Representax with the controlled ModernBERT encoder and a real text
      corpus for seeds =7, 42, 773= at 1, 2 and 4 GPUs. Hold the global token
      batch and optimizer work fixed, use the same FSDP policy at each device
      count, and do not run a weak-scaling variant. Preserve the canonical BERT
