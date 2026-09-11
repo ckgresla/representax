@@ -1747,6 +1747,76 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
        steps, HLO, compiled/live memory and telemetry are retained. The selected
        one-GPU result is reused in the scaling table, not an independent rerun.
        All workers and telemetry exited; all six GPUs verified idle afterward.
+     - DDP bottleneck isolation, 2026-09-10: sequential Nsight Systems 2024.6.2
+       CUDA/NVTX traces of the same 505M, length-512, local-microbatch-8,
+       131,072-token recipe on 1/2/4 GPUs. Six updates per process, capture
+       steps 3-5, attribute steps 4-5 to exclude trace-start overhead. Source
+       tokens, corruption, labels and masked-position hashes match across GPUs.
+       No core code changed; instrumentation is confined to experiment 15.
+       =nsys-ddp-20260910/= retains .nsys-rep, SQLite, original reports/HLO,
+       activities, hardware/peer-access output and exact launch commands.
+       Disjoint wall-time accounting, averaged per device (seconds/update):
+       | GPUs | Compute active | Exposed large gradients | Other collectives | Other/idle | Step |
+       |------+----------------+-------------------------+-------------------+------------+------|
+       |    1 |          5.527 |                   0.000 |             0.000 |      0.072 | 5.599 |
+       |    2 |          2.811 |                   0.585 |             0.039 |      0.060 | 3.494 |
+       |    4 |          1.422 |                   1.348 |             0.009 |      0.097 | 2.876 |
+       Compute/communication overlap is assigned to compute, never double
+       counted. CUDA runtime correlation IDs and enclosing NVTX HLO ranges
+       identify all eight large gradient reductions per update/device. Their
+       FP32 logical payload totals 2,020,157,440 bytes, not wire traffic.
+       Compute scales within roughly 3% of ideal; the large-gradient tail
+       accounts for roughly 91% of four-GPU excess time over ideal scaling.
+       Small repeated reductions and input feeding are secondary. Host input
+       preparation is 39/41/56 ms; tracing adds about 0.2/1.4/1.2% versus
+       unprofiled steps 2 and 6 in each process. Profiles are diagnostics, not
+       replacements for the accepted 20-warm-step throughput observations.
+       NCCL 2.28.9 reports SHM/direct/direct channels; all GPU-pair read/write
+       peer-access checks report CNS, with no NVLink. The current communication
+       path uses host memory. This does not establish why P2P is unavailable
+       or a fundamental hardware ceiling. NCCL kernel duration includes waiting;
+       it is not a separate measurement of link saturation or pure transfer.
+       =nsys-ddp-simple-20260910/= holds a NCCL_PROTO=Simple diagnostic:
+       two-GPU exposed large-gradient time remained 0.585 s. The four-GPU
+       profiled process exited 139 before its first optimizer update; retained
+       as a failed attempt, not a performance result. An unprofiled six-update
+       retry passed at 2.848 s/update over five warm observations. Matched steps
+       2/6 averaged 2.847 s versus 2.841 s in the default run. No protocol
+       override is adopted. Kernel suffix LL does NOT identify actual protocol:
+       NCCL's generated entry points dispatch other protocols as well.
+       Eleven configuration/timeline-accounting tests pass. Interval totals
+       reproduce measured NVTX step durations; all eight large HLO reductions
+       are mapped in each multi-GPU profiled step. =report_trace.py RUN_DIR=
+       regenerates the table and =attribution.json=. No additional training
+       optimization or scientific configuration change was made.
+     - Lambda A100 preparation, 2026-09-11: user provisioning an eight-A100
+       40GB SXM4 instance at the displayed $15.92/hour; SSH pending. No remote
+       installation or hardware acceptance claimed yet. =cloud.py run --output
+       /raid/representax-paper/15-modernbert-mlm-scaling/lambda-a100-RUN= uses
+       the existing pinned 505M length-512 MLM recipe and shared uv native
+       dependency group, with no core training changes. Verify /raid maps to
+       instance SSD before launch. Check NVLink matrix entries and run an
+       eight-device reduction correctness/timing preflight before training.
+       Bound setup and execution to 100 minutes total, leaving approximately
+       20 minutes of the requested two-hour rental window for copying artifacts
+       and terminating the instance. The launcher does NOT terminate billing.
+       Tune local microbatches 8/16/32 with four warm updates each, stopping at
+       compiled capacity rejection; retain all candidates. Run fresh baselines
+       and sequential 1/2/4/8-device jobs for seeds 7/42/773 (12 cells), each
+       21 updates with 20 warm observations, at fixed 131,072 tokens/update.
+       Keep selected local microbatch constant across device counts. Save
+       exact source/configuration, package versions, topology, NCCL logs,
+       telemetry, HLO, memory, raw steps and token/mask hashes. Verify batches
+       match per seed across counts. If CV exceeds 10%, stop and ask rather
+       than silently extending. Preserve partial results on timeout/failure;
+       no promise of linear scaling or two-hour completion before cloud tests.
+       Local preparation validation: 15 focused tests pass (configuration,
+       scientific-batch hashes, timeline accounting, NVLink detection and
+       process timeout cleanup); Ruff and shell syntax checks pass. A fresh
+       native-only environment installed 111 packages from the shared lock,
+       loaded pinned WikiText/tokenizer assets without PyTorch, and executed
+       a BF16 matrix multiplication on GPU 0 with JAX 0.11.1. This is local
+       installation evidence, not acceptance of the pending Lambda host.
      Run only Representax with the controlled ModernBERT encoder and a real text
      corpus for seeds =7, 42, 773= at 1, 2 and 4 GPUs. Hold the global token
      batch and optimizer work fixed, using the same replicated DDP policy at

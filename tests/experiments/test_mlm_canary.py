@@ -154,3 +154,12 @@ def test_tuned_ddp_cases_change_only_physical_microbatch():
         assert actual == expected
         for devices in (1, 2, 4):
             assert config.tokens_per_update % (512 * microbatch * devices) == 0
+
+
+def test_profile_case_preserves_recipe_except_bounded_duration():
+    canary = load_canary()
+    original = asdict(canary.CASES["strong-ddp"])
+    profile = asdict(canary.CASES["profile-ddp"])
+    assert original.pop("steps_per_length") == 21
+    assert profile.pop("steps_per_length") == 6
+    assert original == profile

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import ctypes
 import hashlib
 import json
 import os
@@ -159,6 +160,9 @@ CASES.update(
 )
 
 
+CASES["profile-ddp"] = replace(CASES["strong-ddp"], steps_per_length=6)
+
+
 def digest(value: np.ndarray) -> str:
     return hashlib.sha256(value.tobytes()).hexdigest()
 
@@ -273,18 +277,27 @@ def host_batch(tokens, tokenizer, length, iteration, config=CONFIG):
     }
 
 
-def main():
+def main(config: CanaryConfig | None = None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--case", choices=tuple(CASES), default="baseline")
+    parser.add_argument(
+        "--profile", action="store_true", help="trace warm steps 3-5 with Nsight"
+    )
     args = parser.parse_args()
-    config = CASES[args.case]
+    config = CASES[args.case] if config is None else config
+    if args.profile and args.case != "profile-ddp":
+        parser.error("--profile requires the bounded profile-ddp case")
+    if args.profile:
+        runtime = ctypes.CDLL("/usr/local/cuda/lib64/libcudart.so")
+        nvtx = ctypes.CDLL("/usr/local/cuda/lib64/libnvToolsExt.so")
+        nvtx.nvtxRangePushA.argtypes = [ctypes.c_char_p]
     if not args.output.resolve().is_relative_to(Path("/raid")):
         parser.error("artifacts must be under /raid")
     args.output.mkdir(parents=True, exist_ok=False)
     devices = jax.devices()
-    if len(devices) not in (1, 2, 4) or any(d.platform != "gpu" for d in devices):
-        raise ValueError("expose 1, 2, or 4 GPUs through CUDA_VISIBLE_DEVICES")
+    if len(devices) not in (1, 2, 4, 8) or any(d.platform != "gpu" for d in devices):
+        raise ValueError("expose 1, 2, 4, or 8 GPUs through CUDA_VISIBLE_DEVICES")
     if args.case.startswith("weak-ddp-") and config.tokens_per_update != 512 * 8 * len(
         devices
     ):
@@ -292,6 +305,7 @@ def main():
     report = {
         "kind": "real-text-MLM-readiness-not-final-paper-throughput",
         "case": args.case,
+        "profiled_step_numbers": [3, 4, 5] if args.profile else [],
         "configuration": asdict(config),
         "model": MODEL.model_dump(mode="json"),
         "devices": [str(d) for d in devices],
@@ -303,6 +317,10 @@ def main():
                 "JAX_COMPILATION_CACHE_DIR",
                 "XLA_PYTHON_CLIENT_MEM_FRACTION",
                 "JAX_DEFAULT_MATMUL_PRECISION",
+                "NCCL_PROTO",
+                "NCCL_ALGO",
+                "NCCL_DEBUG",
+                "NCCL_DEBUG_SUBSYS",
             )
         },
         "jax": jax.__version__,
@@ -447,7 +465,10 @@ def main():
         )
         phase["compiled_required_bytes_per_device"] = required_bytes
         save()
-        if (args.case == "strong-ddp" or args.case.startswith("tuned-ddp-")) and any(
+        if (
+            args.case in ("strong-ddp", "profile-ddp")
+            or args.case.startswith("tuned-ddp-")
+        ) and any(
             row["in_loop"] and row["largest_float_array_elements"] >= 1_000_000
             for row in collectives
         ):
@@ -468,17 +489,39 @@ def main():
             return
         for index in range(config.steps_per_length):
             iteration = phase_index * config.steps_per_length + index
+            if args.profile and index == 2 and runtime.cudaProfilerStart() != 0:
+                raise RuntimeError("cudaProfilerStart failed")
+            if args.profile:
+                nvtx.nvtxRangePushA(f"optimizer_step_{index + 1}".encode())
             started = time.perf_counter()
+            if args.profile:
+                nvtx.nvtxRangePushA(b"prepare_inputs")
             batch, hashes = host_batch(tokens, tokenizer, length, iteration, config)
+            prepared = time.perf_counter()
+            if args.profile:
+                nvtx.nvtxRangePop()
+                nvtx.nvtxRangePushA(b"place_inputs")
             batch = plan.place_batch(batch)
             key = plan.place_replicated(jax.random.key(config.seed + iteration))
+            placed = time.perf_counter()
+            if args.profile:
+                nvtx.nvtxRangePop()
+                nvtx.nvtxRangePushA(b"execute_and_synchronize")
             result = executable((batch, key), state)
             jax.block_until_ready(result)
             elapsed = time.perf_counter() - started
+            if args.profile:
+                nvtx.nvtxRangePop()
+                nvtx.nvtxRangePop()
+                if index == 4 and runtime.cudaProfilerStop() != 0:
+                    raise RuntimeError("cudaProfilerStop failed")
             state = result.state
             row = {
                 "step": int(state.step),
                 "seconds": elapsed,
+                "host_prepare_seconds": prepared - started,
+                "host_placement_seconds": placed - prepared,
+                "dispatch_and_wait_seconds": elapsed - (placed - started),
                 "loss": float(result.metrics.loss),
                 "gradient_norm": float(result.metrics.gradient_global_norm),
                 "update_norm": float(result.metrics.update_global_norm),
