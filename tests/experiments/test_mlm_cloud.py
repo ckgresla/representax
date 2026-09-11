@@ -101,3 +101,18 @@ def test_timeout_stops_worker_and_preserves_log(cloud, tmp_path):
             timeout=0.5,
         )
     assert "started" in log.read_text()
+
+
+def test_resume_reuses_only_matching_completed_runs(cloud, tmp_path):
+    report = sample_report()
+    report["configuration"].update(
+        local_microbatch=16, lengths=[512], sharding="ddp", steps_per_length=21
+    )
+    report["devices"] = ["cuda:0", "cuda:1"]
+    cloud.write(tmp_path / "result.json", report)
+    assert cloud.reusable_report(tmp_path, 7, 16, 2, False) == report
+    with pytest.raises(ValueError, match="configuration"):
+        cloud.reusable_report(tmp_path, 42, 16, 2, False)
+    report["status"] = "large_gradient_reduction_still_inside_accumulation"
+    cloud.write(tmp_path / "result.json", report)
+    assert cloud.reusable_report(tmp_path, 7, 16, 2, False) is None

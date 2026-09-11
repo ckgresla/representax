@@ -135,12 +135,45 @@ def test_scaling_cases_have_fixed_local_or_global_work():
 def test_collective_summary_distinguishes_matrix_gradients_from_scalar_statistics():
     canary = load_canary()
     rows = canary.collective_summary("""
+ENTRY %main () -> f32[] {
   %a = f32[64,64] all-reduce(%x), metadata={op_name="jit(step)/reshard"}
+  %loop = f32[] while(%init), body=%body, condition=%condition
+}
+%body () -> f32[] {
   %b = f32[] all-reduce(%y), metadata={op_name="jit(step)/while/body/reduce_sum"}
   %c = bf16[15728640] all-reduce-start(%z), metadata={op_name="while/body"}
+}
 """)
     assert [r["in_loop"] for r in rows] == [False, True, True]
     assert [r["largest_float_array_elements"] for r in rows] == [4096, 1, 15728640]
+
+
+def test_unrolled_source_metadata_does_not_imply_a_runtime_loop():
+    canary = load_canary()
+    rows = canary.collective_summary("""
+ENTRY %main () -> f32[] {
+  %a = f32[5245440] all-reduce-start(%x), metadata={op_name="while/body/reduce_sum"}
+}
+""")
+    assert rows[0]["source_loop_metadata"]
+    assert rows[0]["computation"] == "main"
+    assert not rows[0]["in_loop"]
+
+
+def test_collective_in_called_loop_computation_is_repeated():
+    canary = load_canary()
+    rows = canary.collective_summary("""
+%helper () -> f32[] {
+  %a = f32[5245440] all-reduce(%x)
+}
+%body () -> f32[] {
+  %call = f32[] call(%x), to_apply=%helper
+}
+ENTRY %main () -> f32[] {
+  %loop = f32[] while(%init), body=%body, condition=%condition
+}
+""")
+    assert rows[0]["in_loop"]
 
 
 def test_tuned_ddp_cases_change_only_physical_microbatch():

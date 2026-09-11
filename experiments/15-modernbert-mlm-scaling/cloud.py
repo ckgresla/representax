@@ -168,7 +168,31 @@ def preflight(output):
     )
 
 
-def run(output):
+def reusable_report(path, seed, microbatch, count, tuning):
+    result = path / "result.json"
+    if not result.exists():
+        return None
+    report = json.loads(result.read_text())
+    config = report["configuration"]
+    expected = dict(
+        seed=seed,
+        local_microbatch=microbatch,
+        lengths=[512],
+        tokens_per_update=131072,
+        sharding="ddp",
+        steps_per_length=5 if tuning else WARM_UPDATES + 1,
+    )
+    if (
+        any(config.get(k) != v for k, v in expected.items())
+        or len(report["devices"]) != count
+    ):
+        raise ValueError(f"saved run does not match requested configuration: {path}")
+    if report.get("status") in ("passed", "compiled_capacity_exceeds_allocator_limit"):
+        return report
+    return None
+
+
+def run(output, *, resume=False):
     output = output.resolve()
     if not output.is_relative_to(Path("/raid")):
         raise ValueError("map /raid to the instance SSD before running")
@@ -182,8 +206,11 @@ def run(output):
     ).strip()
     if active:
         raise RuntimeError(f"GPU processes already running: {active}")
-    output.mkdir(parents=True, exist_ok=False)
-    started = time.time()
+    previous = json.loads((output / "dispatch.json").read_text()) if resume else None
+    output.mkdir(parents=True, exist_ok=resume)
+    if previous:
+        write(output / f"dispatch-before-resume-{int(time.time())}.json", previous)
+    started = previous["started_unix"] if previous else time.time()
     deadline = started + WALL_SECONDS
     env = {
         **os.environ,
@@ -210,7 +237,7 @@ def run(output):
         deadline_unix=deadline,
         seeds=SEEDS,
         devices=DEVICES,
-        launches=[],
+        launches=previous["launches"] if previous else [],
         rows=[],
         environment=env,
         note="Timeout stops workloads, NOT instance billing.",
@@ -241,6 +268,17 @@ def run(output):
 
     def worker(seed, microbatch, count, *, tuning=False):
         name = f"tune-micro{microbatch}" if tuning else f"seed-{seed}-{count}gpu"
+        path = output / name
+        if resume and path.exists():
+            saved = reusable_report(path, seed, microbatch, count, tuning)
+            if saved is not None:
+                print(f"REUSE {name}", flush=True)
+                return saved, path
+            failed = output / f"failed-{name}-{int(time.time())}"
+            path.rename(failed)
+            log = output / f"{name}.log"
+            if log.exists():
+                log.rename(failed.with_suffix(".log"))
         command = [
             str(PYTHON),
             str(__file__),
@@ -259,20 +297,22 @@ def run(output):
 
     telemetry = None
     try:
-        for name, command in {
+        checks = {
             "hardware": ["nvidia-smi", "-q"],
             "topology": ["nvidia-smi", "topo", "-m"],
             "p2p-read": ["nvidia-smi", "topo", "-p2p", "r"],
             "p2p-write": ["nvidia-smi", "topo", "-p2p", "w"],
-        }.items():
+        }
+        for name, command in ({} if resume else checks).items():
             execute(command, name)
-        execute(["bash", str(HERE / "setup.sh")], "setup", limit=20 * 60)
-        execute(["uv", "pip", "freeze", "--python", str(PYTHON)], "packages")
-        execute(
-            [str(PYTHON), str(__file__), "preflight", "--output", str(output)],
-            "preflight",
-        )
-        with (output / "telemetry.csv").open("w") as stream:
+        if not resume:
+            execute(["bash", str(HERE / "setup.sh")], "setup", limit=20 * 60)
+            execute(["uv", "pip", "freeze", "--python", str(PYTHON)], "packages")
+            execute(
+                [str(PYTHON), str(__file__), "preflight", "--output", str(output)],
+                "preflight",
+            )
+        with (output / "telemetry.csv").open("a" if resume else "w") as stream:
             telemetry = subprocess.Popen(
                 [
                     "nvidia-smi",
@@ -360,7 +400,7 @@ def run(output):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
-    for name in ("run", "preflight", "worker"):
+    for name in ("run", "resume", "preflight", "worker"):
         p = sub.add_parser(name)
         p.add_argument("--output", type=Path, required=True)
         if name == "worker":
@@ -370,13 +410,13 @@ def main():
             )
             p.add_argument("--tuning", action="store_true")
     args = parser.parse_args()
-    if args.command == "run":
+    if args.command in ("run", "resume"):
 
         def interrupted(signum, frame):
             raise KeyboardInterrupt(f"received signal {signum}")
 
         signal.signal(signal.SIGTERM, interrupted)
-        run(args.output)
+        run(args.output, resume=args.command == "resume")
     elif args.command == "preflight":
         preflight(args.output)
     else:

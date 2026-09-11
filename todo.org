@@ -86,22 +86,23 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
        learning, not a new SOTA method. Report media improvements and text
        forgetting explicitly; novel methods and recipe optimization are future
        work. Fixed-budget gains do not establish an asymptotic plateau.
-**** 6. Scaling and sharding [0/9]
+**** 6. Scaling and sharding [3/12]
      Run a canonical BERT-style masked-language-model workload with the 500M
-     controlled encoder for seeds =7, 42, 773= at 1, 2 and 4 GPUs. Hold examples,
+     controlled encoder for seeds =7, 42, 773= at 1, 2, 4 and 8 A100 GPUs. Hold examples,
      non-padding tokens, optimizer updates, masking, precision and global batch
      fixed: this is strong scaling, not weak scaling. Use replicated DDP with
      deferred gradient synchronization at every device count. The accepted
-     tuning screen uses length 512 and 131,072 tokens/update; physical batch 8
-     was fastest among the fitting tested cases. Freeze independent seeded
-     repetitions before promoting the screen to the nine-run paper panel.
+     workload uses length 512 and 131,072 tokens/update. Physical batch 8
+     was fastest on Tinybox; the Lambda A100 screen selected 16 from 8/16/32.
+     Run fresh seeded repetitions, not reused tuning trials, for the twelve-cell
+     cloud panel. Retain Tinybox measurements as resource-constrained evidence.
      Report steps/s, tokens/s, scaling efficiency, compilation, peak HBM and
      collective placement. Do not infer communication time from HLO counts.
 
      Emphasize JAX's sharding surface in the main text, not only the appendix.
      Add one bounded, unseeded capacity frontier showing the largest model or
      batch that fails replicated execution but trains with FSDP or a hybrid
-     data/model mesh. Keep the nine fixed-work runs as the scaling statistic;
+     data/model mesh. Keep the twelve fixed-work runs as the scaling statistic;
      the capacity probe is a separate feasibility result.
 **** 7. Design analysis
      Reuse the accepted GradCache implementation, bucketing-versus-padding,
@@ -1331,7 +1332,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
         The final Section 5 panel is complete (18 runs); the superseded three
         original late-interaction runs are retained separately. Section 6 strong
         scaling and the capacity-frontier probe remain unfinished.
-**** TODO Run the nine ModernBERT MLM strong-scaling jobs [0/9] [0%]
+**** TODO Run the twelve ModernBERT MLM strong-scaling jobs [3/12] [25%]
      Superseded initial 48-hour proposal (not launched): retain the
      500M model, seeds 7/42/773 and 1/2/4 GPUs; bound each run to 300 updates,
      270 at length 128 and 30 at length 512. Target 32,768 input tokens/update
@@ -1817,6 +1818,27 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
        loaded pinned WikiText/tokenizer assets without PyTorch, and executed
        a BF16 matrix multiplication on GPU 0 with JAX 0.11.1. This is local
        installation evidence, not acceptance of the pending Lambda host.
+       Deployment update: committed revision =c800623= transferred as a
+       verified Git bundle and checked out on the Lambda instance. Eight
+       A100-SXM4 40GB devices, driver 580.105.08, all GPU pairs NV12 and
+       P2P read/write OK. Eight-GPU JAX reduction passed; NCCL records direct
+       P2P rather than host SHM. Installed uv 0.10.7 and the locked native
+       environment. Results root =lambda-a100-20260911/= under experiment 15,
+       mirrored back to the Tinybox. Instance boot was 18:43:11 UTC; an outer
+       90-minute process timeout bounds the launch, leaving retrieval time
+       before the two-hour window. SSH does not provide rental termination;
+       user must terminate through the Lambda console after artifact retrieval.
+       Eight-GPU inspection correction: the original experiment gate treated
+       source metadata containing while/body as runtime loop placement. XLA
+       unrolled the two accumulation iterations, retaining that metadata on
+       entry-computation reductions. The first eight-GPU attempt stopped before
+       any optimizer update and is retained as failed evidence. The gate now
+       follows actual HLO computation/while-call edges; all four saved device
+       counts have no large reductions inside remaining loops. No core training
+       code or scientific setting changed. Added explicit resume, preserving
+       failed attempts and reusing matching completed cells without extending
+       the original deadline. Eighteen focused tests pass, including unrolled
+       metadata, transitive loop calls and saved-run configuration validation.
      Run only Representax with the controlled ModernBERT encoder and a real text
      corpus for seeds =7, 42, 773= at 1, 2 and 4 GPUs. Hold the global token
      batch and optimizer work fixed, using the same replicated DDP policy at

@@ -168,6 +168,31 @@ def digest(value: np.ndarray) -> str:
 
 
 def collective_summary(hlo: str) -> list[dict[str, Any]]:
+    # Source metadata survives unrolling; follow actual HLO computation edges.
+    computation = None
+    locations = {}
+    callees: dict[str, set[str]] = {}
+    loop_computations = set()
+    for number, line in enumerate(hlo.splitlines(), start=1):
+        header = re.match(r"^(?:ENTRY )?%([\w.-]+).* \{$", line)
+        if header:
+            computation = header[1]
+        if computation is None:
+            continue
+        locations[number] = computation
+        instruction = line.split("metadata=", 1)[0]
+        references = set(
+            re.findall(r"\b(?:body|condition|calls|to_apply)=%([\w.-]+)", instruction)
+        )
+        callees.setdefault(computation, set()).update(references)
+        if " while(" in instruction:
+            loop_computations.update(references)
+    pending = list(loop_computations)
+    while pending:
+        for child in callees.get(pending.pop(), ()):
+            if child not in loop_computations:
+                loop_computations.add(child)
+                pending.append(child)
     rows = []
     for number, line in enumerate(hlo.splitlines(), start=1):
         if not re.search(r"\ball-reduce(?:-start)?\(", line):
@@ -179,7 +204,9 @@ def collective_summary(hlo: str) -> list[dict[str, Any]]:
         rows.append(
             {
                 "line": number,
-                "in_loop": "while/body" in line,
+                "in_loop": locations.get(number) in loop_computations,
+                "computation": locations.get(number),
+                "source_loop_metadata": "while/body" in line,
                 "largest_float_array_elements": max(elements, default=0),
                 "instruction": line.strip(),
             }
