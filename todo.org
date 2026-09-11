@@ -8,7 +8,7 @@ Keep decisions and work items here; record evidence in commits, tests, and
 benchmark artifacts rather than duplicating the roadmap elsewhere.
 
 * Papers
-** Representax paper [6/10] [60%]
+** Representax paper [7/10] [70%]
   This section is the finite acceptance program for the Representax
   systems whitepaper. Establish numerical and scientific equivalence first,
   then demonstrate statistically supported systems improvements on shared
@@ -39,6 +39,9 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   a flat shell file beside each numbered experiment's Python launcher.
 
 *** Paper draft
+    Working manuscript: =paper/draft.md=; proposed abstract: =paper/abstract.md=.
+    Evidence freeze and first figures prepared 2026-09-11. This is a local
+    author-review draft, not a submitted or publication-ready manuscript.
 **** 1. Introduction
      Motivate representation-learning research as a systems problem spanning
      text, image, audio and video workloads. State the paper's claim narrowly:
@@ -56,11 +59,11 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      numerical checks. Preserve raw logs so alternate summaries remain
      computable after the runs.
 **** 4. Framework and accelerator comparison
-     Twelve concrete recipes are complete across five seeds, both frameworks,
+     Thirteen concrete recipes are complete across five seeds, both frameworks,
      six RTX 4090 GPUs and one 16-chip multi-host v5e slice. The old
      late-interaction row remains systems-only because its source-order MS MARCO
-     data was severely duplicated; promote it only after the duplicate-free
-     correction below. Show per-recipe speedup with uncertainty, GPU-versus-TPU
+     data was severely duplicated; retain it as a qualified historical row,
+     without a new rerun or learning-parity claim. Show per-recipe seed spread, GPU-versus-TPU
      speedup, trajectory correlation, and the capability/reproducibility table.
      Report BERT Base, TPU audio and compiled dense retrieval as explicit limits.
 **** 5. End-to-end representation learning [18/18] [100%]
@@ -101,10 +104,10 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      collective placement. Do not infer communication time from HLO counts.
 
      Emphasize JAX's sharding surface in the main text, not only the appendix.
-     Add one bounded, unseeded capacity frontier showing the largest model or
-     batch that fails replicated execution but trains with FSDP or a hybrid
-     data/model mesh. Keep the twelve fixed-work runs as the scaling statistic;
-     the capacity probe is a separate feasibility result.
+     The proposed FSDP/hybrid capacity frontier remains unrun and is deferred
+     beyond this submission's evidence freeze. Do not imply that the completed
+     DDP scaling result establishes a capacity improvement. Describe sharding
+     as an implemented API capability with its measured limits.
 **** 7. Design analysis
      Reuse the accepted GradCache implementation, bucketing-versus-padding,
      prefetch and layer-unroll measurements. Keep only ablations that explain a
@@ -491,7 +494,10 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
    lives under
    =/raid/representax/paper-campaign-v1/preflight/packing/20260828/= and compact
    evidence under =benchmarks/results/paper-packing-preflight-20260828/=.
-*** NEXT Complete the final paper experiments [25/27] [93%] :research:benchmark:
+*** DONE Close the final paper experiment panel [27/27] [100%] :research:benchmark:
+    Closed for drafting on 2026-09-11: 26 completed items and one explicitly
+    canceled late-interaction rerun. Preserve qualified/negative evidence;
+    no new experiment or FSDP-capacity result is implied by this completion.
 **** DONE Repeat seed-7 MPNet/MS MARCO with the default reference collator
      The accepted fair-padding run uses Representax length buckets and Sentence
      Transformers' standard dynamic collator. Across the identical warmed
@@ -940,7 +946,9 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      sharding work is deferred. Durable runs, rejected attempts, source snapshots,
      and logs live beneath
      =/raid/representax-paper/07-bert-parameter-scaling/=.
-**** TODO Rerun late interaction with duplicate-free MS MARCO pairs
+**** CANCELED Rerun late interaction with duplicate-free MS MARCO pairs
+     Superseded by the user's decision to retain historical timing with its
+     limitations and stop late-interaction tuning for this submission.
      Rebuild the late-interaction data with unique queries and positives, then
      rerun the five-seed Representax/PyLate GPU comparison. Treat the retained TPU
      measurement as a same-shape systems diagnostic unless a bounded TPU rerun is
@@ -2228,7 +2236,42 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
     These commands use the current checked-in recipes. Historical measurements
     retain their original data, seeds and source snapshots; do not relabel them
     when a launcher changes. The aggregate command performs no training.
-*** TODO Write the paper on the portable JAX representation-training system :research:paper:
+*** NEXT Write the paper on the portable JAX representation-training system [4/8] [50%] :research:paper:
+**** DONE Freeze the selected evidence and verify numeric extraction
+     =paper/build.py freeze= reads historical metric/summary hashes and recomputes
+     rates from raw optimizer intervals. It verifies all 12 A100 cells, finite
+     updates, same token/mask hashes and unchanged library source across devices.
+     =paper/evidence.json= preserves the figure inputs and source-file inventory;
+     checkpoints and full original logs remain under =/raid/representax-paper=.
+**** DONE Draft the abstract and claim-bounded manuscript
+     =paper/abstract.md= and =paper/draft.md=. Lead with the research toolkit,
+     workload-dependent throughput, useful held-out adaptation and fixed-batch
+     A100 scaling. No universal-speedup, asymptotic-convergence, novel-compiler,
+     any-to-any supervision or demonstrated FSDP-capacity claim.
+**** DONE Assemble the first comparison, learning and scaling figures
+     =paper/build.py render= rebuilds five PDF/PNG figure pairs from the frozen
+     data without checkpoints or access to =/raid=. Use Inter and the author's
+     named palette. Show all five seed ratios, per-arm initial evaluation,
+     sample SD and retained negative results. =paper/results.md= includes
+     measured first-use costs; missing timing fields are not interpreted as zero.
+**** DONE Draft the capability and evidence-boundary table
+     =paper/capabilities.md= separates implementation from executed combinations
+     and records historical reference pins. Final provenance reconciliation is
+     still part of the manuscript audit, not a claim that every combination ran.
+**** TODO Review the abstract and empirical claims together
+     Resolve author wording before submission. Preserve the two TPU input-cache
+     qualifications, historical late interaction, dense Inductor control and
+     text-retention tradeoffs; do not hide them behind aggregate win counts.
+**** TODO Add primary-source citations and complete the system description
+     Add the concrete public-API example and verified related work. Reuse only
+     existing matched design ablations; do not launch another tuning cycle.
+**** TODO Reconcile final methods tables with historical provenance
+     Check datasets, checkpoints, effective batch, actual shapes, dtype and
+     reference adaptations per row. Current setup locks are not proof of the
+     historical environment. Link the published reproduction package.
+**** TODO Typeset and review the final manuscript for submission
+     Verify current venue formatting, anonymity and submission requirements
+     before upload. The draft and local figures do not themselves submit it.
 *** TODO Release the Representax systems paper as an arXiv preprint :research:paper:
 **** TODO Delete retained Google Cloud paper assets after the final preprint is published
      Once the final preprint and reproducibility package are complete, verify
