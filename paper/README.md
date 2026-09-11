@@ -1,6 +1,9 @@
 # Paper Working Set
 
 - `abstract.md`: proposed abstract, ready for author review, not submitted.
+- `abstract-variants.md`: three alternative voices; no final selection yet.
+- `scaling-context.md`: published scaling context and comparison boundaries.
+- `figure-plan.md`: proposed visual revisions using the frozen data only.
 - `draft.md`: claim-bounded manuscript scaffold and current results narrative.
 - `capabilities.md`: capability/evidence boundaries and recorded reference pins.
 - `evidence.json`: frozen compact evidence, raw metric records and source hashes.

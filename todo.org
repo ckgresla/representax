@@ -2259,6 +2259,19 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      and records historical reference pins. Final provenance reconciliation is
      still part of the manuscript audit, not a claim that every combination ran.
 **** TODO Review the abstract and empirical claims together
+     2026-09-11: =paper/abstract-variants.md= offers builder-led, empirical and
+     research-ambition alternatives. Prefer a confident, concrete toolkit-first
+     voice; keep the current abstract until author selection. Scaling context
+     and primary sources are in =paper/scaling-context.md=: near-linear scaling
+     is established practice, not a new record. Our result is fixed-batch
+     strong scaling on eight 40-GB A100 GPUs, not a 40-GPU allocation.
+     Freeze measurements while allowing prose/figure iteration. The first
+     evidence/draft freeze is commit =ad4c282=. Publish the existing history and
+     draft to =codex/ci-main-repair=, without modifying =main= or rewriting history.
+     =paper/figure-plan.md= proposes one main visual per empirical question:
+     framework-relative rates, per-dataset learning changes and fixed-work
+     scaling. Keep absolute rates, efficiency and startup costs in supporting
+     tables; defer visual edits until the abstract narrative is agreed.
      Resolve author wording before submission. Preserve the two TPU input-cache
      qualifications, historical late interaction, dense Inductor control and
      text-retention tradeoffs; do not hide them behind aggregate win counts.
