@@ -90,11 +90,13 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      Run a canonical BERT-style masked-language-model workload with the 500M
      controlled encoder for seeds =7, 42, 773= at 1, 2 and 4 GPUs. Hold examples,
      non-padding tokens, optimizer updates, masking, precision and global batch
-     fixed: this is strong scaling, not weak scaling. Use the same FSDP policy at
-     every device count, with one device as the degenerate case, and report
-     steps/s, tokens/s, scaling efficiency, compilation, peak HBM and collective
-     time. Use the original BERT phase structure: 90% of updates at length 128
-     and 10% at length 512, preserving a constant global token batch.
+     fixed: this is strong scaling, not weak scaling. Use replicated DDP with
+     deferred gradient synchronization at every device count. The accepted
+     tuning screen uses length 512 and 131,072 tokens/update; physical batch 8
+     was fastest among the fitting tested cases. Freeze independent seeded
+     repetitions before promoting the screen to the nine-run paper panel.
+     Report steps/s, tokens/s, scaling efficiency, compilation, peak HBM and
+     collective placement. Do not infer communication time from HLO counts.
 
      Emphasize JAX's sharding surface in the main text, not only the appendix.
      Add one bounded, unseeded capacity frontier showing the largest model or
@@ -1330,7 +1332,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
         original late-interaction runs are retained separately. Section 6 strong
         scaling and the capacity-frontier probe remain unfinished.
 **** TODO Run the nine ModernBERT MLM strong-scaling jobs [0/9] [0%]
-     Proposed 48-hour closeout budget (not approved or launched): retain the
+     Superseded initial 48-hour proposal (not launched): retain the
      500M model, seeds 7/42/773 and 1/2/4 GPUs; bound each run to 300 updates,
      270 at length 128 and 30 at length 512. Target 32,768 input tokens/update
      (256 or 64 sequences respectively), conditional on single-GPU capacity.
@@ -1713,13 +1715,45 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
        Output: =/raid/representax-paper/15-modernbert-mlm-scaling/tuned-ddp-20260910/=.
        This remains a single-seed tuning/systems screen; do not label it the
        completed nine-run panel or a proven global performance optimum.
+       Completed under commit =bd0d61a=, following MLM commit =f94212b= and
+       synchronization commit =d708908=. The single-GPU physical-batch sweep:
+       | Microbatch | Warm tokens/s | Compiled GiB | Outcome |
+       |------------+---------------+--------------+---------|
+       |          8 |        23,489 |        19.87 | Selected |
+       |         16 |        22,744 |        20.70 | Passed, 3.2% slower |
+       |         32 |             - |        32.62 | Rejected before execution |
+       |         64 |             - |            - | Skipped after capacity boundary |
+       Allocator limit was 21.17 GiB/device; microbatch 32 also exceeds the
+       physical 24 GB GPU. This does not establish an exact maximum batch.
+       Cached microbatch-8 compile/load was 11.36 seconds; microbatch 16 cold
+       compilation took 175.98 seconds. Actual live peaks were 19.87/20.70 GiB.
+       Matched seed-7 strong scaling, 21 updates each with 20 warm observations:
+       | GPUs | Accumulation | Tokens/s | Speedup | Efficiency | Seconds/update |
+       |------+--------------+----------+---------+------------+----------------|
+       |    1 |           32 |   23,489 |   1.000 |     100.0% |         5.5801 |
+       |    2 |           16 |   37,847 |   1.611 |      80.6% |         3.4632 |
+       |    4 |            8 |   46,458 |   1.978 |      49.4% |         2.8213 |
+       Two/four-GPU cold compilation was 175.25/173.04 seconds; compiled
+       memory remained 19.87 GiB/device. Step-time CV was 0.04/0.65/0.94%.
+       All 84 executed updates (including the microbatch-16 candidate) were
+       finite/non-skipped. Tokens, corruption, labels and masked-position
+       hashes match across topologies. Initial losses were 10.620912/10.620914/
+       10.620913; final losses 7.250642/7.232751/7.239561. Maximum loss range
+       is 0.0178914, not bitwise BF16 trajectory equivalence. Both distributed
+       executables passed the large-gradient reduction-placement gate.
+       This confirms useful but sublinear scaling from the fastest tested
+       single-GPU baseline. Eight experiment configuration tests pass.
+       =selection.json=, =dispatch.json=, =aggregate.json=, =report.md=, raw
+       steps, HLO, compiled/live memory and telemetry are retained. The selected
+       one-GPU result is reused in the scaling table, not an independent rerun.
+       All workers and telemetry exited; all six GPUs verified idle afterward.
      Run only Representax with the controlled ModernBERT encoder and a real text
      corpus for seeds =7, 42, 773= at 1, 2 and 4 GPUs. Hold the global token
-     batch and optimizer work fixed, use the same FSDP policy at each device
-     count, and do not run a weak-scaling variant. Preserve the canonical BERT
-     90% length-128 and 10% length-512 phase structure while keeping tokens per
-     optimizer update constant. Report optimizer steps/s, tokens/s, scaling
-     efficiency, compilation, peak HBM and collective time. This is a bounded
+     batch and optimizer work fixed, using the same replicated DDP policy at
+     each device count. The length-512 fixed-work recipe supersedes the older
+     FSDP-only, two-length proposal for this panel. Report optimizer steps/s,
+     tokens/s, scaling efficiency, compilation, peak HBM and observed
+     collective placement. This is a bounded
      pretraining-like systems result, not a claim to reproduce full BERT
      pretraining or downstream quality.
 

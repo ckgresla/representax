@@ -82,10 +82,18 @@ def summarize(root: Path) -> dict:
             "One seed; no cross-seed uncertainty estimate.",
             "Complete optimizer intervals include masking and placement; "
             "compilation and first update excluded.",
-            "Weak scaling changes global batches and is not a "
-            "trajectory-parity comparison.",
         ],
     }
+    if not strong:
+        result["limitations"].append(
+            "Weak scaling changes global batches and is not a "
+            "trajectory-parity comparison."
+        )
+    if (root / "selection.json").exists():
+        result["limitations"].append(
+            "One-GPU baseline selected from this microbatch sweep; "
+            "independent seeded repetitions remain outstanding."
+        )
     (root / "aggregate.json").write_text(json.dumps(result, indent=2))
     lines = [
         f"# {result['kind'].title()} DDP Scaling",
@@ -103,7 +111,7 @@ def summarize(root: Path) -> dict:
             f"| {r['gpus']} | {r['global_batch']} | {r['accumulation']} | "
             f"{r['steps_per_second']:.3f} | {r['tokens_per_second']:,.0f} | "
             f"{r['speedup']:.3f}x | {r['efficiency']:.1%} | "
-            f"{r['step_time_cv']:.1%} | {r['compile_or_cache_load_seconds']:.2f} | "
+            f"{r['step_time_cv']:.2%} | {r['compile_or_cache_load_seconds']:.2f} | "
             f"{r['compiled_memory_gib']:.2f} |"
         )
     if parity is not None:
