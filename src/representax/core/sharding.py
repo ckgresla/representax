@@ -6,7 +6,9 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
+from typing import Any
 
+import equinox as eqx
 import jax
 import jax.numpy as jnp
 from jax.sharding import AxisType, Mesh, NamedSharding
@@ -119,10 +121,67 @@ def replicate(value: jax.Array) -> jax.Array:
     policy = _ACTIVE.get()
     if policy is None:
         return value
-    sharding = NamedSharding(policy.mesh, P())
+    # A reduced value already has full replicas; preserve its deferred-gradient
+    # annotation for contractions. Elementwise vector broadcasts require the
+    # ordinary replicated type, so their smaller reductions remain eager.
+    reduced = (
+        getattr(jax.typeof(value).sharding.spec, "reduced", frozenset())
+        if value.ndim >= 2
+        else frozenset()
+    )
+    sharding = NamedSharding(policy.mesh, P(reduced=reduced) if reduced else P())
     if policy.automatic:
         return jax.lax.with_sharding_constraint(value, sharding)
     return jax.reshard(value, sharding)
+
+
+def defer_gradient_reduction(parameters: Any) -> Any:
+    """Give replicated parameters unreduced cotangents on the active data axis."""
+
+    policy = _ACTIVE.get()
+    if (
+        policy is None
+        or policy.data_axis_size == 1
+        or any(axis is not AxisType.Explicit for axis in policy.mesh.axis_types)
+    ):
+        return parameters
+    arrays = [
+        value for value in jax.tree.leaves(parameters) if eqx.is_inexact_array(value)
+    ]
+    if any(not jax.typeof(value).sharding.is_fully_replicated for value in arrays):
+        return parameters
+    sharding = NamedSharding(policy.mesh, P(reduced={policy.data_axis_name}))
+    return jax.tree.map(
+        lambda value: (
+            jax.reshard(value, sharding) if eqx.is_inexact_array(value) else value
+        ),
+        parameters,
+    )
+
+
+def scale_gradient(value: jax.Array, weight: jax.Array) -> jax.Array:
+    """Scale a gradient without materializing its pending data-axis reduction."""
+
+    sharding = jax.typeof(value).sharding
+    if sharding.spec.unreduced:
+        weight = jax.reshard(
+            weight, NamedSharding(sharding.mesh, P(reduced=sharding.spec.unreduced))
+        )
+    return value * weight
+
+
+def synchronize_gradients(gradients: Any) -> Any:
+    """Materialize pending gradient reductions before clipping or optimization."""
+
+    def synchronize(value: jax.Array) -> jax.Array:
+        sharding = jax.typeof(value).sharding
+        if not sharding.spec.unreduced:
+            return value
+        return jax.reshard(
+            value, NamedSharding(sharding.mesh, P(*sharding.spec.partitions))
+        )
+
+    return jax.tree.map(synchronize, gradients)
 
 
 def batch_to_scan(
@@ -230,8 +289,11 @@ __all__ = [
     "active_data_axis_size",
     "batch_to_scan",
     "constrain_activation",
+    "defer_gradient_reduction",
     "replicate",
     "replicated_out_sharding",
+    "scale_gradient",
     "scan_to_batch",
     "scanned_out_sharding",
+    "synchronize_gradients",
 ]

@@ -12,6 +12,11 @@ import optax
 from jaxtyping import Array, Bool, Float, PRNGKeyArray
 
 from representax.core import Task
+from representax.core.sharding import (
+    defer_gradient_reduction,
+    scale_gradient,
+    synchronize_gradients,
+)
 from representax.precision import (
     FP32_POLICY,
     PrecisionPolicy,
@@ -116,13 +121,17 @@ def _validate_accumulation_batch(batch: Any, steps: int, *, task: Any) -> None:
         )
 
 
-def _split_batch_arrays(batch: Any, steps: int) -> tuple[Any, Any]:
+def _split_batch_arrays(
+    batch: Any,
+    steps: int,
+    out_sharding: Any | None = None,
+) -> tuple[Any, Any]:
     arrays, static = eqx.partition(batch, eqx.is_array)
     split = jax.tree.map(
-        lambda leaf: leaf.reshape(
-            steps,
-            leaf.shape[0] // steps,
-            *leaf.shape[1:],
+        lambda leaf: jnp.reshape(
+            leaf,
+            (steps, leaf.shape[0] // steps, *leaf.shape[1:]),
+            out_sharding=out_sharding,
         ),
         arrays,
     )
@@ -253,9 +262,12 @@ def _build_train_step_body(
             )
 
         def differentiated_loss(
+            trainable_model: Any,
             batch: Any,
             key: PRNGKeyArray | None,
         ) -> tuple[Any, Any]:
+            if gradient_accumulation_steps > 1:
+                trainable_model = defer_gradient_reduction(trainable_model)
             if full_parameter_training:
                 return full_loss_fn(
                     cast(eqx.Module, trainable_model),
@@ -270,7 +282,9 @@ def _build_train_step_body(
             )
 
         if gradient_accumulation_steps == 1:
-            (loss, task_metrics), gradients = differentiated_loss(batch, key)
+            (loss, task_metrics), gradients = differentiated_loss(
+                trainable_model, batch, key
+            )
         else:
             if callable(accumulation_microbatch):
                 split_arrays = batch_static = None
@@ -278,15 +292,8 @@ def _build_train_step_body(
                 split_arrays, batch_static = _split_batch_arrays(
                     batch,
                     gradient_accumulation_steps,
+                    accumulation_split_sharding,
                 )
-                if accumulation_split_sharding is not None:
-                    split_arrays = jax.tree.map(
-                        lambda value: jax.reshard(
-                            value,
-                            accumulation_split_sharding,
-                        ),
-                        split_arrays,
-                    )
 
             def evaluate_microbatch(index: Array) -> tuple[Any, Any, Array]:
                 if callable(accumulation_microbatch):
@@ -303,6 +310,7 @@ def _build_train_step_body(
                     microbatch = eqx.combine(microbatch_arrays, batch_static)
                 microbatch_key = None if key is None else jax.random.fold_in(key, index)
                 loss_and_metrics, gradients = differentiated_loss(
+                    trainable_model,
                     microbatch,
                     microbatch_key,
                 )
@@ -347,7 +355,7 @@ def _build_train_step_body(
                 },
             )
             first_gradients = jax.tree.map(
-                lambda value: value * first_loss_weight,
+                lambda value: scale_gradient(value, first_loss_weight),
                 first_gradients,
             )
 
@@ -383,7 +391,9 @@ def _build_train_step_body(
                             },
                         ),
                         jax.tree.map(
-                            lambda total, value: total + value * loss_weight,
+                            lambda total, value: (
+                                total + scale_gradient(value, loss_weight)
+                            ),
                             totals[1],
                             microbatch_gradients,
                         ),
@@ -418,9 +428,10 @@ def _build_train_step_body(
             }
             if accumulation_loss_reduction == "mean":
                 gradients = jax.tree.map(
-                    lambda value: value * reciprocal_weight,
+                    lambda value: scale_gradient(value, reciprocal_weight),
                     gradients,
                 )
+            gradients = synchronize_gradients(gradients)
         gradient_norm = tree_global_norm(gradients)
         if max_grad_norm is None:
             clipped_gradients = gradients

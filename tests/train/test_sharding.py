@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import cast
 
@@ -286,6 +287,57 @@ def test_two_device_ddp_gradient_accumulation_matches_the_full_batch():
         cast(DenseEncoder, direct.state.model).projection.weight,
         rtol=2e-5,
         atol=2e-6,
+    )
+
+
+@pytest.mark.distributed
+@pytest.mark.parametrize("strategy", ["ddp", "custom"])
+def test_ddp_matrix_gradient_reduction_is_outside_accumulation_loop(strategy):
+    if jax.device_count() < 2 or not hasattr(P(), "reduced"):
+        pytest.skip("requires two devices and reduced/unreduced sharding support")
+    model = DenseEncoder(64, 64, key=jax.random.key(41))
+    optimizer = optax.sgd(1e-2)
+    state = init_train_state(model, optimizer)
+    batch = pairwise_batch(
+        left=jnp.arange(1024, dtype=jnp.float32).reshape(16, 64) / 1000,
+        right=jnp.arange(1024, 2048, dtype=jnp.float32).reshape(16, 64) / 1000,
+        labels=jnp.linspace(0.1, 0.8, 16),
+    )
+    mesh = jax.make_mesh((2,), ("data",), devices=jax.devices()[:2])
+    plan = ShardingPlan.ddp(state, optimizer, mesh)
+    if strategy == "custom":
+        plan = ShardingPlan.custom(
+            state,
+            optimizer,
+            mesh,
+            plan.parameter_specs,
+            parameter_axis_names=plan.parameter_axis_names,
+            data_axis_name="data",
+        )
+    step = build_train_step(
+        CosineRegressionTask(),
+        optimizer,
+        plan=plan,
+        gradient_accumulation_steps=4,
+    )
+    hlo = (
+        jax.jit(step)
+        .lower(plan.place_state(state), plan.place_batch(batch), None)
+        .compile()
+        .as_text()
+    )
+    matrix_reductions = []
+    for line in hlo.splitlines():
+        if not re.search(r"\ball-reduce(?:-start)?\(", line):
+            continue
+        shapes = re.findall(r"f32\[([0-9,]*)\]", line.split(" all-reduce")[0])
+        if any(
+            np.prod([int(d) for d in shape.split(",") if d]) >= 4096 for shape in shapes
+        ):
+            matrix_reductions.append(line)
+    assert matrix_reductions, hlo
+    assert all("while/body" not in line for line in matrix_reductions), (
+        matrix_reductions
     )
 
 
