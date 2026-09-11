@@ -117,6 +117,7 @@ from .llava_next import (
     make_llava_next_processor,
 )
 from .modernvbert import (
+    ModernBERTMaskedLM,
     ModernVBERTBatch,
     ModernVBERTCheckpointAdapter,
     ModernVBERTConfig,
@@ -331,6 +332,7 @@ __all__ = [
     "ModernVBERTTextCheckpointAdapter",
     "ModernVBERTTextConfig",
     "ModernVBERTTextEncoder",
+    "ModernBERTMaskedLM",
     "MPNET_MODEL_ID",
     "MPNetBatch",
     "MPNetCheckpointAdapter",

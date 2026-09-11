@@ -87,6 +87,12 @@ from .late_interaction import (
     LateInteractionContrastiveConfig,
     LateInteractionTask,
 )
+from .masked_language_modeling import (
+    MaskedLanguageModelBatch,
+    MaskedLanguageModelConfig,
+    MaskedLanguageModelLossConfig,
+    MaskedLanguageModelTask,
+)
 from .mega_batch import (
     MegaBatch,
     MegaBatchConfig,
@@ -384,6 +390,15 @@ def _build_late_interaction_task(
 def _require_task(task: TaskConfig, expected: type[TaskConfig]) -> None:
     if not isinstance(task, expected):
         raise TypeError(f"loss requires {expected.__name__}")
+
+
+def _build_masked_language_model_task(
+    task: TaskConfig, loss: LossConfig
+) -> MaskedLanguageModelTask:
+    _require_task(task, MaskedLanguageModelConfig)
+    if not isinstance(loss, MaskedLanguageModelLossConfig):
+        raise TypeError("MLM requires MaskedLanguageModelLossConfig")
+    return MaskedLanguageModelTask()
 
 
 def _build_cross_binary_task(
@@ -865,6 +880,11 @@ def _build_matryoshka_2d_modifier(
 BUILTIN_TASKS = TaskRegistry(
     (
         TaskDefinition(
+            kind="masked_language_modeling",
+            config_type=MaskedLanguageModelConfig,
+            batch_type=MaskedLanguageModelBatch,
+        ),
+        TaskDefinition(
             kind="retrieval",
             config_type=RetrievalConfig,
             batch_type=RetrievalBatch,
@@ -993,6 +1013,13 @@ BUILTIN_TASKS = TaskRegistry(
 )
 BUILTIN_LOSSES = LossRegistry(
     (
+        LossDefinition(
+            kind="masked_language_model_cross_entropy",
+            config_type=MaskedLanguageModelLossConfig,
+            build=_build_masked_language_model_task,
+            task_kinds=frozenset({"masked_language_modeling"}),
+            training_strategies=frozenset({"direct"}),
+        ),
         LossDefinition(
             kind="mnr",
             config_type=MNRConfig,
