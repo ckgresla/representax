@@ -1,7 +1,7 @@
 # Paper Working Set
 
-- `abstract.md`: proposed abstract, ready for author review, not submitted.
-- `abstract-variants.md`: three alternative voices; no final selection yet.
+- `abstract.md`: selected A/C blended working draft; final review pending.
+- `abstract-variants.md`: three original voices and the author's blend decision.
 - `scaling-context.md`: published scaling context and comparison boundaries.
 - `figure-plan.md`: proposed visual revisions using the frozen data only.
 - `draft.md`: claim-bounded manuscript scaffold and current results narrative.

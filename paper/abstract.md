@@ -1,21 +1,21 @@
 # Representax: Scalable Representation Learning in JAX
 
-Representation-learning research spans diverse objectives, modalities, and
-accelerator environments, yet developing new methods often requires rebuilding
-training infrastructure. We introduce Representax, a JAX toolkit that brings
-model adaptation, composable objectives, memory-efficient training, multimodal
-data processing, evaluation, and distributed execution into a shared training
-interface. We evaluate the toolkit through replicated framework comparisons
-on GPUs and multi-host TPUs, end-to-end adaptation studies, and fixed-batch
-multi-GPU scaling. Five-seed comparisons show workload-dependent throughput
-advantages alongside regressions, with compilation reported separately from
-steady-state optimizer-step time. Three-seed studies demonstrate improved
-held-out dense and image-text retrieval. Text-anchored multimodal adaptation
-improves image, audio, and video retrieval while exposing tradeoffs in text
-retention across connector tuning, low-rank adaptation, and full fine-tuning.
-For a 505-million-parameter masked-language-model workload, Representax achieves
-3.81x and 6.87x strong-scaling speedups on four and eight A100 GPUs, respectively,
-while holding the global batch fixed. These results position Representax as a
-practical foundation for representation-learning research across modalities
-and accelerators, rather than a new learning objective or a universally faster
-execution backend.
+New representation-learning ideas should be easy to try and practical to scale.
+As research crosses the boundaries between objectives, modalities, and hardware,
+its training infrastructure should make those boundaries easier to cross.
+We built Representax, a unified JAX foundation for research across text, images,
+audio, and video. It connects composable objectives and model adaptation with
+multimodal data processing, memory-efficient training, evaluation, and distributed
+execution through a shared training interface. We evaluate this foundation along
+three complementary axes: performance against reference frameworks, useful
+learning on held-out tasks, and multi-GPU strong scaling. Five-seed GPU and
+multi-host TPU comparisons show throughput advantages across many workloads,
+while identifying settings where reference implementations remain faster;
+compilation is reported separately from steady-state training. Three-seed
+adaptation studies improve dense and image-text retrieval, while text-anchored
+multimodal training improves media retrieval and reveals tradeoffs in text
+retention. A 505-million-parameter masked-language model achieves 3.81x and
+6.87x strong-scaling speedups on four and eight A100 GPUs relative to one GPU,
+with the global training batch held fixed. Representax provides a common
+experimental foundation on which researchers can build new representation-learning
+methods and explore how far they can go.

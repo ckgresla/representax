@@ -1,8 +1,8 @@
 # Abstract Variants
 
-All three use the same evidence. These are alternatives for author review,
-not additional claims or a selected final abstract. The original draft remains
-in `abstract.md` until we choose the voice together.
+All three use the same evidence. These alternatives are retained as drafting
+history. On 11 September 2026, the author selected a blend of A and C;
+`abstract.md` now contains that blended working draft, pending final review.
 
 Suggested title: **Representax: A JAX Foundation for Representation Learning**.
 The existing **Representax: Scalable Representation Learning in JAX** also works;
@@ -67,10 +67,10 @@ and explore how far they can go.
 
 ## Voice Decision
 
-Prefer A: an inviting opening, active verbs, concrete evidence, and an ending
-about what researchers can build. B is the most conventional. C emphasizes the
-research program. The energy should come from purpose and specificity, not
-superlatives or profanity in the submitted abstract.
+Author decision: blend A's inviting opening, active verbs and concrete evidence
+with C's broader research framing and ending about what researchers can build.
+B remains the conventional alternative. The energy should come from purpose
+and specificity, not superlatives or profanity in the submitted abstract.
 
 Keep the broad contribution first and the scaling result as its strongest
 quantified supporting example. Do not add a laundry list of caveats to every

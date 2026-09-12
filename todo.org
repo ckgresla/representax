@@ -2261,7 +2261,9 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
 **** TODO Review the abstract and empirical claims together
      2026-09-11: =paper/abstract-variants.md= offers builder-led, empirical and
      research-ambition alternatives. Prefer a confident, concrete toolkit-first
-     voice; keep the current abstract until author selection. Scaling context
+     voice. The author selected a blend of A and C: =paper/abstract.md= now
+     combines the builder-led opening with the broader research ambition.
+     Final wording review remains open. Scaling context
      and primary sources are in =paper/scaling-context.md=: near-linear scaling
      is established practice, not a new record. Our result is fixed-batch
      strong scaling on eight 40-GB A100 GPUs, not a 40-GPU allocation.
