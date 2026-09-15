@@ -1,0 +1,491 @@
+{
+  "fill_opacity": 0.3,
+  "point_opacity": 0.9,
+  "prefix_points": 1167,
+  "tax_points": 279,
+  "prefix": {
+    "text": "REPRESEN",
+    "black_prefix_length": 8,
+    "cap_height": 6,
+    "gap": 0.85,
+    "shear": 0.5773502691896258,
+    "depth_x": 0.22,
+    "depth_y": -0.381051177665153,
+    "grid_step": 0.15,
+    "diameter_px": 10,
+    "width_px": 11200,
+    "face_opacity": 0.1,
+    "point_opacity": 0.9,
+    "palette": [
+      "#0066FF",
+      "#00B88A",
+      "#B000FF"
+    ],
+    "uniform_surface": true
+  },
+  "tax_width": 1.15,
+  "prefix_transform": [
+    [
+      0.22566814775600977,
+      0.0,
+      -10.17739116640423
+    ],
+    [
+      0.0,
+      0.22566814775600977,
+      -0.6340088865360587
+    ],
+    [
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "selected_variant": "original A with 1.5x left-arm thickness, no added top",
+  "arm_extra_units": 7,
+  "background": "white; face colors are uniform tints precomposed against white",
+  "detail_spacing": 0.045,
+  "long_spacing": 0.14,
+  "detail_length": 0.22,
+  "faces": [
+    [
+      "T stem",
+      0,
+      1.0,
+      [
+        [
+          28.0,
+          120.0
+        ],
+        [
+          84.0,
+          24.0
+        ],
+        [
+          112.0,
+          24.0
+        ],
+        [
+          56.0,
+          120.0
+        ]
+      ]
+    ],
+    [
+      "T stem side",
+      0,
+      0.78,
+      [
+        [
+          56.0,
+          120.0
+        ],
+        [
+          112.0,
+          24.0
+        ],
+        [
+          126.0,
+          48.0
+        ],
+        [
+          70.0,
+          144.0
+        ]
+      ]
+    ],
+    [
+      "T foot",
+      0,
+      0.74,
+      [
+        [
+          28.0,
+          120.0
+        ],
+        [
+          56.0,
+          120.0
+        ],
+        [
+          70.0,
+          144.0
+        ],
+        [
+          42.0,
+          144.0
+        ]
+      ]
+    ],
+    [
+      "T bar front",
+      0,
+      0.82,
+      [
+        [
+          56.0,
+          24.0
+        ],
+        [
+          140.0,
+          24.0
+        ],
+        [
+          154.0,
+          48.0
+        ],
+        [
+          70.0,
+          48.0
+        ]
+      ]
+    ],
+    [
+      "T bar side",
+      0,
+      0.74,
+      [
+        [
+          140.0,
+          24.0
+        ],
+        [
+          154.0,
+          0.0
+        ],
+        [
+          168.0,
+          24.0
+        ],
+        [
+          154.0,
+          48.0
+        ]
+      ]
+    ],
+    [
+      "T bar",
+      0,
+      1.0,
+      [
+        [
+          56.0,
+          24.0
+        ],
+        [
+          70.0,
+          0.0
+        ],
+        [
+          154.0,
+          0.0
+        ],
+        [
+          140.0,
+          24.0
+        ]
+      ]
+    ],
+    [
+      "A left",
+      1,
+      0.87,
+      [
+        [
+          77.0,
+          120.0
+        ],
+        [
+          133.0,
+          24.0
+        ],
+        [
+          154.0,
+          24.0
+        ],
+        [
+          98.0,
+          120.0
+        ]
+      ]
+    ],
+    [
+      "A left cap",
+      1,
+      0.74,
+      [
+        [
+          77.0,
+          120.0
+        ],
+        [
+          98.0,
+          120.0
+        ],
+        [
+          112.0,
+          144.0
+        ],
+        [
+          91.0,
+          144.0
+        ]
+      ]
+    ],
+    [
+      "A right",
+      1,
+      0.82,
+      [
+        [
+          140.0,
+          24.0
+        ],
+        [
+          168.0,
+          24.0
+        ],
+        [
+          238.0,
+          144.0
+        ],
+        [
+          210.0,
+          144.0
+        ]
+      ]
+    ],
+    [
+      "A bridge side",
+      1,
+      0.74,
+      [
+        [
+          112.0,
+          96.0
+        ],
+        [
+          182.0,
+          96.0
+        ],
+        [
+          196.0,
+          120.0
+        ],
+        [
+          126.0,
+          120.0
+        ]
+      ]
+    ],
+    [
+      "A bridge",
+      1,
+      1.05,
+      [
+        [
+          112.0,
+          96.0
+        ],
+        [
+          126.0,
+          72.0
+        ],
+        [
+          168.0,
+          72.0
+        ],
+        [
+          182.0,
+          96.0
+        ]
+      ]
+    ],
+    [
+      "X rising",
+      2,
+      1.13,
+      [
+        [
+          140.0,
+          120.0
+        ],
+        [
+          210.0,
+          0.0
+        ],
+        [
+          238.0,
+          0.0
+        ],
+        [
+          168.0,
+          120.0
+        ]
+      ]
+    ],
+    [
+      "X far side",
+      2,
+      0.8,
+      [
+        [
+          168.0,
+          120.0
+        ],
+        [
+          238.0,
+          0.0
+        ],
+        [
+          252.0,
+          24.0
+        ],
+        [
+          182.0,
+          144.0
+        ]
+      ]
+    ],
+    [
+      "X cap",
+      2,
+      1.13,
+      [
+        [
+          140.0,
+          24.0
+        ],
+        [
+          154.0,
+          0.0
+        ],
+        [
+          182.0,
+          0.0
+        ],
+        [
+          168.0,
+          24.0
+        ]
+      ]
+    ],
+    [
+      "X falling",
+      2,
+      0.88,
+      [
+        [
+          168.0,
+          24.0
+        ],
+        [
+          182.0,
+          0.0
+        ],
+        [
+          252.0,
+          120.0
+        ],
+        [
+          238.0,
+          144.0
+        ]
+      ]
+    ],
+    [
+      "X foot",
+      2,
+      0.74,
+      [
+        [
+          140.0,
+          120.0
+        ],
+        [
+          168.0,
+          120.0
+        ],
+        [
+          182.0,
+          144.0
+        ],
+        [
+          154.0,
+          144.0
+        ]
+      ]
+    ]
+  ],
+  "sources": {
+    "manifold/logo.py": "0dcc4b165717e28a536e360e845590937ea6c2d6aa33f3f067f46756e42fa2ec",
+    "manifold/a_arm.py": "4a9b9b5a7e23bbe420314f131f750fff29d49dc697c43a61e972e2de81faabf7",
+    "manifold/wider_a.py": "9c06bac426638fc250decb09c4d38b5df59f1145f83454d96200e4c3f43cedaa",
+    "manifold/edge_dots.py": "73358edb41aa4f9630f4b9619eccff4211d7fdb89a12c0c2ce0b38d37f53a2f6",
+    "manifold/structural.py": "619bb3f4d831beabc5cdc0cd420e03eb5cdfd243300af13943935dbc01f405c8",
+    "manifold/extended.py": "4e5a60088970db92e6abe5e457d3a7327e7393409b8c0cf43adac78395f7e0a5",
+    "manifold/tilted.py": "2a85a6ad396e8f4689928a1d84cd4ae9329651d00cbb7eaccfc44f55fe053bfb",
+    "manifold/midtones.py": "9312142cb75fd4049f5341889c791a724888d8009131c6e99379dab16e55061c",
+    "manifold/upright.py": "d31866f62b78239522b508d0ca62301c0700bff78e8b17d58229376f6252a05c",
+    "manifold/unified.py": "a34f8844079731b3be6367ff0a5ae0a7a389b17fe011f8898fd68a5fd1f67e66",
+    "manifold/tax.py": "3a8d9f291498a38c1640e3a941568dd8d915dbe4dc3946404938568566e1ccd1",
+    "manifold/saturated.py": "e6176e4b56acd24967e5e593e23337e4c610aa802778144e51830f747bf1c7ae",
+    "manifold/lattice.py": "0fecf389900b30f17d6d574c76c1bf0303717efd3b8d310ee65040624e51f1a9",
+    "manifold/generate.py": "b8378bdb270401efbb7939d95c18c9f321d1cac63342a663a51d978ede502d6f"
+  },
+  "packages": {
+    "numpy": "2.4.0",
+    "matplotlib": "3.10.8",
+    "pillow": "12.2.0"
+  },
+  "artifacts": {
+    "representax.png": {
+      "sha256": "11b3f587ae0e6d0ecf342e6ec717ca731e52a149dc0486c8e57d985694c61cdb",
+      "bytes": 674738,
+      "pixels": [
+        11200,
+        1766
+      ]
+    },
+    "representax.svg": {
+      "sha256": "264b4a59a915b480be46ca92ebe150dbaa8006f3df25d4fd9f6706961e8829dc",
+      "bytes": 232132
+    },
+    "representax.pdf": {
+      "sha256": "3f2190a60f991a7cb3c491303e760cd8892816760f68a9dfc19e25075a7a3cb1",
+      "bytes": 12773
+    },
+    "representax-mark.png": {
+      "sha256": "c2db0385f7caa86d2e323c7ce3feb5d4087aa56b02107538d433dc50bda4d970",
+      "bytes": 167648,
+      "pixels": [
+        3200,
+        2000
+      ]
+    },
+    "representax-mark.svg": {
+      "sha256": "872f7ab6233985d61735d10a1eda384167b8678b2311c41999cdaf77954e8c4f",
+      "bytes": 47945
+    },
+    "representax-mark.pdf": {
+      "sha256": "6f77e6db6ed7cdfe108ca691e49b00abe99a30d18d0114836b089feaa20aac38",
+      "bytes": 3158
+    },
+    "representax-web.png": {
+      "sha256": "05d37e569d9d6567309bb2c88968d222784393dd3fd3770d5d64f17e9db36d8b",
+      "bytes": 157217,
+      "pixels": [
+        2400,
+        378
+      ]
+    },
+    "representax-prefix.csv": {
+      "sha256": "ba6f8d726efeba9956686eecbeee27300e10eb6ce292d6bd427fcfc1b0030368",
+      "bytes": 47263
+    },
+    "representax-mark.csv": {
+      "sha256": "1b1a0493609a33cd81dae27aa1c4607e10d619d1601962db4bc246bcd870af69",
+      "bytes": 11126
+    }
+  }
+}
