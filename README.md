@@ -2,7 +2,7 @@
 
 <p align="center">
   <br />
-  <img src="docs/assets/representax/representax.svg" alt="Representax" width="880" />
+  <img src="docs/assets/representax/representax.svg" alt="Representax" width="760" />
   <br /><br />
 </p>
 

@@ -3,7 +3,9 @@
 The selected logo uses the original interlocking TAX geometry with a 1.5x
 left arm on the A, no added top face, uniform 30% fill and 90% edge dots.
 Dots concentrate around corners and junctions, with wider spacing along long
-straight edges. The gray REPRESEN prefix joins the blue/green/violet TAX mark.
+straight edges. The gray REPRESEN prefix uses 80%-width glyphs in equal-advance
+cells, preserving its height, italic angle and 3D depth. It joins the unchanged
+blue/green/violet TAX mark, making the wordmark about 14% shorter overall.
 
 ![Representax](representax-web.png)
 
@@ -11,7 +13,7 @@ straight edges. The gray REPRESEN prefix joins the blue/green/violet TAX mark.
 
 | Asset | PNG | SVG | PDF |
 | --- | --- | --- | --- |
-| Full wordmark | [11,200 px](representax.png) | [Vector](representax.svg) | [Vector](representax.pdf) |
+| Full wordmark | [High resolution](representax.png) | [Vector](representax.svg) | [Vector](representax.pdf) |
 | Standalone mark | [3,200 px](representax-mark.png) | [Vector](representax-mark.svg) | [Vector](representax-mark.pdf) |
 
 `representax-web.png` is the 2,400-pixel README preview. Exports have a white

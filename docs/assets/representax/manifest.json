@@ -1,7 +1,13 @@
 {
   "fill_opacity": 0.3,
   "point_opacity": 0.9,
-  "prefix_points": 1167,
+  "glyph_width_scale": 0.8,
+  "cell_advance": 3.9600000000000004,
+  "cell_width": 4.2,
+  "cell_gap": 0.6,
+  "join_gap": 0.1,
+  "width": 10.501190191532196,
+  "prefix_points": 1129,
   "tax_points": 279,
   "prefix": {
     "text": "REPRESEN",
@@ -28,7 +34,7 @@
     [
       0.22566814775600977,
       0.0,
-      -10.17739116640423
+      -8.505190191532197
     ],
     [
       0.0,
@@ -41,7 +47,7 @@
       1.0
     ]
   ],
-  "selected_variant": "original A with 1.5x left-arm thickness, no added top",
+  "selected_variant": "80% monospace prefix; original A with 1.5x left-arm thickness, no added top",
   "arm_extra_units": 7,
   "background": "white; face colors are uniform tints precomposed against white",
   "detail_spacing": 0.045,
@@ -418,7 +424,8 @@
     ]
   ],
   "sources": {
-    "manifold/logo.py": "0dcc4b165717e28a536e360e845590937ea6c2d6aa33f3f067f46756e42fa2ec",
+    "manifold/logo.py": "79cf904a19339f70ab134f400b4f5f74ac0c9412d285152ed0a00f8847657847",
+    "manifold/condensed.py": "4ed3b7cf41f611600226b852a3a815bb6f8525a3439f8f38cf549dca815670bd",
     "manifold/a_arm.py": "4a9b9b5a7e23bbe420314f131f750fff29d49dc697c43a61e972e2de81faabf7",
     "manifold/wider_a.py": "9c06bac426638fc250decb09c4d38b5df59f1145f83454d96200e4c3f43cedaa",
     "manifold/edge_dots.py": "73358edb41aa4f9630f4b9619eccff4211d7fdb89a12c0c2ce0b38d37f53a2f6",
@@ -440,20 +447,20 @@
   },
   "artifacts": {
     "representax.png": {
-      "sha256": "11b3f587ae0e6d0ecf342e6ec717ca731e52a149dc0486c8e57d985694c61cdb",
-      "bytes": 674738,
+      "sha256": "b666f027f1ff75136eae6c73f064e6031df09d910f331405a759ee67036781e0",
+      "bytes": 663662,
       "pixels": [
-        11200,
+        9661,
         1766
       ]
     },
     "representax.svg": {
-      "sha256": "264b4a59a915b480be46ca92ebe150dbaa8006f3df25d4fd9f6706961e8829dc",
-      "bytes": 232132
+      "sha256": "5c60bff7ddc0b33d18288610bce2508cc819fbf27319a6956c8e5ee2dfd7a52e",
+      "bytes": 226569
     },
     "representax.pdf": {
-      "sha256": "3f2190a60f991a7cb3c491303e760cd8892816760f68a9dfc19e25075a7a3cb1",
-      "bytes": 12773
+      "sha256": "054334ae9acf63051d11a50a720d6fd86c3831366b4dea01467502f97051a4cf",
+      "bytes": 12683
     },
     "representax-mark.png": {
       "sha256": "c2db0385f7caa86d2e323c7ce3feb5d4087aa56b02107538d433dc50bda4d970",
@@ -472,16 +479,16 @@
       "bytes": 3158
     },
     "representax-web.png": {
-      "sha256": "05d37e569d9d6567309bb2c88968d222784393dd3fd3770d5d64f17e9db36d8b",
-      "bytes": 157217,
+      "sha256": "085636743adc76046faf2e4f7a724ad7ef515f81ad241b85c1ae0da104c384ab",
+      "bytes": 179372,
       "pixels": [
         2400,
-        378
+        439
       ]
     },
     "representax-prefix.csv": {
-      "sha256": "ba6f8d726efeba9956686eecbeee27300e10eb6ce292d6bd427fcfc1b0030368",
-      "bytes": 47263
+      "sha256": "03be6cce14264fbbefcd6137c7e3bd53ae75df8d2b80c2513b541ff20145cb08",
+      "bytes": 45714
     },
     "representax-mark.csv": {
       "sha256": "1b1a0493609a33cd81dae27aa1c4607e10d619d1601962db4bc246bcd870af69",
