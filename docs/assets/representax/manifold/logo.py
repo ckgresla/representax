@@ -5,18 +5,21 @@ import json
 
 import matplotlib
 import numpy as np
-from a_arm import arm_faces, arm_regions
-from edge_dots import render
+from a_arm import arm_faces
+from condensed import composition, render
 from generate import HERE
 from PIL import Image
-from wider_a import DETAIL_LENGTH, DETAIL_SPACING, LONG_SPACING, adaptive_nodes
+from structural import PREFIX
+from wider_a import DETAIL_LENGTH, DETAIL_SPACING, LONG_SPACING
 
 ARM_EXTRA = 7
 FILL_OPACITY = 0.3
 POINT_OPACITY = 0.9
+PREFIX_WIDTH = 0.8
 WEB_WIDTH = 2400
 SOURCES = (
     "logo.py",
+    "condensed.py",
     "a_arm.py",
     "wider_a.py",
     "edge_dots.py",
@@ -35,15 +38,17 @@ SOURCES = (
 
 def main():
     output = HERE.parent
+    limits = composition(None, ARM_EXTRA)[3]
+    pixels_per_unit = PREFIX.width_px / (limits[1] - limits[0])
     record = render(
         output,
         "representax",
-        FILL_OPACITY,
-        POINT_OPACITY,
-        regions=arm_regions(ARM_EXTRA),
-        node_sampler=adaptive_nodes,
+        PREFIX_WIDTH,
+        pixels_per_unit,
+        arm_extra=ARM_EXTRA,
+        fill_opacity=FILL_OPACITY,
+        point_opacity=POINT_OPACITY,
     )
-    record.pop("edge_spacing")
     for suffix in ("png", "svg", "pdf", "csv"):
         (output / f"representax-tax.{suffix}").replace(
             output / f"representax-mark.{suffix}"
@@ -60,7 +65,10 @@ def main():
             Image.Resampling.LANCZOS,
         ).save(output / "representax-web.png")
     record.update(
-        selected_variant="original A with 1.5x left-arm thickness, no added top",
+        selected_variant=(
+            "80% monospace prefix; original A with 1.5x left-arm thickness, "
+            "no added top"
+        ),
         arm_extra_units=ARM_EXTRA,
         background="white; face colors are uniform tints precomposed against white",
         detail_spacing=DETAIL_SPACING,
