@@ -1,0 +1,14 @@
+#+begin_export latex
+\begin{table}[tbp]
+\centering\small
+\setlength{\tabcolsep}{4pt}
+\caption{Strong scaling of a fixed 131,072-token update. Means and sample SD use three seeds. Speedup is the mean within-seed ratio; efficiency divides it by GPU count. Memory is the maximum compiled executable footprint per device, not the allocator's reserved pool.}\label{tab:scaling}
+\begin{tabular}{rrrrrrr}\toprule
+GPUs & Accum. & Tokens/s & Seconds/update & Speedup & Efficiency & GiB \\ \midrule
+1 & 16 & $32015 \pm 9$ & $4.094 \pm 0.001$ & 1.000 & 100.0\% & 32.58 \\
+2 & 8 & $63000 \pm 69$ & $2.081 \pm 0.002$ & 1.968 & 98.4\% & 32.54 \\
+4 & 4 & $121971 \pm 495$ & $1.075 \pm 0.004$ & 3.810 & 95.2\% & 32.54 \\
+8 & 2 & $219975 \pm 535$ & $0.596 \pm 0.001$ & 6.871 & 85.9\% & 33.60 \\
+\bottomrule\end{tabular}
+\end{table}
+#+end_export

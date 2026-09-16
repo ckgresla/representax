@@ -1,8 +1,9 @@
 # Abstract Variants
 
 All three use the same evidence. These alternatives are retained as drafting
-history. On 11 September 2026, the author selected a blend of A and C;
-`abstract.md` now contains that blended working draft, pending final review.
+history. On 11 September 2026, the author selected a blend of A and C.
+The subsequently approved abstract is
+now in `paper.org`; edit that source rather than these historical alternatives.
 
 Suggested title: **Representax: A JAX Foundation for Representation Learning**.
 The existing **Representax: Scalable Representation Learning in JAX** also works;

@@ -180,6 +180,7 @@ def _reference_metric_rows(summary: Mapping[str, Any]) -> list[dict[str, Any]]:
         if isinstance(row, Mapping) and "step" in row
     }
     batch_size = summary.get("global_batch_size", summary.get("batch_size"))
+    excluded_steps = set(summary.get("excluded_steps", range(1, FIRST_USE_STEPS + 1)))
     rows = []
     for offset, timing_row in enumerate(timing):
         if isinstance(timing_row, Mapping):
@@ -192,7 +193,7 @@ def _reference_metric_rows(summary: Mapping[str, Any]) -> list[dict[str, Any]]:
             continue
         metrics: dict[str, Any] = {
             "perf/step_seconds": seconds,
-            "perf/excluded_from_steady_state": step <= FIRST_USE_STEPS,
+            "perf/excluded_from_steady_state": step in excluded_steps,
         }
         if batch_size is not None:
             examples = int(batch_size)
@@ -239,9 +240,7 @@ def _materialize_canonical_evidence(
                 f"{output} has {len(rank_zero_summaries)} rank-zero summaries"
             )
         shutil.copyfile(rank_zero_summaries[0], summary_path)
-        run["native_summary_source"] = str(
-            rank_zero_summaries[0].relative_to(output)
-        )
+        run["native_summary_source"] = str(rank_zero_summaries[0].relative_to(output))
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
     native_metrics = sorted(
         [*(output / "run").glob("metrics.jsonl")]

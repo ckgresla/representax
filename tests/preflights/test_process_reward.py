@@ -11,6 +11,7 @@ from experiments.preflights.process_reward import (
     MICRO_BATCH_SIZE,
     STEPS_PER_TRAJECTORY,
     _representax_job,
+    _validate_tokenized_rows,
     frozen_contract,
     representax_steady_state,
     tokenize_trajectory,
@@ -28,6 +29,16 @@ class _Tokenizer:
         assert not add_special_tokens
         assert value == "\n"
         return [99]
+
+
+def test_padding_override_does_not_truncate_or_drop_supervised_steps() -> None:
+    rows = [{"input_ids": [1] * 256, "labels": [-100] * 252 + [0, 1, 0, 1]}]
+    assert _validate_tokenized_rows(rows, execution_sequence_length=256) == [256]
+    with pytest.raises(ValueError, match="execution length"):
+        _validate_tokenized_rows(rows, execution_sequence_length=255)
+    rows[0]["labels"][-1] = -100
+    with pytest.raises(ValueError, match="four steps"):
+        _validate_tokenized_rows(rows, execution_sequence_length=256)
 
 
 def test_frozen_process_reward_contract() -> None:

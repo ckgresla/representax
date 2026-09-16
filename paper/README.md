@@ -1,23 +1,83 @@
 # Paper Working Set
 
-- `abstract.md`: selected A/C blended working draft; final review pending.
+- `paper.org`: canonical editable manuscript, including the approved abstract.
+- `references.bib`: primary toolkit, method, model and dataset bibliography.
+- `export.el`, `preamble.tex`, `Makefile`: Org -> LaTeX -> PDF and source archive.
 - `abstract-variants.md`: three original voices and the author's blend decision.
 - `scaling-context.md`: published scaling context and comparison boundaries.
-- `figure-plan.md`: proposed visual revisions using the frozen data only.
-- `draft.md`: claim-bounded manuscript scaffold and current results narrative.
+- `figure-plan.md`: historical plan for the visual revisions.
 - `capabilities.md`: capability/evidence boundaries and recorded reference pins.
 - `evidence.json`: frozen compact evidence, raw metric records and source hashes.
-- `results.md`: generated framework table; `figures/`: generated PDF/PNG figures.
-- `captions.md`: statistical conventions and figure-specific limitations.
+- `update_process_reward.py`: audited, one-time replacement of five mismatched
+  GPU references, retaining the original evidence in correction history.
+- `methods.json`: hash-checked historical settings and environments for 265 paired
+  runs, plus longer-run configurations and prepared-data manifests.
+- `report.py`: current renderer for eight numeric tables and five PDF/PNG figures.
+- `tables/`, `figures/`, `analysis.json`: generated paper assets and timing diagnostics.
+- `results.md`, `captions.md`: historical first-pass summaries; the Org manuscript
+  and `report.py` own the current presentation.
+- `review-notes.md`: author-review handoff and qualifications found during writing.
 
-No training code or measured artifacts are changed by this directory. The
+No training code or original measured artifacts are changed by this directory. The
 roadmap and remaining submission tasks stay in `../todo.org`.
+
+## Manuscript Build
+
+Edit `paper.org`, not exported LaTeX or a separate Markdown abstract. The old
+`abstract.md` and `draft.md` are superseded; their history remains in Git.
+The approved abstract is preserved verbatim, with only source line wrapping.
+Author notes tagged `noexport` stay out of both outputs. The complete body has no
+outline placeholders. The author confirmed Chris Kerwell Gresla, Independent
+Researcher. Final prose, empirical interpretation and disclosure still require
+author review before submission.
+
+On Debian/Ubuntu, install the system typesetting tools once:
+
+```bash
+sudo apt-get install --no-install-recommends emacs-nox make latexmk texlive-latex-extra texlive-fonts-recommended
+```
+
+From the repository root:
+
+```bash
+make -C paper pdf       # build/preprint/paper.pdf, named-author draft
+make -C paper review    # build/review/paper.pdf, anonymous ICLR layout
+make -C paper arxiv     # build/representax-arxiv.tar.gz, self-contained TeX sources
+experiments/.venv/bin/python -m unittest discover -s paper -p 'test_*.py'
+```
+
+Paths above are relative to `paper/`. `make -C paper tex` exports LaTeX without
+requiring a TeX installation. Each export also writes `abstract.txt` beside
+`paper.tex` for the OpenReview form. Emacs runs with `-Q`, and Babel evaluation
+is disabled: no personal editor configuration or executable notebook blocks.
+The separate example test executes the named Python block from `paper.org`
+in the installed Representax environment and checks finite loss and nonzero,
+finite gradients. It neither downloads weights/data nor runs a training job.
+
+The unmodified official ICLR 2027 style is vendored with provenance in
+`vendor/README.md`. The preprint uses its named-author layout but replaces the
+acceptance banner with `Preprint. Work in progress.` The review mode does not
+enable the accepted-paper setting. It still needs a human anonymity and
+page-limit audit; producing a review PDF does not mean a submission was made.
+
+arXiv compiles the exported LaTeX, not Org. The source archive contains only
+`paper.tex`, `paper.bbl`, `references.bib`, `preamble.tex`, the two ICLR style
+files, and the five referenced PDF figures. It contains neither the manuscript
+PDF nor evidence JSON, checkpoint data, notes, or absolute workspace paths.
+After extraction it builds with `latexmk -pdf paper.tex`, without Emacs, Python,
+the repository, or `/raid`. Bibliography processing is standard BibTeX/natbib.
+See [arXiv's TeX instructions](https://info.arxiv.org/help/submit_tex.html) and
+[ICLR's author guidelines](https://iclr.cc/Conferences/2027/AuthorGuidelines).
+
+There is no mandatory arXiv visual template; this gives the preprint and planned
+ICLR submission a shared layout. No upload or submission is performed by any
+build command. Final author approval, public artifact publication and venue checks
+remain before publication.
 
 Rebuild figures without checkpoints, model downloads or access to `/raid`:
 
 ```bash
-experiments/.venv/bin/python paper/build.py render
-experiments/.venv/bin/python -m unittest discover -s paper -p test_build.py
+experiments/.venv/bin/python paper/report.py
 ```
 
 The renderer requires Matplotlib and NumPy. Inter is vendored under its OFL
@@ -40,17 +100,37 @@ logs, environments, source patches and model artifacts. The current lock is
 identified separately from historical run environments. No schema versioning
 or new experiment dispatcher is introduced.
 
+The GPU process-reward correction is applied explicitly with
+`experiments/.venv/bin/python paper/update_process_reward.py`. It verifies the
+new source/data/metric hashes, observed 256-token execution shapes, batch order
+against the five retained native runs and twenty warm intervals per seed.
+It replaces only those five reference cells and their aggregate, preserving
+the originals under `corrections`; it refuses to apply the correction twice.
+The corrected TRL median is 16.9460 examples/s, giving a 3.3181x native/reference
+ratio. The original 9.005x ratio compared different padded shapes and is not a
+valid matched-throughput result. TPU measurements are unchanged.
+
+The historical-methods snapshot was captured separately with
+`experiments/.venv/bin/python paper/collect_methods.py`. It refuses replacement
+and verifies saved summary/manifest hashes. It retains 693 source-artifact
+hashes, per-run environments and actual executed configurations. It is not part
+of an ordinary rebuild, and no current configuration is substituted for an old
+run. Following the explicit correction, its `collect()` function was rerun to
+record the new references' actual settings and environments. Files in the
+evidence inventories retain absolute source paths for local
+audit; those paths are not emitted in the PDF or LaTeX source archive.
+
 ## Claim-to-Evidence Map
 
 | Claim | Source | Limit |
 |---|---|---|
-| Workload-dependent framework throughput | Exp. 10 GPU/TPU `results.json`, per-run metrics and summaries | Short windows; local negative pools on TPU; cache/late-interaction qualifications |
+| Workload-dependent framework throughput | Exp. 10 per-run metrics and summaries, including the five corrected GPU process-reward references in `evidence.json` | Short windows; local negatives on TPU; cache, historical late interaction, short-input process reward and small-batch GPU V-JEPA qualifications |
 | Useful dense learning | Exp. 11 summary and evaluation history | NanoMSMARCO improvement; transfer finals without initial transfer baselines |
 | Useful image-text learning | Exp. 13 summary | COCO fine-tuning, not CLIP pretraining from scratch |
 | Multimodal adaptation tradeoffs | Exp. 14 summary with per-arm evaluation history | Different mixtures; text-to-any, not any-to-any |
 | Negative late-interaction result | Exp. 12 hard-negative per-seed reports | Small held-out panel; cause unresolved |
 | 3.81x / 6.87x strong scaling | Exp. 15 A100 summary and 12 raw results | One workload; DDP; short window; not FSDP capacity |
 
-Figure readiness is not submission readiness. Primary-source citations,
-venue-format/anonymity checks, author review and public artifact packaging
+Figure readiness is not submission readiness. Venue-format/anonymity checks,
+author review and public artifact publication
 remain before submission. Nothing here is uploaded or submitted automatically.

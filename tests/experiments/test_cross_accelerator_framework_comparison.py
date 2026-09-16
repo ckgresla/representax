@@ -49,6 +49,24 @@ def test_dense_contract_freezes_scientific_work_across_variants() -> None:
     assert training[0]["compute_dtype"] == "bfloat16"
 
 
+def test_reference_timing_honors_checkpoint_resume_first_use() -> None:
+    rows = _module()._reference_metric_rows(
+        {
+            "step_timings": [{"step": step, "seconds": 1.0} for step in range(1, 23)],
+            "batch_size": 64,
+            "excluded_steps": [1, 12],
+        }
+    )
+    assert [
+        row["iteration"]
+        for row in rows
+        if row["metrics"]["perf/excluded_from_steady_state"]
+    ] == [1, 12]
+    assert (
+        sum(not row["metrics"]["perf/excluded_from_steady_state"] for row in rows) == 20
+    )
+
+
 def test_cli_requires_explicit_representax_negative_scope(tmp_path: Path) -> None:
     module = _module()
     parser = module._parser()
@@ -150,10 +168,10 @@ def test_gpu_launcher_shares_caches_and_pins_the_jax_environment() -> None:
     assert 'TORCHINDUCTOR_CACHE_DIR="$cache_root/torchinductor/$recipe"' in source
     assert 'readonly prewarm_root="${output_root}-prewarm"' in source
     assert 'run_one "$recipe" 7 representax "${gpus[0]}" "$prewarm_root"' in source
-    assert 'JAX_DEFAULT_MATMUL_PRECISION=highest' in source
-    assert '--unset=XLA_FLAGS' in source
-    assert 'flock --exclusive' in source
-    assert 'gpu-$gpu/$recipe' not in source
+    assert "JAX_DEFAULT_MATMUL_PRECISION=highest" in source
+    assert "--unset=XLA_FLAGS" in source
+    assert "flock --exclusive" in source
+    assert "gpu-$gpu/$recipe" not in source
 
 
 def test_asset_stager_builds_the_bert_sentence_transformer_bundle() -> None:

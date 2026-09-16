@@ -429,7 +429,9 @@ def _representax_job(
         return DataConfig(
             distribution=mix(source(str(path), map=identity), shuffle=False),
             collate=ComponentConfig(
-                target=("experiments.preflights.process_reward:ProcessRewardPaperCollator")
+                target=(
+                    "experiments.preflights.process_reward:ProcessRewardPaperCollator"
+                )
             ),
             drop_remainder=not evaluation,
             num_threads=4,
@@ -670,6 +672,20 @@ def _representax_worker(
     }
 
 
+def _validate_tokenized_rows(
+    rows: Iterable[Mapping[str, Any]], *, execution_sequence_length: int
+) -> list[int]:
+    lengths = []
+    for row in rows:
+        length = len(row["input_ids"])
+        if not 0 < length <= execution_sequence_length:
+            raise ValueError("tokenized trajectory exceeds the execution length")
+        if sum(label != -100 for label in row["labels"]) != STEPS_PER_TRAJECTORY:
+            raise ValueError("tokenized trajectory must supervise four steps")
+        lengths.append(length)
+    return lengths
+
+
 def _trl_worker(
     *,
     checkpoint: Path,
@@ -678,6 +694,7 @@ def _trl_worker(
     steps: int,
     seed: int,
     platform: Platform = "gpu",
+    execution_sequence_length: int = EXECUTION_SEQUENCE_LENGTH,
 ) -> dict[str, Any]:
     import torch
     import torch.nn.functional as functional
@@ -696,6 +713,9 @@ def _trl_worker(
     from trl.experimental.prm import PRMConfig, PRMTrainer
 
     contract = frozen_contract()
+    if not 0 < execution_sequence_length <= contract.maximum_length:
+        raise ValueError("execution length must fit the frozen context limit")
+    observed_training_shapes: set[tuple[int, ...]] = set()
     world_size = torch_world_size()
     if contract.batch_size % world_size:
         raise ValueError("global batch must divide the accelerator count")
@@ -733,6 +753,10 @@ def _trl_worker(
             attention_mask: Any = None,
             labels: Any = None,
         ) -> Any:
+            if input_ids.shape[1] != execution_sequence_length:
+                raise ValueError("collated input does not match the execution length")
+            if self.training:
+                observed_training_shapes.add(tuple(input_ids.shape))
             outputs = self.sequence.model(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
@@ -775,7 +799,7 @@ def _trl_worker(
     collator = DataCollatorForTokenClassification(
         tokenizer,
         padding="max_length",
-        max_length=EXECUTION_SEQUENCE_LENGTH,
+        max_length=execution_sequence_length,
     )
 
     def arguments() -> PRMConfig:
@@ -834,6 +858,24 @@ def _trl_worker(
     )
     if first.model_accepts_loss_kwargs:
         raise RuntimeError("TRL wrapper must use Trainer-owned loss accumulation")
+    train_lengths = _validate_tokenized_rows(
+        first.train_dataset, execution_sequence_length=execution_sequence_length
+    )
+    _validate_tokenized_rows(
+        first.eval_dataset, execution_sequence_length=execution_sequence_length
+    )
+    if train_lengths != [
+        row["token_count"] for row in _read_jsonl(data_directory / "train.jsonl")
+    ]:
+        raise ValueError("TRL tokenization differs from the prepared training data")
+    _write_json(
+        run_directory / "input-audit.json",
+        {
+            "execution_sequence_length": execution_sequence_length,
+            "train_token_counts": train_lengths,
+            "supervised_steps_per_example": STEPS_PER_TRAJECTORY,
+        },
+    )
     initial_evaluation = first.evaluate() if platform == "gpu" else None
     torch_reset_peak_memory()
     started = time.perf_counter()
@@ -856,7 +898,7 @@ def _trl_worker(
             "local_batch_size": local_batch_size,
             "micro_batch_size": micro_batch_size,
             "maximum_length": contract.maximum_length,
-            "execution_sequence_length": EXECUTION_SEQUENCE_LENGTH,
+            "execution_sequence_length": execution_sequence_length,
             "platform": platform,
             "activation_checkpointing": "torch-xla-reentrant",
             "device_count": world_size,
@@ -928,7 +970,7 @@ def _trl_worker(
     def probe(model: Any) -> np.ndarray:
         rows = _read_jsonl(data_directory / "evaluation.jsonl")[:2]
         input_ids = np.full(
-            (len(rows), EXECUTION_SEQUENCE_LENGTH),
+            (len(rows), execution_sequence_length),
             tokenizer.pad_token_id,
             dtype=np.int64,
         )
@@ -975,7 +1017,9 @@ def _trl_worker(
         "batch_size": contract.batch_size,
         "micro_batch_size": MICRO_BATCH_SIZE,
         "maximum_length": contract.maximum_length,
-        "execution_sequence_length": EXECUTION_SEQUENCE_LENGTH,
+        "execution_sequence_length": execution_sequence_length,
+        "observed_training_shapes": sorted(observed_training_shapes),
+        "excluded_steps": sorted(cold_steps),
         "precision": "bfloat16-autocast-float32-parameters",
         "training_seconds": training_seconds,
         "compilation_and_first_step_seconds": 0.0,

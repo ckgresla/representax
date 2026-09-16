@@ -7,8 +7,10 @@ Diamonds are the ratio of median per-seed examples/s; dots show individual
 paired-seed ratios, not confidence intervals. Rates include input waiting within
 complete optimizer-step intervals and exclude compilation/first use. GPU uses
 one RTX 4090 per run; TPU uses the full 16-chip multi-host v5e slice. `[L]` marks
-historical late interaction with duplicated training pairs and incomparable loss
-reductions. `[C]` marks TPU rows with pronounced cold-filesystem order effects
+historical late interaction with duplicated training pairs and an unresolved
+loss-scale discrepancy. `[P]` marks short process-reward inputs, with matched
+padding of 256 on GPU and 2,048 on TPU; the GPU row uses corrected references.
+`[C]` marks TPU rows with pronounced cold-filesystem order effects
 and preprocessing outside the reference timed loop. All seeds remain visible.
 The dense Inductor control is reported separately in the numeric table.
 

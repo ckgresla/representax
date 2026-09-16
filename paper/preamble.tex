@@ -1,0 +1,39 @@
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{iclr2027_conference,times}
+\usepackage{amsmath,amssymb,graphicx,booktabs,longtable,wrapfig}
+\usepackage{url,hyperref}
+\hypersetup{hidelinks}
+\renewcommand{\topfraction}{0.9}
+\renewcommand{\bottomfraction}{0.8}
+\renewcommand{\textfraction}{0.08}
+\renewcommand{\floatpagefraction}{0.8}
+\setcounter{topnumber}{3}
+\setcounter{totalnumber}{4}
+\raggedbottom
+\makeatletter
+\AtBeginDocument{%
+  \hypersetup{pdftitle={\@title},pdfauthor={\@author}}%
+  \ifdefined\representaxreview\else
+    \g@addto@macro\@author{\\Independent Researcher}%
+  \fi
+  \let\representaxtitle\@title
+  \def\@title{\raggedright\representaxtitle}}
+\makeatother
+\hyphenation{Learning learning}
+
+% The official style has review/accepted modes, but no arXiv preprint mode.
+% Reuse its named-author layout without claiming conference acceptance.
+\ifdefined\representaxreview
+  \lhead{Under review as a conference paper at ICLR 2027}
+\else
+  \iclrfinalcopy
+  \lhead{Preprint. Work in progress.}
+  \usepackage{etoolbox}
+  \makeatletter
+  \patchcmd{\@maketitle}
+    {Published as a conference paper at ICLR 2027}
+    {Preprint. Work in progress.}
+    {}{\PackageError{representax}{Could not replace ICLR acceptance header}{Check the vendored style.}}
+  \makeatother
+\fi

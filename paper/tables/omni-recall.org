@@ -1,0 +1,22 @@
+#+begin_export latex
+\begin{table}[tbp]
+\centering\small
+\setlength{\tabcolsep}{4pt}
+\caption{Final text-to-media or text-to-text recall, mean and sample SD across three seeds. These supplement nDCG; no task-averaged score is formed.}\label{tab:omni-recall}
+\begin{tabular}{llrrr}\toprule
+Strategy & Dataset & R@1 & R@5 & R@10 \\ \midrule
+Connectors & Flickr30k & $0.5301 \pm 0.0056$ & $0.8210 \pm 0.0012$ & $0.8934 \pm 0.0002$ \\
+Connectors & AudioCaps & $0.2401 \pm 0.0030$ & $0.5792 \pm 0.0018$ & $0.7374 \pm 0.0043$ \\
+Connectors & MSR-VTT & $0.2963 \pm 0.0150$ & $0.5720 \pm 0.0151$ & $0.6853 \pm 0.0042$ \\
+Connectors & NanoMSMARCO & $0.4800 \pm 0.0000$ & $0.7800 \pm 0.0000$ & $0.8400 \pm 0.0000$ \\
+Connectors + LoRA & Flickr30k & $0.5817 \pm 0.0094$ & $0.8454 \pm 0.0033$ & $0.9094 \pm 0.0022$ \\
+Connectors + LoRA & AudioCaps & $0.2529 \pm 0.0010$ & $0.5954 \pm 0.0017$ & $0.7423 \pm 0.0012$ \\
+Connectors + LoRA & MSR-VTT & $0.3117 \pm 0.0061$ & $0.6000 \pm 0.0062$ & $0.7057 \pm 0.0061$ \\
+Connectors + LoRA & NanoMSMARCO & $0.4200 \pm 0.0200$ & $0.7267 \pm 0.0416$ & $0.8333 \pm 0.0115$ \\
+Full fine-tuning & Flickr30k & $0.5255 \pm 0.0093$ & $0.8009 \pm 0.0048$ & $0.8765 \pm 0.0039$ \\
+Full fine-tuning & AudioCaps & $0.2768 \pm 0.0030$ & $0.6191 \pm 0.0051$ & $0.7631 \pm 0.0060$ \\
+Full fine-tuning & MSR-VTT & $0.2920 \pm 0.0078$ & $0.5577 \pm 0.0047$ & $0.6853 \pm 0.0067$ \\
+Full fine-tuning & NanoMSMARCO & $0.3800 \pm 0.0200$ & $0.7133 \pm 0.0115$ & $0.8267 \pm 0.0416$ \\
+\bottomrule\end{tabular}
+\end{table}
+#+end_export

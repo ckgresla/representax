@@ -1,0 +1,23 @@
+#+begin_export latex
+\begin{table}[tbp]
+\centering\small
+\setlength{\tabcolsep}{4pt}
+\caption{Recorded early-step diagnostics on the full 16-chip v5e slice, median seconds over five seeds. Native first-use is the sum of dispatch-to-completion intervals across the reported number of events, including new shapes and resumed execution. Reference columns are complete first and second optimizer-step intervals, including input wait. They are different timing boundaries, not a compilation-speed comparison; neither isolates pure compilation or full startup. Cache states vary. A dash means unrecorded, not zero, or no separate native Inductor run.}\label{tab:tpu-startup}
+\begin{tabular}{lrrrr}\toprule
+Recipe & Native first-use (s) & Events & Ref. step 1 (s) & Ref. step 2 (s) \\ \midrule
+Dense retrieval & 288.2 & 1 & 42.5 & 45.1 \\
+Similarity / MPNet & 185.4 & 1 & 29.1 & 31.8 \\
+Similarity / BERT & 11.1 & 1 & 29.9 & 33.2 \\
+Classification / MPNet & 185.6 & 1 & 29.2 & 31.8 \\
+Classification / BERT & 11.1 & 1 & 30.0 & 33.3 \\
+Cross-encoder & 9.3 & 1 & 24.5 & 26.2 \\
+Late interaction [L] & 50.2 & 1 & 48.4 & 69.9 \\
+Outcome reward & 7.6 & 1 & 92.6 & 101.9 \\
+Process reward [P] & 7.0 & 1 & 99.5 & 80.8 \\
+Image-text [C] & 9.8 & 1 & 42.0 & 44.3 \\
+Audio-text & 33.4 & 1 & 221.2 & 146.7 \\
+Video-text & 15.0 & 1 & 1,035.9 & 570.0 \\
+V-JEPA 2.1 [C,G] & 35.3 & 1 & 151.0 & 150.5 \\
+\bottomrule\end{tabular}
+\end{table}
+#+end_export

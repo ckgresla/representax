@@ -1,0 +1,65 @@
+;;; export.el --- Reproducible manuscript export without personal Emacs config -*- lexical-binding: t; -*-
+
+(require 'ox-latex)
+(require 'oc-natbib)
+
+(let* ((root (file-name-directory (or load-file-name buffer-file-name)))
+       (mode (or (pop command-line-args-left) "preprint"))
+       (default-directory root)
+       (output (expand-file-name (concat "build/" mode "/") root))
+       (org-export-use-babel nil)
+       (org-export-with-broken-links nil)
+       (org-export-time-stamp-file nil)
+       (org-latex-default-packages-alist nil)
+       (org-latex-packages-alist nil)
+       (org-latex-prefer-user-labels t)
+       (org-latex-hyperref-template nil)
+       (org-export-filter-options-functions
+        (when (equal mode "review")
+          (list (lambda (info _backend)
+                  (plist-put info :author "Anonymous authors")))))
+       (org-latex-classes
+        '(("representax" "\\documentclass{article}\n[NO-DEFAULT-PACKAGES]\n[PACKAGES]\n[EXTRA]"
+           ("\\section{%s}" . "\\section*{%s}")
+           ("\\subsection{%s}" . "\\subsection*{%s}")
+           ("\\subsubsection{%s}" . "\\subsubsection*{%s}")))))
+  (unless (member mode '("preprint" "review"))
+    (error "Expected preprint or review, got %s" mode))
+  (make-directory output t)
+  (let ((figures (expand-file-name "figures" output)))
+    (when (file-directory-p figures)
+      (delete-directory figures t)))
+  (dolist (file '("preamble.tex" "references.bib"
+                  "vendor/iclr2027_conference.sty"
+                  "vendor/iclr2027_conference.bst"))
+    (copy-file (expand-file-name file root)
+               (expand-file-name (file-name-nondirectory file) output) t))
+  (find-file (expand-file-name "paper.org" root))
+  ;; Package only figures actually referenced by the manuscript.
+  (org-element-map (org-element-parse-buffer) 'link
+    (lambda (link)
+      (let ((path (org-element-property :path link)))
+        (when (and (equal (org-element-property :type link) "file")
+                   (string-prefix-p "figures/" path))
+          (make-directory (expand-file-name "figures" output) t)
+          (copy-file (expand-file-name path root)
+                     (expand-file-name path output) t)))))
+  (let ((options (if (equal mode "review")
+                     '(:latex-header-extra "\\newcommand{\\representaxreview}{}\n\\input{preamble.tex}")
+                   '(:latex-header-extra "\\input{preamble.tex}"))))
+    ;; Seed after file setup, which may itself consume random numbers.
+    (random "representax-paper")
+    (org-export-to-file 'latex (expand-file-name "paper.tex" output)
+      nil nil nil nil options))
+  ;; OpenReview gets a generated plain-text abstract, never a second source.
+  (goto-char (point-min))
+  (unless (re-search-forward "^#\\+begin_abstract[ \t]*$" nil t)
+    (error "Missing abstract block"))
+  (forward-line 1)
+  (let ((start (point)))
+    (unless (re-search-forward "^#\\+end_abstract[ \t]*$" nil t)
+      (error "Unterminated abstract block"))
+    (let ((abstract (string-trim (buffer-substring-no-properties start (match-beginning 0)))))
+      (with-temp-file (expand-file-name "abstract.txt" output)
+        (insert (replace-regexp-in-string "[ \t\n]+" " " abstract) "\n"))))
+  (message "Exported %s to %s" mode output))

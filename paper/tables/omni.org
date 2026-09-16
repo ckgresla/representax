@@ -1,0 +1,16 @@
+#+begin_export latex
+\begin{table}[tbp]
+\centering\small
+\setlength{\tabcolsep}{4pt}
+\caption{Text-anchored multimodal adaptation: nDCG@10, mean and sample SD over three seeds. Each strategy is compared with its own initial model. Learning rates and source mixtures differ across strategies.}\label{tab:omni}
+\begin{tabular}{lrrrr}\toprule
+Strategy & Flickr30k & AudioCaps & MSR-VTT & NanoMSMARCO \\ \midrule
+Connectors (initial) & 0.5724 & 0.4378 & 0.3731 & 0.6509 \\
+Connectors + LoRA (initial) & 0.5723 & 0.4372 & 0.3743 & 0.6509 \\
+Full fine-tuning (initial) & 0.5724 & 0.4378 & 0.3731 & 0.6509 \\
+Connectors (final) & $0.7121 \pm 0.0021$ & $0.4691 \pm 0.0011$ & $0.4772 \pm 0.0091$ & $0.6509 \pm 0.0000$ \\
+Connectors + LoRA (final) & $0.7466 \pm 0.0044$ & $0.4799 \pm 0.0010$ & $0.4984 \pm 0.0014$ & $0.6121 \pm 0.0043$ \\
+Full fine-tuning (final) & $0.6987 \pm 0.0063$ & $0.5028 \pm 0.0027$ & $0.4733 \pm 0.0034$ & $0.5994 \pm 0.0061$ \\
+\bottomrule\end{tabular}
+\end{table}
+#+end_export

@@ -59,6 +59,12 @@ def test_dense_transfer_commands_are_explicit() -> None:
 
     assert parser.parse_args(["prepare-transfer"]).command == "prepare-transfer"
     assert parser.parse_args(["evaluate-seed", "--seed", "42"]).seed == 42
+    assert (
+        parser.parse_args(
+            ["evaluate-initial", "--dataset", "natural-questions"]
+        ).dataset
+        == "natural-questions"
+    )
     assert parser.parse_args(["evaluate-all", "--gpus", "0", "1", "2"]).gpus == [
         0,
         1,
@@ -91,6 +97,91 @@ def test_late_interaction_contract_and_command_are_frozen() -> None:
     assert _argument(command, "--seed") == "773"
     assert "--launch" not in command
     assert command[1].endswith("12-late-interaction-convergence/run.py")
+
+
+def test_dense_initial_transfer_uses_original_model_and_separate_output(
+    tmp_path, monkeypatch
+) -> None:
+    from types import SimpleNamespace
+
+    import jax
+
+    import representax
+    import representax.train
+    import representax.train.job
+
+    experiment = _experiment(11, "dense-retrieval-convergence")
+    monkeypatch.setattr(experiment, "OUTPUT", tmp_path)
+    monkeypatch.setattr(experiment, "TRANSFER_DATA", tmp_path / "data")
+    experiment._write_json(experiment.TRANSFER_DATA / "manifest.json", {})
+    experiment._write_json(tmp_path / "runs/seed-7/run/run.json", {})
+    checkpoint = tmp_path / "checkpoint"
+    checkpoint.mkdir()
+    experiment._write_json(checkpoint / "config.json", {})
+    job = SimpleNamespace(
+        model=SimpleNamespace(
+            parameters={"model_name_or_path": str(checkpoint), "revision": "pinned"}
+        ),
+        training=SimpleNamespace(activation_rematerialization="full"),
+    )
+    monkeypatch.setattr(experiment, "_worker_job", lambda seed: job)
+    model, processor, batches = object(), object(), object()
+    device, placed = object(), []
+
+    def gpu_devices(*, backend):
+        assert backend == "gpu"
+        return [device]
+
+    def place_model(value, target):
+        assert value is model and target is device
+        placed.append(value)
+        return value
+
+    monkeypatch.setattr(jax, "local_devices", gpu_devices)
+    monkeypatch.setattr(jax, "device_put", place_model)
+    monkeypatch.setattr(
+        representax.train.job, "load_model", lambda *a, **kw: (model, processor)
+    )
+
+    def reject_final_model(*args, **kwargs):
+        pytest.fail("initial evaluation must not load a trained model")
+
+    monkeypatch.setattr(representax, "load_inference_bundle", reject_final_model)
+    monkeypatch.setattr(
+        experiment,
+        "_transfer_data",
+        lambda dataset: (((1, "query"),), {1: {2: 1}}, None),
+    )
+    monkeypatch.setattr(experiment, "_evaluation_batches", lambda p, d: batches)
+
+    class Runner:
+        def __init__(self, evaluator, *, precision):
+            pass
+
+        def run(self, actual_model, actual_batches, *, iteration):
+            assert actual_model is model and actual_batches is batches
+            assert iteration == 0
+            return SimpleNamespace(
+                examples=2,
+                batches=2,
+                duration_seconds=1.0,
+                compilation_seconds=0.1,
+                data_wait_seconds=0.1,
+                placement_seconds=0.1,
+                dispatch_seconds=0.7,
+                metrics={"valid/natural-questions/cosine_ndcg@10": 0.25},
+            )
+
+    monkeypatch.setattr(representax.train, "EvaluationRunner", Runner)
+    report = experiment.evaluate_transfer(7, "natural-questions", initial=True)
+    assert placed == [model]
+    assert report["checkpoint_stage"] == "initial"
+    assert report["model_revision"] == "pinned"
+    assert report["model_files_sha256"]["config.json"].startswith("sha256:")
+    assert (tmp_path / "initial-transfer/natural-questions.json").is_file()
+    assert not (tmp_path / "runs/seed-7/transfer/natural-questions.json").exists()
+    with pytest.raises(FileExistsError, match="initial evaluation already exists"):
+        experiment.evaluate_transfer(7, "natural-questions", initial=True)
 
 
 def test_image_text_contract_and_command_are_frozen() -> None:

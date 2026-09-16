@@ -461,8 +461,10 @@ def _evaluation_batches(processor, dataset: TransferDataset):
     yield from batches(documents(), kind="document", route=Route.DOCUMENT)
 
 
-def evaluate_transfer(seed: int, dataset: TransferDataset) -> dict[str, Any]:
-    """Evaluate one trained seed over one complete held-out retrieval corpus."""
+def evaluate_transfer(
+    seed: int, dataset: TransferDataset, *, initial: bool = False
+) -> dict[str, Any]:
+    """Evaluate the initial or trained model over a complete held-out corpus."""
 
     import jax
 
@@ -475,13 +477,26 @@ def evaluate_transfer(seed: int, dataset: TransferDataset) -> dict[str, Any]:
 
     if not (TRANSFER_DATA / "manifest.json").is_file():
         raise FileNotFoundError("prepare transfer evaluation data first")
-    artifact = OUTPUT / "runs" / f"seed-{seed}" / "run" / "final-model"
-    model, job = load_inference_bundle(artifact)
+    path = (
+        OUTPUT / "initial-transfer" / f"{dataset}.json"
+        if initial
+        else OUTPUT / "runs" / f"seed-{seed}" / "transfer" / f"{dataset}.json"
+    )
+    if initial and path.exists():
+        raise FileExistsError(f"initial evaluation already exists: {path}")
+    if initial:
+        job = _worker_job(seed)
+        artifact = Path(job.model.parameters["model_name_or_path"])
+    else:
+        artifact = OUTPUT / "runs" / f"seed-{seed}" / "run" / "final-model"
+        model, job = load_inference_bundle(artifact)
     initial_model, processor = load_model(
         job.model,
         key=jax.random.key(seed),
         activation_rematerialization=job.training.activation_rematerialization,
     )
+    if initial:
+        model = jax.device_put(initial_model, jax.local_devices(backend="gpu")[0])
     del initial_model
     gc.collect()
     if processor is None:
@@ -507,7 +522,7 @@ def evaluate_transfer(seed: int, dataset: TransferDataset) -> dict[str, Any]:
     ).run(
         model,
         _evaluation_batches(processor, dataset),
-        iteration=_training_steps(seed),
+        iteration=0 if initial else _training_steps(seed),
     )
     report = {
         "dataset": dataset,
@@ -526,7 +541,19 @@ def evaluate_transfer(seed: int, dataset: TransferDataset) -> dict[str, Any]:
         "dispatch_seconds": result.dispatch_seconds,
         "metrics": {name: float(value) for name, value in result.metrics.items()},
     }
-    path = OUTPUT / "runs" / f"seed-{seed}" / "transfer" / f"{dataset}.json"
+    if initial:
+        report.update(
+            checkpoint_stage="initial",
+            model_revision=job.model.parameters["revision"],
+            model_files_sha256={
+                file.name: _sha256(file)
+                for file in sorted(artifact.iterdir())
+                if file.is_file()
+            },
+            source_run_config_sha256=_sha256(
+                OUTPUT / "runs" / f"seed-{seed}" / "run" / "run.json"
+            ),
+        )
     _write_json(path, report)
     return report
 
@@ -758,6 +785,10 @@ def _parser() -> argparse.ArgumentParser:
     all_runs.add_argument("--gpus", type=int, nargs=3, required=True)
     evaluate_seed = commands.add_parser("evaluate-seed")
     evaluate_seed.add_argument("--seed", type=int, choices=SEEDS, required=True)
+    evaluate_initial = commands.add_parser("evaluate-initial")
+    evaluate_initial.add_argument(
+        "--dataset", choices=("trec-dl-2019", "natural-questions"), required=True
+    )
     evaluate_all_runs = commands.add_parser("evaluate-all")
     evaluate_all_runs.add_argument("--gpus", type=int, nargs=3, required=True)
     commands.add_parser("aggregate")
@@ -788,6 +819,14 @@ def main() -> None:
                     sort_keys=True,
                 )
             )
+    elif arguments.command == "evaluate-initial":
+        print(
+            json.dumps(
+                evaluate_transfer(SEEDS[0], arguments.dataset, initial=True),
+                indent=2,
+                sort_keys=True,
+            )
+        )
     elif arguments.command == "evaluate-all":
         evaluate_all(tuple(arguments.gpus))
     else:
