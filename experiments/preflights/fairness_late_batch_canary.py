@@ -79,8 +79,8 @@ def worker(_index):
             self.probe_features, _ = self.collect_features(inputs)
             loss = super().compute_loss(model, inputs, **kwargs)
             self.probe_loss = loss.detach().clone()
-            torch_xla.sync(wait=True)
             if os.environ.get("AUDIT_CAPTURE_BEFORE_BACKWARD") == "1":
+                torch_xla.sync(wait=True)
                 CaptureCallback().on_step_end(self.args, self.state, self.control)
             return loss
 
