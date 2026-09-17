@@ -41,7 +41,7 @@ def identity(recipe, framework, seed):
     variant = f"representax-{scope}" if framework == "representax" and recipe in {
         "late-interaction", "audio-text", "video-text"} else framework
     relative = Path(f"seed-{seed}") / recipe / variant
-    phase = "paired-attention" if recipe == "process-reward" and framework == "reference" and seed == 7 else "paired"
+    phase = "paired-sync" if recipe == "process-reward" and framework == "reference" and seed == 7 else "paired"
     return relative, phase
 
 
