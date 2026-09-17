@@ -1108,6 +1108,12 @@ def _recipe_command(arguments: argparse.Namespace) -> list[str]:
 
 
 def _run_recipe(arguments: argparse.Namespace) -> None:
+    if arguments.recipe == "late-interaction":
+        from experiments.preflights.fairness import prepare_late_checkpoint
+
+        arguments.checkpoint = prepare_late_checkpoint(
+            arguments.checkpoint, arguments.checkpoint.parent / "late-fair-checkpoint"
+        )
     if arguments.platform == "gpu":
         if arguments.gpu is None or arguments.gpu < 0:
             raise ValueError("GPU runs require one non-negative --gpu index")

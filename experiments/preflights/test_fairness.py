@@ -42,7 +42,7 @@ def test_xla_reduction_reassigns_mean_before_clipping(monkeypatch):
 
 
 @pytest.mark.parametrize("platform,batch,devices,chunk", [
-    ("gpu", 32, 1, 2), ("tpu", 48, 16, None),
+    ("gpu", 32, 1, 1), ("tpu", 48, 16, None),
 ])
 def test_audio_execution_mode(monkeypatch, tmp_path, platform, batch, devices, chunk):
     from pathlib import Path
@@ -60,6 +60,26 @@ def test_audio_execution_mode(monkeypatch, tmp_path, platform, batch, devices, c
     actual = job.training.grad_cache
     assert (None if actual is None else actual.micro_batch_size) == chunk
     assert job.training.global_batch_size == batch
+
+
+def test_late_checkpoint_changes_only_config(tmp_path, monkeypatch):
+    from experiments.preflights import late_interaction
+    from experiments.preflights.fairness import prepare_late_checkpoint
+
+    monkeypatch.setattr(late_interaction, "frozen_contract", lambda: SimpleNamespace(
+        maximum_query_length=32, maximum_document_length=256))
+    source, target = tmp_path / "source", tmp_path / "prepared"
+    source.mkdir()
+    metadata = source / "config_sentence_transformers.json"
+    metadata.write_text(json.dumps({"query_length": 48, "document_length": 300,
+                                    "query_prefix": "[Q] "}))
+    (source / "model.safetensors").write_bytes(b"unchanged")
+    prepare_late_checkpoint(source, target)
+    assert json.loads(metadata.read_text())["document_length"] == 300
+    assert json.loads((target / metadata.name).read_text()) == {
+        "query_length": 32, "document_length": 256, "query_prefix": "[Q] "}
+    assert (target / "model.safetensors").resolve() == source / "model.safetensors"
+    assert prepare_late_checkpoint(source, target) == target
 
 
 def test_xla_attention_casts_qk_without_changing_mask(monkeypatch):

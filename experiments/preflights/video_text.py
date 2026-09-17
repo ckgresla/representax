@@ -46,7 +46,7 @@ PREFLIGHT_BATCH_SIZE = 2
 PREFLIGHT_TRAINING_VIDEOS = 8
 PREFLIGHT_EVALUATION_QUERIES = 8
 PREFLIGHT_EVALUATION_DOCUMENTS = 32
-GRAD_CACHE_MICRO_BATCH = 2
+GRAD_CACHE_MICRO_BATCH = 1
 EVALUATION_BATCH_SIZE = 1
 VIDEO_HEIGHT = 224
 VIDEO_WIDTH = 224
@@ -823,7 +823,7 @@ def _representax_worker(
         "steps": steps,
         "global_batch_size": batch_size,
         "frozen_global_batch_size": frozen_contract().global_batch_size,
-        "grad_cache_micro_batch_size": GRAD_CACHE_MICRO_BATCH,
+        "grad_cache_micro_batch_size": job.training.grad_cache.micro_batch_size,
         "elapsed_seconds": time.perf_counter() - started,
         "timing": _timing(rows, batch_size),
         "initial_evaluation": {

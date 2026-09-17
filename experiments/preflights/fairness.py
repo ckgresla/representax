@@ -9,6 +9,34 @@ from pathlib import Path
 import numpy as np
 
 
+def prepare_late_checkpoint(source: Path, destination: Path) -> Path:
+    """Share the recipe's truncation limits without modifying upstream weights."""
+    from experiments.preflights.late_interaction import frozen_contract
+
+    contract = frozen_contract()
+    metadata = "config_sentence_transformers.json"
+    original = (source / metadata).read_bytes()
+    effective = json.loads(original)
+    effective.update(query_length=contract.maximum_query_length,
+                     document_length=contract.maximum_document_length)
+    if destination.exists():
+        if json.loads((destination / metadata).read_text()) != effective:
+            raise RuntimeError("Prepared checkpoint limits differ from this recipe")
+        return destination
+    destination.mkdir()
+    for path in source.iterdir():
+        if path.name != metadata:
+            (destination / path.name).symlink_to(path.resolve(), target_is_directory=path.is_dir())
+    (destination / metadata).write_text(json.dumps(effective, indent=2) + "\n")
+    (destination / "preparation.json").write_text(json.dumps({
+        "source": str(source), "source_metadata_sha256": hashlib.sha256(original).hexdigest(),
+        "query_length": contract.maximum_query_length,
+        "document_length": contract.maximum_document_length,
+        "weights": "unchanged symlinks to the pinned checkpoint",
+    }, indent=2) + "\n")
+    return destination
+
+
 class XlaGradientSynchronization:
     """Reduce functional gradient outputs before clipping in PJRT Trainer runs."""
 
