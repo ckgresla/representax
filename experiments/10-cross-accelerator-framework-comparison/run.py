@@ -36,6 +36,8 @@ REPRESENTAX_CHUNK_SIZE = 32
 REFERENCE_CHUNK_SIZE = 128
 TPU_AUDIO_GLOBAL_BATCH_SIZE = 48
 TPU_VIDEO_GLOBAL_BATCH_SIZE = 112
+GPU_AUDIO_GLOBAL_BATCH_SIZE = 32
+GPU_VIDEO_GLOBAL_BATCH_SIZE = 2
 EXPERIMENT_DIRECTORY = Path(__file__).resolve().parent
 DATA_MANIFEST = EXPERIMENT_DIRECTORY / "data-manifest.json"
 MODEL_MANIFEST = EXPERIMENT_DIRECTORY / "model-manifest.json"
@@ -98,7 +100,7 @@ RECIPE_ASSETS = {
     "pair-classification-mpnet-base": ("all-mpnet-base-v2", "pairs", None),
     "pair-classification-bert-base": ("bert-base", "pairs", None),
     "cross-encoder": ("cross-checkpoint", "cross-data", None),
-    "late-interaction": ("late-checkpoint", "late-data", None),
+    "late-interaction": ("late-checkpoint", "late-fair-20260916", None),
     "outcome-reward": ("qwen3-0.6b", "outcome-data", None),
     "process-reward": ("qwen3-0.6b", "process-data", None),
     "image-text": ("clip-vit-b-32", "image-data", None),
@@ -288,6 +290,8 @@ def _environment_state(
         "JAX_DEFAULT_MATMUL_PRECISION",
         "PJRT_DEVICE",
         "XLA_FLAGS",
+        "XLA_PERSISTENT_CACHE_PATH",
+        "XLA_PERSISTENT_CACHE_READ_ONLY",
         "XLA_PYTHON_CLIENT_ALLOCATOR",
         "XLA_PYTHON_CLIENT_MEM_FRACTION",
         "XLA_PYTHON_CLIENT_PREALLOCATE",
@@ -1074,7 +1078,7 @@ def _recipe_command(arguments: argparse.Namespace) -> list[str]:
         return command
     if (
         arguments.recipe in NEGATIVE_SCOPE_RECIPES
-        and arguments.framework == "representax"
+        and (arguments.framework == "representax" or arguments.recipe == "audio-text")
     ):
         command.extend(("--negative-scope", arguments.negative_scope))
     if arguments.recipe == "outcome-reward":
@@ -1086,7 +1090,7 @@ def _recipe_command(arguments: argparse.Namespace) -> list[str]:
                 (
                     str(TPU_AUDIO_GLOBAL_BATCH_SIZE)
                     if arguments.platform == "tpu"
-                    else "256"
+                    else str(GPU_AUDIO_GLOBAL_BATCH_SIZE)
                 ),
                 "--sharding",
                 "ddp",
@@ -1094,7 +1098,8 @@ def _recipe_command(arguments: argparse.Namespace) -> list[str]:
             )
         )
     if arguments.recipe == "video-text":
-        command.extend(("--batch-size", str(TPU_VIDEO_GLOBAL_BATCH_SIZE)))
+        command.extend(("--batch-size", str(TPU_VIDEO_GLOBAL_BATCH_SIZE
+                        if arguments.platform == "tpu" else GPU_VIDEO_GLOBAL_BATCH_SIZE)))
     if arguments.recipe == "v-jepa":
         if arguments.reference is None:
             raise ValueError("V-JEPA requires --reference")
@@ -1139,7 +1144,7 @@ def _run_recipe(arguments: argparse.Namespace) -> None:
         "measured_steps": max(0, arguments.steps - FIRST_USE_STEPS),
         "negative_scope": (
             arguments.negative_scope
-            if arguments.framework == "representax"
+            if (arguments.framework == "representax" or arguments.recipe in {"audio-text", "late-interaction"})
             and arguments.recipe in NEGATIVE_SCOPE_RECIPES
             else "local"
             if arguments.framework == "reference"

@@ -700,6 +700,11 @@ def _representax_worker(
             platform=platform,
             training_only=True,
         )
+        from representax.config import GradCacheConfig
+
+        job = job.model_copy(update={"training": job.training.model_copy(update={
+            "grad_cache": GradCacheConfig(micro_batch_size=batch_size // jax.device_count()),
+        })})
         run_directory = run_directory / f"process-{jax.process_index()}"
     started = time.perf_counter()
     if platform == "tpu":
@@ -959,6 +964,7 @@ def _sentence_transformers_worker(
             f"expected sentence-transformers=={contract.reference_version}, "
             f"found {sentence_transformers.__version__}"
         )
+    transformers.set_seed(seed)
     model = SentenceTransformer(
         str(checkpoint),
         device=torch_device(),
@@ -990,6 +996,9 @@ def _sentence_transformers_worker(
             bias="none",
         )
     )
+    from experiments.preflights.fairness import initialize_torch_lora
+
+    initial_adapter_sha256 = initialize_torch_lora(model, seed)
     training_prompt = sentence_transformer_default_prompt(model)
     initial_started = time.perf_counter()
     initial_evaluation = (
@@ -1038,7 +1047,7 @@ def _sentence_transformers_worker(
         adam_beta2=0.999,
         adam_epsilon=1e-8,
         max_grad_norm=1.0,
-        bf16=True,
+        bf16=platform == "gpu",
         fp16=False,
         gradient_checkpointing=False,
         logging_strategy="steps",
@@ -1097,6 +1106,9 @@ def _sentence_transformers_worker(
             "global_batch_size": batch_size,
             "local_batch_size": local_batch_size,
             "loss_implementation": "multiple_negatives_ranking",
+            "initial_adapter_sha256": initial_adapter_sha256,
+            "trainable_parameter_dtypes": sorted({str(p.dtype) for p in model.parameters() if p.requires_grad}),
+            "adapter_initialization": "A normal std=input_dim**-0.5; B zero; independently seeded across frameworks",
             "grad_cache_micro_batch_size": None,
             "platform": platform,
             "device_count": world_size,

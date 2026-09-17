@@ -628,7 +628,7 @@ def _representax_job(
             mesh=mesh,
             sharding=sharding_config,
             batch=BatchConfig(micro_batch_size=local_batch_size),
-            grad_cache=GradCacheConfig(micro_batch_size=GRAD_CACHE_MICRO_BATCH),
+            grad_cache=None,
             adapter=LoRAConfig(
                 rank=4,
                 alpha=8.0,
@@ -854,7 +854,7 @@ def _representax_worker(
         "world_size": world_size,
         "sharding": sharding,
         "frozen_global_batch_size": frozen_contract().global_batch_size,
-        "grad_cache_micro_batch_size": GRAD_CACHE_MICRO_BATCH,
+        "grad_cache_micro_batch_size": None,
         "elapsed_seconds": time.perf_counter() - started,
         "steady_state": _steady_state(rows, batch_size),
         "initial_evaluation": {
@@ -964,6 +964,7 @@ def _sentence_transformers_worker(
     seed: int,
     batch_size: int,
     platform: Platform = "gpu",
+    negative_scope: str = "global",
 ) -> dict[str, Any]:
     import gc
 
@@ -988,8 +989,42 @@ def _sentence_transformers_worker(
             # Model-card widget generation executes an unrelated TPU forward.
             return None
 
+        def training_step(self, *args: Any, **kwargs: Any) -> Any:
+            loss = super().training_step(*args, **kwargs)
+            if platform == "tpu" and negative_scope == "global":
+                # Materialize gradients before constructing the optimizer graph.
+                torch_synchronize()
+            return loss
+
+        def _clip_grad_norm(self, model: Any) -> Any:
+            if platform != "tpu" or negative_scope != "global":
+                return super()._clip_grad_norm(model)
+            import torch_xla.core.xla_model as xm
+
+            # Reassign the collective output: the in-place list reduction did
+            # not synchronize this global-negative Trainer path in the canary.
+            parameters = [p for p in model.parameters() if p.grad is not None]
+            flattened = torch.cat([p.grad.flatten() for p in parameters])
+            averaged = xm.all_reduce("sum", flattened,
+                                     scale=1.0 / world_size, pin_layout=False)
+            torch_synchronize()
+            for parameter, gradient in zip(
+                parameters, averaged.split([p.numel() for p in parameters]), strict=True
+            ):
+                parameter.grad = gradient.reshape_as(parameter)
+            self.accelerator.gradient_state.is_xla_gradients_synced = True
+            return torch.nn.utils.clip_grad_norm_(parameters, self.args.max_grad_norm)
+
     contract = frozen_contract()
     world_size = torch_world_size()
+    if platform == "tpu" and negative_scope == "global":
+        import torch.distributed as dist
+        import torch_xla.distributed.xla_backend
+
+        if not dist.is_initialized():
+            dist.init_process_group("xla", init_method="xla://")
+        if dist.get_world_size() != world_size or dist.get_rank() != torch_rank():
+            raise RuntimeError("ST gather ranks disagree with PJRT ranks")
     if batch_size % world_size:
         raise ValueError("global batch must divide the accelerator count")
     local_batch_size = batch_size // world_size
@@ -1000,6 +1035,7 @@ def _sentence_transformers_worker(
             f"expected sentence-transformers=={contract.reference_version}, "
             f"found {sentence_transformers.__version__}"
         )
+    transformers.set_seed(seed)
     model = SentenceTransformer(
         str(checkpoint),
         device=torch_device(),
@@ -1022,6 +1058,34 @@ def _sentence_transformers_worker(
             bias="none",
         )
     )
+    initial_adapter_sha256 = None
+    adapter_generator = torch.Generator(device="cpu").manual_seed(seed)
+    for name, parameter in model.named_parameters():
+        if parameter.requires_grad:
+            if ".lora_A." in name:
+                initial = torch.randn(
+                    parameter.shape, generator=adapter_generator, dtype=torch.float32,
+                ) * parameter.shape[-1] ** -0.5
+            elif ".lora_B." in name:
+                initial = torch.zeros(parameter.shape, dtype=torch.float32)
+            else:
+                raise RuntimeError(f"unexpected trainable parameter: {name}")
+            parameter.data = initial.to(parameter.device)
+    torch_synchronize()
+    if platform == "tpu":
+        import torch_xla.core.xla_model as xm
+
+        digest = hashlib.sha256()
+        for name, parameter in model.named_parameters():
+            if parameter.requires_grad:
+                digest.update(name.encode())
+                digest.update(parameter.detach().float().cpu().numpy().tobytes())
+        initial_adapter_sha256 = digest.hexdigest()
+        fingerprints = xm.all_gather(torch.tensor(
+            list(digest.digest()), dtype=torch.int32, device=torch_device()
+        )).cpu().reshape(world_size, 32)
+        if not torch.equal(fingerprints, fingerprints[0].expand_as(fingerprints)):
+            raise RuntimeError("initial LoRA parameters differ across TPU ranks")
     training_prompt = sentence_transformer_default_prompt(model)
     initial_started = time.perf_counter()
     initial_evaluation = (
@@ -1042,7 +1106,9 @@ def _sentence_transformers_worker(
         }
     ).with_transform(_ReferenceAudioTransform(data_directory))
     loss = (
-        MultipleNegativesRankingLoss(model, scale=20.0)
+        MultipleNegativesRankingLoss(
+            model, scale=20.0, gather_across_devices=negative_scope == "global"
+        )
         if platform == "tpu"
         else CachedMultipleNegativesRankingLoss(
             model,
@@ -1050,6 +1116,18 @@ def _sentence_transformers_worker(
             mini_batch_size=GRAD_CACHE_MICRO_BATCH,
         )
     )
+    score_shapes = set()
+    if platform == "tpu" and negative_scope == "global":
+        similarity = loss.similarity_fct
+
+        def checked_similarity(queries: Any, documents: Any) -> Any:
+            shape = (int(queries.shape[0]), int(documents.shape[0]))
+            if shape != (local_batch_size, batch_size):
+                raise RuntimeError(f"unexpected global score shape: {shape}")
+            score_shapes.add(shape)
+            return similarity(queries, documents)
+
+        loss.similarity_fct = checked_similarity
     arguments = SentenceTransformerTrainingArguments(
         output_dir=str(run_directory / "checkpoints"),
         per_device_train_batch_size=local_batch_size,
@@ -1063,7 +1141,7 @@ def _sentence_transformers_worker(
         adam_beta2=0.999,
         adam_epsilon=1e-8,
         max_grad_norm=1.0,
-        bf16=True,
+        bf16=platform == "gpu",
         fp16=False,
         gradient_checkpointing=False,
         logging_strategy="steps",
@@ -1096,6 +1174,11 @@ def _sentence_transformers_worker(
     output = trainer.train()
     torch_synchronize()
     training_seconds = time.perf_counter() - started
+    final_adapter_sha256 = None
+    if platform == "tpu":
+        from experiments.preflights.fairness import assert_torch_replicas_equal
+
+        final_adapter_sha256 = assert_torch_replicas_equal(model)
     losses = [
         float(row["loss"])
         for row in trainer.state.log_history
@@ -1111,6 +1194,17 @@ def _sentence_transformers_worker(
             "global_batch_size": batch_size,
             "local_batch_size": local_batch_size,
             "loss_implementation": "multiple_negatives_ranking",
+            "negative_scope": negative_scope,
+            "contrastive_candidates": batch_size if negative_scope == "global" else local_batch_size,
+            "observed_score_shapes": sorted(score_shapes),
+            "post_backward_execution_boundary": negative_scope == "global",
+            "accelerate_distributed_type": str(trainer.accelerator.distributed_type),
+            "trainable_parameter_dtypes": sorted({str(p.dtype) for p in model.parameters() if p.requires_grad}),
+            "initial_adapter_sha256": initial_adapter_sha256,
+            "adapter_initialization": "A normal std=input_dim**-0.5; B zero; independently seeded across frameworks",
+            "initial_adapter_equal_across_ranks": True,
+            "final_adapter_sha256": final_adapter_sha256,
+            "gradient_reduction": "functional flattened mean before clipping",
             "grad_cache_micro_batch_size": None,
             "platform": platform,
             "device_count": world_size,
@@ -1224,12 +1318,12 @@ def _worker(arguments: argparse.Namespace) -> None:
         seed=arguments.seed,
         batch_size=arguments.batch_size,
         platform=arguments.platform,
+        negative_scope=arguments.negative_scope,
     )
     if arguments.framework == "representax":
         parameters["skip_export"] = arguments.skip_export
         parameters["sharding"] = arguments.sharding
         parameters["continuous"] = arguments.continuous
-        parameters["negative_scope"] = arguments.negative_scope
     elif arguments.skip_export:
         raise ValueError("--skip-export is only available for Representax probes")
     report = function(**parameters)

@@ -18,6 +18,7 @@ from typing import Any, cast
 
 import numpy as np
 
+
 from experiments.preflights.accelerator import (
     Platform,
     data_parallel_job,
@@ -1104,6 +1105,16 @@ def _pylate_evaluation(
     }
 
 
+def sequential_pylate_batches(dataset, batch_size, drop_last,
+                             valid_label_columns=None, generator=None, seed=0):
+    from sentence_transformers.sampler import DefaultBatchSampler
+    from torch.utils.data import SequentialSampler
+
+    return DefaultBatchSampler(SequentialSampler(dataset), batch_size=batch_size,
+                               drop_last=drop_last, valid_label_columns=valid_label_columns,
+                               seed=seed)
+
+
 def _reference_arguments(
     output: Path,
     *,
@@ -1129,7 +1140,7 @@ def _reference_arguments(
         adam_beta2=0.999,
         adam_epsilon=1e-8,
         max_grad_norm=1.0,
-        bf16=True,
+        bf16=platform == "gpu",
         fp16=False,
         gradient_checkpointing=False,
         logging_strategy="steps",
@@ -1146,6 +1157,7 @@ def _reference_arguments(
         dataloader_pin_memory=platform == "gpu",
         seed=seed,
         data_seed=seed,
+        batch_sampler=sequential_pylate_batches,
     )
 
 
@@ -1160,12 +1172,26 @@ def _reference_dataset(path: Path, *, rows: int) -> Any:
 
 def _pylate_loss(losses: Any, model: Any, platform: Platform) -> Any:
     if platform == "tpu":
-        return losses.Contrastive(
+        class MeanGlobalContrastive(losses.Contrastive):
+            def forward(self, *args: Any, **kwargs: Any) -> Any:
+                # PyLate multiplies by world size; the Trainer averages gradients.
+                return super().forward(*args, **kwargs) / torch_world_size()
+
+        return MeanGlobalContrastive(
             model=model,
             score_mini_batch_size=GRAD_CACHE_MICRO_BATCH,
             temperature=0.02,
+            gather_across_devices=True,
         )
-    return losses.CachedContrastive(
+    class MeanCachedContrastive(losses.CachedContrastive):
+        def calculate_loss_and_cache_gradients(self, reps: Any, masks: Any) -> Any:
+            loss = super().calculate_loss_and_cache_gradients(reps, masks)
+            count = sum(chunk.shape[0] for chunk in reps[0])
+            self.cache = [[gradient / count for gradient in chunks]
+                          for chunks in self.cache]
+            return loss
+
+    return MeanCachedContrastive(
         model=model,
         mini_batch_size=GRAD_CACHE_MICRO_BATCH,
         score_mini_batch_size=GRAD_CACHE_MICRO_BATCH,
@@ -1186,6 +1212,10 @@ def _pylate_worker(
 
     import torch
     from sentence_transformers import SentenceTransformerTrainer
+    from experiments.preflights.fairness import XlaMixedPrecisionTrainer
+
+    class ReferenceTrainer(XlaMixedPrecisionTrainer, SentenceTransformerTrainer):
+        pass
 
     losses = importlib.import_module("pylate.losses")
     models = importlib.import_module("pylate.models")
@@ -1193,6 +1223,14 @@ def _pylate_worker(
 
     contract = frozen_contract()
     world_size = torch_world_size()
+    if platform == "tpu":
+        import torch.distributed as dist
+        import torch_xla.distributed.xla_backend
+
+        if not dist.is_initialized():
+            dist.init_process_group("xla", init_method="xla://")
+        if dist.get_world_size() != world_size or dist.get_rank() != torch_rank():
+            raise RuntimeError("PyLate gather ranks disagree with PJRT ranks")
     if contract.global_batch_size % world_size:
         raise ValueError("global batch must divide the accelerator count")
     if platform == "tpu":
@@ -1226,7 +1264,7 @@ def _pylate_worker(
     checkpoint_root = run_directory / "checkpoints"
     first_timer = CudaStepTimer()
     first_loss = _pylate_loss(losses, model, platform)
-    first_trainer = SentenceTransformerTrainer(
+    first_trainer = ReferenceTrainer(
         model=model,
         args=_reference_arguments(
             checkpoint_root,
@@ -1270,7 +1308,8 @@ def _pylate_worker(
             "steps": steps,
             "global_batch_size": contract.global_batch_size,
             "local_batch_size": contract.global_batch_size // world_size,
-            "negative_scope": "local",
+            "negative_scope": "global",
+            "reference_loss_correction": "divide PyLate global loss by world size",
             "platform": platform,
             "device_count": world_size,
             "training_seconds": training_seconds,
@@ -1304,7 +1343,7 @@ def _pylate_worker(
     model = load_model(checkpoint)
     second_timer = CudaStepTimer()
     second_loss = _pylate_loss(losses, model, platform)
-    second_trainer = SentenceTransformerTrainer(
+    second_trainer = ReferenceTrainer(
         model=model,
         args=_reference_arguments(
             checkpoint_root, max_steps=steps, save_steps=midpoint, seed=seed

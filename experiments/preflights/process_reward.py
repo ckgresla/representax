@@ -37,6 +37,7 @@ TEXT_REWARD_MANIFEST = ROOT / "benchmarks/configs/paper-text-reward-v1.json"
 FRAMEWORKS = ("representax", "trl")
 STEPS_PER_TRAJECTORY = 4
 EXECUTION_SEQUENCE_LENGTH = 2048
+GPU_EXECUTION_SEQUENCE_LENGTH = 256
 SEQUENCE_LENGTH_BUCKETS = (256, 512, 1024, 2048)
 MICRO_BATCH_SIZE = 2
 EVALUATION_BATCH_SIZE = 8
@@ -321,15 +322,16 @@ def load_process_reward_model(
     compute_dtype: str = "bfloat16",
     sequence_length_buckets: Sequence[int] = SEQUENCE_LENGTH_BUCKETS,
     rematerialization: str = "full",
+    head_seed: int = 0,
 ) -> tuple[Any, Any]:
     """Load the frozen scalar Qwen head and expose it at step positions."""
 
     import equinox as eqx
     import jax.numpy as jnp
 
-    from representax.models.qwen_reward import load_qwen_reward_model
+    from experiments.preflights.fairness import load_reward_model
 
-    reward, _ = load_qwen_reward_model(
+    reward, _ = load_reward_model(
         model_name_or_path,
         revision=revision,
         local_files_only=local_files_only,
@@ -337,6 +339,7 @@ def load_process_reward_model(
         compute_dtype=jnp.dtype(compute_dtype),
         sequence_length_buckets=sequence_length_buckets,
         rematerialization=rematerialization,
+        head_seed=head_seed,
     )
 
     class QwenProcessRewardModel(eqx.Module):
@@ -448,6 +451,7 @@ def _representax_job(
                 "compute_dtype": "bfloat16",
                 "sequence_length_buckets": list(sequence_length_buckets),
                 "rematerialization": "full",
+                "head_seed": seed,
             },
         ),
         task=ProcessRewardConfig(),
@@ -650,7 +654,7 @@ def _representax_worker(
         "batch_size": contract.batch_size,
         "micro_batch_size": MICRO_BATCH_SIZE,
         "maximum_length": contract.maximum_length,
-        "execution_sequence_length": EXECUTION_SEQUENCE_LENGTH,
+        "execution_sequence_length": GPU_EXECUTION_SEQUENCE_LENGTH,
         "precision": "bfloat16-compute-float32-master",
         "elapsed_seconds": elapsed,
         "compilation_and_first_step_seconds": compile_seconds,
@@ -720,11 +724,16 @@ def _trl_worker(
 
         def __init__(self) -> None:
             super().__init__()
+            from experiments.preflights.fairness import initialize_torch_reward
+
+            transformers.set_seed(seed)
             self.sequence = AutoModelForSequenceClassification.from_pretrained(
                 checkpoint,
                 local_files_only=True,
                 dtype=torch.float32,
+                num_labels=1,
             )
+            initialize_torch_reward(self.sequence, checkpoint, seed)
             self.config = self.sequence.config
 
         def forward(
@@ -746,7 +755,9 @@ def _trl_worker(
                 )
             return TokenClassifierOutput(loss=loss, logits=logits)
 
-    class SequentialPRMTrainer(PRMTrainer):
+    from experiments.preflights.fairness import XlaMixedPrecisionTrainer
+
+    class SequentialPRMTrainer(XlaMixedPrecisionTrainer, PRMTrainer):
         def _get_train_sampler(self, train_dataset: Any = None) -> Any:
             return SequentialSampler(train_dataset or self.train_dataset)
 
@@ -775,7 +786,7 @@ def _trl_worker(
     collator = DataCollatorForTokenClassification(
         tokenizer,
         padding="max_length",
-        max_length=EXECUTION_SEQUENCE_LENGTH,
+        max_length=EXECUTION_SEQUENCE_LENGTH if platform == "tpu" else GPU_EXECUTION_SEQUENCE_LENGTH,
     )
 
     def arguments() -> PRMConfig:
@@ -793,7 +804,7 @@ def _trl_worker(
             adam_beta2=0.999,
             adam_epsilon=1e-8,
             max_grad_norm=1.0,
-            bf16=True,
+            bf16=platform == "gpu",
             fp16=False,
             gradient_checkpointing=False,
             logging_strategy="steps",
@@ -846,6 +857,9 @@ def _trl_worker(
     if platform == "tpu":
         torch_synchronize()
         training_seconds = time.perf_counter() - started
+        from experiments.preflights.fairness import assert_torch_replicas_equal
+
+        final_parameter_sha256 = assert_torch_replicas_equal(first.model)
         return {
             "schema_version": "representax-process-reward-worker-v1",
             "framework": "trl",
@@ -861,6 +875,7 @@ def _trl_worker(
             "activation_checkpointing": "torch-xla-reentrant",
             "device_count": world_size,
             "training_seconds": training_seconds,
+            "final_parameter_sha256": final_parameter_sha256,
             "steady_state": {
                 **warm_step_summary(
                     first_timer.rows,
@@ -928,7 +943,7 @@ def _trl_worker(
     def probe(model: Any) -> np.ndarray:
         rows = _read_jsonl(data_directory / "evaluation.jsonl")[:2]
         input_ids = np.full(
-            (len(rows), EXECUTION_SEQUENCE_LENGTH),
+            (len(rows), GPU_EXECUTION_SEQUENCE_LENGTH),
             tokenizer.pad_token_id,
             dtype=np.int64,
         )
@@ -975,7 +990,7 @@ def _trl_worker(
         "batch_size": contract.batch_size,
         "micro_batch_size": MICRO_BATCH_SIZE,
         "maximum_length": contract.maximum_length,
-        "execution_sequence_length": EXECUTION_SEQUENCE_LENGTH,
+        "execution_sequence_length": GPU_EXECUTION_SEQUENCE_LENGTH,
         "precision": "bfloat16-autocast-float32-parameters",
         "training_seconds": training_seconds,
         "compilation_and_first_step_seconds": 0.0,

@@ -357,7 +357,7 @@ def _representax_job(
     return JobConfig(
         name="paper-preflight-outcome-reward",
         model=ModelConfig(
-            target="representax.models.qwen_reward:load_qwen_reward_model",
+            target="experiments.preflights.fairness:load_reward_model",
             parameters={
                 "model_name_or_path": str(checkpoint),
                 "revision": contract.model_revision,
@@ -1112,6 +1112,7 @@ def _trl_worker(
     from torch.utils.data import SequentialSampler
     from transformers import AutoModelForSequenceClassification, AutoTokenizer
     from transformers.trainer_callback import TrainerCallback
+    from experiments.preflights.fairness import XlaMixedPrecisionTrainer
 
     trl = import_module("trl")
     RewardConfig = trl.RewardConfig
@@ -1139,7 +1140,7 @@ def _trl_worker(
     ):
         raise RuntimeError("TRL outcome-reward preflight requires one visible GPU")
 
-    class SequentialRewardTrainer(RewardTrainer):
+    class SequentialRewardTrainer(XlaMixedPrecisionTrainer, RewardTrainer):
         input_shapes: list[list[int]]
         actual_tokens: list[int]
 
@@ -1200,7 +1201,7 @@ def _trl_worker(
         adam_beta2=0.999,
         adam_epsilon=1e-8,
         max_grad_norm=1.0,
-        bf16=True,
+        bf16=platform == "gpu",
         fp16=False,
         gradient_checkpointing=gradient_checkpointing,
         gradient_checkpointing_kwargs=gradient_checkpointing_kwargs,
@@ -1221,12 +1222,18 @@ def _trl_worker(
         max_length=contract.maximum_length,
         pad_to_multiple_of=pad_to_multiple_of,
         center_rewards_coefficient=None,
-        model_init_kwargs={
-            "dtype": "bfloat16",
-            "local_files_only": True,
-            "attn_implementation": "sdpa",
-        },
+        model_init_kwargs=None,
     )
+
+    from experiments.preflights.fairness import initialize_torch_reward
+
+    def initial_model():
+        transformers.set_seed(seed)
+        model = AutoModelForSequenceClassification.from_pretrained(
+            checkpoint, local_files_only=True, dtype=torch.bfloat16,
+            num_labels=1, attn_implementation="sdpa",
+        )
+        return initialize_torch_reward(model, checkpoint, seed, round_bfloat16=True)
 
     first_timer = CudaStepTimer()
     collator = DataCollatorForPreference(
@@ -1234,7 +1241,7 @@ def _trl_worker(
         pad_to_multiple_of=pad_to_multiple_of,
     )
     trainer = SequentialRewardTrainer(
-        model=str(checkpoint),
+        model=initial_model(),
         args=training_arguments,
         train_dataset=train,
         eval_dataset=evaluation,
@@ -1251,6 +1258,9 @@ def _trl_worker(
     torch_synchronize()
     first_training_seconds = time.perf_counter() - started
     if platform == "tpu":
+        from experiments.preflights.fairness import assert_torch_replicas_equal
+
+        final_parameter_sha256 = assert_torch_replicas_equal(trainer.model)
         losses = [
             float(row["loss"])
             for row in trainer.state.log_history
@@ -1271,6 +1281,7 @@ def _trl_worker(
             "activation_checkpointing": "torch-xla-reentrant",
             "device_count": world_size,
             "training_seconds": first_training_seconds,
+            "final_parameter_sha256": final_parameter_sha256,
             "examples_per_second": (
                 contract.global_batch_size * steps / first_training_seconds
             ),
@@ -1304,7 +1315,7 @@ def _trl_worker(
         pad_to_multiple_of=pad_to_multiple_of,
     )
     trainer = SequentialRewardTrainer(
-        model=str(checkpoint),
+        model=initial_model(),
         args=training_arguments,
         train_dataset=train,
         eval_dataset=evaluation,
