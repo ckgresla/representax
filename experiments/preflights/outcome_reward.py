@@ -1127,7 +1127,7 @@ def _trl_worker(
         raise ValueError("global batch must divide the accelerator count")
     local_batch_size = contract.global_batch_size // world_size
     # FP32 masters/moments need additional TPU memory; retain the global batch.
-    micro_batch_size = min(2 if platform == "tpu" else MICRO_BATCH_SIZE, local_batch_size)
+    micro_batch_size = min(1 if platform == "tpu" else MICRO_BATCH_SIZE, local_batch_size)
     while local_batch_size % micro_batch_size:
         micro_batch_size -= 1
     if platform == "tpu":
