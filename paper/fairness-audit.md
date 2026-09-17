@@ -34,6 +34,12 @@ retaining views into the full flattened buffer; its focused CPU test checks
 the ownership and synchronization order. It restores microbatch two and is
 still a capacity hypothesis until the real TPU run passes. No failed timing
 is accepted as a completed comparison.
+That attempt completed one optimizer update but then exceeded HBM during
+the next gradient materialization (4.63 GiB requested, 4.16 GiB available).
+Commit `f86dddf` removes full-model gradient concatenation and reduces each
+parameter's gradient functionally before synchronization and clipping.
+Eleven applicable CPU tests pass, including single-/multiple-parameter mean
+reduction and ownership checks. It is staged, not yet accepted on TPU.
 
 The first corrected TPU process reference completed 22 updates but failed final
 replica identity. It is excluded, not a usable timing result. Functional
@@ -87,6 +93,14 @@ reader and zero-dropout checkpoint. These are repeated timing observations,
 not independent sampled trajectories. Native final loss is 0.020575--0.020662;
 reference final loss is 0.020425. Scoring precision still differs, and 50 queries
 do not establish convergence equivalence.
+
+The corrected GPU video panel is complete and promoted: median 3.4370 versus
+0.99928 examples/s (3.4395x). Reference per-seed rates span 0.7958--1.3206
+examples/s; this variation is retained, not replaced by the fastest seed.
+GPU replacement jobs run on separate devices, with up to four concurrent
+processes sharing CPU, memory and storage resources. These are not isolated-host
+measurements; no causal explanation of the observed reference variation is
+established here. Native and reference within each seed use the same GPU.
 
 PyLate's global-loss oracle now passes against a same-backend, full-global-batch
 XLA oracle: loss 45.1423492 on both, maximum gradient error 3.814697e-6, and zero

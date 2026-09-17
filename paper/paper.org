@@ -246,8 +246,8 @@ MPNet dense retrieval reaches 305.35 examples/s against eager Sentence
 Transformers' 211.22 (1.446x), but is slightly slower than the compiled
 reference. The two BERT Base sentence-pair controls are
 slower on GPU, despite faster MPNet counterparts. TPU dense retrieval is
-approximately tied. Historical audio/video rates remain visible, but their
-ratios are withheld pending matched adapter precision and initialization.
+approximately tied. Corrected GPU video-text reaches 3.44 versus 1.00
+examples/s (3.440x); audio and TPU video replacements remain pending.
 After matching both 256-token padding and scalar-head initialization, GPU
 process reward reaches 55.18 examples/s against TRL's 16.79 (3.287x).
 On TPU the corrected rates are 85.26 and 9.94 examples/s (8.578x).
@@ -270,10 +270,14 @@ and scoring precision differs; this is not proof of equivalent convergence.
 Outcome reward [O] uses FP32 native master parameters and optimizer moments,
 but BF16 reference parameters and moments. Its rates also remain historical
 execution measurements, not a matched-precision speedup.
-Audio/video references [M] likewise retain BF16 trainable LoRA parameters,
-where native adapters are FP32. Their default A-matrix initialization also
+Historical audio/video references [M] likewise retain BF16 trainable LoRA
+parameters, where native adapters are FP32. Their default A-matrix initialization also
 differs (uniform versus normal), and reference adapters were constructed
-before applying the run seed. These rows require corrected controls.
+before applying the run seed. The corrected GPU video panel uses FP32 adapters
+and moments in both frameworks, seeded normal A matrices at the same scale,
+and zero B matrices. Random A draws are independent across frameworks, not
+bitwise shared. Both use GradCache microbatch one at global batch two.
+Other affected media panels still require corrected controls.
 Historical process-reward reference heads [I] were also constructed before
 seeding. Replacement GPU and TPU panels use one shared scalar head and explicit
 seeding before construction. Each TPU reference verifies identical initial and

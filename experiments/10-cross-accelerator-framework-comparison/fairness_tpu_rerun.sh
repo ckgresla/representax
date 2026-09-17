@@ -7,7 +7,7 @@ readonly deadline=1789622967 # 2026-09-17 05:29:27 UTC
 readonly recipe=${1:?recipe}
 readonly framework=${2:?framework}
 if [[ "$recipe" == outcome-reward && "$framework" == reference ]]; then
-  readonly repo="$HOME/representax-fairness-143321e"
+  readonly repo="$HOME/representax-fairness-f86dddf"
 else
   readonly repo="$HOME/representax-fairness-cdcb104"
 fi
