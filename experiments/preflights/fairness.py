@@ -9,6 +9,27 @@ from pathlib import Path
 import numpy as np
 
 
+def xla_all_gather_with_grad(value):
+    """Gather candidates, summing remote-query contributions in backward."""
+    import torch
+    import torch_xla.core.xla_model as xm
+    from experiments.preflights.accelerator import torch_rank
+
+    class Gather(torch.autograd.Function):
+        @staticmethod
+        def forward(ctx, tensor):
+            ctx.start = torch_rank() * tensor.shape[0]
+            ctx.count = tensor.shape[0]
+            return xm.all_gather(tensor, dim=0, pin_layout=False)
+
+        @staticmethod
+        def backward(ctx, gradient):
+            total = xm.all_reduce("sum", gradient, pin_layout=False)
+            return total.narrow(0, ctx.start, ctx.count)
+
+    return Gather.apply(value)
+
+
 def prepare_late_checkpoint(source: Path, destination: Path) -> Path:
     """Share the recipe's truncation limits without modifying upstream weights."""
     from experiments.preflights.late_interaction import frozen_contract

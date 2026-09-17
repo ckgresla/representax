@@ -75,14 +75,16 @@ def worker(_index):
         features(documents[selection].to(xm.xla_device())),
     ])
     loss.backward()
-    xm.all_reduce("sum", [p.grad for p in model.parameters() if p.grad is not None],
-                  scale=1 / world, pin_layout=False)
+    for parameter in model.parameters():
+        if parameter.grad is not None:
+            parameter.grad = xm.all_reduce("sum", parameter.grad,
+                                           scale=1 / world, pin_layout=False)
     gradient = model.projection.weight.grad.detach().clone()
     mean_loss = xm.all_reduce(xm.REDUCE_SUM, loss.detach(), scale=1 / world,
                               pin_layout=False)
     torch.nn.utils.clip_grad_norm_(model.parameters(), 1.)
     optimizer.step()
-    diagnostic = Path.home() / "representax-fairness-results" / f"late-loss-oracle-{fixture}"
+    diagnostic = Path.home() / "representax-fairness-results" / f"late-functional-oracle-{fixture}"
     diagnostic.mkdir(parents=True, exist_ok=True)
     (diagnostic / f"rank-{rank}.hlo").write_text(torch_xla._XLAC._get_xla_tensors_hlo([mean_loss, gradient, full_loss, full_gradient]))
     torch_xla.sync(wait=True)
@@ -104,7 +106,7 @@ def worker(_index):
               "cpu_gradient_max_error": (actual_gradient - expected_gradient).abs().max().item(),
               "gradient_max_error": (actual_gradient - full_gradient.cpu()).abs().max().item(),
               "update_max_error": (actual_weight - full.projection.weight.detach().cpu()).abs().max().item()}
-    output = Path.home() / "representax-fairness-results" / f"late-loss-oracle-{fixture}"
+    output = diagnostic
     output.mkdir(parents=True, exist_ok=True)
     (output / f"rank-{rank}.json").write_text(json.dumps(result, indent=2) + "\n")
     print(json.dumps(result), flush=True)

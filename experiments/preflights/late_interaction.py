@@ -1172,6 +1172,17 @@ def _reference_dataset(path: Path, *, rows: int) -> Any:
 
 def _pylate_loss(losses: Any, model: Any, platform: Platform) -> Any:
     if platform == "tpu":
+        import torch_xla.core.xla_model as xm
+        from experiments.preflights.fairness import xla_all_gather_with_grad
+
+        # Keep PyLate's scorer/objective; use functional PJRT collectives instead
+        # of the torch.distributed output-buffer bridge in this isolated runner.
+        module = importlib.import_module(losses.Contrastive.__module__)
+        module.all_gather = lambda value: xm.all_gather(
+            value, dim=0, pin_layout=False).chunk(torch_world_size())
+        module.all_gather_with_gradients = lambda value: xla_all_gather_with_grad(
+            value).chunk(torch_world_size())
+
         class MeanGlobalContrastive(losses.Contrastive):
             def forward(self, *args: Any, **kwargs: Any) -> Any:
                 # PyLate multiplies by world size; the Trainer averages gradients.

@@ -10,6 +10,27 @@ import torch
 from experiments.preflights.fairness import initialize_torch_reward, scalar_head
 
 
+def test_xla_gather_backward_includes_remote_query_gradients(monkeypatch):
+    import sys
+    from types import ModuleType
+    from experiments.preflights import accelerator
+    from experiments.preflights.fairness import xla_all_gather_with_grad
+
+    xla, core, xm = (ModuleType(name) for name in
+                     ("torch_xla", "torch_xla.core", "torch_xla.core.xla_model"))
+    xla.core, core.xla_model = core, xm
+    for module in (xla, core, xm):
+        monkeypatch.setitem(sys.modules, module.__name__, module)
+    monkeypatch.setattr(accelerator, "torch_rank", lambda: 1)
+    xm.all_gather = lambda value, **kwargs: torch.cat((value + 1, value))
+    xm.all_reduce = lambda kind, value, **kwargs: value + 4
+    value = torch.tensor([[2.], [3.]], requires_grad=True)
+    result = xla_all_gather_with_grad(value)
+    torch.testing.assert_close(result, torch.tensor([[3.], [4.], [2.], [3.]]))
+    result.backward(torch.arange(4.).reshape(4, 1))
+    torch.testing.assert_close(value.grad, torch.tensor([[6.], [7.]]))
+
+
 @pytest.mark.parametrize("with_bias", [False, True])
 def test_xla_reduction_reassigns_mean_before_clipping(monkeypatch, with_bias):
     import sys

@@ -30,7 +30,7 @@ def worker(_index):
     assert (dist.get_rank(), dist.get_world_size()) == (rank, world)
     assets = Path.home() / "representax-paper-assets"
     seed = int(os.environ.get("AUDIT_SEED", "7"))
-    destination = Path.home() / "representax-fairness-results" / f"late-score-trace-{seed}"
+    destination = Path.home() / "representax-fairness-results" / f"late-native-gather-{seed}"
     destination.mkdir(parents=True, exist_ok=True)
     data = assets / "late-fair-20260916/train.jsonl"
     rows = [json.loads(line) for line in data.read_text().splitlines()]
@@ -57,11 +57,13 @@ def worker(_index):
     criterion = _pylate_loss(losses, model, "tpu")
     original_score = criterion.score_metric
     score_chunks = []
+    scoring_queries = []
     score_arguments = []
 
     def capture_score(queries, documents, **kwargs):
         scores = original_score(queries, documents, **kwargs)
         score_chunks.append(scores.detach().clone())
+        scoring_queries.append(queries.detach().clone())
         if not score_arguments:
             score_arguments.append((documents.detach().clone(),
                                     kwargs["documents_mask"].detach().clone()))
@@ -99,6 +101,7 @@ def worker(_index):
             arrays.update({f"encoded_{i}": value.float().cpu().numpy()
                            for i, value in enumerate(encoded)})
             arrays["scores"] = torch.cat(score_chunks).float().cpu().numpy()
+            arrays["scoring_queries"] = torch.cat(scoring_queries).float().cpu().numpy()
             arrays["gathered_documents"] = score_arguments[0][0].float().cpu().numpy()
             arrays["gathered_document_masks"] = score_arguments[0][1].cpu().numpy()
             np.savez_compressed(destination / f"rank-{rank}.npz", **arrays)
