@@ -30,7 +30,7 @@ def worker(_index):
     assert (dist.get_rank(), dist.get_world_size()) == (rank, world)
     assets = Path.home() / "representax-paper-assets"
     seed = int(os.environ.get("AUDIT_SEED", "7"))
-    destination = Path.home() / "representax-fairness-results" / f"late-forward-boundary-{seed}"
+    destination = Path.home() / "representax-fairness-results" / f"late-pinned-gather-{seed}"
     destination.mkdir(parents=True, exist_ok=True)
     data = assets / "late-fair-20260916/train.jsonl"
     rows = [json.loads(line) for line in data.read_text().splitlines()]

@@ -20,11 +20,11 @@ def xla_all_gather_with_grad(value):
         def forward(ctx, tensor):
             ctx.start = torch_rank() * tensor.shape[0]
             ctx.count = tensor.shape[0]
-            return xm.all_gather(tensor, dim=0, pin_layout=False)
+            return xm.all_gather(tensor, dim=0, pin_layout=True)
 
         @staticmethod
         def backward(ctx, gradient):
-            total = xm.all_reduce("sum", gradient, pin_layout=False)
+            total = xm.all_reduce("sum", gradient, pin_layout=True)
             return total.narrow(0, ctx.start, ctx.count)
 
     return Gather.apply(value)

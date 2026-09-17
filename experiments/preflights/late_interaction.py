@@ -1179,7 +1179,7 @@ def _pylate_loss(losses: Any, model: Any, platform: Platform) -> Any:
         # of the torch.distributed output-buffer bridge in this isolated runner.
         module = importlib.import_module(losses.Contrastive.__module__)
         module.all_gather = lambda value: xm.all_gather(
-            value, dim=0, pin_layout=False).chunk(torch_world_size())
+            value, dim=0, pin_layout=True).chunk(torch_world_size())
         module.all_gather_with_gradients = lambda value: xla_all_gather_with_grad(
             value).chunk(torch_world_size())
 
