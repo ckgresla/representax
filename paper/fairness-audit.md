@@ -25,9 +25,13 @@ The initial `us-central1-a` request repeatedly failed with
 but the API rejects deletion during PROVISIONING. It subsequently entered FAILED
 and was deleted; its listing was verified empty before the `us-west4-a` request
 at 14:41:44 UTC. No two live allocation requests overlapped. The hard cleanup remains
-16:45 UTC; the later request leaves under $12 of compute exposure and approximately
+16:45 UTC. `us-west4-a` also failed for capacity and was deleted before the
+14:50:03 UTC request in `us-west1-c`. The live catalog confirms the Americas
+$0.342218/chip-hour SKU covers `us-west1`, but not `us-west4` (which is
+$0.547631/chip-hour); no training or asset transfer occurred in `us-west4`.
+The current request leaves under $12 of compute exposure and approximately
 $1.40 for four copies of the existing assets across regions. Completed cells are
-not rerun; the allocation difference is retained in new collection records.
+not rerun; any allocation difference is retained in new collection records.
 
 All 50 corrected GPU runs have completed and passed artifact/timing validation.
 Five-seed median native/reference ratios are 3.9776x late interaction, 1.4388x

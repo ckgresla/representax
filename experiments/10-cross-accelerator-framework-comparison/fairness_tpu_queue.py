@@ -15,7 +15,7 @@ import time
 
 
 PROJECT = "project-3fed1b4b-1d3e-4ddf-bf8"
-ZONE = "us-west4-a"
+ZONE = "us-west1-c"
 NODE = "representax-video-v5e16-20260917"
 DEADLINE = 1789663500  # 2026-09-17 16:45:00 UTC; additional $14 authorization.
 OUTPUT = Path("/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916")
