@@ -57,14 +57,15 @@ class XlaGradientSynchronization:
         import torch_xla.core.xla_model as xm
 
         parameters = [p for p in model.parameters() if p.grad is not None]
-        flattened = torch.cat([p.grad.flatten() for p in parameters])
-        averaged = xm.all_reduce("sum", flattened,
+        averaged = xm.all_reduce("sum", torch.cat([p.grad.flatten() for p in parameters]),
                                  scale=1.0 / torch_world_size(), pin_layout=False)
-        torch_synchronize()
         for parameter, gradient in zip(
             parameters, averaged.split([p.numel() for p in parameters]), strict=True
         ):
             parameter.grad = gradient.reshape_as(parameter)
+        # Materialize only the replacement gradients, not obsolete full-size buffers.
+        del averaged, gradient
+        torch_synchronize()
         self.accelerator.gradient_state.is_xla_gradients_synced = True
         return torch.nn.utils.clip_grad_norm_(parameters, self.args.max_grad_norm)
 

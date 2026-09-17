@@ -23,7 +23,6 @@ def test_xla_reduction_reassigns_mean_before_clipping(monkeypatch):
         monkeypatch.setitem(sys.modules, module.__name__, module)
     monkeypatch.setattr(accelerator, "torch_is_tpu", lambda: True)
     monkeypatch.setattr(accelerator, "torch_world_size", lambda: 2)
-    monkeypatch.setattr(accelerator, "torch_synchronize", lambda: None)
     def reduce(kind, values, *, scale, pin_layout):
         assert kind == "sum" and scale == .5 and pin_layout is False
         torch.testing.assert_close(values, torch.tensor([1., 2.]))
@@ -31,6 +30,11 @@ def test_xla_reduction_reassigns_mean_before_clipping(monkeypatch):
     xm.all_reduce = reduce
     model = torch.nn.Linear(2, 1, bias=False)
     model.weight.grad = torch.tensor([[1., 2.]])
+    synchronized = []
+    def synchronize():
+        torch.testing.assert_close(model.weight.grad, torch.tensor([[3., 4.]]))
+        synchronized.append(True)
+    monkeypatch.setattr(accelerator, "torch_synchronize", synchronize)
     trainer = XlaGradientSynchronization()
     trainer.args = SimpleNamespace(max_grad_norm=1.)
     trainer.accelerator = SimpleNamespace(
@@ -39,6 +43,7 @@ def test_xla_reduction_reassigns_mean_before_clipping(monkeypatch):
     torch.testing.assert_close(norm, torch.tensor(5.))
     torch.testing.assert_close(model.weight.grad, torch.tensor([[.6, .8]]))
     assert trainer.accelerator.gradient_state.is_xla_gradients_synced
+    assert synchronized == [True]
 
 
 @pytest.mark.parametrize("platform,batch,devices,chunk", [
