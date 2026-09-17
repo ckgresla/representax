@@ -1,4 +1,4 @@
-"""Trace the real prepared TPU PyLate reader without performing training."""
+"""Capture one real TPU PyLate optimizer step for a scoring audit."""
 
 import json
 import os
@@ -6,6 +6,7 @@ from pathlib import Path
 
 
 def worker(_index):
+    import numpy as np
     import torch
     import torch.distributed as dist
     import torch_xla
@@ -29,7 +30,7 @@ def worker(_index):
     assert (dist.get_rank(), dist.get_world_size()) == (rank, world)
     assets = Path.home() / "representax-paper-assets"
     seed = int(os.environ.get("AUDIT_SEED", "7"))
-    destination = Path.home() / "representax-fairness-results" / f"late-completed-step-{seed}"
+    destination = Path.home() / "representax-fairness-results" / f"late-score-trace-{seed}"
     destination.mkdir(parents=True, exist_ok=True)
     data = assets / "late-fair-20260916/train.jsonl"
     rows = [json.loads(line) for line in data.read_text().splitlines()]
@@ -50,6 +51,23 @@ def worker(_index):
 
     expected = model.tokenize([row["query"] for row in rows], is_query=True, pad=True)
     token_positions = {tuple(ids.tolist()): i for i, ids in enumerate(expected["input_ids"])}
+    encoded = []
+    model.register_forward_hook(lambda _model, _inputs, output:
+                                encoded.append(output["token_embeddings"].detach().clone()))
+    criterion = _pylate_loss(losses, model, "tpu")
+    original_score = criterion.score_metric
+    score_chunks = []
+    score_arguments = []
+
+    def capture_score(queries, documents, **kwargs):
+        scores = original_score(queries, documents, **kwargs)
+        score_chunks.append(scores.detach().clone())
+        if not score_arguments:
+            score_arguments.append((documents.detach().clone(),
+                                    kwargs["documents_mask"].detach().clone()))
+        return scores
+
+    criterion.score_metric = capture_score
 
     class Captured(Exception):
         pass
@@ -75,6 +93,15 @@ def worker(_index):
                       "logged_loss": logged.cpu().item(),
                       "accelerator_rank": trainer.accelerator.process_index,
                       "accelerator_world_size": trainer.accelerator.num_processes}
+            arrays = {f"{i}_{key}": value.detach().cpu().numpy()
+                      for i, features in enumerate(trainer.probe_features)
+                      for key, value in features.items() if key in {"input_ids", "attention_mask"}}
+            arrays.update({f"encoded_{i}": value.float().cpu().numpy()
+                           for i, value in enumerate(encoded)})
+            arrays["scores"] = torch.cat(score_chunks).float().cpu().numpy()
+            arrays["gathered_documents"] = score_arguments[0][0].float().cpu().numpy()
+            arrays["gathered_document_masks"] = score_arguments[0][1].cpu().numpy()
+            np.savez_compressed(destination / f"rank-{rank}.npz", **arrays)
             (destination / f"rank-{rank}.json").write_text(json.dumps(result, indent=2) + "\n")
             print(json.dumps(result), flush=True)
             raise Captured()
@@ -84,7 +111,7 @@ def worker(_index):
         args=_reference_arguments(destination / f"process-{rank}", max_steps=22,
                                   save_steps=11, seed=seed, save=False, platform="tpu"),
         train_dataset=_reference_dataset(data, rows=512 * 22),
-        loss=_pylate_loss(losses, model, "tpu"), data_collator=TraceCollator(),
+        loss=criterion, data_collator=TraceCollator(),
         callbacks=[CudaStepTimer().callback(), CaptureCallback()],
     )
     try:
