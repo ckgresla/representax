@@ -20,6 +20,8 @@ def worker(_index):
     from pylate import losses
     from experiments.preflights.fairness import XlaMixedPrecisionTrainer
     from transformers.trainer_pt_utils import nested_gather
+    from transformers import TrainerCallback
+    from experiments.preflights.timing import CudaStepTimer
 
     torch.set_num_threads(1)
     dist.init_process_group("xla", init_method="xla://")
@@ -27,7 +29,7 @@ def worker(_index):
     assert (dist.get_rank(), dist.get_world_size()) == (rank, world)
     assets = Path.home() / "representax-paper-assets"
     seed = int(os.environ.get("AUDIT_SEED", "7"))
-    destination = Path.home() / "representax-fairness-results" / f"late-training-entry-{seed}"
+    destination = Path.home() / "representax-fairness-results" / f"late-completed-step-{seed}"
     destination.mkdir(parents=True, exist_ok=True)
     data = assets / "late-fair-20260916/train.jsonl"
     rows = [json.loads(line) for line in data.read_text().splitlines()]
@@ -53,21 +55,26 @@ def worker(_index):
         pass
 
     class EntryTrainer(XlaMixedPrecisionTrainer, SentenceTransformerTrainer):
-        def training_step(self, model, inputs, num_items_in_batch=None):
-            features, _ = self.collect_features(inputs)
-            actual = [token_positions.get(tuple(ids.tolist()), -1)
-                      for ids in features[0]["input_ids"].cpu()]
-            with torch.no_grad(), self.compute_loss_context_manager():
-                loss = self.compute_loss(model, inputs)
+        def compute_loss(self, model, inputs, **kwargs):
+            self.probe_features, _ = self.collect_features(inputs)
+            loss = super().compute_loss(model, inputs, **kwargs)
+            self.probe_loss = loss.detach().clone()
+            return loss
+
+    class CaptureCallback(TrainerCallback):
+        def on_step_end(self, args, state, control, **kwargs):
+            loss = trainer.probe_loss
             mean = xm.all_reduce("sum", loss.detach(), scale=1 / world, pin_layout=False)
             torch_xla.sync(wait=True)
-            logged = nested_gather(loss.detach(), self.args.parallel_mode).mean()
+            logged = nested_gather(loss.detach(), args.parallel_mode).mean()
+            actual = [token_positions.get(tuple(ids.tolist()), -1)
+                      for ids in trainer.probe_features[0]["input_ids"].cpu()]
             result = {"rank": rank, "world_size": world, "seed": seed,
                       "actual_rows": actual, "collator_batches": seen[:2],
                       "local_loss": loss.cpu().item(), "global_loss": mean.cpu().item(),
                       "logged_loss": logged.cpu().item(),
-                      "accelerator_rank": self.accelerator.process_index,
-                      "accelerator_world_size": self.accelerator.num_processes}
+                      "accelerator_rank": trainer.accelerator.process_index,
+                      "accelerator_world_size": trainer.accelerator.num_processes}
             (destination / f"rank-{rank}.json").write_text(json.dumps(result, indent=2) + "\n")
             print(json.dumps(result), flush=True)
             raise Captured()
@@ -78,6 +85,7 @@ def worker(_index):
                                   save_steps=11, seed=seed, save=False, platform="tpu"),
         train_dataset=_reference_dataset(data, rows=512 * 22),
         loss=_pylate_loss(losses, model, "tpu"), data_collator=TraceCollator(),
+        callbacks=[CudaStepTimer().callback(), CaptureCallback()],
     )
     try:
         trainer.train()
