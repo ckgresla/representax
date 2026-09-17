@@ -25,6 +25,18 @@ def correction_key(platform, recipe):
     return f"fairness-20260916-{platform}-{recipe}"
 
 
+def training_losses(training, summary):
+    saved = [row for row in summary.get("training_metrics", ())
+             if "step" in row and "loss" in row]
+    by_step = {row["step"]: row["loss"] for row in saved}
+    require(len(by_step) == len(saved), "Duplicate steps in summary loss history")
+    losses = [row["metrics"].get("train/loss", by_step.get(row["iteration"]))
+              for row in training]
+    require(all(value is not None and math.isfinite(value) for value in losses),
+            "Missing or nonfinite training loss")
+    return losses
+
+
 def collect(platform, recipe, root=ROOT):
     records, sources = [], {}
 
@@ -71,8 +83,7 @@ def collect(platform, recipe, root=ROOT):
             training = [row for row in metrics if row.get("event") == "training_step"]
             require([row["iteration"] for row in training] == list(range(1, 23)),
                     f"Incorrect update coverage: {directory}")
-            losses = [row["metrics"]["train/loss"] for row in training]
-            require(all(math.isfinite(value) for value in losses), f"Nonfinite loss: {directory}")
+            losses = training_losses(training, summary)
             # Historical GPU reference timers include save work in the next
             # interval. Exclude that interval; do not rewrite the raw metrics.
             excluded = {1, 2, 12} if platform == "gpu" and framework == "reference" else set()
@@ -91,6 +102,7 @@ def collect(platform, recipe, root=ROOT):
                 "examples_per_second": batch * len(measured) / seconds,
                 "median_step_seconds": stats.median(durations),
                 "first_loss": losses[0], "final_loss": losses[-1],
+                "loss_history": losses,
                 "summary_sha256": run["summary_sha256"], "metrics_sha256": metrics_hash,
                 "metrics_path": str(metrics_path),
                 "source_commit": run["source"]["commit"], "source": run["source"],

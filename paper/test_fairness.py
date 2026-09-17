@@ -4,7 +4,7 @@ import copy
 import unittest
 
 from build import PANEL_SEEDS
-from update_fairness import correction_key, replace
+from update_fairness import correction_key, replace, training_losses
 from report import comparison_matched, measured_rows
 
 
@@ -57,6 +57,18 @@ class FairnessEvidenceTests(unittest.TestCase):
         run = {"metrics": metrics, "analysis_excluded_iterations": [1, 2, 12]}
         self.assertEqual([row["iteration"] for row in measured_rows(run)], [3, 11, 13])
         self.assertEqual(len(metrics), 4)
+
+    def test_losses_use_saved_summary_when_timing_log_omits_them(self):
+        rows = [{"iteration": step, "metrics": {}} for step in (1, 2)]
+        summary = {"training_metrics": [{"step": 2, "loss": 0.25},
+                                        {"step": 1, "loss": 0.5}]}
+        self.assertEqual(training_losses(rows, summary), [0.5, 0.25])
+        self.assertEqual(rows[0]["metrics"], {})
+        with self.assertRaisesRegex(ValueError, "Missing or nonfinite"):
+            training_losses(rows, {})
+        summary["training_metrics"][0]["loss"] = float("nan")
+        with self.assertRaisesRegex(ValueError, "Missing or nonfinite"):
+            training_losses(rows, summary)
 
 
 if __name__ == "__main__":
