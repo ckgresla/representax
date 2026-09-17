@@ -1,0 +1,562 @@
+[
+  {
+    "rank": 0,
+    "query_ids_equal": true,
+    "query_mask_equal": true,
+    "query_embedding_max_error": 0.046875,
+    "query_embedding_min_cosine": 0.9999352097511292,
+    "positive_ids_equal": true,
+    "positive_mask_equal": true,
+    "positive_embedding_max_error": 1.046875,
+    "positive_embedding_min_cosine": 0.9924437999725342,
+    "gathered_documents_sha256": "f811954385684ba76e0c51719614a56af180cda5e7ec414fa29163bd5c91a0a3",
+    "gathered_valid_norm_range": [
+      0.9947995543479919,
+      1.0065317153930664
+    ],
+    "gathered_local_document_max_error": 0.0022881031036376953,
+    "gathered_local_mask_equal": true,
+    "score_max_error": 0.042125701904296875,
+    "captured_loss": 0.0002896759833674878,
+    "captured_worst": {
+      "row": 26,
+      "loss": 0.004606706090271473,
+      "positive_score": 6.34375,
+      "top_document": 26,
+      "top_score": 6.34375
+    },
+    "recomputed_loss": 0.000494248466566205,
+    "recomputed_worst": {
+      "row": 18,
+      "loss": 0.007585412822663784,
+      "positive_score": 7.555584907531738,
+      "top_document": 18,
+      "top_score": 7.555584907531738
+    }
+  },
+  {
+    "rank": 1,
+    "query_ids_equal": true,
+    "query_mask_equal": true,
+    "query_embedding_max_error": 0.0546875,
+    "query_embedding_min_cosine": 0.9998953342437744,
+    "positive_ids_equal": true,
+    "positive_mask_equal": true,
+    "positive_embedding_max_error": 0.5,
+    "positive_embedding_min_cosine": 0.9976879358291626,
+    "gathered_documents_sha256": "f811954385684ba76e0c51719614a56af180cda5e7ec414fa29163bd5c91a0a3",
+    "gathered_valid_norm_range": [
+      0.9947995543479919,
+      1.0065317153930664
+    ],
+    "gathered_local_document_max_error": 0.0022333264350891113,
+    "gathered_local_mask_equal": true,
+    "score_max_error": 0.04224586486816406,
+    "captured_loss": 0.0002989595814142376,
+    "captured_worst": {
+      "row": 38,
+      "loss": 0.009137716144323349,
+      "positive_score": 6.375,
+      "top_document": 38,
+      "top_score": 6.375
+    },
+    "recomputed_loss": 0.0004525381955318153,
+    "recomputed_worst": {
+      "row": 38,
+      "loss": 0.01421563234180212,
+      "positive_score": 6.361658096313477,
+      "top_document": 38,
+      "top_score": 6.361658096313477
+    }
+  },
+  {
+    "rank": 2,
+    "query_ids_equal": true,
+    "query_mask_equal": true,
+    "query_embedding_max_error": 0.0390625,
+    "query_embedding_min_cosine": 0.9999426007270813,
+    "positive_ids_equal": true,
+    "positive_mask_equal": true,
+    "positive_embedding_max_error": 0.8125,
+    "positive_embedding_min_cosine": 0.9880951642990112,
+    "gathered_documents_sha256": "f811954385684ba76e0c51719614a56af180cda5e7ec414fa29163bd5c91a0a3",
+    "gathered_valid_norm_range": [
+      0.9947995543479919,
+      1.0065317153930664
+    ],
+    "gathered_local_document_max_error": 0.0024445950984954834,
+    "gathered_local_mask_equal": true,
+    "score_max_error": 0.04204368591308594,
+    "captured_loss": 0.0015311498427763581,
+    "captured_worst": {
+      "row": 92,
+      "loss": 0.04299945384263992,
+      "positive_score": 8.5,
+      "top_document": 92,
+      "top_score": 8.5
+    },
+    "recomputed_loss": 0.004879285581409931,
+    "recomputed_worst": {
+      "row": 92,
+      "loss": 0.15200534462928772,
+      "positive_score": 8.479026794433594,
+      "top_document": 92,
+      "top_score": 8.479026794433594
+    }
+  },
+  {
+    "rank": 3,
+    "query_ids_equal": true,
+    "query_mask_equal": true,
+    "query_embedding_max_error": 0.03125,
+    "query_embedding_min_cosine": 0.9999587535858154,
+    "positive_ids_equal": true,
+    "positive_mask_equal": true,
+    "positive_embedding_max_error": 1.46875,
+    "positive_embedding_min_cosine": 0.9893708229064941,
+    "gathered_documents_sha256": "f811954385684ba76e0c51719614a56af180cda5e7ec414fa29163bd5c91a0a3",
+    "gathered_valid_norm_range": [
+      0.9947995543479919,
+      1.0065317153930664
+    ],
+    "gathered_local_document_max_error": 0.0024184584617614746,
+    "gathered_local_mask_equal": true,
+    "score_max_error": 0.07228469848632812,
+    "captured_loss": 0.09903955459594727,
+    "captured_worst": {
+      "row": 100,
+      "loss": 3.167999029159546,
+      "positive_score": 13.9375,
+      "top_document": 315,
+      "top_score": 14.0
+    },
+    "recomputed_loss": 0.0694785937666893,
+    "recomputed_worst": {
+      "row": 100,
+      "loss": 2.2214813232421875,
+      "positive_score": 13.947760581970215,
+      "top_document": 315,
+      "top_score": 13.989893913269043
+    }
+  },
+  {
+    "rank": 4,
+    "query_ids_equal": true,
+    "query_mask_equal": true,
+    "query_embedding_max_error": 0.046875,
+    "query_embedding_min_cosine": 0.9999185800552368,
+    "positive_ids_equal": true,
+    "positive_mask_equal": true,
+    "positive_embedding_max_error": 1.203125,
+    "positive_embedding_min_cosine": 0.9921621084213257,
+    "gathered_documents_sha256": "f811954385684ba76e0c51719614a56af180cda5e7ec414fa29163bd5c91a0a3",
+    "gathered_valid_norm_range": [
+      0.9947995543479919,
+      1.0065317153930664
+    ],
+    "gathered_local_document_max_error": 0.0020064711570739746,
+    "gathered_local_mask_equal": true,
+    "score_max_error": 0.06056976318359375,
+    "captured_loss": 0.00939730741083622,
+    "captured_worst": {
+      "row": 154,
+      "loss": 0.2955924868583679,
+      "positive_score": 7.125,
+      "top_document": 154,
+      "top_score": 7.125
+    },
+    "recomputed_loss": 0.015414062887430191,
+    "recomputed_worst": {
+      "row": 154,
+      "loss": 0.4886589050292969,
+      "positive_score": 7.121049880981445,
+      "top_document": 154,
+      "top_score": 7.121049880981445
+    }
+  },
+  {
+    "rank": 5,
+    "query_ids_equal": true,
+    "query_mask_equal": true,
+    "query_embedding_max_error": 0.041015625,
+    "query_embedding_min_cosine": 0.999927282333374,
+    "positive_ids_equal": true,
+    "positive_mask_equal": true,
+    "positive_embedding_max_error": 2.984375,
+    "positive_embedding_min_cosine": 0.931214451789856,
+    "gathered_documents_sha256": "f811954385684ba76e0c51719614a56af180cda5e7ec414fa29163bd5c91a0a3",
+    "gathered_valid_norm_range": [
+      0.9947995543479919,
+      1.0065317153930664
+    ],
+    "gathered_local_document_max_error": 0.0019439756870269775,
+    "gathered_local_mask_equal": true,
+    "score_max_error": 0.04166126251220703,
+    "captured_loss": 0.06092183291912079,
+    "captured_worst": {
+      "row": 176,
+      "loss": 1.9001026153564453,
+      "positive_score": 8.4375,
+      "top_document": 58,
+      "top_score": 8.4375
+    },
+    "recomputed_loss": 0.06050650030374527,
+    "recomputed_worst": {
+      "row": 176,
+      "loss": 1.8688123226165771,
+      "positive_score": 8.436511993408203,
+      "top_document": 259,
+      "top_score": 8.455625534057617
+    }
+  },
+  {
+    "rank": 6,
+    "query_ids_equal": true,
+    "query_mask_equal": true,
+    "query_embedding_max_error": 0.046875,
+    "query_embedding_min_cosine": 0.9999468326568604,
+    "positive_ids_equal": true,
+    "positive_mask_equal": true,
+    "positive_embedding_max_error": 1.5625,
+    "positive_embedding_min_cosine": 0.9815333485603333,
+    "gathered_documents_sha256": "f811954385684ba76e0c51719614a56af180cda5e7ec414fa29163bd5c91a0a3",
+    "gathered_valid_norm_range": [
+      0.9947995543479919,
+      1.0065317153930664
+    ],
+    "gathered_local_document_max_error": 0.0022892653942108154,
+    "gathered_local_mask_equal": true,
+    "score_max_error": 0.04460334777832031,
+    "captured_loss": 0.0001721346052363515,
+    "captured_worst": {
+      "row": 196,
+      "loss": 0.002280374988913536,
+      "positive_score": 7.59375,
+      "top_document": 196,
+      "top_score": 7.59375
+    },
+    "recomputed_loss": 0.00013796912389807403,
+    "recomputed_worst": {
+      "row": 196,
+      "loss": 0.001637666835449636,
+      "positive_score": 7.60019063949585,
+      "top_document": 196,
+      "top_score": 7.60019063949585
+    }
+  },
+  {
+    "rank": 7,
+    "query_ids_equal": true,
+    "query_mask_equal": true,
+    "query_embedding_max_error": 0.0390625,
+    "query_embedding_min_cosine": 0.9999309778213501,
+    "positive_ids_equal": true,
+    "positive_mask_equal": true,
+    "positive_embedding_max_error": 0.21875,
+    "positive_embedding_min_cosine": 0.9991022348403931,
+    "gathered_documents_sha256": "f811954385684ba76e0c51719614a56af180cda5e7ec414fa29163bd5c91a0a3",
+    "gathered_valid_norm_range": [
+      0.9947995543479919,
+      1.0065317153930664
+    ],
+    "gathered_local_document_max_error": 0.002218872308731079,
+    "gathered_local_mask_equal": true,
+    "score_max_error": 0.04322528839111328,
+    "captured_loss": 0.055096935480833054,
+    "captured_worst": {
+      "row": 235,
+      "loss": 1.7620004415512085,
+      "positive_score": 7.59375,
+      "top_document": 276,
+      "top_score": 7.625
+    },
+    "recomputed_loss": 0.030108846724033356,
+    "recomputed_worst": {
+      "row": 235,
+      "loss": 0.9622176289558411,
+      "positive_score": 7.6005377769470215,
+      "top_document": 276,
+      "top_score": 7.609819412231445
+    }
+  },
+  {
+    "rank": 8,
+    "query_ids_equal": true,
+    "query_mask_equal": true,
+    "query_embedding_max_error": 0.0390625,
+    "query_embedding_min_cosine": 0.9999465346336365,
+    "positive_ids_equal": true,
+    "positive_mask_equal": true,
+    "positive_embedding_max_error": 0.296875,
+    "positive_embedding_min_cosine": 0.9980794191360474,
+    "gathered_documents_sha256": "f811954385684ba76e0c51719614a56af180cda5e7ec414fa29163bd5c91a0a3",
+    "gathered_valid_norm_range": [
+      0.9947995543479919,
+      1.0065317153930664
+    ],
+    "gathered_local_document_max_error": 0.002087026834487915,
+    "gathered_local_mask_equal": true,
+    "score_max_error": 0.041656494140625,
+    "captured_loss": 0.0029930868186056614,
+    "captured_worst": {
+      "row": 276,
+      "loss": 0.04679563269019127,
+      "positive_score": 12.3125,
+      "top_document": 276,
+      "top_score": 12.3125
+    },
+    "recomputed_loss": 0.003770063165575266,
+    "recomputed_worst": {
+      "row": 280,
+      "loss": 0.07467229664325714,
+      "positive_score": 10.481367111206055,
+      "top_document": 280,
+      "top_score": 10.481367111206055
+    }
+  },
+  {
+    "rank": 9,
+    "query_ids_equal": true,
+    "query_mask_equal": true,
+    "query_embedding_max_error": 0.046875,
+    "query_embedding_min_cosine": 0.9999309182167053,
+    "positive_ids_equal": true,
+    "positive_mask_equal": true,
+    "positive_embedding_max_error": 0.578125,
+    "positive_embedding_min_cosine": 0.9946346879005432,
+    "gathered_documents_sha256": "f811954385684ba76e0c51719614a56af180cda5e7ec414fa29163bd5c91a0a3",
+    "gathered_valid_norm_range": [
+      0.9947995543479919,
+      1.0065317153930664
+    ],
+    "gathered_local_document_max_error": 0.0021445751190185547,
+    "gathered_local_mask_equal": true,
+    "score_max_error": 0.045085906982421875,
+    "captured_loss": 0.22013448178768158,
+    "captured_worst": {
+      "row": 315,
+      "loss": 6.2519378662109375,
+      "positive_score": 11.1875,
+      "top_document": 100,
+      "top_score": 11.3125
+    },
+    "recomputed_loss": 0.1734866052865982,
+    "recomputed_worst": {
+      "row": 315,
+      "loss": 3.977079391479492,
+      "positive_score": 11.199320793151855,
+      "top_document": 100,
+      "top_score": 11.278484344482422
+    }
+  },
+  {
+    "rank": 10,
+    "query_ids_equal": true,
+    "query_mask_equal": true,
+    "query_embedding_max_error": 0.046875,
+    "query_embedding_min_cosine": 0.9999237060546875,
+    "positive_ids_equal": true,
+    "positive_mask_equal": true,
+    "positive_embedding_max_error": 0.71875,
+    "positive_embedding_min_cosine": 0.9952958226203918,
+    "gathered_documents_sha256": "f811954385684ba76e0c51719614a56af180cda5e7ec414fa29163bd5c91a0a3",
+    "gathered_valid_norm_range": [
+      0.9947995543479919,
+      1.0065317153930664
+    ],
+    "gathered_local_document_max_error": 0.002064526081085205,
+    "gathered_local_mask_equal": true,
+    "score_max_error": 0.0590972900390625,
+    "captured_loss": 0.0017114396905526519,
+    "captured_worst": {
+      "row": 323,
+      "loss": 0.050583913922309875,
+      "positive_score": 11.25,
+      "top_document": 323,
+      "top_score": 11.25
+    },
+    "recomputed_loss": 0.0007462695939466357,
+    "recomputed_worst": {
+      "row": 323,
+      "loss": 0.02254381775856018,
+      "positive_score": 11.251396179199219,
+      "top_document": 323,
+      "top_score": 11.251396179199219
+    }
+  },
+  {
+    "rank": 11,
+    "query_ids_equal": true,
+    "query_mask_equal": true,
+    "query_embedding_max_error": 0.046875,
+    "query_embedding_min_cosine": 0.9999486804008484,
+    "positive_ids_equal": true,
+    "positive_mask_equal": true,
+    "positive_embedding_max_error": 0.3671875,
+    "positive_embedding_min_cosine": 0.9970968961715698,
+    "gathered_documents_sha256": "f811954385684ba76e0c51719614a56af180cda5e7ec414fa29163bd5c91a0a3",
+    "gathered_valid_norm_range": [
+      0.9947995543479919,
+      1.0065317153930664
+    ],
+    "gathered_local_document_max_error": 0.0020761489868164062,
+    "gathered_local_mask_equal": true,
+    "score_max_error": 0.041530609130859375,
+    "captured_loss": 0.001527729444205761,
+    "captured_worst": {
+      "row": 370,
+      "loss": 0.04485073313117027,
+      "positive_score": 6.6875,
+      "top_document": 370,
+      "top_score": 6.6875
+    },
+    "recomputed_loss": 0.0044420151971280575,
+    "recomputed_worst": {
+      "row": 370,
+      "loss": 0.1404089629650116,
+      "positive_score": 6.676347732543945,
+      "top_document": 370,
+      "top_score": 6.676347732543945
+    }
+  },
+  {
+    "rank": 12,
+    "query_ids_equal": true,
+    "query_mask_equal": true,
+    "query_embedding_max_error": 0.046875,
+    "query_embedding_min_cosine": 0.9999354481697083,
+    "positive_ids_equal": true,
+    "positive_mask_equal": true,
+    "positive_embedding_max_error": 0.4375,
+    "positive_embedding_min_cosine": 0.9975286722183228,
+    "gathered_documents_sha256": "f811954385684ba76e0c51719614a56af180cda5e7ec414fa29163bd5c91a0a3",
+    "gathered_valid_norm_range": [
+      0.9947995543479919,
+      1.0065317153930664
+    ],
+    "gathered_local_document_max_error": 0.0021736323833465576,
+    "gathered_local_mask_equal": true,
+    "score_max_error": 0.042240142822265625,
+    "captured_loss": 0.003200087696313858,
+    "captured_worst": {
+      "row": 391,
+      "loss": 0.04491718113422394,
+      "positive_score": 5.625,
+      "top_document": 391,
+      "top_score": 5.625
+    },
+    "recomputed_loss": 0.0019440159667283297,
+    "recomputed_worst": {
+      "row": 394,
+      "loss": 0.01935255154967308,
+      "positive_score": 11.506083488464355,
+      "top_document": 394,
+      "top_score": 11.506083488464355
+    }
+  },
+  {
+    "rank": 13,
+    "query_ids_equal": true,
+    "query_mask_equal": true,
+    "query_embedding_max_error": 0.078125,
+    "query_embedding_min_cosine": 0.9997336268424988,
+    "positive_ids_equal": true,
+    "positive_mask_equal": true,
+    "positive_embedding_max_error": 0.453125,
+    "positive_embedding_min_cosine": 0.9971978664398193,
+    "gathered_documents_sha256": "f811954385684ba76e0c51719614a56af180cda5e7ec414fa29163bd5c91a0a3",
+    "gathered_valid_norm_range": [
+      0.9947995543479919,
+      1.0065317153930664
+    ],
+    "gathered_local_document_max_error": 0.0022393763065338135,
+    "gathered_local_mask_equal": true,
+    "score_max_error": 0.04216575622558594,
+    "captured_loss": 0.05639486014842987,
+    "captured_worst": {
+      "row": 434,
+      "loss": 1.752799391746521,
+      "positive_score": 7.5,
+      "top_document": 92,
+      "top_score": 7.53125
+    },
+    "recomputed_loss": 0.043567460030317307,
+    "recomputed_worst": {
+      "row": 434,
+      "loss": 1.2982888221740723,
+      "positive_score": 7.51411247253418,
+      "top_document": 92,
+      "top_score": 7.5337018966674805
+    }
+  },
+  {
+    "rank": 14,
+    "query_ids_equal": true,
+    "query_mask_equal": true,
+    "query_embedding_max_error": 0.05078125,
+    "query_embedding_min_cosine": 0.9999128580093384,
+    "positive_ids_equal": true,
+    "positive_mask_equal": true,
+    "positive_embedding_max_error": 1.109375,
+    "positive_embedding_min_cosine": 0.9922757744789124,
+    "gathered_documents_sha256": "f811954385684ba76e0c51719614a56af180cda5e7ec414fa29163bd5c91a0a3",
+    "gathered_valid_norm_range": [
+      0.9947995543479919,
+      1.0065317153930664
+    ],
+    "gathered_local_document_max_error": 0.002185255289077759,
+    "gathered_local_mask_equal": true,
+    "score_max_error": 0.069366455078125,
+    "captured_loss": 0.001696538645774126,
+    "captured_worst": {
+      "row": 452,
+      "loss": 0.04311569407582283,
+      "positive_score": 9.4375,
+      "top_document": 452,
+      "top_score": 9.4375
+    },
+    "recomputed_loss": 0.004522963427007198,
+    "recomputed_worst": {
+      "row": 452,
+      "loss": 0.13480308651924133,
+      "positive_score": 9.416215896606445,
+      "top_document": 452,
+      "top_score": 9.416215896606445
+    }
+  },
+  {
+    "rank": 15,
+    "query_ids_equal": true,
+    "query_mask_equal": true,
+    "query_embedding_max_error": 0.03656005859375,
+    "query_embedding_min_cosine": 0.9999501705169678,
+    "positive_ids_equal": true,
+    "positive_mask_equal": true,
+    "positive_embedding_max_error": 1.515625,
+    "positive_embedding_min_cosine": 0.9923563003540039,
+    "gathered_documents_sha256": "f811954385684ba76e0c51719614a56af180cda5e7ec414fa29163bd5c91a0a3",
+    "gathered_valid_norm_range": [
+      0.9947995543479919,
+      1.0065317153930664
+    ],
+    "gathered_local_document_max_error": 0.002048283815383911,
+    "gathered_local_mask_equal": true,
+    "score_max_error": 0.0431671142578125,
+    "captured_loss": 0.00018042486044578254,
+    "captured_worst": {
+      "row": 499,
+      "loss": 0.004063683096319437,
+      "positive_score": 8.375,
+      "top_document": 499,
+      "top_score": 8.375
+    },
+    "recomputed_loss": 3.699634544318542e-05,
+    "recomputed_worst": {
+      "row": 493,
+      "loss": 0.000774917658418417,
+      "positive_score": 7.388576507568359,
+      "top_document": 493,
+      "top_score": 7.388576507568359
+    }
+  }
+]

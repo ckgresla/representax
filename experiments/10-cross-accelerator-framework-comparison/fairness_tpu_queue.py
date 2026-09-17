@@ -44,6 +44,8 @@ def identity(recipe, framework, seed):
     phase = "paired-sync" if recipe == "process-reward" and framework == "reference" and seed == 7 else "paired"
     if recipe == "outcome-reward" and framework == "reference" and seed == 7:
         phase = "paired-parameter-gradients"
+    if recipe == "late-interaction" and framework == "reference":
+        phase = "paired-pinned-collectives"
     return relative, phase
 
 

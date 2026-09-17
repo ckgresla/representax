@@ -1,0 +1,175 @@
+{
+  "source_commit": "2c446d7",
+  "collection": {
+    "source_commit": "2c446d7",
+    "archive_sha256": [
+      "0d74a8a97f60b5dd06073474c25b082ee8f4ce86f79952031c553b6d59c4679b",
+      "6d53deee3dc1accf257517acbe8be129fb26d95396c79d4b2906c940c765f025",
+      "d5f66b5e97d57bae60dad55de8822220c72092afe26dff16bc3bb06c71ea1f3b",
+      "ed19c125485f252efb87efd9828242d60173461cf3977c7a6fa55b1e700b2d26"
+    ],
+    "collected_at_unix": 1789615359.362091
+  },
+  "ranks": [
+    {
+      "rank": 0,
+      "status": "passed",
+      "oracle": "single-device XLA global batch",
+      "loss": 45.14234924316406,
+      "cpu_loss": 45.1617317199707,
+      "cpu_gradient_max_error": 0.04352426528930664,
+      "gradient_max_error": 3.814697265625e-06,
+      "update_max_error": 0.0
+    },
+    {
+      "rank": 1,
+      "status": "passed",
+      "oracle": "single-device XLA global batch",
+      "loss": 45.14234924316406,
+      "cpu_loss": 45.1617317199707,
+      "cpu_gradient_max_error": 0.04352426528930664,
+      "gradient_max_error": 3.814697265625e-06,
+      "update_max_error": 0.0
+    },
+    {
+      "rank": 2,
+      "status": "passed",
+      "oracle": "single-device XLA global batch",
+      "loss": 45.14234924316406,
+      "cpu_loss": 45.1617317199707,
+      "cpu_gradient_max_error": 0.04352426528930664,
+      "gradient_max_error": 3.814697265625e-06,
+      "update_max_error": 0.0
+    },
+    {
+      "rank": 3,
+      "status": "passed",
+      "oracle": "single-device XLA global batch",
+      "loss": 45.14234924316406,
+      "cpu_loss": 45.1617317199707,
+      "cpu_gradient_max_error": 0.04352426528930664,
+      "gradient_max_error": 3.814697265625e-06,
+      "update_max_error": 0.0
+    },
+    {
+      "rank": 4,
+      "status": "passed",
+      "oracle": "single-device XLA global batch",
+      "loss": 45.14234924316406,
+      "cpu_loss": 45.1617317199707,
+      "cpu_gradient_max_error": 0.04352426528930664,
+      "gradient_max_error": 3.814697265625e-06,
+      "update_max_error": 0.0
+    },
+    {
+      "rank": 5,
+      "status": "passed",
+      "oracle": "single-device XLA global batch",
+      "loss": 45.14234924316406,
+      "cpu_loss": 45.1617317199707,
+      "cpu_gradient_max_error": 0.04352426528930664,
+      "gradient_max_error": 3.814697265625e-06,
+      "update_max_error": 0.0
+    },
+    {
+      "rank": 6,
+      "status": "passed",
+      "oracle": "single-device XLA global batch",
+      "loss": 45.14234924316406,
+      "cpu_loss": 45.1617317199707,
+      "cpu_gradient_max_error": 0.04352426528930664,
+      "gradient_max_error": 3.814697265625e-06,
+      "update_max_error": 0.0
+    },
+    {
+      "rank": 7,
+      "status": "passed",
+      "oracle": "single-device XLA global batch",
+      "loss": 45.14234924316406,
+      "cpu_loss": 45.1617317199707,
+      "cpu_gradient_max_error": 0.04352426528930664,
+      "gradient_max_error": 3.814697265625e-06,
+      "update_max_error": 0.0
+    },
+    {
+      "rank": 8,
+      "status": "passed",
+      "oracle": "single-device XLA global batch",
+      "loss": 45.14234924316406,
+      "cpu_loss": 45.1617317199707,
+      "cpu_gradient_max_error": 0.04352426528930664,
+      "gradient_max_error": 3.814697265625e-06,
+      "update_max_error": 0.0
+    },
+    {
+      "rank": 9,
+      "status": "passed",
+      "oracle": "single-device XLA global batch",
+      "loss": 45.14234924316406,
+      "cpu_loss": 45.1617317199707,
+      "cpu_gradient_max_error": 0.04352426528930664,
+      "gradient_max_error": 3.814697265625e-06,
+      "update_max_error": 0.0
+    },
+    {
+      "rank": 10,
+      "status": "passed",
+      "oracle": "single-device XLA global batch",
+      "loss": 45.14234924316406,
+      "cpu_loss": 45.1617317199707,
+      "cpu_gradient_max_error": 0.04352426528930664,
+      "gradient_max_error": 3.814697265625e-06,
+      "update_max_error": 0.0
+    },
+    {
+      "rank": 11,
+      "status": "passed",
+      "oracle": "single-device XLA global batch",
+      "loss": 45.14234924316406,
+      "cpu_loss": 45.1617317199707,
+      "cpu_gradient_max_error": 0.04352426528930664,
+      "gradient_max_error": 3.814697265625e-06,
+      "update_max_error": 0.0
+    },
+    {
+      "rank": 12,
+      "status": "passed",
+      "oracle": "single-device XLA global batch",
+      "loss": 45.14234924316406,
+      "cpu_loss": 45.1617317199707,
+      "cpu_gradient_max_error": 0.04352426528930664,
+      "gradient_max_error": 3.814697265625e-06,
+      "update_max_error": 0.0
+    },
+    {
+      "rank": 13,
+      "status": "passed",
+      "oracle": "single-device XLA global batch",
+      "loss": 45.14234924316406,
+      "cpu_loss": 45.1617317199707,
+      "cpu_gradient_max_error": 0.04352426528930664,
+      "gradient_max_error": 3.814697265625e-06,
+      "update_max_error": 0.0
+    },
+    {
+      "rank": 14,
+      "status": "passed",
+      "oracle": "single-device XLA global batch",
+      "loss": 45.14234924316406,
+      "cpu_loss": 45.1617317199707,
+      "cpu_gradient_max_error": 0.04352426528930664,
+      "gradient_max_error": 3.814697265625e-06,
+      "update_max_error": 0.0
+    },
+    {
+      "rank": 15,
+      "status": "passed",
+      "oracle": "single-device XLA global batch",
+      "loss": 45.14234924316406,
+      "cpu_loss": 45.1617317199707,
+      "cpu_gradient_max_error": 0.04352426528930664,
+      "gradient_max_error": 3.814697265625e-06,
+      "update_max_error": 0.0
+    }
+  ]
+}

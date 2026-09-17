@@ -6,7 +6,7 @@ Historical evidence is preserved under correction history when complete,
 validated replacement panels are promoted. Passing an inventory check does
 not establish identical minibatches.
 
-## Live Rerun Readiness (2026-09-17 02:51 UTC)
+## Live Rerun Readiness (2026-09-17 03:24 UTC)
 
 All 50 corrected GPU runs have completed and passed artifact/timing validation.
 Five-seed median native/reference ratios are 3.9776x late interaction, 1.4388x
@@ -15,16 +15,30 @@ Both TPU reward panels are promoted. Outcome reward completed all ten runs,
 including final replica equality for every reference seed: median rates
 103.8667 versus 66.2923 examples/s (1.5668x), with final paired losses differing
 by at most 0.00564. Its per-parameter reduction fix is commit `f86dddf`.
-All ten TPU late-interaction jobs finished, but promotion is held while checking
-unexpected seed-dependent reference loss logs against the deterministic reader.
+The first ten TPU late-interaction jobs finished, but their reference runs are
+rejected pending replacements after a real-tensor collective check failed.
 A local first-batch diagnostic gives global loss 0.02829 with FP32 scoring and
 0.02798 with BF16 scoring, whereas the TPU logs start at 0.03198--0.07509.
 This local probe alone does not identify the TPU cause. The saved timings are
 not discarded, but completion and replica identity alone do not resolve this gate.
-The actual first-step trace now confirms the correct 512 input rows and matching
-functional distributed/logged mean losses. One local rank has an unexpectedly
-large contribution; tensor-level scoring diagnostics are in progress. This is
-not a demonstrated logging-only discrepancy.
+The actual first-step trace confirms the correct 512 input rows and matching
+functional distributed/logged mean losses. Captured global document tensors
+differed across ranks and violated unit-norm invariants with unpinned XLA
+collectives. Capturing tensors changes the compiled graph, so its large losses
+are diagnostic observations, not replacements for the original timing losses.
+Commit `2c446d7` uses layout-pinned functional candidate gathering, sums remote
+query contributions in backward, and consistently pins parameter reductions.
+The real first-step check now passes on all sixteen ranks: identical global
+document hashes, matching masks, local normalized-embedding error below 0.00245,
+and valid norms 0.99480--1.00654. The distributed same-backend oracle also passes
+(maximum gradient error 3.8147e-6; zero AdamW update error).
+Evidence is in `audit/late-pinned-tensor-comparison.json` and
+`audit/late-pinned-gradient-oracle.json`. The five rejected references remain in
+the local `rejected-unpinned-late/` archive; new references use a distinct
+`paired-pinned-collectives` output phase. No production library code changed.
+Full replacement training and replica checks still gate paper promotion.
+The first TPU audio pair and seed-42 reference are collected; remaining audio
+and video jobs are queued. The hard cloud cutoff remains 05:29:27 UTC.
 
 ### Earlier Readiness Gates
 

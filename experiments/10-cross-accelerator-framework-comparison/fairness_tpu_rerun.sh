@@ -8,6 +8,8 @@ readonly recipe=${1:?recipe}
 readonly framework=${2:?framework}
 if [[ "$recipe" == outcome-reward && "$framework" == reference ]]; then
   readonly repo="$HOME/representax-fairness-f86dddf"
+elif [[ "$recipe" == late-interaction && "$framework" == reference ]]; then
+  readonly repo="$HOME/representax-fairness-2c446d7"
 else
   readonly repo="$HOME/representax-fairness-cdcb104"
 fi
