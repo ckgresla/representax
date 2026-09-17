@@ -511,6 +511,7 @@ def _representax_job(
     export_enabled: bool = True,
     negative_scope: str = "global",
     rematerialization: str = "none",
+    platform: Platform = "gpu",
 ) -> Any:
     if steps < 4 or steps % 2:
         raise ValueError("steps must be an even integer of at least four")
@@ -628,7 +629,8 @@ def _representax_job(
             mesh=mesh,
             sharding=sharding_config,
             batch=BatchConfig(micro_batch_size=local_batch_size),
-            grad_cache=None,
+            grad_cache=(None if platform == "tpu" else
+                        GradCacheConfig(micro_batch_size=GRAD_CACHE_MICRO_BATCH)),
             adapter=LoRAConfig(
                 rank=4,
                 alpha=8.0,
@@ -744,6 +746,7 @@ def _representax_worker(
         export_enabled=not skip_export and platform == "gpu",
         negative_scope=negative_scope,
         rematerialization="full" if platform == "tpu" else "none",
+        platform=platform,
     )
     if platform == "tpu":
         job = (
@@ -854,7 +857,10 @@ def _representax_worker(
         "world_size": world_size,
         "sharding": sharding,
         "frozen_global_batch_size": frozen_contract().global_batch_size,
-        "grad_cache_micro_batch_size": None,
+        "grad_cache_micro_batch_size": (
+            None if job.training.grad_cache is None else
+            job.training.grad_cache.micro_batch_size
+        ),
         "elapsed_seconds": time.perf_counter() - started,
         "steady_state": _steady_state(rows, batch_size),
         "initial_evaluation": {

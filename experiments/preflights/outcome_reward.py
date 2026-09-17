@@ -1344,7 +1344,7 @@ def _trl_worker(
         batch = collator(probe_rows)
         batch = {name: value.cuda() for name, value in batch.items()}
         model.eval()
-        with torch.no_grad():
+        with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
             values = model(**batch).logits.squeeze(-1)
         chosen, rejected = torch.chunk(values, chunks=2)
         return torch.stack((chosen, rejected), dim=-1).float().cpu().numpy()
@@ -1360,7 +1360,7 @@ def _trl_worker(
     reloaded = AutoModelForSequenceClassification.from_pretrained(
         export,
         local_files_only=True,
-        dtype=torch.bfloat16,
+        dtype=torch.float32,
         attn_implementation="sdpa",
     ).cuda()
     reload_probe = probe(reloaded)

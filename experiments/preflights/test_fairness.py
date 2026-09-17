@@ -10,6 +10,27 @@ import torch
 from experiments.preflights.fairness import initialize_torch_reward, scalar_head
 
 
+@pytest.mark.parametrize("platform,batch,devices,chunk", [
+    ("gpu", 32, 1, 2), ("tpu", 48, 16, None),
+])
+def test_audio_execution_mode(monkeypatch, tmp_path, platform, batch, devices, chunk):
+    from pathlib import Path
+    from experiments.preflights import audio_text
+
+    (tmp_path / "manifest.json").write_text(json.dumps({
+        "training_presentations": batch * 22, "relevant_documents": {"0": [0]},
+    }))
+    monkeypatch.setattr(audio_text, "frozen_contract",
+                        lambda: SimpleNamespace(model_revision="frozen"))
+    job = audio_text._representax_job(checkpoint=Path("/unused/checkpoint"),
+                          data_directory=tmp_path, steps=22,
+                          seed=7, batch_size=batch, world_size=devices,
+                          platform=platform)
+    actual = job.training.grad_cache
+    assert (None if actual is None else actual.micro_batch_size) == chunk
+    assert job.training.global_batch_size == batch
+
+
 def test_xla_attention_casts_qk_without_changing_mask(monkeypatch):
     import transformers.integrations.sdpa_attention as sdpa
     from transformers.modeling_utils import ALL_ATTENTION_FUNCTIONS
