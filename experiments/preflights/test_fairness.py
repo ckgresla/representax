@@ -10,7 +10,8 @@ import torch
 from experiments.preflights.fairness import initialize_torch_reward, scalar_head
 
 
-def test_xla_reduction_reassigns_mean_before_clipping(monkeypatch):
+@pytest.mark.parametrize("with_bias", [False, True])
+def test_xla_reduction_reassigns_mean_before_clipping(monkeypatch, with_bias):
     import sys
     from types import ModuleType
     from experiments.preflights import accelerator
@@ -25,15 +26,19 @@ def test_xla_reduction_reassigns_mean_before_clipping(monkeypatch):
     monkeypatch.setattr(accelerator, "torch_world_size", lambda: 2)
     def reduce(kind, values, *, scale, pin_layout):
         assert kind == "sum" and scale == .5 and pin_layout is False
-        torch.testing.assert_close(values, torch.tensor([1., 2.]))
-        return (values + torch.tensor([5., 6.])) * scale
+        return (values + (values + 4)) * scale
     xm.all_reduce = reduce
-    model = torch.nn.Linear(2, 1, bias=False)
+    model = torch.nn.Linear(2, 1, bias=with_bias)
     model.weight.grad = torch.tensor([[1., 2.]])
+    if with_bias:
+        model.bias.grad = torch.tensor([4.])
     synchronized = []
     def synchronize():
         torch.testing.assert_close(model.weight.grad, torch.tensor([[3., 4.]]))
         assert model.weight.grad._base is None
+        if with_bias:
+            torch.testing.assert_close(model.bias.grad, torch.tensor([6.]))
+            assert model.bias.grad._base is None
         synchronized.append(True)
     monkeypatch.setattr(accelerator, "torch_synchronize", synchronize)
     trainer = XlaGradientSynchronization()
@@ -41,8 +46,11 @@ def test_xla_reduction_reassigns_mean_before_clipping(monkeypatch):
     trainer.accelerator = SimpleNamespace(
         gradient_state=SimpleNamespace(is_xla_gradients_synced=False))
     norm = trainer._clip_grad_norm(model)
-    torch.testing.assert_close(norm, torch.tensor(5.))
-    torch.testing.assert_close(model.weight.grad, torch.tensor([[.6, .8]]))
+    expected_norm = torch.tensor(61. if with_bias else 25.).sqrt()
+    torch.testing.assert_close(norm, expected_norm)
+    torch.testing.assert_close(model.weight.grad, torch.tensor([[3., 4.]]) / expected_norm)
+    if with_bias:
+        torch.testing.assert_close(model.bias.grad, torch.tensor([6.]) / expected_norm)
     assert trainer.accelerator.gradient_state.is_xla_gradients_synced
     assert synchronized == [True]
 
