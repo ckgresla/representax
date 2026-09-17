@@ -2263,8 +2263,12 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      framework to 40 updates. Record exact source commits and patches, dependency
      versions and locks, data revisions and hashes, commands, environment,
      topology and device inventory in every result bundle.
-***** TODO Rerun TPU audio with a capacity-checked native execution path
-      Current plan, 2026-09-16: supersedes the local-negative control below.
+***** DONE Rerun TPU audio with a capacity-checked native execution path
+      Completed: all ten matched global-negative direct-MNR runs are collected
+      and promoted, 11.2394 vs 8.4989 examples/s (1.32246x). Reference replicas
+      agree on all sixteen ranks. The readiness history below is superseded
+      by the completed correction recorded in the following audit item.
+      Plan history, 2026-09-16: supersedes the local-negative control below.
       User approved direct MNR with a 48-candidate global pool in both
       frameworks. The isolated =audio_tpu_global.patch= initializes the XLA
       process group used by Sentence Transformers' existing embedding gather;
@@ -2330,7 +2334,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
       under =/raid/representax-paper/10-cross-accelerator-framework-comparison/=;
       confirm zero remaining nodes/queues, then cancel the redundant timer.
 ***** TODO Correct paired-recipe inconsistencies identified in the full audit
-      Live update, 2026-09-17 04:12 UTC: all 50 corrected GPU cells completed
+      Final allocation update, 2026-09-17 05:15 UTC: all 50 corrected GPU cells completed
       and passed the paper import checks. Five-seed median ratios are 3.9776x
       late interaction, 1.4388x outcome reward, 3.2867x process reward, 2.1262x
       audio-text and 3.4395x video-text. Both TPU reward panels are promoted.
@@ -2346,11 +2350,19 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
       loss histories and final replicas. Native late runs are retained unchanged.
       All ten TPU audio runs are collected and promoted: 11.2394 vs 8.4989
       examples/s (1.32246x), direct global-negative MNR, final paired loss gap
-      at most 0.05431, and matching final reference replicas. Only ten video
-      runs remain; first reference is running. Their historical total runtime
-      was 185.59 minutes. Requested an additional 2.5 hours, but no approval
-      received: existing hard cutoff remains active.
-      The 05:29:27 UTC hard cloud deadline is unchanged.
+      at most 0.05431, and matching final reference replicas. Video now has all
+      five native runs and references for seeds 7 and 42 collected. These two
+      pairs give provisional ratios 12.1526x and 11.9539x, with final loss gaps
+      below 0.00381. No five-seed video replacement is promoted yet.
+      All 47 accepted TPU cells and their four worker archives were revalidated.
+      Reference seeds 773, 1234 and 2026 remain unrun: they could not fit before
+      the unchanged 05:29:27 UTC cutoff, and no extension was authorized.
+      Deletion requested at 05:13:31 UTC; both node and queued-resource listings
+      verified empty at 05:14:53 UTC. Redundant cleanup timer canceled. No TPU
+      jobs remain active. See =paper/audit/tpu-shutdown-20260917.json=.
+      Completing the three references needs roughly 75 minutes of execution
+      plus new allocation/setup time, subject to explicit spending approval.
+      The overall correction goal remains incomplete by those three runs.
       Goal completion requirement, reconfirmed by the author at 04:16 UTC:
       immediately delete the TPU allocation and queued resource after the last
       required results are copied locally and their hashes/completeness checked.

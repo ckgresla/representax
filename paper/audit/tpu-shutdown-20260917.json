@@ -1,0 +1,25 @@
+{
+  "project": "project-3fed1b4b-1d3e-4ddf-bf8",
+  "zone": "us-central1-a",
+  "node": "representax-audio-v5e16-20260916",
+  "queued_resource": "representax-audio-v5e16-20260916-spot",
+  "approved_cutoff_utc": "2026-09-17T05:29:27Z",
+  "extension_authorized": false,
+  "deletion_requested_utc": "2026-09-17T05:13:31Z",
+  "deletion_operation": "operation-1789622011244-65ba6d8433172-211da902-754a80de",
+  "deletion_command_exit_code": 0,
+  "absence_verified_utc": "2026-09-17T05:14:53Z",
+  "tpu_vm_list": [],
+  "queued_resource_list": [],
+  "redundant_cleanup_timer_canceled": true,
+  "local_artifact_root": "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916",
+  "accepted_tpu_cells": 47,
+  "all_accepted_cells_revalidated": true,
+  "verified_worker_archives_per_cell": 4,
+  "remaining_cells": [
+    {"recipe": "video-text", "framework": "reference", "seed": 773},
+    {"recipe": "video-text", "framework": "reference", "seed": 1234},
+    {"recipe": "video-text", "framework": "reference", "seed": 2026}
+  ],
+  "partial_video_panel_promoted": false
+}

@@ -13,9 +13,10 @@ The writing audit reads historical artifacts, not today's launcher defaults:
 
 **2026-09-16 full paired audit supersedes the earlier interpretation below.**
 See `fairness-audit.md` for all 13 recipes, 265 runs and 693 verified source
-hashes, diagnostic evidence and the repair/rerun matrix. Matched-training
-ratios are now withheld for late interaction, outcome/process reward and
-audio/video pending corrections. This does not delete historical measurements.
+hashes, diagnostic evidence and the repair/rerun matrix. The original affected
+ratios were withheld; complete corrected GPU panels and four corrected TPU
+panels are now promoted below. Only TPU video still lacks a complete replacement.
+This does not delete historical measurements.
 The process-reward padding correction is still valid; its newly discovered
 head-initialization issue is separate. The complete GPU process-reward replacement
 has now passed and is promoted (55.1760 versus 16.7875 examples/s, 3.2867x).
@@ -33,7 +34,11 @@ promoted: 103.8667 versus 66.2923 examples/s (1.5668x), with final paired
 losses differing by at most 0.00564 and all sixteen reference replicas equal.
 TPU audio is complete and promoted: 11.2394 versus 8.4989 examples/s
 (1.32246x), with direct global-negative MNR and verified final adapter identity.
-TPU video remains in progress.
+TPU video has all five native runs and two references (seeds 7 and 42) verified
+locally. Their provisional ratios are 12.1526x and 11.9539x. Reference seeds
+773, 1234 and 2026 remain unrun, so no five-seed replacement is promoted.
+The TPU allocation and queue were verified absent at 2026-09-17 05:14:53 UTC,
+before the approved cutoff. There are no active TPU training jobs.
 The native learning studies and A100
 strong-scaling measurements are not invalidated by these paired-run findings.
 

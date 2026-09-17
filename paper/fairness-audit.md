@@ -6,7 +6,7 @@ Historical evidence is preserved under correction history when complete,
 validated replacement panels are promoted. Passing an inventory check does
 not establish identical minibatches.
 
-## Live Rerun Readiness (2026-09-17 04:12 UTC)
+## Latest Rerun Status (2026-09-17 05:15 UTC)
 
 All 50 corrected GPU runs have completed and passed artifact/timing validation.
 Five-seed median native/reference ratios are 3.9776x late interaction, 1.4388x
@@ -46,17 +46,41 @@ All ten corrected TPU audio runs are collected and promoted: median rates
 equal across sixteen ranks. Final paired losses differ by at most 0.05431.
 Both arms use direct global-negative MNR (48 candidates), so this is not a
 single-factor GradCache ablation against the historical three-candidate pool.
-Only the ten TPU video jobs remain; the first reference is running.
-Historical video launch-to-completion times total 185.59 minutes (31--39
-minutes per reference), so the approximately 77 minutes before the existing
-05:29:27 UTC cutoff cannot be assumed sufficient. A 2.5-hour extension is
-requested but not authorized; the existing hard cutoff remains active.
+Seven corrected TPU video jobs are collected: all five native seeds and
+reference seeds 7 and 42. The references took 24.53 and 24.61 minutes each,
+including compilation. The remaining reference seeds 773, 1234 and 2026 could
+not fit before the 05:29:27 UTC cutoff. No extension was authorized. The queue
+was held between jobs, and the short native runs completed without starting
+another reference compile that would be interrupted at the spending limit.
+All 47 accepted TPU cells and all four worker-archive hashes per cell were
+revalidated locally. Deletion was requested at 05:13:31 UTC; by 05:14:53 UTC,
+both the TPU node and queued-resource listings were empty. The redundant
+cleanup timer was then canceled. See `audit/tpu-shutdown-20260917.json`.
+No TPU job remains running. The overall rerun goal is incomplete by three
+reference runs, requiring roughly 75 minutes of execution plus provisioning
+and setup on a new allocation; further spending requires approval.
 
 Shutdown is a completion requirement: immediately delete the allocation and
 queued resource once the last required results are copied and verified locally.
 Paper generation, Git work and review must not keep the TPU running. Verify
 deletion before reporting shutdown. The author's 04:16 UTC reconfirmation does
 not extend the existing spending cutoff.
+
+### Partial TPU Video (Not Promoted)
+
+Both arms use global batch 112 and seven local candidates. Native chunk seven
+passed all five seeds without padding or capacity failures. Rates below use
+the same twenty measured optimizer updates, excluding the first two updates.
+
+| Seed | Representax examples/s | Reference examples/s | Ratio | Final native / reference loss |
+|---|---:|---:|---:|---:|
+| 7 | 88.6670 | 7.2961 | 12.1526 | 0.418468 / 0.416779 |
+| 42 | 88.6657 | 7.4173 | 11.9539 | 0.419745 / 0.415939 |
+
+Both references passed final sixteen-rank parameter identity. The five native
+rates have median 88.6636 examples/s, but do not compare that five-seed median
+against two reference seeds as a completed panel. These provisional pairs
+remain outside the paper's replacement aggregates until all references exist.
 
 ### Before and After the Fairness Correction
 
