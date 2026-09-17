@@ -1226,7 +1226,7 @@ def _pylate_worker(
     from experiments.preflights.fairness import XlaMixedPrecisionTrainer
 
     class ReferenceTrainer(XlaMixedPrecisionTrainer, SentenceTransformerTrainer):
-        pass
+        pin_collective_layout = True
 
     losses = importlib.import_module("pylate.losses")
     models = importlib.import_module("pylate.models")

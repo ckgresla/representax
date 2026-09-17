@@ -61,6 +61,8 @@ def prepare_late_checkpoint(source: Path, destination: Path) -> Path:
 class XlaGradientSynchronization:
     """Reduce functional gradient outputs before clipping in PJRT Trainer runs."""
 
+    pin_collective_layout = False
+
     def train(self, *args, **kwargs):
         from experiments.preflights.accelerator import torch_is_tpu
 
@@ -80,7 +82,8 @@ class XlaGradientSynchronization:
         parameters = [p for p in model.parameters() if p.grad is not None]
         for parameter in parameters:
             parameter.grad = xm.all_reduce(
-                "sum", parameter.grad, scale=1.0 / torch_world_size(), pin_layout=False
+                "sum", parameter.grad, scale=1.0 / torch_world_size(),
+                pin_layout=self.pin_collective_layout
             )
         # Materialize reduced gradients before clipping, without a full-model buffer.
         torch_synchronize()

@@ -30,7 +30,7 @@ def worker(_index):
     assert (dist.get_rank(), dist.get_world_size()) == (rank, world)
     assets = Path.home() / "representax-paper-assets"
     seed = int(os.environ.get("AUDIT_SEED", "7"))
-    destination = Path.home() / "representax-fairness-results" / f"late-pinned-gather-{seed}"
+    destination = Path.home() / "representax-fairness-results" / f"late-pinned-reductions-{seed}"
     destination.mkdir(parents=True, exist_ok=True)
     data = assets / "late-fair-20260916/train.jsonl"
     rows = [json.loads(line) for line in data.read_text().splitlines()]
@@ -75,6 +75,8 @@ def worker(_index):
         pass
 
     class EntryTrainer(XlaMixedPrecisionTrainer, SentenceTransformerTrainer):
+        pin_collective_layout = True
+
         def compute_loss(self, model, inputs, **kwargs):
             self.probe_features, _ = self.collect_features(inputs)
             loss = super().compute_loss(model, inputs, **kwargs)
