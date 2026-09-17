@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
 # One invocation per paired cell, sent to all four TPU workers together.
 set -euo pipefail
-readonly repo="$HOME/representax-fairness-cdcb104"
 readonly environments="$HOME/representax-audio-rerun/experiments/tpu"
 readonly output="$HOME/representax-fairness-results"
 readonly deadline=1789622967 # 2026-09-17 05:29:27 UTC
 readonly recipe=${1:?recipe}
 readonly framework=${2:?framework}
+if [[ "$recipe" == outcome-reward && "$framework" == reference ]]; then
+  readonly repo="$HOME/representax-fairness-f576e9a"
+else
+  readonly repo="$HOME/representax-fairness-cdcb104"
+fi
 readonly seed=${3:?seed}
 readonly steps=${4:-22}
 readonly phase=${5:-paired}

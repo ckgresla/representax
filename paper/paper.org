@@ -250,8 +250,9 @@ approximately tied. Historical audio/video rates remain visible, but their
 ratios are withheld pending matched adapter precision and initialization.
 After matching both 256-token padding and scalar-head initialization, GPU
 process reward reaches 55.18 examples/s against TRL's 16.79 (3.287x).
-Both frameworks were rerun for all five seeds; prior measurements remain in
-the evidence archive rather than being overwritten.
+On TPU the corrected rates are 85.26 and 9.94 examples/s (8.578x).
+Both frameworks were rerun for all five seeds on each accelerator; prior
+measurements remain in the evidence archive rather than being overwritten.
 
 Several qualifications limit interpretation. Historical late interaction [L]
 uses duplicated pairs with sequential native batches but shuffled reference
@@ -271,8 +272,9 @@ where native adapters are FP32. Their default A-matrix initialization also
 differs (uniform versus normal), and reference adapters were constructed
 before applying the run seed. These rows require corrected controls.
 Historical process-reward reference heads [I] were also constructed before
-seeding. The replacement GPU panel uses one shared scalar head and explicit
-seeding before construction; the TPU replacement panel is still in progress.
+seeding. Replacement GPU and TPU panels use one shared scalar head and explicit
+seeding before construction. Each TPU reference verifies identical initial and
+final trainable parameters across all sixteen ranks.
 Process reward selects examples fitting within 256 tokens [P], with matched
 padding of 256 on GPU and 2,048 on TPU; it does not measure a representative
 long-reasoning workload. TPU image-text and
@@ -554,9 +556,11 @@ length 256 on GPU and 2,048 on TPU. The original GPU reference incorrectly
 used 2,048 while native execution used 256; the corrected reference rerun
 retains the same data, checkpoint, five seeds, optimizer and batch settings.
 Its actual training tensors are checked as microbatch two by length 256.
-The twenty warm intervals exclude first-use updates 1 and 12, bracketing
-the checkpoint/resume at update 11. Original measurements remain in the
-artifact correction history, not the active throughput table.
+The replacement process-reward panel also shares the initial one-row scalar
+head. GPU timing uses identical update indices in both frameworks, excluding
+1, 2 and the post-checkpoint update 12; TPU timing excludes 1 and 2.
+Original measurements remain in the artifact correction history, not the
+active throughput table.
 GPU native accumulation uses microbatches four and two,
 respectively, to reach the stated global batches. Both use peak learning
 rate \(10^{-5}\). Outcome reward loads a BF16 base in both frameworks, but
@@ -565,10 +569,9 @@ optimizer state. The TRL integration retains BF16 weights and AdamW moments.
 The scalar reward heads are separately initialized; equal seeds do not imply
 identical JAX and PyTorch random weights. A matched numerical control must
 share the starting head and align master/optimizer precision.
-Process-reward reference construction also precedes Trainer seeding and
-selects one score from a newly initialized classification head without an
-explicit one-label configuration. Its padding correction remains valid, but
-a controlled initialization comparison needs an explicit shared scalar head.
+Historical process-reward reference construction preceded Trainer seeding and
+selected one score from a newly initialized classification head without an
+explicit one-label configuration. The replacement controls correct both issues.
 
 *Multimodal tasks.* Image-text uses 3,840 COCO images with four repeated
 presentations of the first caption per image in the historical timing
@@ -638,7 +641,12 @@ distributed processes, each controlling four local TPU devices. This is
 observed multi-host execution, not multi-node GPU scaling. Sentence
 Transformers' cross-device-negative helper was not connected to an initialized
 Torch distributed group in this integration; the paired TPU recipes therefore
-match per-device negatives rather than extending that helper.
+match per-device negatives rather than extending that helper. The corrected
+TPU reference integration explicitly averages functional gradient outputs
+before clipping and updating, checks replica identity, and requests BF16
+autocast without downcasting FP32 master weights or optimizer state. Its
+post-backward execution boundary is included in measured step time. These
+are implementation-level comparisons, not isolated compiler benchmarks.
 
 The native environment records JAX/jaxlib 0.11.1, Equinox 0.13.8,
 Grain 0.2.18, Optax 0.2.8 and Orbax 0.12.4. GPU references record

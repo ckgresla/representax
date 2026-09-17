@@ -42,6 +42,8 @@ def identity(recipe, framework, seed):
         "late-interaction", "audio-text", "video-text"} else framework
     relative = Path(f"seed-{seed}") / recipe / variant
     phase = "paired-sync" if recipe == "process-reward" and framework == "reference" and seed == 7 else "paired"
+    if recipe == "outcome-reward" and framework == "reference" and seed == 7:
+        phase = "paired-micro2"
     return relative, phase
 
 

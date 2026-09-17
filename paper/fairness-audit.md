@@ -6,15 +6,26 @@ Historical evidence is preserved under correction history when complete,
 validated replacement panels are promoted. Passing an inventory check does
 not establish identical minibatches.
 
-## Live Rerun Readiness (2026-09-17 01:04 UTC)
+## Live Rerun Readiness (2026-09-17 01:22 UTC)
 
-All five native TPU process-reward runs and two reference runs are complete
-and hash-verified locally (7/50 TPU cells). GPU process reward has completed
-all ten paired runs and passed evidence-import checks. GPUs 0-3 now execute
+All ten TPU process-reward runs are complete and hash-verified locally
+(10/50 TPU cells), including final replica checks for all five references.
+GPU process reward has also completed all ten paired runs and passed
+evidence-import checks. GPUs 0-3 now execute
 late interaction, outcome reward, video-text and audio-text, respectively.
 Production library code is unchanged. Experiment corrections are
 frozen in commits `23a61b0`, `328aa74`, `026e80f`, `8c9fc7e`, and `cdcb104`;
 every run records its actual clean source revision. Nine focused CPU checks pass.
+
+The first TPU outcome reference exhausted HBM while materializing reduced
+FP32 gradients (2.05 GiB requested, 1.46 GiB available). Its replacement uses
+microbatch two instead of four, retaining global batch 128 and four local
+accumulation rounds. Commits `10981d9` and `f576e9a` also release obsolete
+gradient buffers before the synchronization barrier. This is an experiment-only
+execution correction, not a library or objective change. The focused CPU test
+checks gradient replacement before synchronization and mean reduction before
+clipping; ten applicable tests pass. Full TPU capacity and replica checks still
+gate acceptance. The failed attempt is retained separately.
 
 The first corrected TPU process reference completed 22 updates but failed final
 replica identity. It is excluded, not a usable timing result. Functional
@@ -32,9 +43,12 @@ post-checkpoint interval (update 12), in addition to the two first-use updates:
 19 identical warm intervals remain. Raw metrics and explicit analysis exclusions
 are kept. TRL losses omitted from the outer timing log are read by update index
 from the hash-verified summary's complete loss history, without changing raw logs.
-The first promoted panel is GPU process reward: median 55.1760 versus 16.7875
-examples/s (3.2867x). This is a short-input, matched-padding control, not
-long-context reasoning training.
+Promoted process-reward panels: GPU medians 55.1760 versus 16.7875 examples/s
+(3.2867x), TPU medians 85.2563 versus 9.93935 (8.5777x). These are short-input,
+matched-padding controls, not long-context reasoning training. TPU final losses
+are close in each pair (native/reference for seeds 7, 42, 773, 1234, 2026):
+0.33298/0.33151, 0.30470/0.30461, 0.32421/0.32442, 0.32669/0.32718,
+0.35490/0.34938. This is a short-run numerical observation, not convergence proof.
 
 GPU startup exposed two execution-porting errors: direct audio training was
 incorrectly enabled on GPU, and the historical GPU media chunk size of one had
