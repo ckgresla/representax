@@ -26,6 +26,14 @@ execution correction, not a library or objective change. The focused CPU test
 checks gradient replacement before synchronization and mean reduction before
 clipping; ten applicable tests pass. Full TPU capacity and replica checks still
 gate acceptance. The failed attempt is retained separately.
+Microbatches two and one both subsequently failed in the same optimizer
+materialization graph (4.90 GiB requested, 4.64 GiB available). Thus lowering
+activation memory did not resolve that boundary. Commit `143321e` gives each
+reduced gradient independent tensor ownership before the barrier, rather than
+retaining views into the full flattened buffer; its focused CPU test checks
+the ownership and synchronization order. It restores microbatch two and is
+still a capacity hypothesis until the real TPU run passes. No failed timing
+is accepted as a completed comparison.
 
 The first corrected TPU process reference completed 22 updates but failed final
 replica identity. It is excluded, not a usable timing result. Functional
@@ -70,6 +78,15 @@ identity proof for audio. The corrected runner checks trainable-parameter hashes
 after training, outside measured step timing. Process reward has passed this
 gate; the complete audio run remains queued.
 The standalone global-MNR loss/gradient/update oracle was also rerun and passed.
+
+The corrected GPU late-interaction panel is now complete and promoted. Median
+rates are 219.4986 versus 55.1840 examples/s (3.9776x); final mean NanoMSMARCO
+nDCG@10 is 0.7150934 versus 0.7088870, from 0.7123384 and 0.7088870 initially.
+The five reference loss histories are identical, consistent with a deterministic
+reader and zero-dropout checkpoint. These are repeated timing observations,
+not independent sampled trajectories. Native final loss is 0.020575--0.020662;
+reference final loss is 0.020425. Scoring precision still differs, and 50 queries
+do not establish convergence equivalence.
 
 PyLate's global-loss oracle now passes against a same-backend, full-global-batch
 XLA oracle: loss 45.1423492 on both, maximum gradient error 3.814697e-6, and zero

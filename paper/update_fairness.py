@@ -104,6 +104,11 @@ def collect(platform, recipe, root=ROOT):
                 "median_step_seconds": stats.median(durations),
                 "first_loss": losses[0], "final_loss": losses[-1],
                 "loss_history": losses,
+                "evaluation_metrics": {
+                    phase: summary[phase]["metrics"]
+                    for phase in ("initial_evaluation", "final_evaluation")
+                    if isinstance(summary.get(phase), dict) and "metrics" in summary[phase]
+                },
                 "summary_sha256": run["summary_sha256"], "metrics_sha256": metrics_hash,
                 "metrics_path": str(metrics_path),
                 "source_commit": run["source"]["commit"], "source": run["source"],

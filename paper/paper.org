@@ -258,11 +258,14 @@ Several qualifications limit interpretation. Historical late interaction [L]
 uses duplicated pairs with sequential native batches but shuffled reference
 batches; its cached GPU reference also backpropagates summed rather than mean
 gradients. On TPU, native execution ignores the configured local-negative
-scope and uses 512 candidates, versus 32 for the reference. These rows require
-corrected controls before matched-training speedup claims. The historical
-GPU runs nevertheless have similar observed retrieval quality:
-mean final NanoMSMARCO nDCG@10 is 0.7129 versus PyLate's 0.7078 across five
-seeds, from initial scores 0.7123 and 0.7089. The panel has only 50 queries
+scope and uses 512 candidates, versus 32 for the reference. The replacement
+GPU panel uses shared duplicate-free data, sequential batches, 32/256-token
+limits, and corrected mean-loss cached gradients. It reaches 219.50 versus
+55.18 examples/s (3.978x). Mean final NanoMSMARCO nDCG@10 is 0.7151 versus
+PyLate's 0.7089 across five seeds, from initial scores 0.7123 and 0.7089.
+Reference trajectories are identical across seeds with this deterministic
+schedule; they are timing repetitions, not independent data draws.
+The TPU replacement remains pending. The evaluation panel has only 50 queries
 and scoring precision differs; this is not proof of equivalent convergence.
 Outcome reward [O] uses FP32 native master parameters and optimizer moments,
 but BF16 reference parameters and moments. Its rates also remain historical
