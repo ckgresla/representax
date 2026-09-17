@@ -26,6 +26,27 @@
 No training code or original measured artifacts are changed by this directory. The
 roadmap and remaining submission tasks stay in `../todo.org`.
 
+## Training and Audit Closeout
+
+The agreed training and rerun campaigns are complete as of 2026-09-17. All 100
+corrected runs are included in the 265 active paired-run records. Native
+adaptation, full-corpus initial transfer evaluations and twelve A100 scaling
+runs are also present. No additional training is required for the current
+manuscript scope; an FSDP capacity demonstration remains future work.
+
+The manuscript uses five current figures and thirteen tables: nine generated
+numeric tables plus four methods/capability tables. `report.py` reproduces the
+current assets without changes. The older `cross-accelerator` figure and
+`results.md`, `captions.md`, and `figure-plan.md` are historical working material,
+not current paper results or release inputs. Use `paper.org` and its referenced
+tables/figures for review.
+
+Both TPU allocations and their queues are deleted; the retained asset bucket
+is intentional and has a post-preprint cleanup item in `../todo.org`. Closing
+the training work does not delete checkpoints, logs, manifests or run history.
+Final author review, venue-specific checks, reviewed artifact publication and
+submission remain open.
+
 ## Manuscript Build
 
 Edit `paper.org`, not exported LaTeX or a separate Markdown abstract. The old
@@ -161,7 +182,7 @@ audit; those paths are not emitted in the PDF or LaTeX source archive.
 
 | Claim | Source | Limit |
 |---|---|---|
-| Workload-dependent framework throughput | Exp. 10 per-run metrics and summaries, including the five corrected GPU process-reward references in `evidence.json` | Short windows; local negatives on TPU; cache, historical late interaction, short-input process reward and small-batch GPU V-JEPA qualifications |
+| Workload-dependent framework throughput | Exp. 10 per-run metrics and summaries, including all 100 corrected GPU/TPU runs in `evidence.json` | Short windows; declared local/global negative pools; cache, late-interaction evaluation, short-input process reward and small-batch GPU V-JEPA qualifications |
 | Useful dense learning | Exp. 11 summary, evaluation history and full-corpus initial transfer reports | One shared pretrained baseline; three trained seeds; finite-budget adaptation |
 | Useful image-text learning | Exp. 13 summary | COCO fine-tuning, not CLIP pretraining from scratch |
 | Multimodal adaptation tradeoffs | Exp. 14 summary with per-arm evaluation history | Different mixtures; text-to-any, not any-to-any |

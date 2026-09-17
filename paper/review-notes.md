@@ -7,6 +7,31 @@ and limitations, with detailed recipes and reproduction records in appendices.
 The initial writing pass launched no training. The subsequent padding correction
 reran five GPU TRL references; no core library/training code was changed.
 
+## Closeout Review (2026-09-17)
+
+Training, evaluation and approved fairness reruns are complete for the current
+paper scope. All five current figures were visually reviewed: architecture,
+multimodal adaptation, strong scaling, framework throughput and held-out
+learning. Their axes/captions retain seed variation, timing boundaries and
+negative results. The current nine generated tables, five PDF/PNG figure pairs
+and timing diagnostics regenerate without a diff; 35 paper checks pass on CPU.
+Four additional methods/capability tables bring the manuscript total to thirteen.
+The table/figure pages were also checked in the rendered preprint. Preprint and
+anonymous review PDFs each build to 22 pages without overfull boxes or undefined
+references. The arXiv archive builds in an isolated temporary directory, and its
+PDF text matches the preprint exactly.
+
+The historical `results.md`, `captions.md`, `figure-plan.md` and unused
+cross-accelerator figure are not current release inputs. The canonical review
+surface is `paper.org` and its referenced tables/figures. The chronology below
+preserves superseded findings; it does not reopen completed reruns.
+
+Remaining work is editorial and publication-related: final author approval of
+claims/prose/AI disclosure, venue-specific formatting and anonymity checks,
+reviewed artifact publication, and submission. No FSDP capacity result is claimed
+or required for this scope. Keep local run archives and the cloud asset bucket;
+bucket removal is already scheduled in the roadmap for after the final preprint.
+
 ## Evidence Qualifications
 
 The writing audit reads historical artifacts, not today's launcher defaults:
@@ -105,7 +130,9 @@ strong-scaling measurements are not invalidated by these paired-run findings.
    run configuration hashes were verified before importing both reports.
    Final scores are not overwritten. Flickr30k already has initial and final scores. No convergence-equivalence,
    universal speedup, SOTA, production-readiness or FSDP-capacity claim is made.
-9. **TPU audio execution audit, 2026-09-16:** all five seeds use global batch
+9. **Historical TPU audio execution audit, 2026-09-16:** the following diagnosis
+   predates the completed direct/global-negative replacement summarized above;
+   its canary and rerun requests are closed. All five original seeds use global batch
    48, three examples per chip. Native rematerialized GradCache uses chunk two
    plus full layer checkpointing; the reference uses direct MNR plus XLA
    layer checkpointing. Historical source `5b0d216` pads native encoder inputs

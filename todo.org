@@ -39,6 +39,18 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   a flat shell file beside each numbered experiment's Python launcher.
 
 *** Paper draft
+    Closeout, 2026-09-17: training/evaluation and all approved fairness reruns
+    are complete for this paper's scope. The 265 active paired-run records
+    include all 100 corrected GPU/TPU runs; native learning and twelve A100
+    scaling runs are preserved. =paper/paper.org= is the canonical manuscript,
+    with five current figures and thirteen tables. Current figures/tables and
+    diagnostics reproduce without changes; all 35 paper checks pass on CPU.
+    =paper/review-notes.md= separates completed evidence from the remaining
+    author-review, venue-formatting, artifact-publication and submission work.
+    Both training campaigns can be closed without deleting logs/checkpoints.
+    The cloud asset bucket stays until the existing post-preprint cleanup item.
+    The entries below preserve design and experiment chronology, not reopened
+    tasks; older summaries and the unused scatter are explicitly historical.
     2026-09-15: paper work paused at the author's request while developing the
     Representax visual mark: a point-cloud/latent-manifold interpretation of
     the original three-dimensional JAX geometry. After the figure is finished,
@@ -2118,11 +2130,10 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      pretraining-like systems result, not a claim to reproduce full BERT
      pretraining or downstream quality.
 
-     Separately run one deterministic capacity probe for a model or batch that
-     fails under replication but trains under FSDP or hybrid data/model
-     sharding. Feature this result in the main scaling section as evidence that
-     JAX exposes useful sharding choices; do not count it as another seeded
-     scaling cell.
+     The earlier proposed FSDP/hybrid-sharding capacity probe was not run.
+     It is deferred beyond the current paper scope, not an open training gate
+     for this completed DDP panel. The manuscript explicitly does not claim
+     measured FSDP capacity gains.
 **** DONE Accept canonical LeJEPA bounded lifecycle on ImageNet-1K against stable-pretraining
      Use two global and six local views, the paper's convex loss weighting and
      per-view SIGReg, a distinct projector used only for training, and frozen
@@ -2666,11 +2677,13 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      A100 scaling. No universal-speedup, asymptotic-convergence, novel-compiler,
      any-to-any supervision or demonstrated FSDP-capacity claim.
 **** DONE Assemble the first comparison, learning and scaling figures
-     =paper/build.py render= rebuilds five PDF/PNG figure pairs from the frozen
-     data without checkpoints or access to =/raid=. Use Inter and the author's
-     named palette. Show all five seed ratios, per-arm initial evaluation,
-     sample SD and retained negative results. =paper/results.md= includes
-     measured first-use costs; missing timing fields are not interpreted as zero.
+     Current renderer: =paper/report.py= rebuilds five PDF/PNG figure pairs,
+     nine numeric tables and =paper/analysis.json= from the frozen data without
+     checkpoints or access to =/raid=. Use Inter and the author's named palette.
+     Show all five seed ratios, per-arm initial evaluation, sample SD and retained
+     negative results. Startup tables distinguish native first-use from reference
+     step timings. =paper/results.md= and =paper/build.py render= are historical,
+     not the current manuscript/reproduction path.
 **** DONE Draft the capability and evidence-boundary table
      =paper/capabilities.md= separates implementation from executed combinations
      and records historical reference pins. Final provenance reconciliation is
@@ -2718,6 +2731,13 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      Public package publication is still part
      of release, not claimed complete by this local audit.
 **** TODO Typeset and review the final manuscript for submission
+     Closeout verification, 2026-09-17: all five figure and thirteen table pages
+     reviewed in the rendered preprint; current generated assets reproduce
+     without a diff. All 35 paper checks pass on CPU. Preprint/review PDFs build
+     to 22 pages without overfull boxes or undefined references. The standalone
+     arXiv archive builds outside the repository and matches the preprint text.
+     Typesetting and evidence assembly are complete; final author approval and
+     venue-specific submission checks keep this review item open.
      Org source and local preprint/review PDF + arXiv-source build implemented
      2026-09-15. Approved abstract is checked by a fixed-text regression test.
      Eighteen paper statistics/export/report/API checks pass on CPU.

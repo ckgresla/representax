@@ -1,4 +1,11 @@
-# Figure Revision Plan
+# Historical Figure Revision Plan
+
+Closeout, 2026-09-17: current presentation is the framework-throughput table,
+architecture diagram, multimodal-change plot, strong-scaling plot, and appendix
+throughput/learning plots. Transfer baselines and pairing corrections are
+complete. The unused cross-accelerator scatter is not exported. The proposals
+below preserve earlier editorial discussion, not outstanding training or
+mandatory figure work. `paper.org` owns the current selection and captions.
 
 Freeze the measured data, not the first visual encoding. These revisions need
 no training runs. Do not select axes, rows or ranges to conceal regressions.

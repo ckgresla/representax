@@ -1,4 +1,10 @@
-# Figure Captions
+# Historical Caption Drafts
+
+Superseded editorial working material, retained for history. Current captions
+are in `paper.org` and generated `tables/*.org`; those alone are exported.
+All affected paired panels and transfer baselines are now complete. Descriptions
+below of pending corrections, missing baselines and old plot encodings are not
+the current manuscript state.
 
 ## Framework Throughput Table
 
