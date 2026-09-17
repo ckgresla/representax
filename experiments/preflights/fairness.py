@@ -9,7 +9,39 @@ from pathlib import Path
 import numpy as np
 
 
-class XlaMixedPrecisionTrainer:
+class XlaGradientSynchronization:
+    """Reduce functional gradient outputs before clipping in PJRT Trainer runs."""
+
+    def train(self, *args, **kwargs):
+        from experiments.preflights.accelerator import torch_is_tpu
+
+        if torch_is_tpu():
+            digest = assert_torch_replicas_equal(self.model)
+            print(json.dumps({"initial_parameter_sha256": digest}), flush=True)
+        return super().train(*args, **kwargs)
+
+    def _clip_grad_norm(self, model):
+        import torch
+        from experiments.preflights.accelerator import torch_is_tpu, torch_synchronize, torch_world_size
+
+        if not torch_is_tpu():
+            return super()._clip_grad_norm(model)
+        import torch_xla.core.xla_model as xm
+
+        parameters = [p for p in model.parameters() if p.grad is not None]
+        flattened = torch.cat([p.grad.flatten() for p in parameters])
+        averaged = xm.all_reduce("sum", flattened,
+                                 scale=1.0 / torch_world_size(), pin_layout=False)
+        torch_synchronize()
+        for parameter, gradient in zip(
+            parameters, averaged.split([p.numel() for p in parameters]), strict=True
+        ):
+            parameter.grad = gradient.reshape_as(parameter)
+        self.accelerator.gradient_state.is_xla_gradients_synced = True
+        return torch.nn.utils.clip_grad_norm_(parameters, self.args.max_grad_norm)
+
+
+class XlaMixedPrecisionTrainer(XlaGradientSynchronization):
     """Request BF16 compute explicitly without downcasting FP32 optimizer state."""
 
     def autocast_smart_context_manager(self, cache_enabled=True):

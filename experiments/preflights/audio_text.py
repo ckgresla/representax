@@ -990,7 +990,9 @@ def _sentence_transformers_worker(
         MultipleNegativesRankingLoss,
     )
 
-    class PreflightTrainer(SentenceTransformerTrainer):
+    from experiments.preflights.fairness import XlaGradientSynchronization
+
+    class PreflightTrainer(XlaGradientSynchronization, SentenceTransformerTrainer):
         def add_model_card_callback(self, _default_args_dict: dict[str, Any]) -> None:
             # Model-card widget generation executes an unrelated TPU forward.
             return None
@@ -1001,25 +1003,6 @@ def _sentence_transformers_worker(
                 # Materialize gradients before constructing the optimizer graph.
                 torch_synchronize()
             return loss
-
-        def _clip_grad_norm(self, model: Any) -> Any:
-            if platform != "tpu" or negative_scope != "global":
-                return super()._clip_grad_norm(model)
-            import torch_xla.core.xla_model as xm
-
-            # Reassign the collective output: the in-place list reduction did
-            # not synchronize this global-negative Trainer path in the canary.
-            parameters = [p for p in model.parameters() if p.grad is not None]
-            flattened = torch.cat([p.grad.flatten() for p in parameters])
-            averaged = xm.all_reduce("sum", flattened,
-                                     scale=1.0 / world_size, pin_layout=False)
-            torch_synchronize()
-            for parameter, gradient in zip(
-                parameters, averaged.split([p.numel() for p in parameters]), strict=True
-            ):
-                parameter.grad = gradient.reshape_as(parameter)
-            self.accelerator.gradient_state.is_xla_gradients_synced = True
-            return torch.nn.utils.clip_grad_norm_(parameters, self.args.max_grad_norm)
 
     contract = frozen_contract()
     world_size = torch_world_size()

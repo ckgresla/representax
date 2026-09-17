@@ -10,6 +10,37 @@ import torch
 from experiments.preflights.fairness import initialize_torch_reward, scalar_head
 
 
+def test_xla_reduction_reassigns_mean_before_clipping(monkeypatch):
+    import sys
+    from types import ModuleType
+    from experiments.preflights import accelerator
+    from experiments.preflights.fairness import XlaGradientSynchronization
+
+    xla, core, xm = (ModuleType(name) for name in
+                     ("torch_xla", "torch_xla.core", "torch_xla.core.xla_model"))
+    xla.core, core.xla_model = core, xm
+    for module in (xla, core, xm):
+        monkeypatch.setitem(sys.modules, module.__name__, module)
+    monkeypatch.setattr(accelerator, "torch_is_tpu", lambda: True)
+    monkeypatch.setattr(accelerator, "torch_world_size", lambda: 2)
+    monkeypatch.setattr(accelerator, "torch_synchronize", lambda: None)
+    def reduce(kind, values, *, scale, pin_layout):
+        assert kind == "sum" and scale == .5 and pin_layout is False
+        torch.testing.assert_close(values, torch.tensor([1., 2.]))
+        return (values + torch.tensor([5., 6.])) * scale
+    xm.all_reduce = reduce
+    model = torch.nn.Linear(2, 1, bias=False)
+    model.weight.grad = torch.tensor([[1., 2.]])
+    trainer = XlaGradientSynchronization()
+    trainer.args = SimpleNamespace(max_grad_norm=1.)
+    trainer.accelerator = SimpleNamespace(
+        gradient_state=SimpleNamespace(is_xla_gradients_synced=False))
+    norm = trainer._clip_grad_norm(model)
+    torch.testing.assert_close(norm, torch.tensor(5.))
+    torch.testing.assert_close(model.weight.grad, torch.tensor([[.6, .8]]))
+    assert trainer.accelerator.gradient_state.is_xla_gradients_synced
+
+
 @pytest.mark.parametrize("platform,batch,devices,chunk", [
     ("gpu", 32, 1, 2), ("tpu", 48, 16, None),
 ])

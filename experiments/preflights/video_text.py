@@ -947,7 +947,9 @@ def _sentence_transformers_worker(
         MultipleNegativesRankingLoss,
     )
 
-    class PreflightTrainer(SentenceTransformerTrainer):
+    from experiments.preflights.fairness import XlaGradientSynchronization
+
+    class PreflightTrainer(XlaGradientSynchronization, SentenceTransformerTrainer):
         def add_model_card_callback(self, _default_args_dict: dict[str, Any]) -> None:
             # Its dataset-statistics pass recursively tensorizes every video frame.
             return None
