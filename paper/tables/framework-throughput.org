@@ -2,7 +2,7 @@
 \begin{table}[tbp]
 \centering\small
 \setlength{\tabcolsep}{6pt}
-\caption{Warm training throughput: median examples/s across five seeds. Bold marks the higher of the two reported rates within each workload and hardware panel, not statistical significance. $R$ denotes Representax; ratios divide its median rate by the reference median. GPU references use eager execution; the dense TorchInductor control is in Appendix \ref{sec:compiled-reference}. GPU and TPU allocations/batches differ. Historical cells awaiting replacement retain rates but omit winner styling and ratios; corrected cells use the validated paired protocol. Qualifications [L], [O], [I], [M], [P], [C], [G] are defined in the text; per-seed variation is shown in the appendix.}\label{tab:framework-throughput}
+\caption{Warm training throughput: median examples/s across five seeds. Bold marks the higher of the two reported rates within each workload and hardware panel, not statistical significance. $R$ denotes Representax; ratios divide its median rate by the reference median. GPU references use eager execution; the dense TorchInductor control is in Appendix \ref{sec:compiled-reference}. GPU and TPU allocations/batches differ. Winner styling and ratios are shown only for validated matched protocols; historical discrepancies and replacements are documented in the text. Qualifications [L], [O], [I], [M], [P], [C], [G] are defined in the text; per-seed variation is shown in the appendix.}\label{tab:framework-throughput}
 \begin{tabular}{lrrr}\toprule
 Workload & \shortstack{Representax\\ex/s} & \shortstack{Reference\\ex/s} & $R/\mathrm{Ref.}$ \\ \midrule
 \multicolumn{4}{l}{\textit{Single RTX 4090; reference: PyTorch eager}} \\
@@ -31,7 +31,7 @@ Outcome reward [O] & \textbf{103.87} & 66.29 & 1.567 \\
 Process reward [P,I] & \textbf{85.26} & 9.94 & 8.578 \\
 Image-text [C] & \textbf{2,259.88} & 1,062.06 & 2.128 \\
 Audio-text [M] & \textbf{11.24} & 8.50 & 1.322 \\
-Video-text [M] & 80.70 & 8.46 & --- \\
+Video-text [M] & \textbf{88.66} & 7.38 & 12.015 \\
 V-JEPA 2.1 [C,G] & \textbf{87.59} & 59.63 & 1.469 \\
 \bottomrule\end{tabular}
 \end{table}

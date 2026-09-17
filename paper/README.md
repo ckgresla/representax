@@ -129,9 +129,12 @@ and 16.7875 examples/s (3.2867x). This replacement was promoted using
 `python paper/update_fairness.py --platform gpu --recipe process-reward`.
 The original 9.005x ratio compared different padded shapes and is invalid.
 The intervening padding-only panel and original panel both remain in correction
-history. All five affected GPU panels are now replaced. TPU process reward is
-also replaced, as is TPU outcome reward; other TPU panels remain pending validation/completion. See the
-live status at the top of `fairness-audit.md`.
+history. All five affected panels on both GPU and TPU are now replaced: 100
+corrected runs. The final TPU video panel reaches 88.6636 versus 7.3792
+examples/s (12.0153x). The last three references used a replacement 16-chip v5e
+allocation with unchanged source, data and locked training environments; its
+location is recorded in the collection receipts and manuscript. Both allocations
+have been deleted. See `fairness-audit.md` for validation and shutdown records.
 
 The paired-panel importer requires 22 finite updates and matching data manifests,
 checks stored hashes and clean source provenance, and requires a final replica

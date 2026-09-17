@@ -2,7 +2,7 @@
 \begin{table}[tbp]
 \centering\small
 \setlength{\tabcolsep}{4pt}
-\caption{Absolute warm training rates on the full 16-chip v5e slice. Columns show median per-seed examples/s (ex/s) and optimizer steps/s (st/s); ratio is native/reference examples/s. Batch is global examples per update. Ratios for historical [L], [O], [I] and [M] rows are withheld pending corrections. Qualifications are defined in the text.}\label{tab:tpu-rates}
+\caption{Absolute warm training rates on the full 16-chip v5e slice. Columns show median per-seed examples/s (ex/s) and optimizer steps/s (st/s); ratio is native/reference examples/s. Batch is global examples per update. Ratios are shown only for validated matched protocols; historical discrepancies and replacements are documented in the text. Qualifications are defined in the text.}\label{tab:tpu-rates}
 \begin{tabular}{lrrrrrr}\toprule
 Recipe & Batch & Native ex/s & st/s & Ref. ex/s & st/s & Ratio \\ \midrule
 Dense retrieval & 2048 & 2,510.21 & 1.226 & 2,506.15 & 1.224 & 1.002 \\
@@ -16,7 +16,7 @@ Outcome reward [O] & 128 & 103.87 & 0.811 & 66.29 & 0.518 & 1.567 \\
 Process reward [P,I] & 64 & 85.26 & 1.332 & 9.94 & 0.155 & 8.578 \\
 Image-text [C] & 512 & 2,259.88 & 4.414 & 1,062.06 & 2.074 & 2.128 \\
 Audio-text [M] & 48 & 11.24 & 0.234 & 8.50 & 0.177 & 1.322 \\
-Video-text [M] & 112 & 80.70 & 0.721 & 8.46 & 0.076 & --- \\
+Video-text [M] & 112 & 88.66 & 0.792 & 7.38 & 0.066 & 12.015 \\
 V-JEPA 2.1 [C,G] & 128 & 87.59 & 0.684 & 59.63 & 0.466 & 1.469 \\
 \bottomrule\end{tabular}
 \end{table}

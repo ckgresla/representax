@@ -2333,15 +2333,38 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
       Independently delete immediately after results are copied and verified
       under =/raid/representax-paper/10-cross-accelerator-framework-comparison/=;
       confirm zero remaining nodes/queues, then cancel the redundant timer.
-***** TODO Correct paired-recipe inconsistencies identified in the full audit
+***** DONE Correct paired-recipe inconsistencies identified in the full audit
+      Completed 2026-09-17 16:13 UTC: all 100 corrected GPU/TPU runs validate,
+      including all 200 TPU worker-archive hashes. All five affected panels on
+      both accelerators are promoted in =paper/evidence.json=; =methods.json=
+      retains the 265 active suite runs. Final TPU video medians are 88.6636
+      versus 7.3792 examples/s (12.0153x), with maximum paired final loss gap
+      0.005477. All five references pass sixteen-rank parameter identity.
+      The last three references use the same frozen source, data and locked
+      environment on a replacement 16-chip v5e/4x4 allocation in =us-west1-c=;
+      the manuscript and collection receipts disclose the location difference.
+      Results were copied and checked before requesting deletion. Cloud audit
+      logs confirm deletion at 16:12:59.962 UTC; node and queue listings were
+      empty by 16:13:25 UTC. Cleanup timer canceled after verification.
+      Estimated additional compute $7.57 plus inter-region transfer $1.40,
+      about $8.97 before credits, excluding existing storage/taxes/ancillaries.
+      This is not a settled billing report. No additional training remains
+      in the current paper scope; manuscript review and submission remain.
+      The following notes preserve the allocation and audit chronology.
       Resumed 2026-09-17 14:23 UTC with explicit additional $14 authorization.
       Finish only video reference seeds 773, 1234 and 2026 on one spot
       =v5litepod-16= allocation, =representax-video-v5e16-20260917=.
       Locked source =cdcb104=, unchanged data/model/environment and scientific
       settings. The live spot rate remains $0.342218/chip-hour. Independent
-      =representax-video-tpu-cleanup-20260917.timer= was installed before the
-      request and force-deletes at 16:45 UTC; compute allowance below $13 leaves
-      room within the $14 budget for ancillary charges. Delete earlier once
+      =representax-video-west1-tpu-cleanup-20260917.timer= was installed before
+      the current request and force-deletes at 16:45 UTC. Initial attempts in
+      =us-central1-a= and =us-west4-a= failed for capacity and were deleted before
+      trying =us-west1-c=. The current slice was created at 14:50:14 UTC and
+      observed READY by 14:52:45 UTC. All four workers matched the clean frozen
+      source, 78 reference package versions, and prepared-data hashes. The final
+      three-reference queue started at approximately 14:55 UTC. Compute exposure
+      below $12 plus approximately $1.40 inter-region asset transfer remains
+      within the $14 budget, with a margin for other ancillary charges. Delete earlier once
       all results are copied and verified. No on-demand fallback or extra jobs.
       Record: =paper/audit/tpu-video-completion-20260917.json=.
       Final allocation update, 2026-09-17 05:15 UTC: all 50 corrected GPU cells completed

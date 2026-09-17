@@ -48,6 +48,34 @@
   "seeds": [773, 1234, 2026],
   "steps_per_run": 22,
   "scientific_configuration_changed": false,
+  "preflight": {
+    "workers_passed": 4,
+    "source_clean_at_expected_commit": true,
+    "python": "3.10.12",
+    "reference_package_versions_matched_per_worker": 78,
+    "prepared_manifest_hash_matched": true,
+    "training_and_evaluation_jsonl_hashes_matched": true,
+    "training_and_evaluation_video_tree_hashes_matched": true
+  },
   "local_artifact_root": "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916",
-  "status": "ready_restoring_frozen_environment"
+  "completed_reference_seeds_this_allocation": [773, 1234, 2026],
+  "all_corrected_runs_validated": {"gpu": 50, "tpu": 50},
+  "all_tpu_worker_archives_hash_verified": 200,
+  "validation_completed_before_deletion_request": true,
+  "deletion_requested_by_utc": "2026-09-17T16:11:45Z",
+  "deletion_completed_utc_from_audit_log": "2026-09-17T16:12:59.962270740Z",
+  "node_and_queue_listings_verified_empty_by_utc": "2026-09-17T16:13:25Z",
+  "redundant_cleanup_timer_canceled_after_verification": true,
+  "request_to_deletion_hours": 1.3822146141666667,
+  "compute_estimate_usd": 7.568299533294214,
+  "compute_plus_transfer_estimate_usd": 8.968299533294214,
+  "cost_qualification": "Catalog-rate estimate before credits, not a settled invoice; excludes existing bucket storage, taxes and other ancillary charges",
+  "video_panel": {
+    "seeds_per_framework": 5,
+    "native_median_examples_per_second": 88.66355214587216,
+    "reference_median_examples_per_second": 7.379206042745698,
+    "ratio_of_medians": 12.015324092086432,
+    "maximum_final_paired_loss_gap": 0.005476474761962891
+  },
+  "status": "completed_collected_verified_and_deleted"
 }

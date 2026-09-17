@@ -14,8 +14,8 @@ The writing audit reads historical artifacts, not today's launcher defaults:
 **2026-09-16 full paired audit supersedes the earlier interpretation below.**
 See `fairness-audit.md` for all 13 recipes, 265 runs and 693 verified source
 hashes, diagnostic evidence and the repair/rerun matrix. The original affected
-ratios were withheld; complete corrected GPU panels and four corrected TPU
-panels are now promoted below. Only TPU video still lacks a complete replacement.
+ratios were withheld; all five corrected panels on both GPU and TPU are now
+promoted below, totaling 100 replacement runs. No approved paired reruns remain.
 This does not delete historical measurements.
 The process-reward padding correction is still valid; its newly discovered
 head-initialization issue is separate. The complete GPU process-reward replacement
@@ -34,11 +34,15 @@ promoted: 103.8667 versus 66.2923 examples/s (1.5668x), with final paired
 losses differing by at most 0.00564 and all sixteen reference replicas equal.
 TPU audio is complete and promoted: 11.2394 versus 8.4989 examples/s
 (1.32246x), with direct global-negative MNR and verified final adapter identity.
-TPU video has all five native runs and two references (seeds 7 and 42) verified
-locally. Their provisional ratios are 12.1526x and 11.9539x. Reference seeds
-773, 1234 and 2026 remain unrun, so no five-seed replacement is promoted.
-The TPU allocation and queue were verified absent at 2026-09-17 05:14:53 UTC,
-before the approved cutoff. There are no active TPU training jobs.
+TPU video is complete and promoted: 88.6636 versus 7.3792 examples/s (12.0153x),
+with final paired loss differences at most 0.005477 and final replica identity
+for all five references. The last three references used an identically configured
+16-chip v5e slice in `us-west1-c`, versus `us-central1-a` for the other corrected
+video runs. The manuscript discloses this allocation difference.
+All 100 corrected runs and 200 TPU worker archives were verified locally before
+deletion. The first allocation was verified absent at 05:14:53 UTC; the completion
+allocation and queue were verified absent at 16:13:25 UTC on 2026-09-17. Both met
+their authorized cutoffs. There are no active TPU training jobs from this work.
 The native learning studies and A100
 strong-scaling measurements are not invalidated by these paired-run findings.
 
@@ -128,8 +132,8 @@ strong-scaling measurements are not invalidated by these paired-run findings.
 
 - `evidence.json` preserves both the first five-reference padding correction
   and the subsequent ten-run GPU process-reward replacement under `corrections`.
-  Complete additional panels are promoted individually after validation;
-  pending historical ratios remain withheld. `methods.json` is refreshed from
+  All ten affected GPU/TPU panels are promoted after validation, with their
+  originals retained in correction history. `methods.json` is refreshed from
   the 265 active runs, including each promoted correction. Its commit/manifest
   records are checked against active evidence; historical methods remain in Git.
   Replacement run records carry their own source, configuration/artifact

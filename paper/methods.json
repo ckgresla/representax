@@ -20675,9 +20675,9 @@
       "recipe": "video-text",
       "seed": 7,
       "framework": "reference",
-      "source_commit": "3491fb008f94253f3521e2f4fde29d3957f57727",
+      "source_commit": "cdcb1047a4fb269fc994b110ff532ae1e38b3b72",
       "manifest": "sha256:d7f560b8bd78140e3f583d855fa2d7067371768e6d29e51d2f6ecf531a1860a3",
-      "environment": "sha256:42e328ea55ae2a38d3032c6e8e5d483f771d370d96a95ac8eb15d95651d5117b",
+      "environment": "sha256:c3cdd62873775a720e810a28f69ae42eb201ac3966d6e18b54d2bd142488502e",
       "summary": {
         "device_count": 16,
         "global_batch_size": 112,
@@ -20689,7 +20689,7 @@
       "config": null,
       "contract": null,
       "source": {
-        "commit": "3491fb008f94253f3521e2f4fde29d3957f57727",
+        "commit": "cdcb1047a4fb269fc994b110ff532ae1e38b3b72",
         "working_tree_clean": true,
         "working_tree_patch_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
@@ -20700,9 +20700,9 @@
       "recipe": "video-text",
       "seed": 42,
       "framework": "reference",
-      "source_commit": "3491fb008f94253f3521e2f4fde29d3957f57727",
+      "source_commit": "cdcb1047a4fb269fc994b110ff532ae1e38b3b72",
       "manifest": "sha256:d7f560b8bd78140e3f583d855fa2d7067371768e6d29e51d2f6ecf531a1860a3",
-      "environment": "sha256:42e328ea55ae2a38d3032c6e8e5d483f771d370d96a95ac8eb15d95651d5117b",
+      "environment": "sha256:c3cdd62873775a720e810a28f69ae42eb201ac3966d6e18b54d2bd142488502e",
       "summary": {
         "device_count": 16,
         "global_batch_size": 112,
@@ -20714,7 +20714,7 @@
       "config": null,
       "contract": null,
       "source": {
-        "commit": "3491fb008f94253f3521e2f4fde29d3957f57727",
+        "commit": "cdcb1047a4fb269fc994b110ff532ae1e38b3b72",
         "working_tree_clean": true,
         "working_tree_patch_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
@@ -20725,9 +20725,9 @@
       "recipe": "video-text",
       "seed": 773,
       "framework": "reference",
-      "source_commit": "3491fb008f94253f3521e2f4fde29d3957f57727",
+      "source_commit": "cdcb1047a4fb269fc994b110ff532ae1e38b3b72",
       "manifest": "sha256:d7f560b8bd78140e3f583d855fa2d7067371768e6d29e51d2f6ecf531a1860a3",
-      "environment": "sha256:42e328ea55ae2a38d3032c6e8e5d483f771d370d96a95ac8eb15d95651d5117b",
+      "environment": "sha256:c3cdd62873775a720e810a28f69ae42eb201ac3966d6e18b54d2bd142488502e",
       "summary": {
         "device_count": 16,
         "global_batch_size": 112,
@@ -20739,7 +20739,7 @@
       "config": null,
       "contract": null,
       "source": {
-        "commit": "3491fb008f94253f3521e2f4fde29d3957f57727",
+        "commit": "cdcb1047a4fb269fc994b110ff532ae1e38b3b72",
         "working_tree_clean": true,
         "working_tree_patch_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
@@ -20750,9 +20750,9 @@
       "recipe": "video-text",
       "seed": 1234,
       "framework": "reference",
-      "source_commit": "3491fb008f94253f3521e2f4fde29d3957f57727",
+      "source_commit": "cdcb1047a4fb269fc994b110ff532ae1e38b3b72",
       "manifest": "sha256:d7f560b8bd78140e3f583d855fa2d7067371768e6d29e51d2f6ecf531a1860a3",
-      "environment": "sha256:42e328ea55ae2a38d3032c6e8e5d483f771d370d96a95ac8eb15d95651d5117b",
+      "environment": "sha256:c3cdd62873775a720e810a28f69ae42eb201ac3966d6e18b54d2bd142488502e",
       "summary": {
         "device_count": 16,
         "global_batch_size": 112,
@@ -20764,7 +20764,7 @@
       "config": null,
       "contract": null,
       "source": {
-        "commit": "3491fb008f94253f3521e2f4fde29d3957f57727",
+        "commit": "cdcb1047a4fb269fc994b110ff532ae1e38b3b72",
         "working_tree_clean": true,
         "working_tree_patch_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
@@ -20775,9 +20775,9 @@
       "recipe": "video-text",
       "seed": 2026,
       "framework": "reference",
-      "source_commit": "3491fb008f94253f3521e2f4fde29d3957f57727",
+      "source_commit": "cdcb1047a4fb269fc994b110ff532ae1e38b3b72",
       "manifest": "sha256:d7f560b8bd78140e3f583d855fa2d7067371768e6d29e51d2f6ecf531a1860a3",
-      "environment": "sha256:42e328ea55ae2a38d3032c6e8e5d483f771d370d96a95ac8eb15d95651d5117b",
+      "environment": "sha256:c3cdd62873775a720e810a28f69ae42eb201ac3966d6e18b54d2bd142488502e",
       "summary": {
         "device_count": 16,
         "global_batch_size": 112,
@@ -20789,7 +20789,7 @@
       "config": null,
       "contract": null,
       "source": {
-        "commit": "3491fb008f94253f3521e2f4fde29d3957f57727",
+        "commit": "cdcb1047a4fb269fc994b110ff532ae1e38b3b72",
         "working_tree_clean": true,
         "working_tree_patch_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
@@ -20800,9 +20800,9 @@
       "recipe": "video-text",
       "seed": 7,
       "framework": "representax",
-      "source_commit": "3491fb008f94253f3521e2f4fde29d3957f57727",
+      "source_commit": "cdcb1047a4fb269fc994b110ff532ae1e38b3b72",
       "manifest": "sha256:d7f560b8bd78140e3f583d855fa2d7067371768e6d29e51d2f6ecf531a1860a3",
-      "environment": "sha256:3324e22a03e32c92be6c5720cca84867586da6cdd00a39386eaeed8f3adac997",
+      "environment": "sha256:bc63907efe40ea139b3744e799dc493fc6fd48822ca199e515bf25a673f67f06",
       "summary": {
         "device_count": 16,
         "global_batch_size": 112,
@@ -20917,7 +20917,7 @@
             "document_micro_batch_size": null,
             "implementation": "rematerialized",
             "loss_row_chunk_size": null,
-            "micro_batch_size": 2,
+            "micro_batch_size": 7,
             "query_micro_batch_size": null,
             "score_micro_batch_size": null
           },
@@ -20948,7 +20948,7 @@
       },
       "contract": null,
       "source": {
-        "commit": "3491fb008f94253f3521e2f4fde29d3957f57727",
+        "commit": "cdcb1047a4fb269fc994b110ff532ae1e38b3b72",
         "working_tree_clean": true,
         "working_tree_patch_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
@@ -20961,9 +20961,9 @@
       "recipe": "video-text",
       "seed": 42,
       "framework": "representax",
-      "source_commit": "3491fb008f94253f3521e2f4fde29d3957f57727",
+      "source_commit": "cdcb1047a4fb269fc994b110ff532ae1e38b3b72",
       "manifest": "sha256:d7f560b8bd78140e3f583d855fa2d7067371768e6d29e51d2f6ecf531a1860a3",
-      "environment": "sha256:3324e22a03e32c92be6c5720cca84867586da6cdd00a39386eaeed8f3adac997",
+      "environment": "sha256:bc63907efe40ea139b3744e799dc493fc6fd48822ca199e515bf25a673f67f06",
       "summary": {
         "device_count": 16,
         "global_batch_size": 112,
@@ -21078,7 +21078,7 @@
             "document_micro_batch_size": null,
             "implementation": "rematerialized",
             "loss_row_chunk_size": null,
-            "micro_batch_size": 2,
+            "micro_batch_size": 7,
             "query_micro_batch_size": null,
             "score_micro_batch_size": null
           },
@@ -21109,7 +21109,7 @@
       },
       "contract": null,
       "source": {
-        "commit": "3491fb008f94253f3521e2f4fde29d3957f57727",
+        "commit": "cdcb1047a4fb269fc994b110ff532ae1e38b3b72",
         "working_tree_clean": true,
         "working_tree_patch_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
@@ -21122,9 +21122,9 @@
       "recipe": "video-text",
       "seed": 773,
       "framework": "representax",
-      "source_commit": "3491fb008f94253f3521e2f4fde29d3957f57727",
+      "source_commit": "cdcb1047a4fb269fc994b110ff532ae1e38b3b72",
       "manifest": "sha256:d7f560b8bd78140e3f583d855fa2d7067371768e6d29e51d2f6ecf531a1860a3",
-      "environment": "sha256:3324e22a03e32c92be6c5720cca84867586da6cdd00a39386eaeed8f3adac997",
+      "environment": "sha256:bc63907efe40ea139b3744e799dc493fc6fd48822ca199e515bf25a673f67f06",
       "summary": {
         "device_count": 16,
         "global_batch_size": 112,
@@ -21239,7 +21239,7 @@
             "document_micro_batch_size": null,
             "implementation": "rematerialized",
             "loss_row_chunk_size": null,
-            "micro_batch_size": 2,
+            "micro_batch_size": 7,
             "query_micro_batch_size": null,
             "score_micro_batch_size": null
           },
@@ -21270,7 +21270,7 @@
       },
       "contract": null,
       "source": {
-        "commit": "3491fb008f94253f3521e2f4fde29d3957f57727",
+        "commit": "cdcb1047a4fb269fc994b110ff532ae1e38b3b72",
         "working_tree_clean": true,
         "working_tree_patch_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
@@ -21283,9 +21283,9 @@
       "recipe": "video-text",
       "seed": 1234,
       "framework": "representax",
-      "source_commit": "3491fb008f94253f3521e2f4fde29d3957f57727",
+      "source_commit": "cdcb1047a4fb269fc994b110ff532ae1e38b3b72",
       "manifest": "sha256:d7f560b8bd78140e3f583d855fa2d7067371768e6d29e51d2f6ecf531a1860a3",
-      "environment": "sha256:3324e22a03e32c92be6c5720cca84867586da6cdd00a39386eaeed8f3adac997",
+      "environment": "sha256:bc63907efe40ea139b3744e799dc493fc6fd48822ca199e515bf25a673f67f06",
       "summary": {
         "device_count": 16,
         "global_batch_size": 112,
@@ -21400,7 +21400,7 @@
             "document_micro_batch_size": null,
             "implementation": "rematerialized",
             "loss_row_chunk_size": null,
-            "micro_batch_size": 2,
+            "micro_batch_size": 7,
             "query_micro_batch_size": null,
             "score_micro_batch_size": null
           },
@@ -21431,7 +21431,7 @@
       },
       "contract": null,
       "source": {
-        "commit": "3491fb008f94253f3521e2f4fde29d3957f57727",
+        "commit": "cdcb1047a4fb269fc994b110ff532ae1e38b3b72",
         "working_tree_clean": true,
         "working_tree_patch_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
@@ -21444,9 +21444,9 @@
       "recipe": "video-text",
       "seed": 2026,
       "framework": "representax",
-      "source_commit": "3491fb008f94253f3521e2f4fde29d3957f57727",
+      "source_commit": "cdcb1047a4fb269fc994b110ff532ae1e38b3b72",
       "manifest": "sha256:d7f560b8bd78140e3f583d855fa2d7067371768e6d29e51d2f6ecf531a1860a3",
-      "environment": "sha256:3324e22a03e32c92be6c5720cca84867586da6cdd00a39386eaeed8f3adac997",
+      "environment": "sha256:bc63907efe40ea139b3744e799dc493fc6fd48822ca199e515bf25a673f67f06",
       "summary": {
         "device_count": 16,
         "global_batch_size": 112,
@@ -21561,7 +21561,7 @@
             "document_micro_batch_size": null,
             "implementation": "rematerialized",
             "loss_row_chunk_size": null,
-            "micro_batch_size": 2,
+            "micro_batch_size": 7,
             "query_micro_batch_size": null,
             "score_micro_batch_size": null
           },
@@ -21592,7 +21592,7 @@
       },
       "contract": null,
       "source": {
-        "commit": "3491fb008f94253f3521e2f4fde29d3957f57727",
+        "commit": "cdcb1047a4fb269fc994b110ff532ae1e38b3b72",
         "working_tree_clean": true,
         "working_tree_patch_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
@@ -35239,6 +35239,194 @@
       "accelerator_environment": {
         "JAX_COMPILATION_CACHE_DIR": "/home/ckg/representax-paper-assets/jax-cache-fairness",
         "XLA_PERSISTENT_CACHE_PATH": "/home/ckg/representax-paper-assets/torch-cache-fairness/process-reward",
+        "XLA_PERSISTENT_CACHE_READ_ONLY": "0"
+      },
+      "executable": "/home/ckg/representax-audio-rerun/experiments/tpu/.venv-jax/bin/python",
+      "packages": {
+        "Jinja2": "3.1.6",
+        "MarkupSafe": "3.0.3",
+        "PyYAML": "6.0.3",
+        "Pygments": "2.21.0",
+        "absl-py": "2.5.0",
+        "aiofiles": "25.1.0",
+        "aiohappyeyeballs": "2.7.1",
+        "aiohttp": "3.14.3",
+        "aiosignal": "1.4.0",
+        "annotated-doc": "0.0.5",
+        "annotated-types": "0.8.0",
+        "anyio": "4.15.1",
+        "array_record": "0.8.3",
+        "attrs": "26.1.0",
+        "certifi": "2026.7.22",
+        "charset-normalizer": "3.5.1",
+        "click": "8.5.0",
+        "cloudpickle": "3.1.2",
+        "datasets": "5.0.1",
+        "dill": "0.4.1",
+        "equinox": "0.13.8",
+        "etils": "1.14.0",
+        "filelock": "3.32.5",
+        "frozenlist": "1.8.0",
+        "fsspec": "2026.6.0",
+        "grain": "0.2.18",
+        "h11": "0.16.0",
+        "hf-xet": "1.6.0",
+        "httpcore": "1.0.9",
+        "httpx": "0.28.1",
+        "huggingface_hub": "1.30.0",
+        "humanize": "4.16.0",
+        "idna": "3.19",
+        "jax": "0.11.1",
+        "jaxlib": "0.11.1",
+        "jaxtyping": "0.3.11",
+        "joblib": "1.6.0",
+        "libtpu": "0.0.46.1",
+        "markdown-it-py": "4.2.0",
+        "mdurl": "0.1.2",
+        "ml_dtypes": "0.6.0",
+        "msgpack": "1.2.2",
+        "multidict": "6.7.1",
+        "multiprocess": "0.70.19",
+        "narwhals": "2.25.0",
+        "numpy": "2.5.2",
+        "opt_einsum": "3.4.0",
+        "optax": "0.2.8",
+        "orbax-checkpoint": "0.12.4",
+        "packaging": "26.3",
+        "pandas": "3.0.5",
+        "pillow": "12.3.0",
+        "portpicker": "1.6.0",
+        "prometheus_client": "0.26.0",
+        "propcache": "0.5.2",
+        "protobuf": "7.36.1",
+        "psutil": "7.2.2",
+        "pyarrow": "25.0.1",
+        "pydantic": "2.13.5",
+        "pydantic_core": "2.46.5",
+        "python-dateutil": "2.9.0.post0",
+        "regex": "2026.9.3",
+        "representax": "0.0.1",
+        "requests": "2.34.2",
+        "rich": "15.0.0",
+        "safetensors": "0.8.0",
+        "scikit-learn": "1.9.0",
+        "scipy": "1.18.1",
+        "shellingham": "1.5.4",
+        "simplejson": "4.1.2",
+        "six": "1.17.0",
+        "tensorstore": "0.1.85",
+        "threadpoolctl": "3.6.0",
+        "tokenizers": "0.22.2",
+        "tqdm": "4.70.0",
+        "transformers": "5.6.0",
+        "typer": "0.27.2",
+        "typing-inspection": "0.4.4",
+        "typing_extensions": "4.16.0",
+        "urllib3": "2.7.0",
+        "uvloop": "0.22.1",
+        "wadler_lindig": "0.1.7",
+        "xxhash": "4.0.1",
+        "yarl": "1.24.5",
+        "zipp": "4.1.0"
+      },
+      "platform": "Linux-5.19.0-1030-gcp-x86_64-with-glibc2.35",
+      "python": "3.13.12"
+    },
+    "sha256:c3cdd62873775a720e810a28f69ae42eb201ac3966d6e18b54d2bd142488502e": {
+      "accelerator_environment": {
+        "JAX_COMPILATION_CACHE_DIR": "/home/ckg/representax-paper-assets/jax-cache-fairness",
+        "PJRT_DEVICE": "TPU",
+        "XLA_PERSISTENT_CACHE_PATH": "/home/ckg/representax-paper-assets/torch-cache-fairness/video-text",
+        "XLA_PERSISTENT_CACHE_READ_ONLY": "0"
+      },
+      "executable": "/home/ckg/representax-audio-rerun/experiments/tpu/.venv-torch-xla/bin/python",
+      "packages": {
+        "Jinja2": "3.1.6",
+        "MarkupSafe": "3.0.3",
+        "PyYAML": "6.0.3",
+        "Pygments": "2.21.0",
+        "absl-py": "2.5.0",
+        "accelerate": "1.14.0",
+        "aiohappyeyeballs": "2.7.1",
+        "aiohttp": "3.14.3",
+        "aiosignal": "1.4.0",
+        "annotated-doc": "0.0.5",
+        "anyio": "4.15.1",
+        "async-timeout": "5.0.1",
+        "attrs": "26.1.0",
+        "certifi": "2026.7.22",
+        "charset-normalizer": "3.5.1",
+        "click": "8.5.0",
+        "cloudpickle": "3.1.2",
+        "datasets": "5.0.1",
+        "dill": "0.4.1",
+        "einops": "0.8.2",
+        "exceptiongroup": "1.3.1",
+        "filelock": "3.32.5",
+        "frozenlist": "1.8.0",
+        "fsspec": "2026.6.0",
+        "grpcio": "1.83.1",
+        "h11": "0.16.0",
+        "hf-xet": "1.6.0",
+        "httpcore": "1.0.9",
+        "httpx": "0.28.1",
+        "huggingface_hub": "1.30.0",
+        "idna": "3.19",
+        "immutabledict": "4.3.1",
+        "joblib": "1.6.0",
+        "libtpu": "0.0.21",
+        "markdown-it-py": "4.2.0",
+        "mdurl": "0.1.2",
+        "mpmath": "1.3.0",
+        "multidict": "6.7.1",
+        "multiprocess": "0.70.19",
+        "networkx": "3.4.2",
+        "numpy": "2.2.6",
+        "packaging": "26.3",
+        "pandas": "2.3.3",
+        "peft": "0.19.1",
+        "pillow": "12.3.0",
+        "prometheus_client": "0.26.0",
+        "propcache": "0.5.2",
+        "protobuf": "7.36.1",
+        "psutil": "7.2.2",
+        "pyarrow": "25.0.1",
+        "python-dateutil": "2.9.0.post0",
+        "pytz": "2026.3.post1",
+        "regex": "2026.9.3",
+        "requests": "2.34.2",
+        "rich": "15.0.0",
+        "safetensors": "0.8.0",
+        "scikit-learn": "1.7.2",
+        "scipy": "1.15.3",
+        "sentence-transformers": "5.6.1",
+        "shellingham": "1.5.4",
+        "six": "1.17.0",
+        "sympy": "1.14.0",
+        "threadpoolctl": "3.6.0",
+        "timm": "1.0.29",
+        "tokenizers": "0.23.2",
+        "torch": "2.9.0+cpu",
+        "torch-xla": "2.9.0",
+        "torchvision": "0.24.0+cpu",
+        "tpu-info": "0.14.2",
+        "tqdm": "4.70.0",
+        "transformers": "5.16.1",
+        "trl": "1.10.0",
+        "typer": "0.27.2",
+        "typing_extensions": "4.16.0",
+        "tzdata": "2026.3",
+        "urllib3": "2.7.0",
+        "xxhash": "4.0.1",
+        "yarl": "1.24.5"
+      },
+      "platform": "Linux-5.19.0-1030-gcp-x86_64-with-glibc2.35",
+      "python": "3.10.12"
+    },
+    "sha256:bc63907efe40ea139b3744e799dc493fc6fd48822ca199e515bf25a673f67f06": {
+      "accelerator_environment": {
+        "JAX_COMPILATION_CACHE_DIR": "/home/ckg/representax-paper-assets/jax-cache-fairness",
+        "XLA_PERSISTENT_CACHE_PATH": "/home/ckg/representax-paper-assets/torch-cache-fairness/video-text",
         "XLA_PERSISTENT_CACHE_READ_ONLY": "0"
       },
       "executable": "/home/ckg/representax-audio-rerun/experiments/tpu/.venv-jax/bin/python",
@@ -57712,8 +57900,8 @@
   },
   "sources": {
     "/home/ckg/fun/representax/paper/evidence.json": {
-      "sha256": "sha256:daf75dd728adebcf82a40fbc799b0bf69cc84c8a76872075cece04552efd2582",
-      "bytes": 20960870
+      "sha256": "sha256:9d9148939f5893458b36b2a2a3e30178eb6839a816de8dd87fd6cecff9b457e8",
+      "bytes": 21281753
     },
     "/raid/representax-paper/10-cross-accelerator-framework-comparison/gpu-fairness-20260916/seed-7/audio-text/reference/summary.json": {
       "sha256": "sha256:83a98b5c0231063ae10339deb23c5f5c14ef17855d72affa70f8a0876481f9fd",
@@ -60219,104 +60407,104 @@
       "sha256": "sha256:74f289aa5960730d89632c23bd07f62568cfd1682fd18ffd035cdc762a0ebf29",
       "bytes": 9320
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-7/video-text/reference/summary.json": {
-      "sha256": "sha256:5f26fca3d14891568eca20aeb37f5589803643f1ceddb4297a2009284c107c57",
-      "bytes": 2999
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-7/video-text/reference/summary.json": {
+      "sha256": "sha256:6e323ea2e95f9804581be29fdd0239dd760cb055973cad887c13dd3589bf8f43",
+      "bytes": 3349
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-7/video-text/reference/environment.json": {
-      "sha256": "sha256:42e328ea55ae2a38d3032c6e8e5d483f771d370d96a95ac8eb15d95651d5117b",
-      "bytes": 2365
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-7/video-text/reference/environment.json": {
+      "sha256": "sha256:c3cdd62873775a720e810a28f69ae42eb201ac3966d6e18b54d2bd142488502e",
+      "bytes": 2532
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-42/video-text/reference/summary.json": {
-      "sha256": "sha256:39a3b785c6d53c6e8ad0d64f1882a7d0cb06fea4410312540afe86208428620f",
-      "bytes": 2992
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-42/video-text/reference/summary.json": {
+      "sha256": "sha256:367439f84bcb85ed82f5c9a16bafe4fb543eb36514eb1f34995e8bce5943050c",
+      "bytes": 3355
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-42/video-text/reference/environment.json": {
-      "sha256": "sha256:42e328ea55ae2a38d3032c6e8e5d483f771d370d96a95ac8eb15d95651d5117b",
-      "bytes": 2365
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-42/video-text/reference/environment.json": {
+      "sha256": "sha256:c3cdd62873775a720e810a28f69ae42eb201ac3966d6e18b54d2bd142488502e",
+      "bytes": 2532
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-773/video-text/reference/summary.json": {
-      "sha256": "sha256:32e7a47925a89c6179a087ddfdd329f5e74506e4277f859fed38b2ed62d8e106",
-      "bytes": 2986
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-773/video-text/reference/summary.json": {
+      "sha256": "sha256:7dd2d12f411c10836073618c7621e9118000870c863fe2c49e7989c7043ce953",
+      "bytes": 3348
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-773/video-text/reference/environment.json": {
-      "sha256": "sha256:42e328ea55ae2a38d3032c6e8e5d483f771d370d96a95ac8eb15d95651d5117b",
-      "bytes": 2365
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-773/video-text/reference/environment.json": {
+      "sha256": "sha256:c3cdd62873775a720e810a28f69ae42eb201ac3966d6e18b54d2bd142488502e",
+      "bytes": 2532
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-1234/video-text/reference/summary.json": {
-      "sha256": "sha256:10c027417aa8924f73df6aa602a872062eb78e00a81d7c7d819c9d629980923b",
-      "bytes": 2978
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-1234/video-text/reference/summary.json": {
+      "sha256": "sha256:f0a56f8e82cee01495e0cca919008d21a77a6fedce65c546c78ce116be16ba5d",
+      "bytes": 3349
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-1234/video-text/reference/environment.json": {
-      "sha256": "sha256:42e328ea55ae2a38d3032c6e8e5d483f771d370d96a95ac8eb15d95651d5117b",
-      "bytes": 2365
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-1234/video-text/reference/environment.json": {
+      "sha256": "sha256:c3cdd62873775a720e810a28f69ae42eb201ac3966d6e18b54d2bd142488502e",
+      "bytes": 2532
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-2026/video-text/reference/summary.json": {
-      "sha256": "sha256:7292e02b0d76522669d5d44582bdbe81385bf21cdc15f12c45d24c8f3af6e0d2",
-      "bytes": 2992
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-2026/video-text/reference/summary.json": {
+      "sha256": "sha256:01a54cf5859ec9b16d7019bbe61f9599fc5a852cc095b4d6d9179dd8b97c2a7d",
+      "bytes": 3346
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-2026/video-text/reference/environment.json": {
-      "sha256": "sha256:42e328ea55ae2a38d3032c6e8e5d483f771d370d96a95ac8eb15d95651d5117b",
-      "bytes": 2365
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-2026/video-text/reference/environment.json": {
+      "sha256": "sha256:c3cdd62873775a720e810a28f69ae42eb201ac3966d6e18b54d2bd142488502e",
+      "bytes": 2532
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-7/video-text/representax-local/summary.json": {
-      "sha256": "sha256:7d88a4f5a8820835ad148dd975ec3a91a5ca3fb88c1eab1daad7a5ed6f8ff399",
-      "bytes": 24902
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-7/video-text/representax-local/summary.json": {
+      "sha256": "sha256:4256fab03ca287ebd2a2b86ee33716ce86f8702cd7a90397bd86fbe7d11a51ef",
+      "bytes": 24906
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-7/video-text/representax-local/environment.json": {
-      "sha256": "sha256:3324e22a03e32c92be6c5720cca84867586da6cdd00a39386eaeed8f3adac997",
-      "bytes": 2523
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-7/video-text/representax-local/environment.json": {
+      "sha256": "sha256:bc63907efe40ea139b3744e799dc493fc6fd48822ca199e515bf25a673f67f06",
+      "bytes": 2690
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-7/video-text/representax-local/run/process-0/run.json": {
-      "sha256": "sha256:8e1770a0a022e0a4dc94127192b3431502e9965b8edd2d01bc29a4908f885459",
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-7/video-text/representax-local/run/process-0/run.json": {
+      "sha256": "sha256:79640edfc487729abb393647bf227747f622b68219b3981fba23d19608bdac6d",
       "bytes": 9758
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-42/video-text/representax-local/summary.json": {
-      "sha256": "sha256:00a6625001ca1a68b57d1ccf548f7681aa82be71e13bf059dd669ee4d6ba1532",
-      "bytes": 24916
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-42/video-text/representax-local/summary.json": {
+      "sha256": "sha256:5a5df49f02a0d1c39309e8136259f589a9f14544328902b35d185f210d0ad536",
+      "bytes": 24908
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-42/video-text/representax-local/environment.json": {
-      "sha256": "sha256:3324e22a03e32c92be6c5720cca84867586da6cdd00a39386eaeed8f3adac997",
-      "bytes": 2523
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-42/video-text/representax-local/environment.json": {
+      "sha256": "sha256:bc63907efe40ea139b3744e799dc493fc6fd48822ca199e515bf25a673f67f06",
+      "bytes": 2690
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-42/video-text/representax-local/run/process-0/run.json": {
-      "sha256": "sha256:1dd86223d153bf8cba55d7adacbf799f0356fc4795c59e6a495ad15d2bece6c5",
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-42/video-text/representax-local/run/process-0/run.json": {
+      "sha256": "sha256:107310551df4fa51e0f247de58f8a7336721139c0465a0d83df69232cebab437",
       "bytes": 9760
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-773/video-text/representax-local/summary.json": {
-      "sha256": "sha256:4a6f507b0118f84b6c03d0796e3282a62330f77f3145c6bf12d13ce4edd340a1",
-      "bytes": 24918
-    },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-773/video-text/representax-local/environment.json": {
-      "sha256": "sha256:3324e22a03e32c92be6c5720cca84867586da6cdd00a39386eaeed8f3adac997",
-      "bytes": 2523
-    },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-773/video-text/representax-local/run/process-0/run.json": {
-      "sha256": "sha256:6d91e63e8b8e270a38d9c36eba50f8d8aef63c5b7f25493fde9f949e0e7c0f16",
-      "bytes": 9762
-    },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-1234/video-text/representax-local/summary.json": {
-      "sha256": "sha256:36028758832fbe621ddc7651cba18722d5319c2836aaeb2d50752ea6f00da8a8",
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-773/video-text/representax-local/summary.json": {
+      "sha256": "sha256:f90ed9495cd20b66bdb982ec118c2fcdd6a341220b59cbe6cb49485cdc505f98",
       "bytes": 24916
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-1234/video-text/representax-local/environment.json": {
-      "sha256": "sha256:3324e22a03e32c92be6c5720cca84867586da6cdd00a39386eaeed8f3adac997",
-      "bytes": 2523
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-773/video-text/representax-local/environment.json": {
+      "sha256": "sha256:bc63907efe40ea139b3744e799dc493fc6fd48822ca199e515bf25a673f67f06",
+      "bytes": 2690
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-1234/video-text/representax-local/run/process-0/run.json": {
-      "sha256": "sha256:2a2556bac692f47a076af5d769005769c59365c248affc4e27f49ac087a2b203",
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-773/video-text/representax-local/run/process-0/run.json": {
+      "sha256": "sha256:5054bf73b7a6eba0f375a133bd8c1d9ef05206159f673afbf1cc7832070635f4",
+      "bytes": 9762
+    },
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-1234/video-text/representax-local/summary.json": {
+      "sha256": "sha256:3642e7957aa440dff79d9e9bcbd58760f391b63827b8ef9da038324decd4e685",
+      "bytes": 24942
+    },
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-1234/video-text/representax-local/environment.json": {
+      "sha256": "sha256:bc63907efe40ea139b3744e799dc493fc6fd48822ca199e515bf25a673f67f06",
+      "bytes": 2690
+    },
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-1234/video-text/representax-local/run/process-0/run.json": {
+      "sha256": "sha256:e404f3feb8605e86909387c25081fa3c32c45cc3b2ae863311f8700a91dec927",
       "bytes": 9764
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-2026/video-text/representax-local/summary.json": {
-      "sha256": "sha256:c8746b4d23068a4f3cb17ca7cc9577450272be803e6322125d6e16f0881245c0",
-      "bytes": 24919
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-2026/video-text/representax-local/summary.json": {
+      "sha256": "sha256:d0993d890638275806effe4962326bcc6a3a1356ee9b93a40523f34cf2f3ebd4",
+      "bytes": 24932
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-2026/video-text/representax-local/environment.json": {
-      "sha256": "sha256:3324e22a03e32c92be6c5720cca84867586da6cdd00a39386eaeed8f3adac997",
-      "bytes": 2523
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-2026/video-text/representax-local/environment.json": {
+      "sha256": "sha256:bc63907efe40ea139b3744e799dc493fc6fd48822ca199e515bf25a673f67f06",
+      "bytes": 2690
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-2026/video-text/representax-local/run/process-0/run.json": {
-      "sha256": "sha256:8184540efe08960ce4d6eb4e1a6d39053a43a59b5ee75cf9771f55daac132b33",
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-2026/video-text/representax-local/run/process-0/run.json": {
+      "sha256": "sha256:f56d02a311ce595562265104c82a62e519eff38143415c70fce699fb54891bea",
       "bytes": 9764
     },
     "/raid/representax-paper/10-cross-accelerator-framework-comparison/gpu-rtx4090-torchinductor/seed-7/dense-retrieval/reference/summary.json": {

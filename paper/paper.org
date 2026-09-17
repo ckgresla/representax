@@ -203,7 +203,7 @@ scaling results here evaluate replicated DDP, not every sharding strategy.
 :END:
 ** Protocol
 The suite contains 13 concrete recipes, five seeds per framework, on single
-RTX 4090 GPUs and a 16-chip v5e allocation: 130 runs per accelerator panel.
+RTX 4090 GPUs and 16-chip v5e slices: 130 runs per accelerator panel.
 Five additional dense GPU runs use TorchInductor. This compiled control
 does not represent a compiled baseline for every recipe. The seeds are
 7, 42, 773, 1234 and 2026. They are seeded execution repetitions, not a
@@ -253,7 +253,7 @@ approximately tied. Corrected GPU video-text reaches 3.44 versus 1.00
 examples/s (3.440x), and audio-text reaches 2.66 versus 1.25 (2.126x).
 Corrected TPU audio-text reaches 11.24 versus 8.50 examples/s (1.322x),
 using direct MNR with global pools of 48 in both frameworks.
-The TPU video replacement remains pending.
+Corrected TPU video-text reaches 88.66 versus 7.38 examples/s (12.015x).
 After matching both 256-token padding and scalar-head initialization, GPU
 process reward reaches 55.18 examples/s against TRL's 16.79 (3.287x).
 On TPU the corrected rates are 85.26 and 9.94 examples/s (8.578x).
@@ -288,14 +288,15 @@ all sixteen ranks for each seed.
 Historical audio/video references [M] likewise retain BF16 trainable LoRA
 parameters, where native adapters are FP32. Their default A-matrix initialization also
 differs (uniform versus normal), and reference adapters were constructed
-before applying the run seed. The corrected GPU audio/video panels use FP32 adapters
+before applying the run seed. The corrected audio/video panels use FP32 adapters
 and moments in both frameworks, seeded normal A matrices at the same scale,
 and zero B matrices. Random A draws are independent across frameworks, not
 bitwise shared. Both GPU frameworks use GradCache microbatch one, at global
 batches 32 for audio and two for video. The corrected TPU audio panel retains
 three examples per chip but uses direct global-negative MNR; final paired
-losses differ by at most 0.0544. The TPU video panel still requires its
-corrected control.
+losses differ by at most 0.0544. Corrected TPU video retains 112 examples per
+update and seven device-local candidates, with native chunk seven removing
+encoder padding. Final paired losses differ by at most 0.0055.
 Historical process-reward reference heads [I] were also constructed before
 seeding. Replacement GPU and TPU panels use one shared scalar head and explicit
 seeding before construction. Each TPU reference verifies identical initial and
@@ -609,9 +610,10 @@ presentations of the first caption per image in the historical timing
 recipe. The longer CLIP study instead uses distinct captions. Audio-text
 uses 1,920 AudioCaps clips, repeated four times; video-text uses 3,840
 MSR-VTT videos. Both adapt rank-four, alpha-eight text-tower LoRA in the
-3B LCO model, with the base in BF16. Native audio/video chunks are one on
-GPU and two on TPU. TPU reference execution uses direct MNR at its
-small local batch. These are heavier multimodal workloads than text-only
+3B LCO model, with the base in BF16. Both corrected GPU panels use encoder
+chunks of one. Historical native TPU runs used chunks of two; the corrected
+TPU settings are detailed below. TPU reference execution uses direct MNR.
+These are heavier multimodal workloads than text-only
 encoding, not an equal-compute comparison across modalities.
 Native trainable adapters are FP32, whereas the historical Transformers
 =add_adapter= path leaves them BF16. Native A matrices use a normal
@@ -646,6 +648,17 @@ median rates are 11.24 and 8.50 examples/s. This replacement changes the
 negative pool and execution together; it does not isolate the historical
 padding overhead. All five reference runs pass final sixteen-rank adapter
 identity checks.
+
+The corrected TPU video panel retains global batch 112 and device-local pools
+of seven in both frameworks. Native GradCache uses chunk seven without padding;
+the reference directly encodes seven examples per rank. Both retain layer
+activation checkpointing and use FP32 adapters and optimizer moments. All five
+reference runs pass final sixteen-rank parameter identity. Reference seeds
+773, 1234 and 2026 ran on a replacement allocation in =us-west1-c=; the other
+corrected video cells ran in =us-central1-a=. Both allocations use sixteen v5e
+chips in a 4x4 topology and the same locked training environments. This is a
+same-configuration comparison across documented allocations, not a claim that
+all cells occupied the same physical slice.
 
 *Predictive video.* V-JEPA uses a 12-layer, width-768 ViT-B/16 encoder,
 12-layer width-384 predictor, tubelet size two and supervision at layers
@@ -736,7 +749,7 @@ paired-seed variation. These are descriptive timing repetitions, not
 independent evidence of converged learning quality.
 
 #+NAME: fig:framework-throughput
-#+CAPTION: Per-seed framework throughput ratios, complementing Table \ref{tab:framework-throughput}. Diamonds are ratios of median per-seed rates; dots are paired-seed ratios, not confidence intervals. The red square is the dense GPU reference compiled with TorchInductor. Historical cells awaiting pairing corrections are withheld; validated replacements are shown. Other qualifications are unchanged from the main table; different GPU/TPU allocations and batches preclude an equal-work hardware comparison.
+#+CAPTION: Per-seed framework throughput ratios, complementing Table \ref{tab:framework-throughput}. Diamonds are ratios of median per-seed rates; dots are paired-seed ratios, not confidence intervals. The red square is the dense GPU reference compiled with TorchInductor. Only validated paired protocols are shown. Other qualifications are unchanged from the main table; different GPU/TPU allocations and batches preclude an equal-work hardware comparison.
 #+ATTR_LATEX: :width \linewidth :placement [tbp]
 [[file:figures/framework-throughput.pdf]]
 

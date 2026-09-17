@@ -6,32 +6,32 @@ Historical evidence is preserved under correction history when complete,
 validated replacement panels are promoted. Passing an inventory check does
 not establish identical minibatches.
 
-## Latest Rerun Status (2026-09-17 14:23 UTC)
+## Completed Reruns (2026-09-17 16:13 UTC)
 
-The author authorized an additional $14 to finish the three missing video
-references. A single spot allocation, `representax-video-v5e16-20260917`, is
-requested in the same zone/topology with a hard 16:45 UTC cleanup timer installed
-before provisioning. The live catalog still quotes $0.342218/chip-hour, so the
-request-to-cutoff compute allowance is below $13, reserving the balance for
-ancillary charges. No on-demand fallback or scientific configuration change.
-Reference seeds 773, 1234 and 2026 will use the same frozen `cdcb104` source,
-locked environments and existing data/checkpoint. Completed cells are skipped.
-Delete immediately after copying and validating the final results, before paper
-generation. Authorization and resource details are recorded in
-`audit/tpu-video-completion-20260917.json`.
+All 100 corrected GPU/TPU runs are complete and validated, including all 200
+TPU worker-archive hashes. The final five-seed TPU video panel is promoted:
+88.6636 versus 7.3792 examples/s, or 12.0153x. No paired reruns remain in the
+approved scope. Native adaptation and A100 strong-scaling evidence remain intact.
 
-The initial `us-central1-a` request repeatedly failed with
-`ZONE_RESOURCE_POOL_EXHAUSTED`, without reaching READY. Cancellation was requested,
-but the API rejects deletion during PROVISIONING. It subsequently entered FAILED
-and was deleted; its listing was verified empty before the `us-west4-a` request
-at 14:41:44 UTC. No two live allocation requests overlapped. The hard cleanup remains
-16:45 UTC. `us-west4-a` also failed for capacity and was deleted before the
-14:50:03 UTC request in `us-west1-c`. The live catalog confirms the Americas
-$0.342218/chip-hour SKU covers `us-west1`, but not `us-west4` (which is
-$0.547631/chip-hour); no training or asset transfer occurred in `us-west4`.
-The current request leaves under $12 of compute exposure and approximately
-$1.40 for four copies of the existing assets across regions. Completed cells are
-not rerun; any allocation difference is retained in new collection records.
+The additional $14 authorization funded only the missing video references
+(seeds 773, 1234 and 2026). Capacity requests in `us-central1-a` and `us-west4-a`
+failed and were deleted before the next request; none overlapped. The successful
+spot slice, `representax-video-v5e16-20260917`, used `us-west1-c` with the same
+sixteen v5e chips, 4x4 topology, frozen `cdcb104` source, data/checkpoint and locked
+training environments. All four workers passed clean-source, 78 reference
+package-version, manifest, JSONL and video-tree hash checks. Completed cells were
+not rerun, and no core training code or scientific setting changed.
+
+Final collection and validation preceded the deletion request at 16:11:45 UTC.
+Cloud audit logs confirm deletion at 16:12:59.962 UTC; node and queue listings
+were empty by 16:13:25 UTC, well before the 16:45 UTC guard. The redundant timer
+was canceled only after verification. Paper generation continued locally.
+The successful request-to-deletion interval gives an estimated $7.57 compute at
+$0.342218/chip-hour, plus approximately $1.40 inter-region asset transfer: about
+$8.97 before credits, excluding existing storage, taxes and ancillary charges.
+This is a catalog-rate estimate, not a settled invoice. The Americas SKU covers
+`us-west1`; the separately priced `us-west4` attempt never ran training or copied
+assets. See `audit/tpu-video-completion-20260917.json` for the complete record.
 
 All 50 corrected GPU runs have completed and passed artifact/timing validation.
 Five-seed median native/reference ratios are 3.9776x late interaction, 1.4388x
@@ -71,7 +71,7 @@ All ten corrected TPU audio runs are collected and promoted: median rates
 equal across sixteen ranks. Final paired losses differ by at most 0.05431.
 Both arms use direct global-negative MNR (48 candidates), so this is not a
 single-factor GradCache ablation against the historical three-candidate pool.
-Seven corrected TPU video jobs are collected: all five native seeds and
+The first allocation closed with seven corrected TPU video jobs collected: all five native seeds and
 reference seeds 7 and 42. The references took 24.53 and 24.61 minutes each,
 including compilation. The remaining reference seeds 773, 1234 and 2026 could
 not fit before the 05:29:27 UTC cutoff. No extension was authorized. The queue
@@ -83,7 +83,7 @@ both the TPU node and queued-resource listings were empty. The redundant
 cleanup timer was then canceled. See `audit/tpu-shutdown-20260917.json`.
 That allocation has no remaining running jobs. The overall rerun goal was
 incomplete by three reference runs, requiring roughly 75 minutes of execution
-plus provisioning and setup. The new authorization above resumes this work.
+plus provisioning and setup. The completion allocation above finished those runs.
 
 Shutdown is a completion requirement: immediately delete the allocation and
 queued resource once the last required results are copied and verified locally.
@@ -91,7 +91,7 @@ Paper generation, Git work and review must not keep the TPU running. Verify
 deletion before reporting shutdown. The author's 04:16 UTC reconfirmation does
 not extend the existing spending cutoff.
 
-### Partial TPU Video (Not Promoted)
+### Completed TPU Video
 
 Both arms use global batch 112 and seven local candidates. Native chunk seven
 passed all five seeds without padding or capacity failures. Rates below use
@@ -101,11 +101,16 @@ the same twenty measured optimizer updates, excluding the first two updates.
 |---|---:|---:|---:|---:|
 | 7 | 88.6670 | 7.2961 | 12.1526 | 0.418468 / 0.416779 |
 | 42 | 88.6657 | 7.4173 | 11.9539 | 0.419745 / 0.415939 |
+| 773 | 88.6588 | 7.2998 | 12.1455 | 0.419386 / 0.413910 |
+| 1234 | 88.6636 | 7.4080 | 11.9686 | 0.419666 / 0.415283 |
+| 2026 | 88.6496 | 7.3792 | 12.0134 | 0.418720 / 0.417084 |
 
-Both references passed final sixteen-rank parameter identity. The five native
-rates have median 88.6636 examples/s, but do not compare that five-seed median
-against two reference seeds as a completed panel. These provisional pairs
-remain outside the paper's replacement aggregates until all references exist.
+All five references passed final sixteen-rank parameter identity. The five-seed
+medians are 88.6636 and 7.3792 examples/s (ratio 12.0153x); final paired loss
+differences are at most 0.005477. References 773/1234/2026 used the replacement
+allocation in `us-west1-c`, recorded per cell; the other corrected video runs
+used `us-central1-a`. Both slices share TPU type, count, topology and locked
+training environments. This is short-run evidence, not convergence equivalence.
 
 ### Before and After the Fairness Correction
 
@@ -118,7 +123,7 @@ superseded estimates, not matched controls for attributing individual causes.
 | Outcome reward | 1.2285 -> 1.4388 | 1.7333 -> 1.5668 |
 | Process reward | 3.3181 -> 3.2867 | 3.5070 -> 8.5777 |
 | Audio-text | 1.4422 -> 2.1262 | 0.8361 -> 1.3225 |
-| Video-text | 2.3365 -> 3.4395 | 9.5338 -> pending |
+| Video-text | 2.3365 -> 3.4395 | 9.5338 -> 12.0153 |
 
 The GPU process starting point already includes the earlier padding correction;
 the original 9.005x ratio was invalid. TPU audio also changes the negative pool
@@ -495,8 +500,9 @@ Google TPU uptime is needed for those local jobs.
 
 GPU/TPU batch equality is not required; equality within the framework pair is.
 Encoder chunk size and rematerialization may differ without changing the objective.
-TPU video has the same avoidable partial-chunk overhead found in historical audio,
-but this alone is not evidence that its comparison computes a different loss.
+Historical TPU video had the same avoidable partial-chunk overhead found in
+historical audio; its replacement uses native chunk seven without padding.
+Chunking alone is not evidence that a comparison computes a different loss.
 Data wait includes the visible timed path; pre-materialized reference inputs and
 short timing windows remain limitations. Missing pure cold-compilation measurements
 cannot be recovered by renaming first-step latency, and need not trigger a full

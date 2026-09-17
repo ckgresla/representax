@@ -116,7 +116,7 @@ def table(name, caption, columns, headers, rows, *, tabcolsep=4):
 
 
 def throughput_cells(native, reference, *, matched=True):
-    """Compare measured medians within one workload and hardware allocation."""
+    """Compare measured medians within one workload and hardware configuration."""
     if not matched:
         return [f"{native:,.2f}", f"{reference:,.2f}", "---"]
     rates = (native, reference)
@@ -158,9 +158,9 @@ def framework_overview(e):
         "its median rate by the reference median. GPU references use eager "
         "execution; the dense TorchInductor control is in "
         r"Appendix \ref{sec:compiled-reference}. "
-        "GPU and TPU allocations/batches differ. Historical cells awaiting replacement "
-        "retain rates but omit winner styling and ratios; corrected cells use the "
-        "validated paired protocol. Qualifications [L], [O], [I], [M], [P], [C], [G] are defined in the text; "
+        "GPU and TPU allocations/batches differ. Winner styling and ratios are shown "
+        "only for validated matched protocols; historical discrepancies and replacements "
+        "are documented in the text. Qualifications [L], [O], [I], [M], [P], [C], [G] are defined in the text; "
         "per-seed variation is shown in the appendix.",
         "lrrr",
         ["Workload", r"\shortstack{Representax\\ex/s}",
@@ -245,7 +245,7 @@ def framework_tables(e):
             startup.append(["Dense / Inductor", *startup_cells([], diagnostics)])
             audit["gpu/dense-retrieval-torchinductor"] = {"reference": {"startup_diagnostics": diagnostics}}
         title = "one RTX 4090" if short == "gpu" else "the full 16-chip v5e slice"
-        table(short + "-rates", f"Absolute warm training rates on {title}. Columns show median per-seed examples/s (ex/s) and optimizer steps/s (st/s); ratio is native/reference examples/s. Batch is global examples per update. Ratios for historical [L], [O], [I] and [M] rows are withheld pending corrections. Qualifications are defined in the text.", "lrrrrrr", ["Recipe", "Batch", "Native ex/s", "st/s", "Ref. ex/s", "st/s", "Ratio"], rows)
+        table(short + "-rates", f"Absolute warm training rates on {title}. Columns show median per-seed examples/s (ex/s) and optimizer steps/s (st/s); ratio is native/reference examples/s. Batch is global examples per update. Ratios are shown only for validated matched protocols; historical discrepancies and replacements are documented in the text. Qualifications are defined in the text.", "lrrrrrr", ["Recipe", "Batch", "Native ex/s", "st/s", "Ref. ex/s", "st/s", "Ratio"], rows)
         table(short + "-startup", f"Recorded early-step diagnostics on {title}, median seconds over five seeds. Native first-use is the sum of dispatch-to-completion intervals across the reported number of events, including new shapes and resumed execution. Reference columns are complete first and second optimizer-step intervals, including input wait. They are different timing boundaries, not a compilation-speed comparison; neither isolates pure compilation or full startup. Cache states vary. A dash means unrecorded, not zero, or no separate native Inductor run.", "lrrrr", ["Recipe", "Native first-use (s)", "Events", "Ref. step 1 (s)", "Ref. step 2 (s)"], startup)
     (HERE / "analysis.json").write_text(json.dumps(audit, indent=2) + "\n")
 

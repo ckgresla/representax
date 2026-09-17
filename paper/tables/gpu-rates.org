@@ -2,7 +2,7 @@
 \begin{table}[tbp]
 \centering\small
 \setlength{\tabcolsep}{4pt}
-\caption{Absolute warm training rates on one RTX 4090. Columns show median per-seed examples/s (ex/s) and optimizer steps/s (st/s); ratio is native/reference examples/s. Batch is global examples per update. Ratios for historical [L], [O], [I] and [M] rows are withheld pending corrections. Qualifications are defined in the text.}\label{tab:gpu-rates}
+\caption{Absolute warm training rates on one RTX 4090. Columns show median per-seed examples/s (ex/s) and optimizer steps/s (st/s); ratio is native/reference examples/s. Batch is global examples per update. Ratios are shown only for validated matched protocols; historical discrepancies and replacements are documented in the text. Qualifications are defined in the text.}\label{tab:gpu-rates}
 \begin{tabular}{lrrrrrr}\toprule
 Recipe & Batch & Native ex/s & st/s & Ref. ex/s & st/s & Ratio \\ \midrule
 Dense retrieval & 2048 & 305.35 & 0.149 & 211.22 & 0.103 & 1.446 \\
