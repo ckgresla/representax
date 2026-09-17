@@ -2334,6 +2334,16 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
       under =/raid/representax-paper/10-cross-accelerator-framework-comparison/=;
       confirm zero remaining nodes/queues, then cancel the redundant timer.
 ***** TODO Correct paired-recipe inconsistencies identified in the full audit
+      Resumed 2026-09-17 14:23 UTC with explicit additional $14 authorization.
+      Finish only video reference seeds 773, 1234 and 2026 on one spot
+      =v5litepod-16= allocation, =representax-video-v5e16-20260917=.
+      Locked source =cdcb104=, unchanged data/model/environment and scientific
+      settings. The live spot rate remains $0.342218/chip-hour. Independent
+      =representax-video-tpu-cleanup-20260917.timer= was installed before the
+      request and force-deletes at 16:45 UTC; compute allowance below $13 leaves
+      room within the $14 budget for ancillary charges. Delete earlier once
+      all results are copied and verified. No on-demand fallback or extra jobs.
+      Record: =paper/audit/tpu-video-completion-20260917.json=.
       Final allocation update, 2026-09-17 05:15 UTC: all 50 corrected GPU cells completed
       and passed the paper import checks. Five-seed median ratios are 3.9776x
       late interaction, 1.4388x outcome reward, 3.2867x process reward, 2.1262x

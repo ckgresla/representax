@@ -3,7 +3,7 @@
 set -euo pipefail
 readonly environments="$HOME/representax-audio-rerun/experiments/tpu"
 readonly output="$HOME/representax-fairness-results"
-readonly deadline=1789622967 # 2026-09-17 05:29:27 UTC
+readonly deadline=1789663500 # 2026-09-17 16:45:00 UTC; additional $14 authorization.
 readonly recipe=${1:?recipe}
 readonly framework=${2:?framework}
 if [[ "$recipe" == outcome-reward && "$framework" == reference ]]; then

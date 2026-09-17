@@ -6,7 +6,19 @@ Historical evidence is preserved under correction history when complete,
 validated replacement panels are promoted. Passing an inventory check does
 not establish identical minibatches.
 
-## Latest Rerun Status (2026-09-17 05:15 UTC)
+## Latest Rerun Status (2026-09-17 14:23 UTC)
+
+The author authorized an additional $14 to finish the three missing video
+references. A single spot allocation, `representax-video-v5e16-20260917`, is
+requested in the same zone/topology with a hard 16:45 UTC cleanup timer installed
+before provisioning. The live catalog still quotes $0.342218/chip-hour, so the
+request-to-cutoff compute allowance is below $13, reserving the balance for
+ancillary charges. No on-demand fallback or scientific configuration change.
+Reference seeds 773, 1234 and 2026 will use the same frozen `cdcb104` source,
+locked environments and existing data/checkpoint. Completed cells are skipped.
+Delete immediately after copying and validating the final results, before paper
+generation. Authorization and resource details are recorded in
+`audit/tpu-video-completion-20260917.json`.
 
 All 50 corrected GPU runs have completed and passed artifact/timing validation.
 Five-seed median native/reference ratios are 3.9776x late interaction, 1.4388x
@@ -56,9 +68,9 @@ All 47 accepted TPU cells and all four worker-archive hashes per cell were
 revalidated locally. Deletion was requested at 05:13:31 UTC; by 05:14:53 UTC,
 both the TPU node and queued-resource listings were empty. The redundant
 cleanup timer was then canceled. See `audit/tpu-shutdown-20260917.json`.
-No TPU job remains running. The overall rerun goal is incomplete by three
-reference runs, requiring roughly 75 minutes of execution plus provisioning
-and setup on a new allocation; further spending requires approval.
+That allocation has no remaining running jobs. The overall rerun goal was
+incomplete by three reference runs, requiring roughly 75 minutes of execution
+plus provisioning and setup. The new authorization above resumes this work.
 
 Shutdown is a completion requirement: immediately delete the allocation and
 queued resource once the last required results are copied and verified locally.

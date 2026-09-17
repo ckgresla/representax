@@ -16,8 +16,8 @@ import time
 
 PROJECT = "project-3fed1b4b-1d3e-4ddf-bf8"
 ZONE = "us-central1-a"
-NODE = "representax-audio-v5e16-20260916"
-DEADLINE = 1789622967
+NODE = "representax-video-v5e16-20260917"
+DEADLINE = 1789663500  # 2026-09-17 16:45:00 UTC; additional $14 authorization.
 OUTPUT = Path("/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916")
 RECIPES = ("process-reward", "outcome-reward", "late-interaction", "audio-text", "video-text")
 SEEDS = (7, 42, 773, 1234, 2026)
