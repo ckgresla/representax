@@ -13,10 +13,10 @@ Classification / MPNet & \textbf{552.81} & 361.94 & 1.527 \\
 Classification / BERT & 296.21 & \textbf{382.92} & 0.774 \\
 Cross-encoder & \textbf{670.37} & 441.53 & 1.518 \\
 Late interaction [L] & \textbf{219.50} & 55.18 & 3.978 \\
-Outcome reward [O] & 8.00 & 6.51 & --- \\
+Outcome reward [O] & \textbf{7.81} & 5.43 & 1.439 \\
 Process reward [P,I] & \textbf{55.18} & 16.79 & 3.287 \\
 Image-text [C] & \textbf{321.02} & 106.22 & 3.022 \\
-Audio-text [M] & 2.66 & 1.84 & --- \\
+Audio-text [M] & \textbf{2.66} & 1.25 & 2.126 \\
 Video-text [M] & \textbf{3.44} & 1.00 & 3.440 \\
 V-JEPA 2.1 [C,G] & \textbf{6.57} & 1.30 & 5.040 \\
 \midrule\multicolumn{4}{l}{\textit{16-chip v5e slice; reference: PyTorch/XLA}} \\

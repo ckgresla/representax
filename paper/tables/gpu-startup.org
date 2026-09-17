@@ -12,10 +12,10 @@ Classification / MPNet & 17.6 & 1 & 1.5 & 0.7 \\
 Classification / BERT & 6.0 & 1 & 1.4 & 0.6 \\
 Cross-encoder & 6.3 & 2 & 0.8 & 0.2 \\
 Late interaction [L] & 37.5 & 2 & 10.0 & 9.3 \\
-Outcome reward [O] & 37.4 & 2 & 20.4 & 19.7 \\
+Outcome reward [O] & 37.9 & 2 & 23.9 & 23.5 \\
 Process reward [P,I] & 5.6 & 2 & 4.7 & 4.0 \\
 Image-text [C] & 9.8 & 2 & 15.3 & 4.8 \\
-Audio-text [M] & 16.3 & 1 & 47.7 & 17.4 \\
+Audio-text [M] & 18.8 & 1 & 48.9 & 20.8 \\
 Video-text [M] & 9.1 & 2 & 2.5 & 1.5 \\
 V-JEPA 2.1 [C,G] & 6.2 & 2 & 1.2 & 0.8 \\
 Dense / Inductor & --- & --- & 45.9 & 6.5 \\

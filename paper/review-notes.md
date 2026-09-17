@@ -21,7 +21,11 @@ head-initialization issue is separate. The complete GPU process-reward replaceme
 has now passed and is promoted (55.1760 versus 16.7875 examples/s, 3.2867x).
 The TPU process replacement is also complete (85.2563 versus 9.93935 examples/s,
 8.5777x), with all sixteen reference replicas verified for each seed.
-Other affected panels remain queued/in progress. The native learning studies and A100
+All 50 corrected GPU cells are now complete and promoted: late interaction
+3.9776x, outcome reward 1.4388x, process reward 3.2867x, audio-text 2.1262x,
+and video-text 3.4395x. TPU late interaction has completed ten jobs but is held
+for a real-batch/loss-reporting check; the other TPU panels remain in progress.
+The native learning studies and A100
 strong-scaling measurements are not invalidated by these paired-run findings.
 
 1. **Process reward (2026-09-16 correction):** the shared preparation selected

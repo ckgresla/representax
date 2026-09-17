@@ -6,7 +6,22 @@ Historical evidence is preserved under correction history when complete,
 validated replacement panels are promoted. Passing an inventory check does
 not establish identical minibatches.
 
-## Live Rerun Readiness (2026-09-17 01:22 UTC)
+## Live Rerun Readiness (2026-09-17 02:22 UTC)
+
+All 50 corrected GPU runs have completed and passed artifact/timing validation.
+Five-seed median native/reference ratios are 3.9776x late interaction, 1.4388x
+outcome reward, 3.2867x process reward, 2.1262x audio-text and 3.4395x video-text.
+The TPU process panel is promoted; all five native outcome runs are collected,
+and the per-parameter reduction fix passed all 22 reference updates for seed 7
+with final replica equality. The remaining outcome references are running.
+All ten TPU late-interaction jobs finished, but promotion is held while checking
+unexpected seed-dependent reference loss logs against the deterministic reader.
+A local first-batch diagnostic gives global loss 0.02829 with FP32 scoring and
+0.02798 with BF16 scoring, whereas the TPU logs start at 0.03198--0.07509.
+This local probe alone does not identify the TPU cause. The saved timings are
+not discarded, but completion and replica identity alone do not resolve this gate.
+
+### Earlier Readiness Gates
 
 All ten TPU process-reward runs are complete and hash-verified locally
 (10/50 TPU cells), including final replica checks for all five references.
@@ -101,6 +116,13 @@ GPU replacement jobs run on separate devices, with up to four concurrent
 processes sharing CPU, memory and storage resources. These are not isolated-host
 measurements; no causal explanation of the observed reference variation is
 established here. Native and reference within each seed use the same GPU.
+
+The corrected GPU outcome-reward panel is complete and promoted: median
+7.80953 versus 5.42778 examples/s (1.43881x). Both use FP32 master weights and
+AdamW moments from the same BF16-rounded base and scalar head; microbatch four,
+32 accumulation rounds and global batch 128 are unchanged. Final paired losses
+differ by at most 0.00805. This is short-run numerical agreement, not proof of
+equivalent convergence. The separate TPU reference memory gate remains open.
 
 PyLate's global-loss oracle now passes against a same-backend, full-global-batch
 XLA oracle: loss 45.1423492 on both, maximum gradient error 3.814697e-6, and zero

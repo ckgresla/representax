@@ -215,7 +215,10 @@ examples, objective settings and precision, with framework-native execution.
 Historical late-interaction, reward and audio/video rows have discrepancies
 described below; only complete validated replacement panels are restored as
 matched-training comparisons. Encoder
-chunks may differ. The other historical TPU contrastive comparisons use
+chunks may differ; these are declared recipe settings, not an exhaustive
+search for each framework's maximum throughput. GPU replacement runs use
+one device per job, with up to four concurrent jobs sharing host resources;
+we retain the resulting per-seed timing variation. The other historical TPU contrastive comparisons use
 per-device negatives in both frameworks; a single-GPU negative pool covers
 the full batch. Cross-accelerator settings are not always identical.
 Appendix [[#sec:paired-methods]] records actual models, batches, shapes,
@@ -247,7 +250,8 @@ Transformers' 211.22 (1.446x), but is slightly slower than the compiled
 reference. The two BERT Base sentence-pair controls are
 slower on GPU, despite faster MPNet counterparts. TPU dense retrieval is
 approximately tied. Corrected GPU video-text reaches 3.44 versus 1.00
-examples/s (3.440x); audio and TPU video replacements remain pending.
+examples/s (3.440x), and audio-text reaches 2.66 versus 1.25 (2.126x).
+Their TPU replacements remain pending.
 After matching both 256-token padding and scalar-head initialization, GPU
 process reward reaches 55.18 examples/s against TRL's 16.79 (3.287x).
 On TPU the corrected rates are 85.26 and 9.94 examples/s (8.578x).
@@ -267,17 +271,20 @@ Reference trajectories are identical across seeds with this deterministic
 schedule; they are timing repetitions, not independent data draws.
 The TPU replacement remains pending. The evaluation panel has only 50 queries
 and scoring precision differs; this is not proof of equivalent convergence.
-Outcome reward [O] uses FP32 native master parameters and optimizer moments,
-but BF16 reference parameters and moments. Its rates also remain historical
-execution measurements, not a matched-precision speedup.
+Historical outcome reward [O] used FP32 native master parameters and optimizer
+moments, but BF16 reference parameters and moments. The corrected GPU panel
+shares BF16-rounded starting weights and a scalar head, with FP32 master weights
+and moments in both frameworks. It reaches 7.81 versus 5.43 examples/s (1.439x).
+Final paired losses differ by at most 0.0081 across the five seeds; this is
+short-run agreement, not convergence equivalence. The TPU replacement is pending.
 Historical audio/video references [M] likewise retain BF16 trainable LoRA
 parameters, where native adapters are FP32. Their default A-matrix initialization also
 differs (uniform versus normal), and reference adapters were constructed
-before applying the run seed. The corrected GPU video panel uses FP32 adapters
+before applying the run seed. The corrected GPU audio/video panels use FP32 adapters
 and moments in both frameworks, seeded normal A matrices at the same scale,
 and zero B matrices. Random A draws are independent across frameworks, not
-bitwise shared. Both use GradCache microbatch one at global batch two.
-Other affected media panels still require corrected controls.
+bitwise shared. Both frameworks use GradCache microbatch one, at global batches
+32 for audio and two for video. The TPU panels still require corrected controls.
 Historical process-reward reference heads [I] were also constructed before
 seeding. Replacement GPU and TPU panels use one shared scalar head and explicit
 seeding before construction. Each TPU reference verifies identical initial and
@@ -570,12 +577,13 @@ Original measurements remain in the artifact correction history, not the
 active throughput table.
 GPU native accumulation uses microbatches four and two,
 respectively, to reach the stated global batches. Both use peak learning
-rate \(10^{-5}\). Outcome reward loads a BF16 base in both frameworks, but
-native initialization promotes trainable leaves to FP32 before creating
-optimizer state. The TRL integration retains BF16 weights and AdamW moments.
-The scalar reward heads are separately initialized; equal seeds do not imply
-identical JAX and PyTorch random weights. A matched numerical control must
-share the starting head and align master/optimizer precision.
+rate \(10^{-5}\). Historical outcome reward loaded a BF16 base in both
+frameworks, but only native initialization promoted trainable leaves to FP32
+before creating optimizer state. The replacement GPU control promotes the
+same BF16-rounded base and shared scalar head to FP32 in both frameworks;
+forward computation remains BF16. Each framework uses microbatch four and
+32 accumulation rounds for global batch 128. The independently initialized
+historical heads and BF16 reference optimizer are not the active GPU comparison.
 Historical process-reward reference construction preceded Trainer seeding and
 selected one score from a newly initialized classification head without an
 explicit one-label configuration. The replacement controls correct both issues.

@@ -1431,139 +1431,139 @@
   "gpu/outcome-reward": {
     "representax": {
       "step_time_cv": [
-        0.000886220994011019,
-        0.0008708883123959472,
-        0.0007707510093881508,
-        0.001050062529322147,
-        0.0006230695947811838
+        0.000710264178945313,
+        0.0011567606847110454,
+        0.0012997503659777393,
+        0.0011015724026760237,
+        0.0005553057601381162
       ],
       "first_use_seconds": [
-        37.994382029399276,
-        39.21627866849303,
-        35.610461151227355,
-        37.38870415277779,
-        34.89597262442112
+        41.31589668430388,
+        37.875971868634224,
+        38.586510471999645,
+        36.771349992603064,
+        35.90058963187039
       ],
       "examples_per_second": [
-        8.000957614291737,
-        8.03441566946362,
-        7.91961823592728,
-        8.000031944678131,
-        8.039625061232112
+        7.809323939896118,
+        7.809534700414737,
+        7.805920280049389,
+        7.818592990987656,
+        7.8484760856522735
       ],
       "startup_diagnostics": [
         {
           "seed": 7,
-          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/gpu-rtx4090/seed-7/outcome-reward/representax",
-          "metrics_sha256": "sha256:e4666071706591766d582e0e9bf41d4d387ec1051c72b007344b1e791c113bcd",
-          "initial_setup_seconds": 11.341808076947927,
+          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/gpu-fairness-20260916/seed-7/outcome-reward/representax",
+          "metrics_sha256": "sha256:1ba1fea1d6e1cc9026ffe69fc7a0d600c9546a9c07368f75a72db70e76142e7d",
+          "initial_setup_seconds": 10.468553774058819,
           "setup_intervals_seconds": [
-            11.341808076947927,
-            6.595376120880246
+            10.468553774058819,
+            5.0504588801413774
           ],
           "native_first_use_events": [
             {
               "iteration": 1,
-              "seconds": 19.109316144138575
+              "seconds": 23.356875682249665
             },
             {
               "iteration": 12,
-              "seconds": 18.8850658852607
+              "seconds": 17.959021002054214
             }
           ],
-          "native_first_use_total_seconds": 37.994382029399276,
+          "native_first_use_total_seconds": 41.31589668430388,
           "reference_step_1_seconds": null,
           "reference_step_2_seconds": null
         },
         {
           "seed": 42,
-          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/gpu-rtx4090/seed-42/outcome-reward/representax",
-          "metrics_sha256": "sha256:bdb7db19b9fbea956dc248cba38221c11ef35b48623a826c8a317374a54aa422",
-          "initial_setup_seconds": 11.080004846677184,
+          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/gpu-fairness-20260916/seed-42/outcome-reward/representax",
+          "metrics_sha256": "sha256:01da62b47bf25d7bb333d8ae3b81789a89c8b7d37f5960eff1c18b2c6259aa7e",
+          "initial_setup_seconds": 17.028897451236844,
           "setup_intervals_seconds": [
-            11.080004846677184,
-            6.999063352122903
+            17.028897451236844,
+            4.99135660007596
           ],
           "native_first_use_events": [
             {
               "iteration": 1,
-              "seconds": 19.207961980253458
+              "seconds": 19.98704924620688
             },
             {
               "iteration": 12,
-              "seconds": 20.008316688239574
+              "seconds": 17.888922622427344
             }
           ],
-          "native_first_use_total_seconds": 39.21627866849303,
+          "native_first_use_total_seconds": 37.875971868634224,
           "reference_step_1_seconds": null,
           "reference_step_2_seconds": null
         },
         {
           "seed": 773,
-          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/gpu-rtx4090/seed-773/outcome-reward/representax",
-          "metrics_sha256": "sha256:0652677efb3c5b7be619bef782cf985a48f68f59441a2d845b43102104246878",
-          "initial_setup_seconds": 10.249642841517925,
+          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/gpu-fairness-20260916/seed-773/outcome-reward/representax",
+          "metrics_sha256": "sha256:0530d8fd489e5125e6a6f2ee2aa9396c1fa6bc1bba2d8cdf0af43a77cc2552c8",
+          "initial_setup_seconds": 10.855974173173308,
           "setup_intervals_seconds": [
-            10.249642841517925,
-            4.890623711049557
+            10.855974173173308,
+            7.500431224703789
           ],
           "native_first_use_events": [
             {
               "iteration": 1,
-              "seconds": 17.867457861080766
+              "seconds": 18.076556203886867
             },
             {
               "iteration": 12,
-              "seconds": 17.74300329014659
+              "seconds": 20.50995426811278
             }
           ],
-          "native_first_use_total_seconds": 35.610461151227355,
+          "native_first_use_total_seconds": 38.586510471999645,
           "reference_step_1_seconds": null,
           "reference_step_2_seconds": null
         },
         {
           "seed": 1234,
-          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/gpu-rtx4090/seed-1234/outcome-reward/representax",
-          "metrics_sha256": "sha256:a1d5ffa0e0bca4967e7398c3ba2bf9a1ef148c669d237fbe5d2346d1d962f126",
-          "initial_setup_seconds": 15.70512717217207,
+          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/gpu-fairness-20260916/seed-1234/outcome-reward/representax",
+          "metrics_sha256": "sha256:ef25c75b876e7f1d5c06df17d049dfdef3be4018f4c6a0944e978ac31ec37c1b",
+          "initial_setup_seconds": 10.403947656974196,
           "setup_intervals_seconds": [
-            15.70512717217207,
-            4.848362218588591
+            10.403947656974196,
+            5.064371051266789
           ],
           "native_first_use_events": [
             {
               "iteration": 1,
-              "seconds": 19.3265594933182
+              "seconds": 17.86174245364964
             },
             {
               "iteration": 12,
-              "seconds": 18.06214465945959
+              "seconds": 18.909607538953424
             }
           ],
-          "native_first_use_total_seconds": 37.38870415277779,
+          "native_first_use_total_seconds": 36.771349992603064,
           "reference_step_1_seconds": null,
           "reference_step_2_seconds": null
         },
         {
           "seed": 2026,
-          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/gpu-rtx4090/seed-2026/outcome-reward/representax",
-          "metrics_sha256": "sha256:2f114a1955790a13a15356d7d2fe2eee82023f43f8d9f99fd224adcc419651eb",
-          "initial_setup_seconds": 10.08713335543871,
+          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/gpu-fairness-20260916/seed-2026/outcome-reward/representax",
+          "metrics_sha256": "sha256:01428095e28322e384717e677c31a57d65603a0793006ce3d893b071dc1685f5",
+          "initial_setup_seconds": 11.670834511518478,
           "setup_intervals_seconds": [
-            10.08713335543871,
-            5.071523379534483
+            11.670834511518478,
+            5.079271771013737
           ],
           "native_first_use_events": [
             {
               "iteration": 1,
-              "seconds": 17.346070662140846
+              "seconds": 17.84713615849614
             },
             {
               "iteration": 12,
-              "seconds": 17.549901962280273
+              "seconds": 18.053453473374248
             }
           ],
-          "native_first_use_total_seconds": 34.89597262442112,
+          "native_first_use_total_seconds": 35.90058963187039,
           "reference_step_1_seconds": null,
           "reference_step_2_seconds": null
         }
@@ -1571,11 +1571,11 @@
     },
     "reference": {
       "step_time_cv": [
-        0.017437297806991985,
-        0.023361716201999335,
-        0.006150229137319706,
-        0.018181510223113848,
-        0.00500149033126622
+        0.011458352102052335,
+        0.004513901058390445,
+        0.015018231599463309,
+        0.003955232908822563,
+        0.004408627467231112
       ],
       "first_use_seconds": [
         null,
@@ -1585,67 +1585,67 @@
         null
       ],
       "examples_per_second": [
-        6.478104042012487,
-        6.512591101475897,
-        6.742030045684699,
-        6.4814073718344565,
-        6.646824886071458
+        5.393116357672615,
+        5.438510561589959,
+        5.383141978763705,
+        5.442664034537315,
+        5.427777972424799
       ],
       "startup_diagnostics": [
         {
           "seed": 7,
-          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/gpu-rtx4090/seed-7/outcome-reward/reference",
-          "metrics_sha256": "sha256:574736e1c4237407fecf0ccae5b209926441352c40bd7b3dfda88e7321dcd4d9",
+          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/gpu-fairness-20260916/seed-7/outcome-reward/reference",
+          "metrics_sha256": "sha256:e2a47d6a30dec9da8772b028cf9c412faba9545a6a2505b966c317659d5a22e8",
           "initial_setup_seconds": null,
           "setup_intervals_seconds": [],
           "native_first_use_events": [],
           "native_first_use_total_seconds": null,
-          "reference_step_1_seconds": 20.362605480477214,
-          "reference_step_2_seconds": 19.74054335989058
+          "reference_step_1_seconds": 23.785896968096495,
+          "reference_step_2_seconds": 23.48906470835209
         },
         {
           "seed": 42,
-          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/gpu-rtx4090/seed-42/outcome-reward/reference",
-          "metrics_sha256": "sha256:34c1cb25b154c735f535df9102196b8998429a058cb30b8cfa4d3d047b288049",
+          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/gpu-fairness-20260916/seed-42/outcome-reward/reference",
+          "metrics_sha256": "sha256:16b2188c86ee1508cced283f63ff998741ce1bb303f67f4a32fe23b4af898271",
           "initial_setup_seconds": null,
           "setup_intervals_seconds": [],
           "native_first_use_events": [],
           "native_first_use_total_seconds": null,
-          "reference_step_1_seconds": 20.758495423942804,
-          "reference_step_2_seconds": 20.397697331383824
+          "reference_step_1_seconds": 24.68508571945131,
+          "reference_step_2_seconds": 23.84655624255538
         },
         {
           "seed": 773,
-          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/gpu-rtx4090/seed-773/outcome-reward/reference",
-          "metrics_sha256": "sha256:3f578010db703ea32bc693a64f7c6e86a2434d43d7f5f00daa37ea46c19a6f7c",
+          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/gpu-fairness-20260916/seed-773/outcome-reward/reference",
+          "metrics_sha256": "sha256:378af3cbeb2e541089924ad5a5ba8cc6cdf267132015692cc73dff75fce0d3f8",
           "initial_setup_seconds": null,
           "setup_intervals_seconds": [],
           "native_first_use_events": [],
           "native_first_use_total_seconds": null,
-          "reference_step_1_seconds": 19.392996883019805,
-          "reference_step_2_seconds": 18.89864413626492
+          "reference_step_1_seconds": 23.941787976771593,
+          "reference_step_2_seconds": 23.472788736224174
         },
         {
           "seed": 1234,
-          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/gpu-rtx4090/seed-1234/outcome-reward/reference",
-          "metrics_sha256": "sha256:d072c17732f3e7bf60dd3fc172cef101e9c4b072be305e475e7d72b259c1c71f",
+          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/gpu-fairness-20260916/seed-1234/outcome-reward/reference",
+          "metrics_sha256": "sha256:b3da3d2deb031309875e31064681cfded6ddfdab79bed40afeb5782ec1f8f86a",
           "initial_setup_seconds": null,
           "setup_intervals_seconds": [],
           "native_first_use_events": [],
           "native_first_use_total_seconds": null,
-          "reference_step_1_seconds": 20.856636511161923,
-          "reference_step_2_seconds": 20.07718192972243
+          "reference_step_1_seconds": 23.932744147256017,
+          "reference_step_2_seconds": 23.421056851744652
         },
         {
           "seed": 2026,
-          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/gpu-rtx4090/seed-2026/outcome-reward/reference",
-          "metrics_sha256": "sha256:b1b737c872ed471cb327bc1f8ff5eea29d85ef5646c87aea720a02b3e9f7c47d",
+          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/gpu-fairness-20260916/seed-2026/outcome-reward/reference",
+          "metrics_sha256": "sha256:7058758a2ef43709d9db2b8dc2fca28798c31b3bdcab6c6891760fc0912523cb",
           "initial_setup_seconds": null,
           "setup_intervals_seconds": [],
           "native_first_use_events": [],
           "native_first_use_total_seconds": null,
-          "reference_step_1_seconds": 19.48604098521173,
-          "reference_step_2_seconds": 19.202553812414408
+          "reference_step_1_seconds": 24.080615347251296,
+          "reference_step_2_seconds": 23.518836503848433
         }
       ]
     }
@@ -2097,114 +2097,114 @@
   "gpu/audio-text": {
     "representax": {
       "step_time_cv": [
-        0.0014245597283828915,
-        0.001152160390097301,
-        0.0014891911501673611,
-        0.0016359134773701741,
-        0.0011244505245307577
+        0.0030215345975950305,
+        0.002968094635995133,
+        0.00110022407686312,
+        0.0007437903186416037,
+        0.0028648295189793354
       ],
       "first_use_seconds": [
-        16.292986238375306,
-        17.630098776891828,
-        15.95852572657168,
-        16.159697722643614,
-        18.067332845181227
+        23.49573133699596,
+        18.83259960822761,
+        16.643711492419243,
+        17.108715375885367,
+        20.42433736473322
       ],
       "examples_per_second": [
-        2.657411666552879,
-        2.6552557548199482,
-        2.6604690275143774,
-        2.661537094406297,
-        2.661747711363829
+        2.6511672646204625,
+        2.659441289298012,
+        2.663627877900666,
+        2.662488689532621,
+        2.6870876084078357
       ],
       "startup_diagnostics": [
         {
           "seed": 7,
-          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/gpu-rtx4090/seed-7/audio-text/representax-local",
-          "metrics_sha256": "sha256:b132c6f94e3e1ecaa38970d06f015e32cc449ce431d12d1770bd68ba689c3e06",
-          "initial_setup_seconds": 26.321637762710452,
+          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/gpu-fairness-20260916/seed-7/audio-text/representax-global",
+          "metrics_sha256": "sha256:f25cc6ce3bccdd75c9828b005597ded2cbe2e0bf150a8ccd43b05d423a39c6c7",
+          "initial_setup_seconds": 25.6879393029958,
           "setup_intervals_seconds": [
-            26.321637762710452
+            25.6879393029958
           ],
           "native_first_use_events": [
             {
               "iteration": 1,
-              "seconds": 16.292986238375306
+              "seconds": 23.49573133699596
             }
           ],
-          "native_first_use_total_seconds": 16.292986238375306,
+          "native_first_use_total_seconds": 23.49573133699596,
           "reference_step_1_seconds": null,
           "reference_step_2_seconds": null
         },
         {
           "seed": 42,
-          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/gpu-rtx4090/seed-42/audio-text/representax-local",
-          "metrics_sha256": "sha256:ccea6e1bb6fb086329b8ad2812722dc2e294bf9485834b5f0b13ec38608ac882",
-          "initial_setup_seconds": 26.338489055633545,
+          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/gpu-fairness-20260916/seed-42/audio-text/representax-global",
+          "metrics_sha256": "sha256:75c392214de0975a5324ee2db49ea2d70ebe045e4ba2127e6b889195f493fad9",
+          "initial_setup_seconds": 25.893222952261567,
           "setup_intervals_seconds": [
-            26.338489055633545
+            25.893222952261567
           ],
           "native_first_use_events": [
             {
               "iteration": 1,
-              "seconds": 17.630098776891828
+              "seconds": 18.83259960822761
             }
           ],
-          "native_first_use_total_seconds": 17.630098776891828,
+          "native_first_use_total_seconds": 18.83259960822761,
           "reference_step_1_seconds": null,
           "reference_step_2_seconds": null
         },
         {
           "seed": 773,
-          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/gpu-rtx4090/seed-773/audio-text/representax-local",
-          "metrics_sha256": "sha256:06fbfe2817b68eb92d321c05b656ee899dd26e1ed477555f58ec18b50d7b85f8",
-          "initial_setup_seconds": 26.282299883663654,
+          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/gpu-fairness-20260916/seed-773/audio-text/representax-global",
+          "metrics_sha256": "sha256:571e147bb1d996d6ad9e8701f8253437739571d07fa49134db934b1bad1107e6",
+          "initial_setup_seconds": 26.771140603348613,
           "setup_intervals_seconds": [
-            26.282299883663654
+            26.771140603348613
           ],
           "native_first_use_events": [
             {
               "iteration": 1,
-              "seconds": 15.95852572657168
+              "seconds": 16.643711492419243
             }
           ],
-          "native_first_use_total_seconds": 15.95852572657168,
+          "native_first_use_total_seconds": 16.643711492419243,
           "reference_step_1_seconds": null,
           "reference_step_2_seconds": null
         },
         {
           "seed": 1234,
-          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/gpu-rtx4090/seed-1234/audio-text/representax-local",
-          "metrics_sha256": "sha256:174b61079e73bf08608b4a932708d45167f4a483e63c40612285ab16ca3faaf3",
-          "initial_setup_seconds": 26.080233255401254,
+          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/gpu-fairness-20260916/seed-1234/audio-text/representax-global",
+          "metrics_sha256": "sha256:10838fd1dad7269c4fa583bcc01c6a61ea4bdca362fee5c781e60e392e980f80",
+          "initial_setup_seconds": 26.654413295909762,
           "setup_intervals_seconds": [
-            26.080233255401254
+            26.654413295909762
           ],
           "native_first_use_events": [
             {
               "iteration": 1,
-              "seconds": 16.159697722643614
+              "seconds": 17.108715375885367
             }
           ],
-          "native_first_use_total_seconds": 16.159697722643614,
+          "native_first_use_total_seconds": 17.108715375885367,
           "reference_step_1_seconds": null,
           "reference_step_2_seconds": null
         },
         {
           "seed": 2026,
-          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/gpu-rtx4090/seed-2026/audio-text/representax-local",
-          "metrics_sha256": "sha256:64dcb4518148b05052efe0f63d0e70ef2455127d8ea918ba0773e49acee55ac1",
-          "initial_setup_seconds": 26.308581802994013,
+          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/gpu-fairness-20260916/seed-2026/audio-text/representax-global",
+          "metrics_sha256": "sha256:d4a632f3ee3af60be08a89118a7e9b79d06bbe2725b273850a223791678284ec",
+          "initial_setup_seconds": 26.530293971300125,
           "setup_intervals_seconds": [
-            26.308581802994013
+            26.530293971300125
           ],
           "native_first_use_events": [
             {
               "iteration": 1,
-              "seconds": 18.067332845181227
+              "seconds": 20.42433736473322
             }
           ],
-          "native_first_use_total_seconds": 18.067332845181227,
+          "native_first_use_total_seconds": 20.42433736473322,
           "reference_step_1_seconds": null,
           "reference_step_2_seconds": null
         }
@@ -2212,11 +2212,11 @@
     },
     "reference": {
       "step_time_cv": [
-        0.009611586452837108,
-        0.00977140305990778,
-        0.01129135125558417,
-        0.009965226986034019,
-        0.009268267226056712
+        0.21396531917534997,
+        0.40368609534105315,
+        0.6532086350982661,
+        0.012446531509785703,
+        0.6402979211840268
       ],
       "first_use_seconds": [
         null,
@@ -2226,67 +2226,67 @@
         null
       ],
       "examples_per_second": [
-        1.837471065517539,
-        1.8447459828507031,
-        1.8411109368238725,
-        1.850235710877502,
-        1.8544068789515027
+        1.3935134908475795,
+        1.1441293046010115,
+        1.2152264137209225,
+        1.5554668155716187,
+        1.2522006000852426
       ],
       "startup_diagnostics": [
         {
           "seed": 7,
-          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/gpu-rtx4090/seed-7/audio-text/reference",
-          "metrics_sha256": "sha256:9a6ada415e0c0adafa443085819cd7fe9d6091cd02c66aeb4d1e5a0769de5cc5",
+          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/gpu-fairness-20260916/seed-7/audio-text/reference",
+          "metrics_sha256": "sha256:88f1c07fcfe5338ccae8d3f196782eaa5eccc7c754ee851154742d4222b3b9a7",
           "initial_setup_seconds": null,
           "setup_intervals_seconds": [],
           "native_first_use_events": [],
           "native_first_use_total_seconds": null,
-          "reference_step_1_seconds": 48.340097492560744,
-          "reference_step_2_seconds": 17.376947939395905
+          "reference_step_1_seconds": 79.05349967628717,
+          "reference_step_2_seconds": 33.55984544940293
         },
         {
           "seed": 42,
-          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/gpu-rtx4090/seed-42/audio-text/reference",
-          "metrics_sha256": "sha256:cd9cea4081a83ca670e09c2160ed38d1fab4854a29d2aec3ea819c5ec07333b1",
+          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/gpu-fairness-20260916/seed-42/audio-text/reference",
+          "metrics_sha256": "sha256:1392cc7092d81c2efd2b5816e22e3e7798455a2e8139e67637fbf0d8101d5b7c",
           "initial_setup_seconds": null,
           "setup_intervals_seconds": [],
           "native_first_use_events": [],
           "native_first_use_total_seconds": null,
-          "reference_step_1_seconds": 47.69422332942486,
-          "reference_step_2_seconds": 17.372055862098932
+          "reference_step_1_seconds": 65.52538299374282,
+          "reference_step_2_seconds": 20.891531948000193
         },
         {
           "seed": 773,
-          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/gpu-rtx4090/seed-773/audio-text/reference",
-          "metrics_sha256": "sha256:a24673630cbb8b9dc3a1a08e2220eb60e10b711fd4b75f167f30440f6450301c",
+          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/gpu-fairness-20260916/seed-773/audio-text/reference",
+          "metrics_sha256": "sha256:7fcba3cf1dac7be04bec397a1ec45657123341979d82ab593e6ccd9859f91f12",
           "initial_setup_seconds": null,
           "setup_intervals_seconds": [],
           "native_first_use_events": [],
           "native_first_use_total_seconds": null,
-          "reference_step_1_seconds": 47.75187502801418,
-          "reference_step_2_seconds": 17.334528297185898
+          "reference_step_1_seconds": 47.546916807070374,
+          "reference_step_2_seconds": 20.690082034096122
         },
         {
           "seed": 1234,
-          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/gpu-rtx4090/seed-1234/audio-text/reference",
-          "metrics_sha256": "sha256:4b4ba26bec4f06a5508a2bc0a79829a5286fcce4f972e3f9d63ffc046707efdc",
+          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/gpu-fairness-20260916/seed-1234/audio-text/reference",
+          "metrics_sha256": "sha256:02082b49309c462fe6d867a9525f19c970a5d977cd2b1562aea49354c12b4036",
           "initial_setup_seconds": null,
           "setup_intervals_seconds": [],
           "native_first_use_events": [],
           "native_first_use_total_seconds": null,
-          "reference_step_1_seconds": 47.304776947945356,
-          "reference_step_2_seconds": 17.39299160055816
+          "reference_step_1_seconds": 48.055010152980685,
+          "reference_step_2_seconds": 20.353900611400604
         },
         {
           "seed": 2026,
-          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/gpu-rtx4090/seed-2026/audio-text/reference",
-          "metrics_sha256": "sha256:a91e6ae60ca57550ff0bbc1ce07da88d5aa14293127eb2411854e1429dd82a32",
+          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/gpu-fairness-20260916/seed-2026/audio-text/reference",
+          "metrics_sha256": "sha256:a1b92564893464d0c6c693e1c6d6e85ced9ce517689a4dad35b1ccb5932d8aeb",
           "initial_setup_seconds": null,
           "setup_intervals_seconds": [],
           "native_first_use_events": [],
           "native_first_use_total_seconds": null,
-          "reference_step_1_seconds": 47.27845432423055,
-          "reference_step_2_seconds": 17.344915768131614
+          "reference_step_1_seconds": 48.85219545662403,
+          "reference_step_2_seconds": 20.83158609084785
         }
       ]
     }
