@@ -31,7 +31,9 @@ All five reference loss histories are identical under deterministic batches.
 TPU outcome reward is also complete and
 promoted: 103.8667 versus 66.2923 examples/s (1.5668x), with final paired
 losses differing by at most 0.00564 and all sixteen reference replicas equal.
-TPU audio/video remain in progress.
+TPU audio is complete and promoted: 11.2394 versus 8.4989 examples/s
+(1.32246x), with direct global-negative MNR and verified final adapter identity.
+TPU video remains in progress.
 The native learning studies and A100
 strong-scaling measurements are not invalidated by these paired-run findings.
 

@@ -2330,7 +2330,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
       under =/raid/representax-paper/10-cross-accelerator-framework-comparison/=;
       confirm zero remaining nodes/queues, then cancel the redundant timer.
 ***** TODO Correct paired-recipe inconsistencies identified in the full audit
-      Live update, 2026-09-17 03:36 UTC: all 50 corrected GPU cells completed
+      Live update, 2026-09-17 04:12 UTC: all 50 corrected GPU cells completed
       and passed the paper import checks. Five-seed median ratios are 3.9776x
       late interaction, 1.4388x outcome reward, 3.2867x process reward, 2.1262x
       audio-text and 3.4395x video-text. Both TPU reward panels are promoted.
@@ -2344,7 +2344,12 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
       output phase. All five replacements passed and the panel is promoted:
       2545.5493 vs 1593.2746 examples/s (1.5977x), with identical reference
       loss histories and final replicas. Native late runs are retained unchanged.
-      First two audio pairs are collected; remaining audio/video jobs are queued.
+      All ten TPU audio runs are collected and promoted: 11.2394 vs 8.4989
+      examples/s (1.32246x), direct global-negative MNR, final paired loss gap
+      at most 0.05431, and matching final reference replicas. Only ten video
+      runs remain; first reference is running. Their historical total runtime
+      was 185.59 minutes. Requested an additional 2.5 hours, but no approval
+      received: existing hard cutoff remains active.
       The 05:29:27 UTC hard cloud deadline is unchanged.
       Audit/walkthrough requested by the author on 2026-09-16. Source of truth:
       =paper/fairness-audit.md=; diagnostics in

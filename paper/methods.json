@@ -10805,21 +10805,22 @@
       "recipe": "audio-text",
       "seed": 7,
       "framework": "reference",
-      "source_commit": "5b0d216375a0f3ef9de3fcc6504ef45d19a30b93",
+      "source_commit": "cdcb1047a4fb269fc994b110ff532ae1e38b3b72",
       "manifest": "sha256:eac6218720e0bd83d0a84a0a0cd7af4e04d9fc5bbecc66f31b491250cdb452ac",
-      "environment": "sha256:e639e3b58a89ff4b7e688f254a4a4e336441bea18ba47057225735b5c662db73",
+      "environment": "sha256:da7c13de9c7e6ed41814df5f81829c96359d75719a879d3cbe44499b421f1aaf",
       "summary": {
         "device_count": 16,
         "global_batch_size": 48,
         "grad_cache_micro_batch_size": null,
         "local_batch_size": 3,
+        "negative_scope": "global",
         "process_count": 16,
         "steps": 22
       },
       "config": null,
       "contract": null,
       "source": {
-        "commit": "5b0d216375a0f3ef9de3fcc6504ef45d19a30b93",
+        "commit": "cdcb1047a4fb269fc994b110ff532ae1e38b3b72",
         "working_tree_clean": true,
         "working_tree_patch_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
@@ -10830,21 +10831,22 @@
       "recipe": "audio-text",
       "seed": 42,
       "framework": "reference",
-      "source_commit": "1471cbc3f026e823c9563cff4cbd049bd90287fa",
+      "source_commit": "cdcb1047a4fb269fc994b110ff532ae1e38b3b72",
       "manifest": "sha256:eac6218720e0bd83d0a84a0a0cd7af4e04d9fc5bbecc66f31b491250cdb452ac",
-      "environment": "sha256:42e328ea55ae2a38d3032c6e8e5d483f771d370d96a95ac8eb15d95651d5117b",
+      "environment": "sha256:da7c13de9c7e6ed41814df5f81829c96359d75719a879d3cbe44499b421f1aaf",
       "summary": {
         "device_count": 16,
         "global_batch_size": 48,
         "grad_cache_micro_batch_size": null,
         "local_batch_size": 3,
+        "negative_scope": "global",
         "process_count": 16,
         "steps": 22
       },
       "config": null,
       "contract": null,
       "source": {
-        "commit": "1471cbc3f026e823c9563cff4cbd049bd90287fa",
+        "commit": "cdcb1047a4fb269fc994b110ff532ae1e38b3b72",
         "working_tree_clean": true,
         "working_tree_patch_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
@@ -10855,21 +10857,22 @@
       "recipe": "audio-text",
       "seed": 773,
       "framework": "reference",
-      "source_commit": "1471cbc3f026e823c9563cff4cbd049bd90287fa",
+      "source_commit": "cdcb1047a4fb269fc994b110ff532ae1e38b3b72",
       "manifest": "sha256:eac6218720e0bd83d0a84a0a0cd7af4e04d9fc5bbecc66f31b491250cdb452ac",
-      "environment": "sha256:42e328ea55ae2a38d3032c6e8e5d483f771d370d96a95ac8eb15d95651d5117b",
+      "environment": "sha256:da7c13de9c7e6ed41814df5f81829c96359d75719a879d3cbe44499b421f1aaf",
       "summary": {
         "device_count": 16,
         "global_batch_size": 48,
         "grad_cache_micro_batch_size": null,
         "local_batch_size": 3,
+        "negative_scope": "global",
         "process_count": 16,
         "steps": 22
       },
       "config": null,
       "contract": null,
       "source": {
-        "commit": "1471cbc3f026e823c9563cff4cbd049bd90287fa",
+        "commit": "cdcb1047a4fb269fc994b110ff532ae1e38b3b72",
         "working_tree_clean": true,
         "working_tree_patch_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
@@ -10880,21 +10883,22 @@
       "recipe": "audio-text",
       "seed": 1234,
       "framework": "reference",
-      "source_commit": "1471cbc3f026e823c9563cff4cbd049bd90287fa",
+      "source_commit": "cdcb1047a4fb269fc994b110ff532ae1e38b3b72",
       "manifest": "sha256:eac6218720e0bd83d0a84a0a0cd7af4e04d9fc5bbecc66f31b491250cdb452ac",
-      "environment": "sha256:42e328ea55ae2a38d3032c6e8e5d483f771d370d96a95ac8eb15d95651d5117b",
+      "environment": "sha256:da7c13de9c7e6ed41814df5f81829c96359d75719a879d3cbe44499b421f1aaf",
       "summary": {
         "device_count": 16,
         "global_batch_size": 48,
         "grad_cache_micro_batch_size": null,
         "local_batch_size": 3,
+        "negative_scope": "global",
         "process_count": 16,
         "steps": 22
       },
       "config": null,
       "contract": null,
       "source": {
-        "commit": "1471cbc3f026e823c9563cff4cbd049bd90287fa",
+        "commit": "cdcb1047a4fb269fc994b110ff532ae1e38b3b72",
         "working_tree_clean": true,
         "working_tree_patch_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
@@ -10905,21 +10909,22 @@
       "recipe": "audio-text",
       "seed": 2026,
       "framework": "reference",
-      "source_commit": "1471cbc3f026e823c9563cff4cbd049bd90287fa",
+      "source_commit": "cdcb1047a4fb269fc994b110ff532ae1e38b3b72",
       "manifest": "sha256:eac6218720e0bd83d0a84a0a0cd7af4e04d9fc5bbecc66f31b491250cdb452ac",
-      "environment": "sha256:42e328ea55ae2a38d3032c6e8e5d483f771d370d96a95ac8eb15d95651d5117b",
+      "environment": "sha256:da7c13de9c7e6ed41814df5f81829c96359d75719a879d3cbe44499b421f1aaf",
       "summary": {
         "device_count": 16,
         "global_batch_size": 48,
         "grad_cache_micro_batch_size": null,
         "local_batch_size": 3,
+        "negative_scope": "global",
         "process_count": 16,
         "steps": 22
       },
       "config": null,
       "contract": null,
       "source": {
-        "commit": "1471cbc3f026e823c9563cff4cbd049bd90287fa",
+        "commit": "cdcb1047a4fb269fc994b110ff532ae1e38b3b72",
         "working_tree_clean": true,
         "working_tree_patch_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
@@ -10930,15 +10935,15 @@
       "recipe": "audio-text",
       "seed": 7,
       "framework": "representax",
-      "source_commit": "5b0d216375a0f3ef9de3fcc6504ef45d19a30b93",
+      "source_commit": "cdcb1047a4fb269fc994b110ff532ae1e38b3b72",
       "manifest": "sha256:eac6218720e0bd83d0a84a0a0cd7af4e04d9fc5bbecc66f31b491250cdb452ac",
-      "environment": "sha256:3324e22a03e32c92be6c5720cca84867586da6cdd00a39386eaeed8f3adac997",
+      "environment": "sha256:54eb17944a8aea405ecec0d065e9bd1a145b0020dd81b61c19c074ae76a225cf",
       "summary": {
         "device_count": 16,
         "global_batch_size": 48,
-        "grad_cache_micro_batch_size": 2,
+        "grad_cache_micro_batch_size": null,
         "local_batch_size": 3,
-        "negative_scope": "local",
+        "negative_scope": "global",
         "process_count": 4,
         "steps": 22
       },
@@ -10976,7 +10981,7 @@
         },
         "loss": {
           "kind": "mnr",
-          "negative_scope": "local",
+          "negative_scope": "global",
           "scale": 20.0,
           "symmetric": false
         },
@@ -11044,14 +11049,7 @@
           },
           "donate_buffers": true,
           "global_batch_size": 48,
-          "grad_cache": {
-            "document_micro_batch_size": null,
-            "implementation": "rematerialized",
-            "loss_row_chunk_size": null,
-            "micro_batch_size": 2,
-            "query_micro_batch_size": null,
-            "score_micro_batch_size": null
-          },
+          "grad_cache": null,
           "max_steps": 22,
           "mega_batch_mining": null,
           "mesh": {
@@ -11079,7 +11077,7 @@
       },
       "contract": null,
       "source": {
-        "commit": "5b0d216375a0f3ef9de3fcc6504ef45d19a30b93",
+        "commit": "cdcb1047a4fb269fc994b110ff532ae1e38b3b72",
         "working_tree_clean": true,
         "working_tree_patch_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
@@ -11092,15 +11090,15 @@
       "recipe": "audio-text",
       "seed": 42,
       "framework": "representax",
-      "source_commit": "1471cbc3f026e823c9563cff4cbd049bd90287fa",
+      "source_commit": "cdcb1047a4fb269fc994b110ff532ae1e38b3b72",
       "manifest": "sha256:eac6218720e0bd83d0a84a0a0cd7af4e04d9fc5bbecc66f31b491250cdb452ac",
-      "environment": "sha256:3324e22a03e32c92be6c5720cca84867586da6cdd00a39386eaeed8f3adac997",
+      "environment": "sha256:54eb17944a8aea405ecec0d065e9bd1a145b0020dd81b61c19c074ae76a225cf",
       "summary": {
         "device_count": 16,
         "global_batch_size": 48,
-        "grad_cache_micro_batch_size": 2,
+        "grad_cache_micro_batch_size": null,
         "local_batch_size": 3,
-        "negative_scope": "local",
+        "negative_scope": "global",
         "process_count": 4,
         "steps": 22
       },
@@ -11138,7 +11136,7 @@
         },
         "loss": {
           "kind": "mnr",
-          "negative_scope": "local",
+          "negative_scope": "global",
           "scale": 20.0,
           "symmetric": false
         },
@@ -11206,14 +11204,7 @@
           },
           "donate_buffers": true,
           "global_batch_size": 48,
-          "grad_cache": {
-            "document_micro_batch_size": null,
-            "implementation": "rematerialized",
-            "loss_row_chunk_size": null,
-            "micro_batch_size": 2,
-            "query_micro_batch_size": null,
-            "score_micro_batch_size": null
-          },
+          "grad_cache": null,
           "max_steps": 22,
           "mega_batch_mining": null,
           "mesh": {
@@ -11241,7 +11232,7 @@
       },
       "contract": null,
       "source": {
-        "commit": "1471cbc3f026e823c9563cff4cbd049bd90287fa",
+        "commit": "cdcb1047a4fb269fc994b110ff532ae1e38b3b72",
         "working_tree_clean": true,
         "working_tree_patch_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
@@ -11254,15 +11245,15 @@
       "recipe": "audio-text",
       "seed": 773,
       "framework": "representax",
-      "source_commit": "1471cbc3f026e823c9563cff4cbd049bd90287fa",
+      "source_commit": "cdcb1047a4fb269fc994b110ff532ae1e38b3b72",
       "manifest": "sha256:eac6218720e0bd83d0a84a0a0cd7af4e04d9fc5bbecc66f31b491250cdb452ac",
-      "environment": "sha256:3324e22a03e32c92be6c5720cca84867586da6cdd00a39386eaeed8f3adac997",
+      "environment": "sha256:54eb17944a8aea405ecec0d065e9bd1a145b0020dd81b61c19c074ae76a225cf",
       "summary": {
         "device_count": 16,
         "global_batch_size": 48,
-        "grad_cache_micro_batch_size": 2,
+        "grad_cache_micro_batch_size": null,
         "local_batch_size": 3,
-        "negative_scope": "local",
+        "negative_scope": "global",
         "process_count": 4,
         "steps": 22
       },
@@ -11300,7 +11291,7 @@
         },
         "loss": {
           "kind": "mnr",
-          "negative_scope": "local",
+          "negative_scope": "global",
           "scale": 20.0,
           "symmetric": false
         },
@@ -11368,14 +11359,7 @@
           },
           "donate_buffers": true,
           "global_batch_size": 48,
-          "grad_cache": {
-            "document_micro_batch_size": null,
-            "implementation": "rematerialized",
-            "loss_row_chunk_size": null,
-            "micro_batch_size": 2,
-            "query_micro_batch_size": null,
-            "score_micro_batch_size": null
-          },
+          "grad_cache": null,
           "max_steps": 22,
           "mega_batch_mining": null,
           "mesh": {
@@ -11403,7 +11387,7 @@
       },
       "contract": null,
       "source": {
-        "commit": "1471cbc3f026e823c9563cff4cbd049bd90287fa",
+        "commit": "cdcb1047a4fb269fc994b110ff532ae1e38b3b72",
         "working_tree_clean": true,
         "working_tree_patch_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
@@ -11416,15 +11400,15 @@
       "recipe": "audio-text",
       "seed": 1234,
       "framework": "representax",
-      "source_commit": "1471cbc3f026e823c9563cff4cbd049bd90287fa",
+      "source_commit": "cdcb1047a4fb269fc994b110ff532ae1e38b3b72",
       "manifest": "sha256:eac6218720e0bd83d0a84a0a0cd7af4e04d9fc5bbecc66f31b491250cdb452ac",
-      "environment": "sha256:3324e22a03e32c92be6c5720cca84867586da6cdd00a39386eaeed8f3adac997",
+      "environment": "sha256:54eb17944a8aea405ecec0d065e9bd1a145b0020dd81b61c19c074ae76a225cf",
       "summary": {
         "device_count": 16,
         "global_batch_size": 48,
-        "grad_cache_micro_batch_size": 2,
+        "grad_cache_micro_batch_size": null,
         "local_batch_size": 3,
-        "negative_scope": "local",
+        "negative_scope": "global",
         "process_count": 4,
         "steps": 22
       },
@@ -11462,7 +11446,7 @@
         },
         "loss": {
           "kind": "mnr",
-          "negative_scope": "local",
+          "negative_scope": "global",
           "scale": 20.0,
           "symmetric": false
         },
@@ -11530,14 +11514,7 @@
           },
           "donate_buffers": true,
           "global_batch_size": 48,
-          "grad_cache": {
-            "document_micro_batch_size": null,
-            "implementation": "rematerialized",
-            "loss_row_chunk_size": null,
-            "micro_batch_size": 2,
-            "query_micro_batch_size": null,
-            "score_micro_batch_size": null
-          },
+          "grad_cache": null,
           "max_steps": 22,
           "mega_batch_mining": null,
           "mesh": {
@@ -11565,7 +11542,7 @@
       },
       "contract": null,
       "source": {
-        "commit": "1471cbc3f026e823c9563cff4cbd049bd90287fa",
+        "commit": "cdcb1047a4fb269fc994b110ff532ae1e38b3b72",
         "working_tree_clean": true,
         "working_tree_patch_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
@@ -11578,15 +11555,15 @@
       "recipe": "audio-text",
       "seed": 2026,
       "framework": "representax",
-      "source_commit": "1471cbc3f026e823c9563cff4cbd049bd90287fa",
+      "source_commit": "cdcb1047a4fb269fc994b110ff532ae1e38b3b72",
       "manifest": "sha256:eac6218720e0bd83d0a84a0a0cd7af4e04d9fc5bbecc66f31b491250cdb452ac",
-      "environment": "sha256:3324e22a03e32c92be6c5720cca84867586da6cdd00a39386eaeed8f3adac997",
+      "environment": "sha256:54eb17944a8aea405ecec0d065e9bd1a145b0020dd81b61c19c074ae76a225cf",
       "summary": {
         "device_count": 16,
         "global_batch_size": 48,
-        "grad_cache_micro_batch_size": 2,
+        "grad_cache_micro_batch_size": null,
         "local_batch_size": 3,
-        "negative_scope": "local",
+        "negative_scope": "global",
         "process_count": 4,
         "steps": 22
       },
@@ -11624,7 +11601,7 @@
         },
         "loss": {
           "kind": "mnr",
-          "negative_scope": "local",
+          "negative_scope": "global",
           "scale": 20.0,
           "symmetric": false
         },
@@ -11692,14 +11669,7 @@
           },
           "donate_buffers": true,
           "global_batch_size": 48,
-          "grad_cache": {
-            "document_micro_batch_size": null,
-            "implementation": "rematerialized",
-            "loss_row_chunk_size": null,
-            "micro_batch_size": 2,
-            "query_micro_batch_size": null,
-            "score_micro_batch_size": null
-          },
+          "grad_cache": null,
           "max_steps": 22,
           "mega_batch_mining": null,
           "mesh": {
@@ -11727,7 +11697,7 @@
       },
       "contract": null,
       "source": {
-        "commit": "1471cbc3f026e823c9563cff4cbd049bd90287fa",
+        "commit": "cdcb1047a4fb269fc994b110ff532ae1e38b3b72",
         "working_tree_clean": true,
         "working_tree_patch_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
@@ -34422,11 +34392,14 @@
       "platform": "Linux-6.8.0-111-generic-x86_64-with-glibc2.35",
       "python": "3.13.5"
     },
-    "sha256:e639e3b58a89ff4b7e688f254a4a4e336441bea18ba47057225735b5c662db73": {
+    "sha256:da7c13de9c7e6ed41814df5f81829c96359d75719a879d3cbe44499b421f1aaf": {
       "accelerator_environment": {
-        "PJRT_DEVICE": "TPU"
+        "JAX_COMPILATION_CACHE_DIR": "/home/ckg/representax-paper-assets/jax-cache-fairness",
+        "PJRT_DEVICE": "TPU",
+        "XLA_PERSISTENT_CACHE_PATH": "/home/ckg/representax-paper-assets/torch-cache-fairness/audio-text",
+        "XLA_PERSISTENT_CACHE_READ_ONLY": "0"
       },
-      "executable": "/home/ckg/representax/experiments/tpu/.venv-torch-xla/bin/python",
+      "executable": "/home/ckg/representax-audio-rerun/experiments/tpu/.venv-torch-xla/bin/python",
       "packages": {
         "Jinja2": "3.1.6",
         "MarkupSafe": "3.0.3",
@@ -34509,6 +34482,103 @@
       },
       "platform": "Linux-5.19.0-1030-gcp-x86_64-with-glibc2.35",
       "python": "3.10.12"
+    },
+    "sha256:54eb17944a8aea405ecec0d065e9bd1a145b0020dd81b61c19c074ae76a225cf": {
+      "accelerator_environment": {
+        "JAX_COMPILATION_CACHE_DIR": "/home/ckg/representax-paper-assets/jax-cache-fairness",
+        "XLA_PERSISTENT_CACHE_PATH": "/home/ckg/representax-paper-assets/torch-cache-fairness/audio-text",
+        "XLA_PERSISTENT_CACHE_READ_ONLY": "0"
+      },
+      "executable": "/home/ckg/representax-audio-rerun/experiments/tpu/.venv-jax/bin/python",
+      "packages": {
+        "Jinja2": "3.1.6",
+        "MarkupSafe": "3.0.3",
+        "PyYAML": "6.0.3",
+        "Pygments": "2.21.0",
+        "absl-py": "2.5.0",
+        "aiofiles": "25.1.0",
+        "aiohappyeyeballs": "2.7.1",
+        "aiohttp": "3.14.3",
+        "aiosignal": "1.4.0",
+        "annotated-doc": "0.0.5",
+        "annotated-types": "0.8.0",
+        "anyio": "4.15.1",
+        "array_record": "0.8.3",
+        "attrs": "26.1.0",
+        "certifi": "2026.7.22",
+        "charset-normalizer": "3.5.1",
+        "click": "8.5.0",
+        "cloudpickle": "3.1.2",
+        "datasets": "5.0.1",
+        "dill": "0.4.1",
+        "equinox": "0.13.8",
+        "etils": "1.14.0",
+        "filelock": "3.32.5",
+        "frozenlist": "1.8.0",
+        "fsspec": "2026.6.0",
+        "grain": "0.2.18",
+        "h11": "0.16.0",
+        "hf-xet": "1.6.0",
+        "httpcore": "1.0.9",
+        "httpx": "0.28.1",
+        "huggingface_hub": "1.30.0",
+        "humanize": "4.16.0",
+        "idna": "3.19",
+        "jax": "0.11.1",
+        "jaxlib": "0.11.1",
+        "jaxtyping": "0.3.11",
+        "joblib": "1.6.0",
+        "libtpu": "0.0.46.1",
+        "markdown-it-py": "4.2.0",
+        "mdurl": "0.1.2",
+        "ml_dtypes": "0.6.0",
+        "msgpack": "1.2.2",
+        "multidict": "6.7.1",
+        "multiprocess": "0.70.19",
+        "narwhals": "2.25.0",
+        "numpy": "2.5.2",
+        "opt_einsum": "3.4.0",
+        "optax": "0.2.8",
+        "orbax-checkpoint": "0.12.4",
+        "packaging": "26.3",
+        "pandas": "3.0.5",
+        "pillow": "12.3.0",
+        "portpicker": "1.6.0",
+        "prometheus_client": "0.26.0",
+        "propcache": "0.5.2",
+        "protobuf": "7.36.1",
+        "psutil": "7.2.2",
+        "pyarrow": "25.0.1",
+        "pydantic": "2.13.5",
+        "pydantic_core": "2.46.5",
+        "python-dateutil": "2.9.0.post0",
+        "regex": "2026.9.3",
+        "representax": "0.0.1",
+        "requests": "2.34.2",
+        "rich": "15.0.0",
+        "safetensors": "0.8.0",
+        "scikit-learn": "1.9.0",
+        "scipy": "1.18.1",
+        "shellingham": "1.5.4",
+        "simplejson": "4.1.2",
+        "six": "1.17.0",
+        "tensorstore": "0.1.85",
+        "threadpoolctl": "3.6.0",
+        "tokenizers": "0.22.2",
+        "tqdm": "4.70.0",
+        "transformers": "5.6.0",
+        "typer": "0.27.2",
+        "typing-inspection": "0.4.4",
+        "typing_extensions": "4.16.0",
+        "urllib3": "2.7.0",
+        "uvloop": "0.22.1",
+        "wadler_lindig": "0.1.7",
+        "xxhash": "4.0.1",
+        "yarl": "1.24.5",
+        "zipp": "4.1.0"
+      },
+      "platform": "Linux-5.19.0-1030-gcp-x86_64-with-glibc2.35",
+      "python": "3.13.12"
     },
     "sha256:42e328ea55ae2a38d3032c6e8e5d483f771d370d96a95ac8eb15d95651d5117b": {
       "accelerator_environment": {
@@ -57642,8 +57712,8 @@
   },
   "sources": {
     "/home/ckg/fun/representax/paper/evidence.json": {
-      "sha256": "sha256:7c65bab74b2802bf4bf4e85c6e45c83568783de9a95e4773b656a49ad8a095dc",
-      "bytes": 20640619
+      "sha256": "sha256:daf75dd728adebcf82a40fbc799b0bf69cc84c8a76872075cece04552efd2582",
+      "bytes": 20960870
     },
     "/raid/representax-paper/10-cross-accelerator-framework-comparison/gpu-fairness-20260916/seed-7/audio-text/reference/summary.json": {
       "sha256": "sha256:83a98b5c0231063ae10339deb23c5f5c14ef17855d72affa70f8a0876481f9fd",
@@ -58965,105 +59035,105 @@
       "sha256": "sha256:f041129f0b83678977d6932e193b77d0c00bf7ea4f8a525ed884fead8bb0fc11",
       "bytes": 14783
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-7/audio-text/reference/summary.json": {
-      "sha256": "sha256:d08566a8bbabf1f12758c439ef130028f7318b3f2ef6daa0213136267fdb6737",
-      "bytes": 2889
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-7/audio-text/reference/summary.json": {
+      "sha256": "sha256:e3b874c4586cdf33573e4c3abc6e8cbbf425bfe0eca2f2d99b1faac27fd9043a",
+      "bytes": 3492
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-7/audio-text/reference/environment.json": {
-      "sha256": "sha256:e639e3b58a89ff4b7e688f254a4a4e336441bea18ba47057225735b5c662db73",
-      "bytes": 2284
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-7/audio-text/reference/environment.json": {
+      "sha256": "sha256:da7c13de9c7e6ed41814df5f81829c96359d75719a879d3cbe44499b421f1aaf",
+      "bytes": 2532
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-42/audio-text/reference/summary.json": {
-      "sha256": "sha256:964cdbaa654f5cd58e112ffd04a6042e55cbf78d8a2b844bb94c7b26c2cadc4f",
-      "bytes": 2899
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-42/audio-text/reference/summary.json": {
+      "sha256": "sha256:44eba198b02e670ee149b44ada7dc7ce02f6f5ccfa6e18c9e0bbd892dbd38596",
+      "bytes": 3507
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-42/audio-text/reference/environment.json": {
-      "sha256": "sha256:42e328ea55ae2a38d3032c6e8e5d483f771d370d96a95ac8eb15d95651d5117b",
-      "bytes": 2365
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-42/audio-text/reference/environment.json": {
+      "sha256": "sha256:da7c13de9c7e6ed41814df5f81829c96359d75719a879d3cbe44499b421f1aaf",
+      "bytes": 2532
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-773/audio-text/reference/summary.json": {
-      "sha256": "sha256:eb92c1ab778db6c3dc76258e8a5c3267404e934ebf2f446f57152f0e3df5ad89",
-      "bytes": 2902
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-773/audio-text/reference/summary.json": {
+      "sha256": "sha256:06e0cda7bc7ca85db615a575225846e88d6b8e00e352a356ee0746fcab850899",
+      "bytes": 3506
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-773/audio-text/reference/environment.json": {
-      "sha256": "sha256:42e328ea55ae2a38d3032c6e8e5d483f771d370d96a95ac8eb15d95651d5117b",
-      "bytes": 2365
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-773/audio-text/reference/environment.json": {
+      "sha256": "sha256:da7c13de9c7e6ed41814df5f81829c96359d75719a879d3cbe44499b421f1aaf",
+      "bytes": 2532
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-1234/audio-text/reference/summary.json": {
-      "sha256": "sha256:00c9854d5bc63e745bf5f5fd99401200530bfac3fbf89363975e3a2ee558d9c0",
-      "bytes": 2888
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-1234/audio-text/reference/summary.json": {
+      "sha256": "sha256:fa3ea0fd4facaba36ed818059ef7b70d9ce6120ff713d2fac82bfbb1f39597a3",
+      "bytes": 3501
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-1234/audio-text/reference/environment.json": {
-      "sha256": "sha256:42e328ea55ae2a38d3032c6e8e5d483f771d370d96a95ac8eb15d95651d5117b",
-      "bytes": 2365
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-1234/audio-text/reference/environment.json": {
+      "sha256": "sha256:da7c13de9c7e6ed41814df5f81829c96359d75719a879d3cbe44499b421f1aaf",
+      "bytes": 2532
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-2026/audio-text/reference/summary.json": {
-      "sha256": "sha256:a0008201e9236ab88320db3993c0dc93147009e4f93bc3fa26cb8deeaa22183a",
-      "bytes": 2888
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-2026/audio-text/reference/summary.json": {
+      "sha256": "sha256:9c9c83f0fd35fa6386bb7cb06011096a233f98a36633d9021b77cd645ded8bd5",
+      "bytes": 3501
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-2026/audio-text/reference/environment.json": {
-      "sha256": "sha256:42e328ea55ae2a38d3032c6e8e5d483f771d370d96a95ac8eb15d95651d5117b",
-      "bytes": 2365
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-2026/audio-text/reference/environment.json": {
+      "sha256": "sha256:da7c13de9c7e6ed41814df5f81829c96359d75719a879d3cbe44499b421f1aaf",
+      "bytes": 2532
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-7/audio-text/representax-local/summary.json": {
-      "sha256": "sha256:9b0510c889b7db4c8c1ed3ac9fcdf632157a6c432935a04634f8dee8721da125",
-      "bytes": 1320
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-7/audio-text/representax-global/summary.json": {
+      "sha256": "sha256:5c71d0948408ac5530570ed67153eef8f63ca459e84c6536f0ff70a5d18b65c1",
+      "bytes": 1282
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-7/audio-text/representax-local/environment.json": {
-      "sha256": "sha256:3324e22a03e32c92be6c5720cca84867586da6cdd00a39386eaeed8f3adac997",
-      "bytes": 2523
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-7/audio-text/representax-global/environment.json": {
+      "sha256": "sha256:54eb17944a8aea405ecec0d065e9bd1a145b0020dd81b61c19c074ae76a225cf",
+      "bytes": 2690
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-7/audio-text/representax-local/run/process-0/run.json": {
-      "sha256": "sha256:67e9d2fd8e3cd229a538f339672540c83080956713d4e6fa71fff5000d7eb14d",
-      "bytes": 9617
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-7/audio-text/representax-global/run/process-0/run.json": {
+      "sha256": "sha256:2847540f63931847b26319ddfcffbc27e8963526036fd4952715c59399486f27",
+      "bytes": 9141
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-42/audio-text/representax-local/summary.json": {
-      "sha256": "sha256:e99f7e630bbab7db4fda0551ba160a7711312d24d1393620a3babc525d798304",
-      "bytes": 1321
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-42/audio-text/representax-global/summary.json": {
+      "sha256": "sha256:16c1c612f9bf0527a477f56c3a6660abbea9efe3239e28c468e5dcc3c04ba455",
+      "bytes": 1283
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-42/audio-text/representax-local/environment.json": {
-      "sha256": "sha256:3324e22a03e32c92be6c5720cca84867586da6cdd00a39386eaeed8f3adac997",
-      "bytes": 2523
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-42/audio-text/representax-global/environment.json": {
+      "sha256": "sha256:54eb17944a8aea405ecec0d065e9bd1a145b0020dd81b61c19c074ae76a225cf",
+      "bytes": 2690
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-42/audio-text/representax-local/run/process-0/run.json": {
-      "sha256": "sha256:f4446077e4594b2f42c21db071df336b0165afac79a706a1413982fcfe3f08ff",
-      "bytes": 9619
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-42/audio-text/representax-global/run/process-0/run.json": {
+      "sha256": "sha256:9052d052624dcc43517cfc2f4d014eeabddb59f2031b2a2596591b45af576c95",
+      "bytes": 9143
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-773/audio-text/representax-local/summary.json": {
-      "sha256": "sha256:a0e7ff31d28d28a7a18dc6399e54c89ecb4b861b001adfefe7f8164c6af6f4bf",
-      "bytes": 1323
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-773/audio-text/representax-global/summary.json": {
+      "sha256": "sha256:6b7f693b426bef826dc26dc315d71393557d185b5959c6aca887e5716c557dd7",
+      "bytes": 1282
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-773/audio-text/representax-local/environment.json": {
-      "sha256": "sha256:3324e22a03e32c92be6c5720cca84867586da6cdd00a39386eaeed8f3adac997",
-      "bytes": 2523
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-773/audio-text/representax-global/environment.json": {
+      "sha256": "sha256:54eb17944a8aea405ecec0d065e9bd1a145b0020dd81b61c19c074ae76a225cf",
+      "bytes": 2690
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-773/audio-text/representax-local/run/process-0/run.json": {
-      "sha256": "sha256:b3be77d1b7f4c4315ba04f84af15906b0d9c6b4ee3a19a26bc6f84da720c59f6",
-      "bytes": 9621
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-773/audio-text/representax-global/run/process-0/run.json": {
+      "sha256": "sha256:4e959d7feefe202a9c4f263e518da6e583bbe5ac9c21342b5fd32a8cc0e912b6",
+      "bytes": 9145
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-1234/audio-text/representax-local/summary.json": {
-      "sha256": "sha256:624274528bf64c31872ff7c3a2bcfeeb1413db9c0daf25d3acd1833860f00f59",
-      "bytes": 1322
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-1234/audio-text/representax-global/summary.json": {
+      "sha256": "sha256:e626a5d22bdbb26ff060fe789cf3691df05f6584a6fe71a18d313c0633a2e030",
+      "bytes": 1282
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-1234/audio-text/representax-local/environment.json": {
-      "sha256": "sha256:3324e22a03e32c92be6c5720cca84867586da6cdd00a39386eaeed8f3adac997",
-      "bytes": 2523
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-1234/audio-text/representax-global/environment.json": {
+      "sha256": "sha256:54eb17944a8aea405ecec0d065e9bd1a145b0020dd81b61c19c074ae76a225cf",
+      "bytes": 2690
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-1234/audio-text/representax-local/run/process-0/run.json": {
-      "sha256": "sha256:7ecb7345694c57af60c639190664d59a1346daca8591bf86ca2bb1ee0cf46062",
-      "bytes": 9623
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-1234/audio-text/representax-global/run/process-0/run.json": {
+      "sha256": "sha256:f5d2fad92329d59b5e34efdde22a1f3ff82af9ece795c64bec067336e6acb6c3",
+      "bytes": 9147
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-2026/audio-text/representax-local/summary.json": {
-      "sha256": "sha256:a56cb9ef9d0e55e83426ffdd1bb0a93d7e5e32a0701833844dd38f45fc722db3",
-      "bytes": 1324
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-2026/audio-text/representax-global/summary.json": {
+      "sha256": "sha256:4e22f520f018aee3e07e893c2d6509856ab3b39184db4b07927a01a85eab06a0",
+      "bytes": 1286
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-2026/audio-text/representax-local/environment.json": {
-      "sha256": "sha256:3324e22a03e32c92be6c5720cca84867586da6cdd00a39386eaeed8f3adac997",
-      "bytes": 2523
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-2026/audio-text/representax-global/environment.json": {
+      "sha256": "sha256:54eb17944a8aea405ecec0d065e9bd1a145b0020dd81b61c19c074ae76a225cf",
+      "bytes": 2690
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-2026/audio-text/representax-local/run/process-0/run.json": {
-      "sha256": "sha256:71e7f7422e1715eeadf51449cb42249346097f5086e6798209e6ceab86f91e0a",
-      "bytes": 9623
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-2026/audio-text/representax-global/run/process-0/run.json": {
+      "sha256": "sha256:b10c8fda21f3e6afab80396a74793d4cfce9c6a95a3ffe5ba8e87f09ab023a3f",
+      "bytes": 9147
     },
     "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-7/cross-encoder/reference/summary.json": {
       "sha256": "sha256:7c4ed3d0c7711a4b65a18a5f26ee6cf85efe95d084c3cd9ea9d9611188e3e333",

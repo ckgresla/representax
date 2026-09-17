@@ -6,7 +6,7 @@ Historical evidence is preserved under correction history when complete,
 validated replacement panels are promoted. Passing an inventory check does
 not establish identical minibatches.
 
-## Live Rerun Readiness (2026-09-17 03:36 UTC)
+## Live Rerun Readiness (2026-09-17 04:12 UTC)
 
 All 50 corrected GPU runs have completed and passed artifact/timing validation.
 Five-seed median native/reference ratios are 3.9776x late interaction, 1.4388x
@@ -41,8 +41,36 @@ Evidence is in `audit/late-pinned-tensor-comparison.json` and
 the local `rejected-unpinned-late/` archive; new references use a distinct
 `paired-pinned-collectives` output phase. No production library code changed.
 All five replacement runs passed full training and replica checks.
-The first two TPU audio pairs are collected; remaining audio
-and video jobs are queued. The hard cloud cutoff remains 05:29:27 UTC.
+All ten corrected TPU audio runs are collected and promoted: median rates
+11.2394 versus 8.4989 examples/s (1.32246x), with all five final adapter hashes
+equal across sixteen ranks. Final paired losses differ by at most 0.05431.
+Both arms use direct global-negative MNR (48 candidates), so this is not a
+single-factor GradCache ablation against the historical three-candidate pool.
+Only the ten TPU video jobs remain; the first reference is running.
+Historical video launch-to-completion times total 185.59 minutes (31--39
+minutes per reference), so the approximately 77 minutes before the existing
+05:29:27 UTC cutoff cannot be assumed sufficient. A 2.5-hour extension is
+requested but not authorized; the existing hard cutoff remains active.
+
+### Before and After the Fairness Correction
+
+Ratios are native/reference median throughput. The historical ratios are
+superseded estimates, not matched controls for attributing individual causes.
+
+| Group | GPU before -> corrected | TPU before -> corrected |
+|---|---:|---:|
+| Late interaction | 6.4836 -> 3.9776 | 2.6096 -> 1.5977 |
+| Outcome reward | 1.2285 -> 1.4388 | 1.7333 -> 1.5668 |
+| Process reward | 3.3181 -> 3.2867 | 3.5070 -> 8.5777 |
+| Audio-text | 1.4422 -> 2.1262 | 0.8361 -> 1.3225 |
+| Video-text | 2.3365 -> 3.4395 | 9.5338 -> pending |
+
+The GPU process starting point already includes the earlier padding correction;
+the original 9.005x ratio was invalid. TPU audio also changes the negative pool
+from three to 48 candidates, so its replacement is not a single-factor replay
+or padding ablation. Many changes in these ratios arise from correcting the
+reference workload, rather than making native execution faster. No average
+across heterogeneous recipes is used to claim an overall improvement.
 
 ### Earlier Readiness Gates
 

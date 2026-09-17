@@ -30,7 +30,7 @@ Late interaction [L] & \textbf{2,545.55} & 1,593.27 & 1.598 \\
 Outcome reward [O] & \textbf{103.87} & 66.29 & 1.567 \\
 Process reward [P,I] & \textbf{85.26} & 9.94 & 8.578 \\
 Image-text [C] & \textbf{2,259.88} & 1,062.06 & 2.128 \\
-Audio-text [M] & 11.25 & 13.45 & --- \\
+Audio-text [M] & \textbf{11.24} & 8.50 & 1.322 \\
 Video-text [M] & 80.70 & 8.46 & --- \\
 V-JEPA 2.1 [C,G] & \textbf{87.59} & 59.63 & 1.469 \\
 \bottomrule\end{tabular}

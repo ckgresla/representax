@@ -251,7 +251,9 @@ reference. The two BERT Base sentence-pair controls are
 slower on GPU, despite faster MPNet counterparts. TPU dense retrieval is
 approximately tied. Corrected GPU video-text reaches 3.44 versus 1.00
 examples/s (3.440x), and audio-text reaches 2.66 versus 1.25 (2.126x).
-Their TPU replacements remain pending.
+Corrected TPU audio-text reaches 11.24 versus 8.50 examples/s (1.322x),
+using direct MNR with global pools of 48 in both frameworks.
+The TPU video replacement remains pending.
 After matching both 256-token padding and scalar-head initialization, GPU
 process reward reaches 55.18 examples/s against TRL's 16.79 (3.287x).
 On TPU the corrected rates are 85.26 and 9.94 examples/s (8.578x).
@@ -289,8 +291,11 @@ differs (uniform versus normal), and reference adapters were constructed
 before applying the run seed. The corrected GPU audio/video panels use FP32 adapters
 and moments in both frameworks, seeded normal A matrices at the same scale,
 and zero B matrices. Random A draws are independent across frameworks, not
-bitwise shared. Both frameworks use GradCache microbatch one, at global batches
-32 for audio and two for video. The TPU panels still require corrected controls.
+bitwise shared. Both GPU frameworks use GradCache microbatch one, at global
+batches 32 for audio and two for video. The corrected TPU audio panel retains
+three examples per chip but uses direct global-negative MNR; final paired
+losses differ by at most 0.0544. The TPU video panel still requires its
+corrected control.
 Historical process-reward reference heads [I] were also constructed before
 seeding. Replacement GPU and TPU panels use one shared scalar head and explicit
 seeding before construction. Each TPU reference verifies identical initial and
@@ -615,7 +620,7 @@ uniform distribution on \([-d_{in}^{-1/2},d_{in}^{-1/2}]\). Both initialize
 B to zero, but this does not align subsequent optimization. The historical
 reference also constructs these adapters before Trainer applies its seed.
 
-For TPU audio specifically, batch 48 gives three examples per chip. Native
+For historical TPU audio specifically, batch 48 gives three examples per chip. Native
 and reference runs both use device-local negative pools: each audio query
 is compared against three captions, not all 48 captions in the optimizer
 batch. We matched the reference runner's configured objective; its existing
@@ -629,9 +634,18 @@ input to four slots and discarding the extra representation before the loss.
 The reference directly encodes its three examples. Both enable layer
 activation checkpointing; native execution additionally rematerializes the
 encoder chunks. These are execution differences, not a change in the number
-of examples or negatives contributing to the objective. All five native runs
-are slower. Padding and replay are plausible contributors, but no controlled
+of examples or negatives contributing to the objective. All five historical
+native runs are slower. Padding and replay are plausible contributors, but no controlled
 direct-versus-cached TPU audio ablation isolates their effect on throughput.
+
+The corrected audio panel uses direct MNR in both frameworks with all 48
+captions as candidates: each reference rank scores its three queries against
+the complete gathered pool. Both use FP32 adapters and optimizer moments, the
+same initialization distribution and zero B matrices. Native and reference
+median rates are 11.24 and 8.50 examples/s. This replacement changes the
+negative pool and execution together; it does not isolate the historical
+padding overhead. All five reference runs pass final sixteen-rank adapter
+identity checks.
 
 *Predictive video.* V-JEPA uses a 12-layer, width-768 ViT-B/16 encoder,
 12-layer width-384 predictor, tubelet size two and supervision at layers
@@ -673,7 +687,9 @@ global pool through layout-pinned XLA collectives. Its gather passes real-tensor
 identity and normalization checks on all sixteen ranks; its backward reduction
 includes remote-query contributions and passes a same-backend global-batch
 gradient/update oracle. The earlier unpinned reference fails the real-tensor
-check and is not used for the corrected table. The corrected
+check and is not used for the corrected table. Corrected audio initializes the
+Torch distributed group and uses Sentence Transformers' global embedding gather;
+its observed score matrix is three by 48 on each rank. The corrected
 TPU reference integration explicitly averages functional gradient outputs
 before clipping and updating, checks replica identity, and requests BF16
 autocast without downcasting FP32 master weights or optimizer state. Its
