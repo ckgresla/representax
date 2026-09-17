@@ -192,6 +192,17 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      numerical checks. Preserve raw logs so alternate summaries remain
      computable after the runs.
 **** 4. Framework and accelerator comparison
+     Presentation revision, 2026-09-16: replace the main throughput plot with
+     a table containing separate GPU/TPU panels, absolute median examples/s,
+     and Representax/reference ratios. Keep the matched TorchInductor control
+     (GPU dense retrieval only) in a dedicated appendix subsection and numeric
+     row, without mostly empty main-table columns. Bold the larger of the two
+     reported medians within each workload/hardware group, not a
+     significance claim. Keep the per-seed ratio plot in the appendix. No
+     measurements, configurations or training code change for this revision.
+     The simplified table passes all 26 paper checks. Preprint/review PDFs
+     rebuild to 20 pages without overfull boxes or undefined references;
+     visually checked Table 1 on page 5. Measurements remain unchanged.
      Author review, 2026-09-16: framework comparisons require matched scientific
      batches within each hardware allocation, not identical GPU/TPU batches.
      The V-JEPA batch-one GPU and batch-128 TPU rows need no rerun solely for
@@ -2247,6 +2258,113 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      framework to 40 updates. Record exact source commits and patches, dependency
      versions and locks, data revisions and hashes, commands, environment,
      topology and device inventory in every result bundle.
+***** TODO Rerun TPU audio with a capacity-checked native execution path
+      Current plan, 2026-09-16: supersedes the local-negative control below.
+      User approved direct MNR with a 48-candidate global pool in both
+      frameworks. The isolated =audio_tpu_global.patch= initializes the XLA
+      process group used by Sentence Transformers' existing embedding gather;
+      no vendor loss implementation is changed. A 16-rank full-precision toy
+      loss/gradient/AdamW check passed against a 48-pair CPU oracle.
+      Native direct-MNR capacity passed. Reference required an explicit
+      post-backward execution boundary (included in timing), then passed six
+      updates with FP32 adapter masters and identical initial adapter hashes
+      across all ranks. Reference A initialization now matches native normal
+      distribution/scale, with B zero and seed set before construction; draws
+      are independent across frameworks, not bitwise equal. Final gate and
+      five-seed pair use =audio_tpu_global_rerun.sh=, historical checkout
+      =/raid/representax-paper/checkouts/audio-global-tpu-5b0d216/=.
+      This changes both the negative pool and execution, so it cannot by
+      itself attribute the old slowdown solely to GradCache padding/replay.
+      Author approved six additional hours at 2026-09-16 23:29:27 UTC.
+      Hard cleanup deadline is now 2026-09-17 05:29:27 UTC, enforced by
+      =representax-fairness-tpu-cleanup-20260916.timer=; old timer stopped.
+      At the verified spot rate, additional compute is at most about $32.85
+      if the rate remains unchanged; storage/network are separate.
+      CPU-initialized six-update reference canary completed, but rank-local
+      logged gradient norms differ. Actual Trainer reduction/clipping remains
+      an unresolved runtime gate; standalone loss parity is insufficient.
+      Follow-up tiny Accelerate diagnostics stalled and were terminated, not
+      counted as successful checks. No measured five-seed replacement launched.
+
+      Author-approved 2026-09-16. Historical commit =5b0d216= uses native
+      rematerialized GradCache chunk two for three examples/chip: each encoder
+      processes four padded slots, discarding the extra representation before
+      the loss. Reference commit =576d281= switched its TPU path to direct MNR
+      after replay compatibility/memory work; native retained the older chunk
+      setting. Both use layer checkpointing, global batch 48 and local negatives.
+      Five-seed medians are 11.2468 vs 13.4512 examples/s. This is a configuration
+      result, not proof of an intrinsic JAX/TPU disadvantage. No controlled
+      direct-versus-cached audio ablation has isolated the cause.
+      First check direct MNR and GradCache chunk three with all scientific
+      settings unchanged. Then repeat five seeds against the reference on the
+      same allocation; preserve historical results, exact source and environments.
+      Never replace evidence merely because a canary is faster.
+      Direct local-negative handling required an isolated historical-code patch:
+      =Direct.evaluate= previously ignored the local pool under global-array DDP.
+      User approved this narrowly scoped change; it calls the existing per-device
+      MNR loss without GradCache encoder replay. Ten CPU tests pass for losses,
+      parameter gradients and optimizer updates against explicitly grouped MNR,
+      including three pairs/device and Auto/Explicit two-/four-device meshes.
+      The unpatched direct path fails (three-pair toy: 6.7864 global-pool loss
+      versus 3.5356 grouped loss). Current library checkout is unchanged.
+      =experiments/10-cross-accelerator-framework-comparison/audio_tpu_rerun.sh=
+      records setup/control/chunk-three/direct/paired phases. Separate patches
+      preserve the one-line chunk-size control and the tested direct-loss fix.
+      Source checkout =/raid/representax-paper/checkouts/audio-tpu-5b0d216/=;
+      durable results go to
+      =/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16-audio-execution-20260916/=.
+      Requested one spot =v5litepod-16= slice in =us-central1-a= under project
+      =project-3fed1b4b-1d3e-4ddf-bf8= using the isolated Representax gcloud
+      profile. Queue =representax-audio-v5e16-20260916-spot=, node
+      =representax-audio-v5e16-20260916=, runtime =v2-tpuv5-litepod=.
+      Request issued 2026-09-16 22:10 UTC; queue expires at 22:40 UTC if no
+      capacity. One allocation only; no automatic on-demand fallback.
+      Local systemd timer =representax-audio-tpu-cleanup-20260916.timer=
+      force-deletes the queue and its nodes after two hours and retries failures.
+      Independently delete immediately after results are copied and verified
+      under =/raid/representax-paper/10-cross-accelerator-framework-comparison/=;
+      confirm zero remaining nodes/queues, then cancel the redundant timer.
+***** TODO Correct paired-recipe inconsistencies identified in the full audit
+      Audit/walkthrough requested by the author on 2026-09-16. Source of truth:
+      =paper/fairness-audit.md=; diagnostics in
+      =/raid/representax-paper/fairness-audit-20260916/=.
+      All 265 runs are inventoried and all 693 source hashes verified. Confirmed:
+      - TPU late interaction ignored local negative scope (512 vs 32 candidates).
+      - Both late-interaction panels have sequential native vs shuffled reference
+        batches on duplicate-heavy data; GPU PyLate cached gradients are summed
+        while its reported loss is mean. Both paired panels need correction.
+      - Outcome reward has native FP32 vs reference BF16 master/AdamW state;
+        new scalar heads are separately initialized across frameworks.
+      - Audio/video reference adapters are BF16, native FP32; normal vs uniform
+        A initialization also differs. Reference creates adapters before seeding.
+      - Process reward creates its new head before seeding and does not explicitly
+        configure one scalar output. Its completed GPU padding fix remains valid.
+      - Historical TPU replica identity for new parameters is unknown, not proven
+        divergent. Corrected runs must assert hashes before training.
+      Chunk/padding/rematerialization tuning affects throughput even when it
+      preserves the objective. No new mismatch was found in the checked dense,
+      sentence-pair, cross-encoder, image-text or V-JEPA configurations.
+      Withhold affected historical ratios/winner styling until replacements are
+      reviewed; preserve raw rates and provenance. Do not rerun unrelated valid
+      studies automatically. The author approved the affected paired reruns
+      with a six-hour limit; no core library patch is landed.
+      Active completion goal includes collection/hash checks, replacement paper
+      evidence, and verified TPU deletion. At 2026-09-17 00:50 UTC all five native
+      TPU process-reward cells are copied locally; the reference failed final
+      replica identity and is being corrected, not accepted. Four local queues
+      run on GPUs 0-3. Every accepted cell must have clean Git provenance.
+      Rerun budget requested by the author: conservative five recipes x two
+      frameworks x five seeds = 50 TPU jobs and 50 local GPU jobs. Historical
+      TPU launch-to-completion sum is 313.35 minutes (5.22 hours). Approved
+      additional uptime is six hours, including all gates/staging/corrections;
+      completion is not guaranteed within that limit.
+      Live catalog spot SKU A9FF-6143-F24B is $0.342218/chip-hour on 2026-09-16,
+      or $5.475488/hour for 16 chips: approximately $32.85 more compute for
+      six hours. Storage/network are separate; no automatic extension.
+      Remaining credit balance is unverified; account 0150FD-77ECA0-6313D4
+      is linked/open. Cleanup timer now fires at 2026-09-17 05:29:27 UTC.
+      Local GPU historical total is 4.45 single-GPU-hours, parallelizable on
+      GPUs 0-3. See =paper/fairness-audit.md= for per-recipe cost/time assumptions.
 ***** DONE Establish the locked 16-chip multi-host TPU preflight
       The =v5litepod-16= slice is healthy and exposes a 4x4 ICI torus through
       four JAX processes with four local chips each. A compiled 16 MiB-per-chip
@@ -2520,7 +2638,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      Both complete preprint/review PDFs compile;
      the arXiv archive also compiles after extraction outside the repository
      using only LaTeX/BibTeX and its bundled figure/style/bibliography files.
-     Five current figures and twelve tables are typeset; the approved abstract
+     Five current figures and thirteen tables are typeset; the approved abstract
      remains unchanged. The evidence now includes the explicit reward
      correction. Recovered reference early-step timings stay distinct from native
      first-use timings; genuinely missing fields stay missing, not zero.
