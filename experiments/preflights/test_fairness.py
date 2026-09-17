@@ -33,6 +33,7 @@ def test_xla_reduction_reassigns_mean_before_clipping(monkeypatch):
     synchronized = []
     def synchronize():
         torch.testing.assert_close(model.weight.grad, torch.tensor([[3., 4.]]))
+        assert model.weight.grad._base is None
         synchronized.append(True)
     monkeypatch.setattr(accelerator, "torch_synchronize", synchronize)
     trainer = XlaGradientSynchronization()

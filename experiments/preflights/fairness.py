@@ -62,7 +62,7 @@ class XlaGradientSynchronization:
         for parameter, gradient in zip(
             parameters, averaged.split([p.numel() for p in parameters]), strict=True
         ):
-            parameter.grad = gradient.reshape_as(parameter)
+            parameter.grad = gradient.reshape_as(parameter).clone()
         # Materialize only the replacement gradients, not obsolete full-size buffers.
         del averaged, gradient
         torch_synchronize()
