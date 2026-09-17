@@ -22,8 +22,13 @@ def test_xla_gather_backward_includes_remote_query_gradients(monkeypatch):
     for module in (xla, core, xm):
         monkeypatch.setitem(sys.modules, module.__name__, module)
     monkeypatch.setattr(accelerator, "torch_rank", lambda: 1)
-    xm.all_gather = lambda value, **kwargs: torch.cat((value + 1, value))
-    xm.all_reduce = lambda kind, value, **kwargs: value + 4
+    def gather(value, *, dim, pin_layout):
+        assert dim == 0 and pin_layout is True
+        return torch.cat((value + 1, value))
+    def reduce(kind, value, *, pin_layout):
+        assert kind == "sum" and pin_layout is True
+        return value + 4
+    xm.all_gather, xm.all_reduce = gather, reduce
     value = torch.tensor([[2.], [3.]], requires_grad=True)
     result = xla_all_gather_with_grad(value)
     torch.testing.assert_close(result, torch.tensor([[3.], [4.], [2.], [3.]]))
@@ -32,7 +37,8 @@ def test_xla_gather_backward_includes_remote_query_gradients(monkeypatch):
 
 
 @pytest.mark.parametrize("with_bias", [False, True])
-def test_xla_reduction_reassigns_mean_before_clipping(monkeypatch, with_bias):
+@pytest.mark.parametrize("pinned", [False, True])
+def test_xla_reduction_reassigns_mean_before_clipping(monkeypatch, with_bias, pinned):
     import sys
     from types import ModuleType
     from experiments.preflights import accelerator
@@ -46,7 +52,7 @@ def test_xla_reduction_reassigns_mean_before_clipping(monkeypatch, with_bias):
     monkeypatch.setattr(accelerator, "torch_is_tpu", lambda: True)
     monkeypatch.setattr(accelerator, "torch_world_size", lambda: 2)
     def reduce(kind, values, *, scale, pin_layout):
-        assert kind == "sum" and scale == .5 and pin_layout is False
+        assert kind == "sum" and scale == .5 and pin_layout is pinned
         return (values + (values + 4)) * scale
     xm.all_reduce = reduce
     model = torch.nn.Linear(2, 1, bias=with_bias)
@@ -63,6 +69,7 @@ def test_xla_reduction_reassigns_mean_before_clipping(monkeypatch, with_bias):
         synchronized.append(True)
     monkeypatch.setattr(accelerator, "torch_synchronize", synchronize)
     trainer = XlaGradientSynchronization()
+    trainer.pin_collective_layout = pinned
     trainer.args = SimpleNamespace(max_grad_norm=1.)
     trainer.accelerator = SimpleNamespace(
         gradient_state=SimpleNamespace(is_xla_gradients_synced=False))
