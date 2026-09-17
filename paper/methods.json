@@ -14005,21 +14005,21 @@
       "recipe": "late-interaction",
       "seed": 7,
       "framework": "reference",
-      "source_commit": "63207d0f14eedb7c0646c4e5000ea3c0d4fe972c",
-      "manifest": "sha256:5eb6cbd1e29858c4a0c4fc671869b94831315d1cf92196bf61ff627cd80d0430",
-      "environment": "sha256:6f5d8a9f02d69359ff12d06fcd3a18d5af81caf514d5934819337cb5cb52313d",
+      "source_commit": "2c446d7837e8f239454ffafe338d41ae0f125aa4",
+      "manifest": "sha256:638d292dd17e899855f755e94b4ab8acfcb861d2ee33be3f9a261077af933731",
+      "environment": "sha256:617e049c753693341ccd063fe85527c10ffda34658b1954b3155127f3e5834cf",
       "summary": {
         "device_count": 16,
         "global_batch_size": 512,
         "local_batch_size": 32,
-        "negative_scope": "local",
+        "negative_scope": "global",
         "process_count": 16,
         "steps": 22
       },
       "config": null,
       "contract": null,
       "source": {
-        "commit": "63207d0f14eedb7c0646c4e5000ea3c0d4fe972c",
+        "commit": "2c446d7837e8f239454ffafe338d41ae0f125aa4",
         "working_tree_clean": true,
         "working_tree_patch_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
@@ -14030,21 +14030,21 @@
       "recipe": "late-interaction",
       "seed": 42,
       "framework": "reference",
-      "source_commit": "63207d0f14eedb7c0646c4e5000ea3c0d4fe972c",
-      "manifest": "sha256:5eb6cbd1e29858c4a0c4fc671869b94831315d1cf92196bf61ff627cd80d0430",
-      "environment": "sha256:6f5d8a9f02d69359ff12d06fcd3a18d5af81caf514d5934819337cb5cb52313d",
+      "source_commit": "2c446d7837e8f239454ffafe338d41ae0f125aa4",
+      "manifest": "sha256:638d292dd17e899855f755e94b4ab8acfcb861d2ee33be3f9a261077af933731",
+      "environment": "sha256:617e049c753693341ccd063fe85527c10ffda34658b1954b3155127f3e5834cf",
       "summary": {
         "device_count": 16,
         "global_batch_size": 512,
         "local_batch_size": 32,
-        "negative_scope": "local",
+        "negative_scope": "global",
         "process_count": 16,
         "steps": 22
       },
       "config": null,
       "contract": null,
       "source": {
-        "commit": "63207d0f14eedb7c0646c4e5000ea3c0d4fe972c",
+        "commit": "2c446d7837e8f239454ffafe338d41ae0f125aa4",
         "working_tree_clean": true,
         "working_tree_patch_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
@@ -14055,21 +14055,21 @@
       "recipe": "late-interaction",
       "seed": 773,
       "framework": "reference",
-      "source_commit": "63207d0f14eedb7c0646c4e5000ea3c0d4fe972c",
-      "manifest": "sha256:5eb6cbd1e29858c4a0c4fc671869b94831315d1cf92196bf61ff627cd80d0430",
-      "environment": "sha256:6f5d8a9f02d69359ff12d06fcd3a18d5af81caf514d5934819337cb5cb52313d",
+      "source_commit": "2c446d7837e8f239454ffafe338d41ae0f125aa4",
+      "manifest": "sha256:638d292dd17e899855f755e94b4ab8acfcb861d2ee33be3f9a261077af933731",
+      "environment": "sha256:617e049c753693341ccd063fe85527c10ffda34658b1954b3155127f3e5834cf",
       "summary": {
         "device_count": 16,
         "global_batch_size": 512,
         "local_batch_size": 32,
-        "negative_scope": "local",
+        "negative_scope": "global",
         "process_count": 16,
         "steps": 22
       },
       "config": null,
       "contract": null,
       "source": {
-        "commit": "63207d0f14eedb7c0646c4e5000ea3c0d4fe972c",
+        "commit": "2c446d7837e8f239454ffafe338d41ae0f125aa4",
         "working_tree_clean": true,
         "working_tree_patch_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
@@ -14080,21 +14080,21 @@
       "recipe": "late-interaction",
       "seed": 1234,
       "framework": "reference",
-      "source_commit": "63207d0f14eedb7c0646c4e5000ea3c0d4fe972c",
-      "manifest": "sha256:5eb6cbd1e29858c4a0c4fc671869b94831315d1cf92196bf61ff627cd80d0430",
-      "environment": "sha256:6f5d8a9f02d69359ff12d06fcd3a18d5af81caf514d5934819337cb5cb52313d",
+      "source_commit": "2c446d7837e8f239454ffafe338d41ae0f125aa4",
+      "manifest": "sha256:638d292dd17e899855f755e94b4ab8acfcb861d2ee33be3f9a261077af933731",
+      "environment": "sha256:617e049c753693341ccd063fe85527c10ffda34658b1954b3155127f3e5834cf",
       "summary": {
         "device_count": 16,
         "global_batch_size": 512,
         "local_batch_size": 32,
-        "negative_scope": "local",
+        "negative_scope": "global",
         "process_count": 16,
         "steps": 22
       },
       "config": null,
       "contract": null,
       "source": {
-        "commit": "63207d0f14eedb7c0646c4e5000ea3c0d4fe972c",
+        "commit": "2c446d7837e8f239454ffafe338d41ae0f125aa4",
         "working_tree_clean": true,
         "working_tree_patch_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
@@ -14105,21 +14105,21 @@
       "recipe": "late-interaction",
       "seed": 2026,
       "framework": "reference",
-      "source_commit": "63207d0f14eedb7c0646c4e5000ea3c0d4fe972c",
-      "manifest": "sha256:5eb6cbd1e29858c4a0c4fc671869b94831315d1cf92196bf61ff627cd80d0430",
-      "environment": "sha256:6f5d8a9f02d69359ff12d06fcd3a18d5af81caf514d5934819337cb5cb52313d",
+      "source_commit": "2c446d7837e8f239454ffafe338d41ae0f125aa4",
+      "manifest": "sha256:638d292dd17e899855f755e94b4ab8acfcb861d2ee33be3f9a261077af933731",
+      "environment": "sha256:617e049c753693341ccd063fe85527c10ffda34658b1954b3155127f3e5834cf",
       "summary": {
         "device_count": 16,
         "global_batch_size": 512,
         "local_batch_size": 32,
-        "negative_scope": "local",
+        "negative_scope": "global",
         "process_count": 16,
         "steps": 22
       },
       "config": null,
       "contract": null,
       "source": {
-        "commit": "63207d0f14eedb7c0646c4e5000ea3c0d4fe972c",
+        "commit": "2c446d7837e8f239454ffafe338d41ae0f125aa4",
         "working_tree_clean": true,
         "working_tree_patch_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
@@ -14130,13 +14130,13 @@
       "recipe": "late-interaction",
       "seed": 7,
       "framework": "representax",
-      "source_commit": "63207d0f14eedb7c0646c4e5000ea3c0d4fe972c",
-      "manifest": "sha256:5eb6cbd1e29858c4a0c4fc671869b94831315d1cf92196bf61ff627cd80d0430",
-      "environment": "sha256:3324e22a03e32c92be6c5720cca84867586da6cdd00a39386eaeed8f3adac997",
+      "source_commit": "cdcb1047a4fb269fc994b110ff532ae1e38b3b72",
+      "manifest": "sha256:638d292dd17e899855f755e94b4ab8acfcb861d2ee33be3f9a261077af933731",
+      "environment": "sha256:1fec85f1d3bbb2ad8291b737fe3b35da71e656c1778245c90ab62194e65b36b1",
       "summary": {
         "device_count": 16,
         "global_batch_size": 512,
-        "negative_scope": "local",
+        "negative_scope": "global",
         "process_count": 4,
         "steps": 22
       },
@@ -14160,7 +14160,7 @@
                 "revision": null,
                 "split": null,
                 "subset": null,
-                "uri": "/home/ckg/representax-paper-assets/late-data/train.jsonl"
+                "uri": "/home/ckg/representax-paper-assets/late-fair-20260916/train.jsonl"
               }
             ],
             "weights": [
@@ -14174,7 +14174,7 @@
         },
         "loss": {
           "kind": "late_interaction_contrastive",
-          "negative_scope": "local",
+          "negative_scope": "global",
           "symmetric": false,
           "temperature": 0.02
         },
@@ -14186,7 +14186,7 @@
               256
             ],
             "local_files_only": true,
-            "model_name_or_path": "/home/ckg/representax-paper-assets/late-checkpoint",
+            "model_name_or_path": "/home/ckg/representax-paper-assets/late-fair-checkpoint",
             "parameter_dtype": "float32",
             "query_sequence_length_buckets": [
               32
@@ -14267,7 +14267,7 @@
       },
       "contract": null,
       "source": {
-        "commit": "63207d0f14eedb7c0646c4e5000ea3c0d4fe972c",
+        "commit": "cdcb1047a4fb269fc994b110ff532ae1e38b3b72",
         "working_tree_clean": true,
         "working_tree_patch_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
@@ -14280,13 +14280,13 @@
       "recipe": "late-interaction",
       "seed": 42,
       "framework": "representax",
-      "source_commit": "63207d0f14eedb7c0646c4e5000ea3c0d4fe972c",
-      "manifest": "sha256:5eb6cbd1e29858c4a0c4fc671869b94831315d1cf92196bf61ff627cd80d0430",
-      "environment": "sha256:3324e22a03e32c92be6c5720cca84867586da6cdd00a39386eaeed8f3adac997",
+      "source_commit": "cdcb1047a4fb269fc994b110ff532ae1e38b3b72",
+      "manifest": "sha256:638d292dd17e899855f755e94b4ab8acfcb861d2ee33be3f9a261077af933731",
+      "environment": "sha256:1fec85f1d3bbb2ad8291b737fe3b35da71e656c1778245c90ab62194e65b36b1",
       "summary": {
         "device_count": 16,
         "global_batch_size": 512,
-        "negative_scope": "local",
+        "negative_scope": "global",
         "process_count": 4,
         "steps": 22
       },
@@ -14310,7 +14310,7 @@
                 "revision": null,
                 "split": null,
                 "subset": null,
-                "uri": "/home/ckg/representax-paper-assets/late-data/train.jsonl"
+                "uri": "/home/ckg/representax-paper-assets/late-fair-20260916/train.jsonl"
               }
             ],
             "weights": [
@@ -14324,7 +14324,7 @@
         },
         "loss": {
           "kind": "late_interaction_contrastive",
-          "negative_scope": "local",
+          "negative_scope": "global",
           "symmetric": false,
           "temperature": 0.02
         },
@@ -14336,7 +14336,7 @@
               256
             ],
             "local_files_only": true,
-            "model_name_or_path": "/home/ckg/representax-paper-assets/late-checkpoint",
+            "model_name_or_path": "/home/ckg/representax-paper-assets/late-fair-checkpoint",
             "parameter_dtype": "float32",
             "query_sequence_length_buckets": [
               32
@@ -14417,7 +14417,7 @@
       },
       "contract": null,
       "source": {
-        "commit": "63207d0f14eedb7c0646c4e5000ea3c0d4fe972c",
+        "commit": "cdcb1047a4fb269fc994b110ff532ae1e38b3b72",
         "working_tree_clean": true,
         "working_tree_patch_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
@@ -14430,13 +14430,13 @@
       "recipe": "late-interaction",
       "seed": 773,
       "framework": "representax",
-      "source_commit": "63207d0f14eedb7c0646c4e5000ea3c0d4fe972c",
-      "manifest": "sha256:5eb6cbd1e29858c4a0c4fc671869b94831315d1cf92196bf61ff627cd80d0430",
-      "environment": "sha256:3324e22a03e32c92be6c5720cca84867586da6cdd00a39386eaeed8f3adac997",
+      "source_commit": "cdcb1047a4fb269fc994b110ff532ae1e38b3b72",
+      "manifest": "sha256:638d292dd17e899855f755e94b4ab8acfcb861d2ee33be3f9a261077af933731",
+      "environment": "sha256:1fec85f1d3bbb2ad8291b737fe3b35da71e656c1778245c90ab62194e65b36b1",
       "summary": {
         "device_count": 16,
         "global_batch_size": 512,
-        "negative_scope": "local",
+        "negative_scope": "global",
         "process_count": 4,
         "steps": 22
       },
@@ -14460,7 +14460,7 @@
                 "revision": null,
                 "split": null,
                 "subset": null,
-                "uri": "/home/ckg/representax-paper-assets/late-data/train.jsonl"
+                "uri": "/home/ckg/representax-paper-assets/late-fair-20260916/train.jsonl"
               }
             ],
             "weights": [
@@ -14474,7 +14474,7 @@
         },
         "loss": {
           "kind": "late_interaction_contrastive",
-          "negative_scope": "local",
+          "negative_scope": "global",
           "symmetric": false,
           "temperature": 0.02
         },
@@ -14486,7 +14486,7 @@
               256
             ],
             "local_files_only": true,
-            "model_name_or_path": "/home/ckg/representax-paper-assets/late-checkpoint",
+            "model_name_or_path": "/home/ckg/representax-paper-assets/late-fair-checkpoint",
             "parameter_dtype": "float32",
             "query_sequence_length_buckets": [
               32
@@ -14567,7 +14567,7 @@
       },
       "contract": null,
       "source": {
-        "commit": "63207d0f14eedb7c0646c4e5000ea3c0d4fe972c",
+        "commit": "cdcb1047a4fb269fc994b110ff532ae1e38b3b72",
         "working_tree_clean": true,
         "working_tree_patch_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
@@ -14580,13 +14580,13 @@
       "recipe": "late-interaction",
       "seed": 1234,
       "framework": "representax",
-      "source_commit": "63207d0f14eedb7c0646c4e5000ea3c0d4fe972c",
-      "manifest": "sha256:5eb6cbd1e29858c4a0c4fc671869b94831315d1cf92196bf61ff627cd80d0430",
-      "environment": "sha256:3324e22a03e32c92be6c5720cca84867586da6cdd00a39386eaeed8f3adac997",
+      "source_commit": "cdcb1047a4fb269fc994b110ff532ae1e38b3b72",
+      "manifest": "sha256:638d292dd17e899855f755e94b4ab8acfcb861d2ee33be3f9a261077af933731",
+      "environment": "sha256:1fec85f1d3bbb2ad8291b737fe3b35da71e656c1778245c90ab62194e65b36b1",
       "summary": {
         "device_count": 16,
         "global_batch_size": 512,
-        "negative_scope": "local",
+        "negative_scope": "global",
         "process_count": 4,
         "steps": 22
       },
@@ -14610,7 +14610,7 @@
                 "revision": null,
                 "split": null,
                 "subset": null,
-                "uri": "/home/ckg/representax-paper-assets/late-data/train.jsonl"
+                "uri": "/home/ckg/representax-paper-assets/late-fair-20260916/train.jsonl"
               }
             ],
             "weights": [
@@ -14624,7 +14624,7 @@
         },
         "loss": {
           "kind": "late_interaction_contrastive",
-          "negative_scope": "local",
+          "negative_scope": "global",
           "symmetric": false,
           "temperature": 0.02
         },
@@ -14636,7 +14636,7 @@
               256
             ],
             "local_files_only": true,
-            "model_name_or_path": "/home/ckg/representax-paper-assets/late-checkpoint",
+            "model_name_or_path": "/home/ckg/representax-paper-assets/late-fair-checkpoint",
             "parameter_dtype": "float32",
             "query_sequence_length_buckets": [
               32
@@ -14717,7 +14717,7 @@
       },
       "contract": null,
       "source": {
-        "commit": "63207d0f14eedb7c0646c4e5000ea3c0d4fe972c",
+        "commit": "cdcb1047a4fb269fc994b110ff532ae1e38b3b72",
         "working_tree_clean": true,
         "working_tree_patch_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
@@ -14730,13 +14730,13 @@
       "recipe": "late-interaction",
       "seed": 2026,
       "framework": "representax",
-      "source_commit": "63207d0f14eedb7c0646c4e5000ea3c0d4fe972c",
-      "manifest": "sha256:5eb6cbd1e29858c4a0c4fc671869b94831315d1cf92196bf61ff627cd80d0430",
-      "environment": "sha256:3324e22a03e32c92be6c5720cca84867586da6cdd00a39386eaeed8f3adac997",
+      "source_commit": "cdcb1047a4fb269fc994b110ff532ae1e38b3b72",
+      "manifest": "sha256:638d292dd17e899855f755e94b4ab8acfcb861d2ee33be3f9a261077af933731",
+      "environment": "sha256:1fec85f1d3bbb2ad8291b737fe3b35da71e656c1778245c90ab62194e65b36b1",
       "summary": {
         "device_count": 16,
         "global_batch_size": 512,
-        "negative_scope": "local",
+        "negative_scope": "global",
         "process_count": 4,
         "steps": 22
       },
@@ -14760,7 +14760,7 @@
                 "revision": null,
                 "split": null,
                 "subset": null,
-                "uri": "/home/ckg/representax-paper-assets/late-data/train.jsonl"
+                "uri": "/home/ckg/representax-paper-assets/late-fair-20260916/train.jsonl"
               }
             ],
             "weights": [
@@ -14774,7 +14774,7 @@
         },
         "loss": {
           "kind": "late_interaction_contrastive",
-          "negative_scope": "local",
+          "negative_scope": "global",
           "symmetric": false,
           "temperature": 0.02
         },
@@ -14786,7 +14786,7 @@
               256
             ],
             "local_files_only": true,
-            "model_name_or_path": "/home/ckg/representax-paper-assets/late-checkpoint",
+            "model_name_or_path": "/home/ckg/representax-paper-assets/late-fair-checkpoint",
             "parameter_dtype": "float32",
             "query_sequence_length_buckets": [
               32
@@ -14867,7 +14867,7 @@
       },
       "contract": null,
       "source": {
-        "commit": "63207d0f14eedb7c0646c4e5000ea3c0d4fe972c",
+        "commit": "cdcb1047a4fb269fc994b110ff532ae1e38b3b72",
         "working_tree_clean": true,
         "working_tree_patch_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
@@ -24375,52 +24375,6 @@
         224,
         3
       ]
-    },
-    "sha256:5eb6cbd1e29858c4a0c4fc671869b94831315d1cf92196bf61ff627cd80d0430": {
-      "contract": {
-        "evaluation_dataset": {
-          "license": "hub-card-unspecified",
-          "repo_id": "sentence-transformers/NanoBEIR-en",
-          "revision": "beb106fbcfaa599c508c667041bf8c85fd78736b",
-          "subset": "NanoMSMARCO"
-        },
-        "global_batch_size": 512,
-        "maximum_document_length": 256,
-        "maximum_query_length": 32,
-        "model_id": "lightonai/GTE-ModernColBERT-v1",
-        "model_revision": "cbbe53366e564450558f5e639dd499171f127538",
-        "reference_version": "1.6.0",
-        "training_dataset": {
-          "license": "hub-card-unspecified",
-          "repo_id": "sentence-transformers/msmarco-msmarco-MiniLM-L6-v3",
-          "revision": "0d54352548089199bde15ad7e06efe895dc80b56"
-        }
-      },
-      "evaluation": {
-        "corpus_path": "corpus.jsonl",
-        "corpus_sha256": "sha256:ec3c6ba0be83a1347acf48ba3b333c68053306413a298785302e2040579e3a41",
-        "dataset": "NanoMSMARCO",
-        "documents": 5043,
-        "qrels": 50,
-        "qrels_path": "qrels.json",
-        "qrels_sha256": "sha256:718917e10ad983597f12c974f590ca52b8ef5c14389d42297ba46208f105e6aa",
-        "queries": 50,
-        "query_path": "queries.jsonl",
-        "query_sha256": "sha256:2416c63021011926f7df05fe76a7594e69979bb49e404ebfbce43a0c8c37865a",
-        "source_sha256": {
-          "corpus": "sha256:685715c7e0a66d0219572dcd43c3905782868d1aae885259768431f7d7eda830",
-          "qrels": "sha256:6cd84c97a6ed813ffccbbb0b7aacc3051641f40a5869e0a15415823caf65c0d1",
-          "queries": "sha256:7cb9d7534660847f303211b9bdf84bcb3a3530f6e20e3c6050e77fc7ae77d0cd"
-        }
-      },
-      "schema_version": "representax-late-interaction-preflight-data-v1",
-      "training": {
-        "path": "train.jsonl",
-        "rows": 15360,
-        "sha256": "sha256:ff6ca81a3bc9b7c7fa46e5f1fe62d9719b8fc4965c7ad7d82bc7b141afd9656f",
-        "source": "/raid/representax/data/dense-retrieval-msmarco-v1/artifacts/sentence-transformers/msmarco-msmarco-MiniLM-L6-v3/triplet-all/train-00000-of-00039.parquet",
-        "source_sha256": "sha256:e00986bed2e4e5914691f6d03271322cd3615abc70583a569937281f3459b84a"
-      }
     },
     "sha256:a53108aeeff0fc2008a04c63a60329436152fc1ca5431f2f8574137e3b4fda8a": {
       "available_dataset_splits": [
@@ -34740,12 +34694,14 @@
       "platform": "Linux-5.19.0-1030-gcp-x86_64-with-glibc2.35",
       "python": "3.13.15"
     },
-    "sha256:6f5d8a9f02d69359ff12d06fcd3a18d5af81caf514d5934819337cb5cb52313d": {
+    "sha256:617e049c753693341ccd063fe85527c10ffda34658b1954b3155127f3e5834cf": {
       "accelerator_environment": {
-        "JAX_COMPILATION_CACHE_DIR": "/home/ckg/representax-paper-assets/jax-cache",
-        "PJRT_DEVICE": "TPU"
+        "JAX_COMPILATION_CACHE_DIR": "/home/ckg/representax-paper-assets/jax-cache-fairness",
+        "PJRT_DEVICE": "TPU",
+        "XLA_PERSISTENT_CACHE_PATH": "/home/ckg/representax-paper-assets/torch-cache-fairness/late-interaction",
+        "XLA_PERSISTENT_CACHE_READ_ONLY": "0"
       },
-      "executable": "/home/ckg/representax/experiments/tpu/.venv-torch-xla-late/bin/python",
+      "executable": "/home/ckg/representax-audio-rerun/experiments/tpu/.venv-torch-xla-late/bin/python",
       "packages": {
         "Jinja2": "3.1.6",
         "MarkupSafe": "3.0.3",
@@ -34832,6 +34788,103 @@
       },
       "platform": "Linux-5.19.0-1030-gcp-x86_64-with-glibc2.35",
       "python": "3.10.12"
+    },
+    "sha256:1fec85f1d3bbb2ad8291b737fe3b35da71e656c1778245c90ab62194e65b36b1": {
+      "accelerator_environment": {
+        "JAX_COMPILATION_CACHE_DIR": "/home/ckg/representax-paper-assets/jax-cache-fairness",
+        "XLA_PERSISTENT_CACHE_PATH": "/home/ckg/representax-paper-assets/torch-cache-fairness/late-interaction",
+        "XLA_PERSISTENT_CACHE_READ_ONLY": "0"
+      },
+      "executable": "/home/ckg/representax-audio-rerun/experiments/tpu/.venv-jax/bin/python",
+      "packages": {
+        "Jinja2": "3.1.6",
+        "MarkupSafe": "3.0.3",
+        "PyYAML": "6.0.3",
+        "Pygments": "2.21.0",
+        "absl-py": "2.5.0",
+        "aiofiles": "25.1.0",
+        "aiohappyeyeballs": "2.7.1",
+        "aiohttp": "3.14.3",
+        "aiosignal": "1.4.0",
+        "annotated-doc": "0.0.5",
+        "annotated-types": "0.8.0",
+        "anyio": "4.15.1",
+        "array_record": "0.8.3",
+        "attrs": "26.1.0",
+        "certifi": "2026.7.22",
+        "charset-normalizer": "3.5.1",
+        "click": "8.5.0",
+        "cloudpickle": "3.1.2",
+        "datasets": "5.0.1",
+        "dill": "0.4.1",
+        "equinox": "0.13.8",
+        "etils": "1.14.0",
+        "filelock": "3.32.5",
+        "frozenlist": "1.8.0",
+        "fsspec": "2026.6.0",
+        "grain": "0.2.18",
+        "h11": "0.16.0",
+        "hf-xet": "1.6.0",
+        "httpcore": "1.0.9",
+        "httpx": "0.28.1",
+        "huggingface_hub": "1.30.0",
+        "humanize": "4.16.0",
+        "idna": "3.19",
+        "jax": "0.11.1",
+        "jaxlib": "0.11.1",
+        "jaxtyping": "0.3.11",
+        "joblib": "1.6.0",
+        "libtpu": "0.0.46.1",
+        "markdown-it-py": "4.2.0",
+        "mdurl": "0.1.2",
+        "ml_dtypes": "0.6.0",
+        "msgpack": "1.2.2",
+        "multidict": "6.7.1",
+        "multiprocess": "0.70.19",
+        "narwhals": "2.25.0",
+        "numpy": "2.5.2",
+        "opt_einsum": "3.4.0",
+        "optax": "0.2.8",
+        "orbax-checkpoint": "0.12.4",
+        "packaging": "26.3",
+        "pandas": "3.0.5",
+        "pillow": "12.3.0",
+        "portpicker": "1.6.0",
+        "prometheus_client": "0.26.0",
+        "propcache": "0.5.2",
+        "protobuf": "7.36.1",
+        "psutil": "7.2.2",
+        "pyarrow": "25.0.1",
+        "pydantic": "2.13.5",
+        "pydantic_core": "2.46.5",
+        "python-dateutil": "2.9.0.post0",
+        "regex": "2026.9.3",
+        "representax": "0.0.1",
+        "requests": "2.34.2",
+        "rich": "15.0.0",
+        "safetensors": "0.8.0",
+        "scikit-learn": "1.9.0",
+        "scipy": "1.18.1",
+        "shellingham": "1.5.4",
+        "simplejson": "4.1.2",
+        "six": "1.17.0",
+        "tensorstore": "0.1.85",
+        "threadpoolctl": "3.6.0",
+        "tokenizers": "0.22.2",
+        "tqdm": "4.70.0",
+        "transformers": "5.6.0",
+        "typer": "0.27.2",
+        "typing-inspection": "0.4.4",
+        "typing_extensions": "4.16.0",
+        "urllib3": "2.7.0",
+        "uvloop": "0.22.1",
+        "wadler_lindig": "0.1.7",
+        "xxhash": "4.0.1",
+        "yarl": "1.24.5",
+        "zipp": "4.1.0"
+      },
+      "platform": "Linux-5.19.0-1030-gcp-x86_64-with-glibc2.35",
+      "python": "3.13.12"
     },
     "sha256:63fcca9affad74421c606ed7364999034ef7b2c8fbb00f546016a6f0651831ea": {
       "accelerator_environment": {
@@ -57589,8 +57642,8 @@
   },
   "sources": {
     "/home/ckg/fun/representax/paper/evidence.json": {
-      "sha256": "sha256:d3c6da46d99fe55f23d2ba46de054366058582180760a308bbd776b5a6ff3d9f",
-      "bytes": 20333067
+      "sha256": "sha256:7c65bab74b2802bf4bf4e85c6e45c83568783de9a95e4773b656a49ad8a095dc",
+      "bytes": 20640619
     },
     "/raid/representax-paper/10-cross-accelerator-framework-comparison/gpu-fairness-20260916/seed-7/audio-text/reference/summary.json": {
       "sha256": "sha256:83a98b5c0231063ae10339deb23c5f5c14ef17855d72affa70f8a0876481f9fd",
@@ -59292,109 +59345,105 @@
       "sha256": "sha256:48c030651e73c3728cffaabad4875513702564e43f1425cef49168fa774f8978",
       "bytes": 8880
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-7/late-interaction/reference/summary.json": {
-      "sha256": "sha256:7f2e6673bc91c44372b00b8b7c8649779bb8845b3104477ef8ef7a8a6ddf2490",
-      "bytes": 3116
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-7/late-interaction/reference/summary.json": {
+      "sha256": "sha256:8481e923b9eb4aa47c6a3fab144d21e220326ac220e55c42841b955ea1fc9c33",
+      "bytes": 3310
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-7/late-interaction/reference/data-manifest.json": {
-      "sha256": "sha256:5eb6cbd1e29858c4a0c4fc671869b94831315d1cf92196bf61ff627cd80d0430",
-      "bytes": 1990
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-7/late-interaction/reference/environment.json": {
+      "sha256": "sha256:617e049c753693341ccd063fe85527c10ffda34658b1954b3155127f3e5834cf",
+      "bytes": 2650
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-7/late-interaction/reference/environment.json": {
-      "sha256": "sha256:6f5d8a9f02d69359ff12d06fcd3a18d5af81caf514d5934819337cb5cb52313d",
-      "bytes": 2477
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-42/late-interaction/reference/summary.json": {
+      "sha256": "sha256:c6bd5a304a3c5eb3e730ddedda9e44baedcc91bef801e49631308fb169fbcd0a",
+      "bytes": 3307
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-42/late-interaction/reference/summary.json": {
-      "sha256": "sha256:78eada37b36e1696a4a0124de753fd8be737be386f70dda6dabc653563b6fecf",
-      "bytes": 3119
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-42/late-interaction/reference/environment.json": {
+      "sha256": "sha256:617e049c753693341ccd063fe85527c10ffda34658b1954b3155127f3e5834cf",
+      "bytes": 2650
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-42/late-interaction/reference/environment.json": {
-      "sha256": "sha256:6f5d8a9f02d69359ff12d06fcd3a18d5af81caf514d5934819337cb5cb52313d",
-      "bytes": 2477
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-773/late-interaction/reference/summary.json": {
+      "sha256": "sha256:e30962bb0efa718d0ec9fed719153d0f9b15cab098f7641247133b0aef216a2b",
+      "bytes": 3304
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-773/late-interaction/reference/summary.json": {
-      "sha256": "sha256:005da6ecbd20927db4522ac4b860b3be37da0bb35bc9d695b883ab0211d26aa7",
-      "bytes": 3113
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-773/late-interaction/reference/environment.json": {
+      "sha256": "sha256:617e049c753693341ccd063fe85527c10ffda34658b1954b3155127f3e5834cf",
+      "bytes": 2650
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-773/late-interaction/reference/environment.json": {
-      "sha256": "sha256:6f5d8a9f02d69359ff12d06fcd3a18d5af81caf514d5934819337cb5cb52313d",
-      "bytes": 2477
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-1234/late-interaction/reference/summary.json": {
+      "sha256": "sha256:2efd0b41a6a59d36888a4c7d92daf009cc9a63cb2171df502cc348e413d3a6be",
+      "bytes": 3306
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-1234/late-interaction/reference/summary.json": {
-      "sha256": "sha256:c40a621bb107d45797aaeb9894b9c16204fb58f828e71a8ba400f6bca31d8c35",
-      "bytes": 3112
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-1234/late-interaction/reference/environment.json": {
+      "sha256": "sha256:617e049c753693341ccd063fe85527c10ffda34658b1954b3155127f3e5834cf",
+      "bytes": 2650
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-1234/late-interaction/reference/environment.json": {
-      "sha256": "sha256:6f5d8a9f02d69359ff12d06fcd3a18d5af81caf514d5934819337cb5cb52313d",
-      "bytes": 2477
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-2026/late-interaction/reference/summary.json": {
+      "sha256": "sha256:7240dadd75aa176b0e9247251bb5efed6de69a5b321488dde7023bf69699709a",
+      "bytes": 3306
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-2026/late-interaction/reference/summary.json": {
-      "sha256": "sha256:0c877122c85605560a28920dfe3df658fc1fa9edd84ef73e755505b0984586fc",
-      "bytes": 3121
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-2026/late-interaction/reference/environment.json": {
+      "sha256": "sha256:617e049c753693341ccd063fe85527c10ffda34658b1954b3155127f3e5834cf",
+      "bytes": 2650
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-2026/late-interaction/reference/environment.json": {
-      "sha256": "sha256:6f5d8a9f02d69359ff12d06fcd3a18d5af81caf514d5934819337cb5cb52313d",
-      "bytes": 2477
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-7/late-interaction/representax-global/summary.json": {
+      "sha256": "sha256:3049914daf297f3a9bd6813195e93ed2cba1df92f2e36bbd99db9ec5555df05d",
+      "bytes": 1135
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-7/late-interaction/representax-local/summary.json": {
-      "sha256": "sha256:e17b116106e07ba75f417a261786c50257823ea93ac37a4b74283be3562da4a0",
-      "bytes": 1075
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-7/late-interaction/representax-global/environment.json": {
+      "sha256": "sha256:1fec85f1d3bbb2ad8291b737fe3b35da71e656c1778245c90ab62194e65b36b1",
+      "bytes": 2696
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-7/late-interaction/representax-local/environment.json": {
-      "sha256": "sha256:3324e22a03e32c92be6c5720cca84867586da6cdd00a39386eaeed8f3adac997",
-      "bytes": 2523
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-7/late-interaction/representax-global/run/process-0/run.json": {
+      "sha256": "sha256:61c9e31b9b9f032c9998a881dd612a52a631194253668f8b5aa28ba432248759",
+      "bytes": 9314
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-7/late-interaction/representax-local/run/process-0/run.json": {
-      "sha256": "sha256:035be6b8d77abbfcde88576e39a7f72bb6ed97501d43d3b5dee1c6a7a07c9729",
-      "bytes": 9275
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-42/late-interaction/representax-global/summary.json": {
+      "sha256": "sha256:a83a39f925f0255b0ce2b1b15d681e847d8f096e0c3374d0a3e5e530d80ddc89",
+      "bytes": 1135
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-42/late-interaction/representax-local/summary.json": {
-      "sha256": "sha256:2415d031f264b0da30ec19aec98ea2f8b9ba33ee64d2b3c9ffd78b9d20994fa8",
-      "bytes": 1073
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-42/late-interaction/representax-global/environment.json": {
+      "sha256": "sha256:1fec85f1d3bbb2ad8291b737fe3b35da71e656c1778245c90ab62194e65b36b1",
+      "bytes": 2696
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-42/late-interaction/representax-local/environment.json": {
-      "sha256": "sha256:3324e22a03e32c92be6c5720cca84867586da6cdd00a39386eaeed8f3adac997",
-      "bytes": 2523
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-42/late-interaction/representax-global/run/process-0/run.json": {
+      "sha256": "sha256:6c9f78d65a066d5469e1151b41272920993b5e7ac1b453d9e8691ad4cfa4ebc9",
+      "bytes": 9316
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-42/late-interaction/representax-local/run/process-0/run.json": {
-      "sha256": "sha256:1c5599674468086aa7a49ce0c0acd3a730182de9502b13f59dd57289eab603aa",
-      "bytes": 9277
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-773/late-interaction/representax-global/summary.json": {
+      "sha256": "sha256:7aade2711c0c5a87ab13aa604b874374c615e2a4bcf9e604fde6b67401d57745",
+      "bytes": 1135
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-773/late-interaction/representax-local/summary.json": {
-      "sha256": "sha256:5b3936d9b0f7145f33cb137ebc1ec445589e2f24ed07d54d25c4e0bc4b50f084",
-      "bytes": 1073
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-773/late-interaction/representax-global/environment.json": {
+      "sha256": "sha256:1fec85f1d3bbb2ad8291b737fe3b35da71e656c1778245c90ab62194e65b36b1",
+      "bytes": 2696
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-773/late-interaction/representax-local/environment.json": {
-      "sha256": "sha256:3324e22a03e32c92be6c5720cca84867586da6cdd00a39386eaeed8f3adac997",
-      "bytes": 2523
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-773/late-interaction/representax-global/run/process-0/run.json": {
+      "sha256": "sha256:9c9988012953823a1df8cb8961a8492c4f52452c8ce18a63007752684a553d81",
+      "bytes": 9318
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-773/late-interaction/representax-local/run/process-0/run.json": {
-      "sha256": "sha256:3be51f6d72f1c5849dabd1584d219fd95c66270527c4ed74e3d408de478c5d37",
-      "bytes": 9279
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-1234/late-interaction/representax-global/summary.json": {
+      "sha256": "sha256:dd848223ad2a3263aae96a6ea3f3e6914c1f3bacf7cfbc087d6422edd429a74d",
+      "bytes": 1135
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-1234/late-interaction/representax-local/summary.json": {
-      "sha256": "sha256:7648396432553c0df5975ef4ff2c0c1ba2d8933c7c9bcc9aeeabaf7c36867fdf",
-      "bytes": 1075
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-1234/late-interaction/representax-global/environment.json": {
+      "sha256": "sha256:1fec85f1d3bbb2ad8291b737fe3b35da71e656c1778245c90ab62194e65b36b1",
+      "bytes": 2696
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-1234/late-interaction/representax-local/environment.json": {
-      "sha256": "sha256:3324e22a03e32c92be6c5720cca84867586da6cdd00a39386eaeed8f3adac997",
-      "bytes": 2523
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-1234/late-interaction/representax-global/run/process-0/run.json": {
+      "sha256": "sha256:8ccb9e673db1a3983bf929cca806910c29e463fcd1da95ef044c3e2a95f25f51",
+      "bytes": 9320
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-1234/late-interaction/representax-local/run/process-0/run.json": {
-      "sha256": "sha256:30dee75ca10177428a12f9b7fb80e8760421d1ce224a62ea9fb18fb82834f9d1",
-      "bytes": 9281
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-2026/late-interaction/representax-global/summary.json": {
+      "sha256": "sha256:7da0e91808111d40ff8c57c222cb86b750507c4ed04f20fc0fedccc683ebcfa3",
+      "bytes": 1136
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-2026/late-interaction/representax-local/summary.json": {
-      "sha256": "sha256:1a5f7a775f16610bb1ae5e60c785137786b7363266db97d60ae21a840d578604",
-      "bytes": 1072
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-2026/late-interaction/representax-global/environment.json": {
+      "sha256": "sha256:1fec85f1d3bbb2ad8291b737fe3b35da71e656c1778245c90ab62194e65b36b1",
+      "bytes": 2696
     },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-2026/late-interaction/representax-local/environment.json": {
-      "sha256": "sha256:3324e22a03e32c92be6c5720cca84867586da6cdd00a39386eaeed8f3adac997",
-      "bytes": 2523
-    },
-    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-2026/late-interaction/representax-local/run/process-0/run.json": {
-      "sha256": "sha256:719d611e44070dd0c69afa515e76d0e330aaf14d95ad896c4e61167596dcc193",
-      "bytes": 9281
+    "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-2026/late-interaction/representax-global/run/process-0/run.json": {
+      "sha256": "sha256:f709874576855d0ba0825c40e3901bb4fa6cc4ca65a4cf94491dea1458893f55",
+      "bytes": 9320
     },
     "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-7/outcome-reward/reference/summary.json": {
       "sha256": "sha256:83c2d4e9a033d3f38da1c7178e19ad314cc17facc472fb6ceef1673aa80aaaa7",

@@ -154,6 +154,24 @@ class ReportTests(unittest.TestCase):
                     self.assertEqual(indices[0], indices[1])
                     self.assertGreaterEqual(len(indices[0]), 15)
 
+    def test_tpu_late_replacement_uses_the_verified_collective_source(self):
+        oracle = json.loads((HERE / "audit/late-pinned-gradient-oracle.json").read_text())
+        tensors = json.loads((HERE / "audit/late-pinned-tensor-comparison.json").read_text())
+        self.assertEqual({r["rank"] for r in oracle["ranks"]}, set(range(16)))
+        self.assertTrue(all(r["status"] == "passed" for r in oracle["ranks"]))
+        self.assertEqual({r["rank"] for r in tensors}, set(range(16)))
+        self.assertEqual(len({r["gathered_documents_sha256"] for r in tensors}), 1)
+        self.assertTrue(all(r["gathered_local_mask_equal"] and
+                            r["gathered_local_document_max_error"] < .004 and
+                            .98 < r["gathered_valid_norm_range"][0] <=
+                            r["gathered_valid_norm_range"][1] < 1.02 for r in tensors))
+        references = [r for r in self.e["panels"]["tpu-v5e-16"]["runs"]
+                      if r["recipe"] == "late-interaction" and r["framework"] == "reference"]
+        self.assertEqual(len(references), 5)
+        self.assertTrue(all(r["source_commit"].startswith(oracle["source_commit"])
+                            for r in references))
+        self.assertEqual(len({tuple(r["loss_history"]) for r in references}), 1)
+
     def test_saved_early_step_timing_covers_every_run(self):
         native, reference = [], []
         for panel in self.e["panels"].values():

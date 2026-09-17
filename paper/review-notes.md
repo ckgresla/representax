@@ -23,8 +23,12 @@ The TPU process replacement is also complete (85.2563 versus 9.93935 examples/s,
 8.5777x), with all sixteen reference replicas verified for each seed.
 All 50 corrected GPU cells are now complete and promoted: late interaction
 3.9776x, outcome reward 1.4388x, process reward 3.2867x, audio-text 2.1262x,
-and video-text 3.4395x. TPU late interaction has completed ten jobs but is held
-for a tensor-level scoring check. TPU outcome reward is also complete and
+and video-text 3.4395x. TPU late interaction is now complete and promoted:
+2545.5493 versus 1593.2746 examples/s (1.5977x). Its unpinned reference failed
+real-tensor gather checks; pinned-collective replacements pass tensor identity,
+normalization, the distributed gradient oracle, and final replica checks.
+All five reference loss histories are identical under deterministic batches.
+TPU outcome reward is also complete and
 promoted: 103.8667 versus 66.2923 examples/s (1.5668x), with final paired
 losses differing by at most 0.00564 and all sixteen reference replicas equal.
 TPU audio/video remain in progress.

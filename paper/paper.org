@@ -269,8 +269,11 @@ limits, and corrected mean-loss cached gradients. It reaches 219.50 versus
 PyLate's 0.7089 across five seeds, from initial scores 0.7123 and 0.7089.
 Reference trajectories are identical across seeds with this deterministic
 schedule; they are timing repetitions, not independent data draws.
-The TPU replacement remains pending. The evaluation panel has only 50 queries
-and scoring precision differs; this is not proof of equivalent convergence.
+The corrected TPU panel uses global pools of 512 in both frameworks and reaches
+2,545.55 versus 1,593.27 examples/s (1.598x). Final short-run losses are
+0.02067 and 0.02254; the loss histories are deterministic within each framework.
+The GPU evaluation panel has only 50 queries and scoring precision differs;
+these observations are not proof of equivalent convergence.
 Historical outcome reward [O] used FP32 native master parameters and optimizer
 moments, but BF16 reference parameters and moments. The corrected GPU panel
 shares BF16-rounded starting weights and a scalar head, with FP32 master weights
@@ -663,8 +666,14 @@ on all four worker VMs, yielding sixteen ranks. Native JAX uses four
 distributed processes, each controlling four local TPU devices. This is
 observed multi-host execution, not multi-node GPU scaling. Sentence
 Transformers' cross-device-negative helper was not connected to an initialized
-Torch distributed group in this integration; the paired TPU recipes therefore
-match per-device negatives rather than extending that helper. The corrected
+Torch distributed group in the historical integration; its paired contrastive
+recipes generally used per-device negatives, with the late-interaction mismatch
+identified above. The corrected late-interaction reference instead uses a
+global pool through layout-pinned XLA collectives. Its gather passes real-tensor
+identity and normalization checks on all sixteen ranks; its backward reduction
+includes remote-query contributions and passes a same-backend global-batch
+gradient/update oracle. The earlier unpinned reference fails the real-tensor
+check and is not used for the corrected table. The corrected
 TPU reference integration explicitly averages functional gradient outputs
 before clipping and updating, checks replica identity, and requests BF16
 autocast without downcasting FP32 master weights or optimizer state. Its

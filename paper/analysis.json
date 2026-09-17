@@ -3981,114 +3981,114 @@
   "tpu/late-interaction": {
     "representax": {
       "step_time_cv": [
-        0.010426418983496584,
-        0.08839836245684217,
-        0.09198743519189474,
-        0.03043868041086028,
-        0.10425866808039719
+        0.03652883977726305,
+        0.10255102186743581,
+        0.14490027959630902,
+        0.08982047114043108,
+        0.08790316643116428
       ],
       "first_use_seconds": [
-        63.431774279997626,
-        50.21366078799838,
-        50.03482424399772,
-        49.97713184800159,
-        50.42164046200196
+        65.66535110500081,
+        52.395809712999835,
+        52.225163498000256,
+        52.38300318099937,
+        52.079679296000904
       ],
       "examples_per_second": [
-        2810.165212380682,
-        2762.8020223065378,
-        2765.340546149394,
-        2799.9659141355255,
-        2757.3640804006704
+        2654.3828092934236,
+        2534.4847470801024,
+        2545.549264294186,
+        2508.847775700191,
+        2716.195239819975
       ],
       "startup_diagnostics": [
         {
           "seed": 7,
-          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-7/late-interaction/representax-local",
-          "metrics_sha256": "sha256:99f387db563b2d8a4fd5a86a8bef20acbfd834951c8fbc39076c89b675082802",
-          "initial_setup_seconds": 65.43663725999795,
+          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-7/late-interaction/representax-global",
+          "metrics_sha256": "sha256:9d7ff76ca8965b4f06cfaba88b857110b59fdeb383b4951357925e10a81c2f0a",
+          "initial_setup_seconds": 3.2314937749997625,
           "setup_intervals_seconds": [
-            65.43663725999795
+            3.2314937749997625
           ],
           "native_first_use_events": [
             {
               "iteration": 1,
-              "seconds": 63.431774279997626
+              "seconds": 65.66535110500081
             }
           ],
-          "native_first_use_total_seconds": 63.431774279997626,
+          "native_first_use_total_seconds": 65.66535110500081,
           "reference_step_1_seconds": null,
           "reference_step_2_seconds": null
         },
         {
           "seed": 42,
-          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-42/late-interaction/representax-local",
-          "metrics_sha256": "sha256:142799373706348765743377ab635248af9de57b33fb43640fef021ee2628a5b",
-          "initial_setup_seconds": 2.873011122999742,
+          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-42/late-interaction/representax-global",
+          "metrics_sha256": "sha256:8bff32679a6b1ba07abdc24157433b76a9076489faaf2f7fbe82bd9ede6848e0",
+          "initial_setup_seconds": 3.22772861500016,
           "setup_intervals_seconds": [
-            2.873011122999742
+            3.22772861500016
           ],
           "native_first_use_events": [
             {
               "iteration": 1,
-              "seconds": 50.21366078799838
+              "seconds": 52.395809712999835
             }
           ],
-          "native_first_use_total_seconds": 50.21366078799838,
+          "native_first_use_total_seconds": 52.395809712999835,
           "reference_step_1_seconds": null,
           "reference_step_2_seconds": null
         },
         {
           "seed": 773,
-          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-773/late-interaction/representax-local",
-          "metrics_sha256": "sha256:4b3429e0cc867e2a63e455983a074b60c702d3f4c61c11f4764ec2848ecb9b47",
-          "initial_setup_seconds": 2.844481755000743,
+          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-773/late-interaction/representax-global",
+          "metrics_sha256": "sha256:4f91a4b4663c7d7970953be0ed68b55cb19ad58621e1a916486c4db0d39b580c",
+          "initial_setup_seconds": 3.233314622999387,
           "setup_intervals_seconds": [
-            2.844481755000743
+            3.233314622999387
           ],
           "native_first_use_events": [
             {
               "iteration": 1,
-              "seconds": 50.03482424399772
+              "seconds": 52.225163498000256
             }
           ],
-          "native_first_use_total_seconds": 50.03482424399772,
+          "native_first_use_total_seconds": 52.225163498000256,
           "reference_step_1_seconds": null,
           "reference_step_2_seconds": null
         },
         {
           "seed": 1234,
-          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-1234/late-interaction/representax-local",
-          "metrics_sha256": "sha256:65f7a432bcfe71d30e0bab1cf0669ec9093c394ba0e87a952f558bb582561ab3",
-          "initial_setup_seconds": 2.8796993320029287,
+          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-1234/late-interaction/representax-global",
+          "metrics_sha256": "sha256:72b13338615984f61e5592d1ecc133eb0986b4f8931d392e1cf90eaa34c65ea3",
+          "initial_setup_seconds": 3.2519762470001297,
           "setup_intervals_seconds": [
-            2.8796993320029287
+            3.2519762470001297
           ],
           "native_first_use_events": [
             {
               "iteration": 1,
-              "seconds": 49.97713184800159
+              "seconds": 52.38300318099937
             }
           ],
-          "native_first_use_total_seconds": 49.97713184800159,
+          "native_first_use_total_seconds": 52.38300318099937,
           "reference_step_1_seconds": null,
           "reference_step_2_seconds": null
         },
         {
           "seed": 2026,
-          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-2026/late-interaction/representax-local",
-          "metrics_sha256": "sha256:d1ed52dc97bebbca7a1ac86b519521f2dd69a17b7ddd91ab89c1efa011689e95",
-          "initial_setup_seconds": 2.837395555998228,
+          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-2026/late-interaction/representax-global",
+          "metrics_sha256": "sha256:a978b681a517557c664219179ebe9b6ca5a801ef4b7542987646d64ca571e492",
+          "initial_setup_seconds": 3.2266734589993575,
           "setup_intervals_seconds": [
-            2.837395555998228
+            3.2266734589993575
           ],
           "native_first_use_events": [
             {
               "iteration": 1,
-              "seconds": 50.42164046200196
+              "seconds": 52.079679296000904
             }
           ],
-          "native_first_use_total_seconds": 50.42164046200196,
+          "native_first_use_total_seconds": 52.079679296000904,
           "reference_step_1_seconds": null,
           "reference_step_2_seconds": null
         }
@@ -4096,11 +4096,11 @@
     },
     "reference": {
       "step_time_cv": [
-        0.07967790512276747,
-        0.6568288884458698,
-        1.5573740925297637,
-        0.9394800846834657,
-        0.18656955573022216
+        0.1258565602296903,
+        0.13376192848271581,
+        0.0659178548869145,
+        0.09048461100828832,
+        0.08982507078004792
       ],
       "first_use_seconds": [
         null,
@@ -4110,67 +4110,67 @@
         null
       ],
       "examples_per_second": [
-        1231.4748978566874,
-        1059.6917575260081,
-        822.372910545239,
-        995.2134014093238,
-        1202.5180552399659
+        1570.1565552059496,
+        1555.1500088150551,
+        1638.6551831839777,
+        1618.9509825957816,
+        1593.2746455712822
       ],
       "startup_diagnostics": [
         {
           "seed": 7,
-          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-7/late-interaction/reference",
-          "metrics_sha256": "sha256:cd5023264fc84375d7db8ba7620f0def148753041e20a2f7e1a514517cf6bf43",
+          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-7/late-interaction/reference",
+          "metrics_sha256": "sha256:95faaf05427f7392c5ee5955e3e393dff4aecdf0c32b0a146ebca80e0cf5b6a8",
           "initial_setup_seconds": null,
           "setup_intervals_seconds": [],
           "native_first_use_events": [],
           "native_first_use_total_seconds": null,
-          "reference_step_1_seconds": 48.83168113800275,
-          "reference_step_2_seconds": 73.2370093319987
+          "reference_step_1_seconds": 51.44969920499716,
+          "reference_step_2_seconds": 4.297267393001675
         },
         {
           "seed": 42,
-          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-42/late-interaction/reference",
-          "metrics_sha256": "sha256:2b46dfd6058ad8a5fff9652548aa83716ef675a5254ce161ca0e2ac0e84ef4dc",
+          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-42/late-interaction/reference",
+          "metrics_sha256": "sha256:0bfe4f2cc14be0f15b7fc203f367f846e917e26771e844b6294b499d42e2a5d7",
           "initial_setup_seconds": null,
           "setup_intervals_seconds": [],
           "native_first_use_events": [],
           "native_first_use_total_seconds": null,
-          "reference_step_1_seconds": 47.664054869997926,
-          "reference_step_2_seconds": 69.25768903700009
+          "reference_step_1_seconds": 51.696477116001915,
+          "reference_step_2_seconds": 6.2074454899993725
         },
         {
           "seed": 773,
-          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-773/late-interaction/reference",
-          "metrics_sha256": "sha256:c13ff0756b9febf4f8e9b4b45109e3639ff9437279d5bf401c0cd5f650ed02b2",
+          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-773/late-interaction/reference",
+          "metrics_sha256": "sha256:d26f74655bd43eb76039c207b4dec12b17ea7283fd59df0f91e19e95025315fb",
           "initial_setup_seconds": null,
           "setup_intervals_seconds": [],
           "native_first_use_events": [],
           "native_first_use_total_seconds": null,
-          "reference_step_1_seconds": 48.35314202199879,
-          "reference_step_2_seconds": 69.87851966699964
+          "reference_step_1_seconds": 52.375072967999586,
+          "reference_step_2_seconds": 4.603022208000766
         },
         {
           "seed": 1234,
-          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-1234/late-interaction/reference",
-          "metrics_sha256": "sha256:60f5ddae04c343b64a6c9fdb764cb554741523e435d8f96ef0db381aaf049898",
+          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-1234/late-interaction/reference",
+          "metrics_sha256": "sha256:591f458e228c5526196b914058d15b21fccec2ff7e033e50456afd87cab9d667",
           "initial_setup_seconds": null,
           "setup_intervals_seconds": [],
           "native_first_use_events": [],
           "native_first_use_total_seconds": null,
-          "reference_step_1_seconds": 48.487944220996724,
-          "reference_step_2_seconds": 70.36696412600213
+          "reference_step_1_seconds": 52.18906149299801,
+          "reference_step_2_seconds": 5.807286500999908
         },
         {
           "seed": 2026,
-          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-v5e-16/workers/worker-3/seed-2026/late-interaction/reference",
-          "metrics_sha256": "sha256:eb18c90b2dadf126ea52b3aae204b92c7383d06d4f30cb67adafe961941b08b3",
+          "source_directory": "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916/seed-2026/late-interaction/reference",
+          "metrics_sha256": "sha256:c0df33708787553ff25c64974c842e5c0bf3f1482a370e7b7674c4dcab3275c7",
           "initial_setup_seconds": null,
           "setup_intervals_seconds": [],
           "native_first_use_events": [],
           "native_first_use_total_seconds": null,
-          "reference_step_1_seconds": 47.932759397001064,
-          "reference_step_2_seconds": 68.96965758100123
+          "reference_step_1_seconds": 52.50007816799916,
+          "reference_step_2_seconds": 4.546387172998948
         }
       ]
     }

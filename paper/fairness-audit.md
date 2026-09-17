@@ -6,7 +6,7 @@ Historical evidence is preserved under correction history when complete,
 validated replacement panels are promoted. Passing an inventory check does
 not establish identical minibatches.
 
-## Live Rerun Readiness (2026-09-17 03:24 UTC)
+## Live Rerun Readiness (2026-09-17 03:36 UTC)
 
 All 50 corrected GPU runs have completed and passed artifact/timing validation.
 Five-seed median native/reference ratios are 3.9776x late interaction, 1.4388x
@@ -15,8 +15,12 @@ Both TPU reward panels are promoted. Outcome reward completed all ten runs,
 including final replica equality for every reference seed: median rates
 103.8667 versus 66.2923 examples/s (1.5668x), with final paired losses differing
 by at most 0.00564. Its per-parameter reduction fix is commit `f86dddf`.
-The first ten TPU late-interaction jobs finished, but their reference runs are
-rejected pending replacements after a real-tensor collective check failed.
+The corrected TPU late-interaction panel is now promoted: median rates
+2545.5493 versus 1593.2746 examples/s (1.5977x). All five new references have
+identical initial/final losses (0.0321492/0.0225370) and final sixteen-rank
+parameter identity. Native losses are 0.0282341/0.0206706. Both arms use global
+512-candidate pools; this is not a claim of identical arithmetic or convergence.
+The first reference attempts remain rejected after their real-tensor check failed.
 A local first-batch diagnostic gives global loss 0.02829 with FP32 scoring and
 0.02798 with BF16 scoring, whereas the TPU logs start at 0.03198--0.07509.
 This local probe alone does not identify the TPU cause. The saved timings are
@@ -36,8 +40,8 @@ Evidence is in `audit/late-pinned-tensor-comparison.json` and
 `audit/late-pinned-gradient-oracle.json`. The five rejected references remain in
 the local `rejected-unpinned-late/` archive; new references use a distinct
 `paired-pinned-collectives` output phase. No production library code changed.
-Full replacement training and replica checks still gate paper promotion.
-The first TPU audio pair and seed-42 reference are collected; remaining audio
+All five replacement runs passed full training and replica checks.
+The first two TPU audio pairs are collected; remaining audio
 and video jobs are queued. The hard cloud cutoff remains 05:29:27 UTC.
 
 ### Earlier Readiness Gates
