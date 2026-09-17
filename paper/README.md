@@ -124,8 +124,8 @@ It replaces only those five reference cells and their aggregate, preserving
 the originals under `corrections`; it refuses to apply the correction twice.
 The corrected TRL median is 16.9460 examples/s (arithmetic rate ratio 3.3181).
 The subsequent audit found a separate scalar-head initialization issue. Both
-frameworks have now been rerun with a shared scalar head: medians are 55.1617
-and 16.7875 examples/s (3.2859x). This replacement was promoted using
+frameworks have now been rerun with a shared scalar head: medians are 55.1760
+and 16.7875 examples/s (3.2867x). This replacement was promoted using
 `python paper/update_fairness.py --platform gpu --recipe process-reward`.
 The original 9.005x ratio compared different padded shapes and is invalid.
 The intervening padding-only panel and original panel both remain in correction
@@ -135,8 +135,10 @@ The paired-panel importer requires 22 finite updates and matching data manifests
 checks stored hashes and clean source provenance, and requires a final replica
 hash for TPU references. A TPU-derived GPU launcher's empty native outer log is
 left untouched; the importer instead records and hashes `run/metrics.jsonl`.
-Corrected GPU reference timing excludes updates 1, 2 and 12, leaving 19 intervals:
-the last exclusion removes checkpoint work included in the following step timer.
+Corrected GPU timing excludes updates 1, 2 and 12 in both frameworks, leaving
+19 identical intervals: the last exclusion removes reference checkpoint work
+included in the following step timer. The importer requires matching measured
+update indices within every seed pair.
 
 The historical-methods snapshot was captured separately with
 `experiments/.venv/bin/python paper/collect_methods.py`. It refuses replacement

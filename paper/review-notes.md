@@ -18,7 +18,7 @@ ratios are now withheld for late interaction, outcome/process reward and
 audio/video pending corrections. This does not delete historical measurements.
 The process-reward padding correction is still valid; its newly discovered
 head-initialization issue is separate. The complete GPU process-reward replacement
-has now passed and is promoted (55.1617 versus 16.7875 examples/s, 3.2859x);
+has now passed and is promoted (55.1760 versus 16.7875 examples/s, 3.2867x);
 other affected panels remain queued/in progress. The native learning studies and A100
 strong-scaling measurements are not invalidated by these paired-run findings.
 

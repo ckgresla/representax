@@ -228,9 +228,10 @@ ratio divides median per-seed rates; the appendix shows individual paired-seed
 ratios without treating consecutive updates as independent replicates.
 Up to twenty warm updates per seed form a bounded timing screen, not a
 demonstration of long-run stationarity. Historical native GPU late interaction
-retains 15 usable intervals after first-use exclusions. Corrected GPU references
-retain 19 after also excluding the post-checkpoint interval, whose timer includes
-save/resume overhead. Compilation, initialization,
+retains 15 usable intervals after first-use exclusions. Corrected GPU pairs
+retain the same 19 update indices after excluding first use and the
+post-checkpoint interval, whose reference timer includes save/resume overhead.
+Compilation, initialization,
 evaluation and checkpointing are outside this primary metric and are
 reported separately where recorded.
 
@@ -248,7 +249,7 @@ slower on GPU, despite faster MPNet counterparts. TPU dense retrieval is
 approximately tied. Historical audio/video rates remain visible, but their
 ratios are withheld pending matched adapter precision and initialization.
 After matching both 256-token padding and scalar-head initialization, GPU
-process reward reaches 55.16 examples/s against TRL's 16.79 (3.286x).
+process reward reaches 55.18 examples/s against TRL's 16.79 (3.287x).
 Both frameworks were rerun for all five seeds; prior measurements remain in
 the evidence archive rather than being overwritten.
 

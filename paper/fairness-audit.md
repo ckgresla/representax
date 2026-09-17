@@ -27,11 +27,13 @@ The TPU-derived launcher omitted the flat GPU native metrics path and wrote an
 empty outer metrics file. Complete native logs remain at `run/metrics.jsonl`.
 The paper importer verifies the original outer hash, then reads, hashes and
 records this actual log path without modifying either original artifact. It
-requires all 22 finite training updates. For GPU references it excludes the
+requires all 22 finite training updates. Both GPU frameworks exclude the
 post-checkpoint interval (update 12), in addition to the two first-use updates:
-19 warm intervals remain. Raw metrics and explicit analysis exclusions are kept.
-The first promoted panel is GPU process reward: median 55.1617 versus 16.7875
-examples/s (3.2859x). This is a short-input, matched-padding control, not
+19 identical warm intervals remain. Raw metrics and explicit analysis exclusions
+are kept. TRL losses omitted from the outer timing log are read by update index
+from the hash-verified summary's complete loss history, without changing raw logs.
+The first promoted panel is GPU process reward: median 55.1760 versus 16.7875
+examples/s (3.2867x). This is a short-input, matched-padding control, not
 long-context reasoning training.
 
 GPU startup exposed two execution-porting errors: direct audio training was

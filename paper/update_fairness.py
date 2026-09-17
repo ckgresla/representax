@@ -84,9 +84,9 @@ def collect(platform, recipe, root=ROOT):
             require([row["iteration"] for row in training] == list(range(1, 23)),
                     f"Incorrect update coverage: {directory}")
             losses = training_losses(training, summary)
-            # Historical GPU reference timers include save work in the next
-            # interval. Exclude that interval; do not rewrite the raw metrics.
-            excluded = {1, 2, 12} if platform == "gpu" and framework == "reference" else set()
+            # GPU reference timers include save work in the next interval.
+            # Exclude the same update in both frameworks; keep raw logs intact.
+            excluded = {1, 2, 12} if platform == "gpu" else set()
             measured = [row for row in warm_rows(metrics) if row["iteration"] not in excluded]
             require(len(measured) >= 15, f"Insufficient warm updates: {directory}")
             durations = [row["metrics"]["perf/step_seconds"] for row in measured]
@@ -98,6 +98,7 @@ def collect(platform, recipe, root=ROOT):
             records.append({
                 "recipe": recipe, "framework": framework, "seed": seed,
                 "measured_updates": len(measured), "total_step_seconds": seconds,
+                "measured_iterations": [row["iteration"] for row in measured],
                 "steps_per_second": len(measured) / seconds,
                 "examples_per_second": batch * len(measured) / seconds,
                 "median_step_seconds": stats.median(durations),
@@ -114,6 +115,9 @@ def collect(platform, recipe, root=ROOT):
             })
     require(len({row["data_manifest_sha256"] for row in records}) == 1,
             "Paired data manifests differ")
+    for seed in PANEL_SEEDS:
+        paired = [row["measured_iterations"] for row in records if row["seed"] == seed]
+        require(paired[0] == paired[1], f"Paired warm intervals differ for seed {seed}")
     return records, sources
 
 

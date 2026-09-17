@@ -14,7 +14,7 @@ Classification / BERT & 296.21 & \textbf{382.92} & 0.774 \\
 Cross-encoder & \textbf{670.37} & 441.53 & 1.518 \\
 Late interaction [L] & 262.29 & 40.45 & --- \\
 Outcome reward [O] & 8.00 & 6.51 & --- \\
-Process reward [P,I] & \textbf{55.16} & 16.79 & 3.286 \\
+Process reward [P,I] & \textbf{55.18} & 16.79 & 3.287 \\
 Image-text [C] & \textbf{321.02} & 106.22 & 3.022 \\
 Audio-text [M] & 2.66 & 1.84 & --- \\
 Video-text [M] & 3.48 & 1.49 & --- \\

@@ -134,6 +134,21 @@ class ReportTests(unittest.TestCase):
         self.assertEqual(audit["gpu/dense-retrieval"]["reference"]["first_use_seconds"], [None] * 5)
         self.assertIn("A dash means unrecorded, not zero", (HERE / "tables/gpu-startup.org").read_text())
 
+    def test_corrected_pairs_measure_identical_update_indices(self):
+        for platform, panel in self.e["panels"].items():
+            if platform.endswith("torchinductor"):
+                continue
+            for recipe in report.UNMATCHED_RECIPES:
+                if not report.comparison_matched(self.e, platform, recipe):
+                    continue
+                for seed in report.PANEL_SEEDS:
+                    pair = [r for r in panel["runs"]
+                            if r["recipe"] == recipe and r["seed"] == seed]
+                    indices = [[row["iteration"] for row in report.measured_rows(r)]
+                               for r in pair]
+                    self.assertEqual(indices[0], indices[1])
+                    self.assertGreaterEqual(len(indices[0]), 15)
+
     def test_saved_early_step_timing_covers_every_run(self):
         native, reference = [], []
         for panel in self.e["panels"].values():
