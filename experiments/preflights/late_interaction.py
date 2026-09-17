@@ -1287,6 +1287,9 @@ def _pylate_worker(
     torch_synchronize()
     if platform == "tpu":
         training_seconds = time.perf_counter() - started
+        from experiments.preflights.fairness import assert_torch_replicas_equal
+
+        final_parameter_sha256 = assert_torch_replicas_equal(model)
         history = tuple(first_trainer.state.log_history)
         loss_rows = [
             float(row["loss"]) for row in history if row.get("loss") is not None
@@ -1313,6 +1316,7 @@ def _pylate_worker(
             "platform": platform,
             "device_count": world_size,
             "training_seconds": training_seconds,
+            "final_parameter_sha256": final_parameter_sha256,
             "steady_state": {
                 "measured_steps": len(warm),
                 "median_step_seconds": statistics.median(warm),

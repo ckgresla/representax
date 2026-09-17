@@ -22,6 +22,19 @@ class XlaMixedPrecisionTrainer:
         return super().autocast_smart_context_manager(cache_enabled=cache_enabled)
 
 
+def enable_xla_mixed_precision_attention():
+    from transformers.modeling_utils import ALL_ATTENTION_FUNCTIONS
+    from transformers.integrations.sdpa_attention import sdpa_attention_forward
+
+    def mixed_sdpa(module, query, key, value, *args, **kwargs):
+        # Qwen's FP32 RMSNorm weights promote Q/K; CUDA autocast handles this
+        # at SDPA, whereas XLA requires explicitly matching V's compute dtype.
+        return sdpa_attention_forward(module, query.to(value.dtype),
+                                      key.to(value.dtype), value, *args, **kwargs)
+
+    ALL_ATTENTION_FUNCTIONS.register("sdpa", mixed_sdpa)
+
+
 def scalar_head(checkpoint: str | Path, seed: int) -> np.ndarray:
     config = json.loads((Path(checkpoint) / "config.json").read_text())
     generator = np.random.default_rng(seed)

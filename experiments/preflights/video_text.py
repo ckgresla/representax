@@ -1087,6 +1087,9 @@ def _sentence_transformers_worker(
     if platform == "tpu":
         torch_synchronize()
         training_seconds = time.perf_counter() - started
+        from experiments.preflights.fairness import assert_torch_replicas_equal
+
+        final_parameter_sha256 = assert_torch_replicas_equal(model)
         losses = [
             float(row["loss"])
             for row in trainer.state.log_history
@@ -1114,6 +1117,7 @@ def _sentence_transformers_worker(
             "device_count": world_size,
             "activation_checkpointing": "torch-xla-reentrant",
             "training_seconds": training_seconds,
+            "final_parameter_sha256": final_parameter_sha256,
             "timing": {
                 "execution": "xla",
                 "compilation_and_first_step_seconds": [],

@@ -828,6 +828,9 @@ def _trl_worker(
     first_model = ScalarStepClassifier()
     if platform == "tpu":
         install_torch_xla_checkpointing()
+        from experiments.preflights.fairness import enable_xla_mixed_precision_attention
+
+        enable_xla_mixed_precision_attention()
         first_model.sequence.gradient_checkpointing_enable(
             gradient_checkpointing_kwargs={"use_reentrant": True}
         )

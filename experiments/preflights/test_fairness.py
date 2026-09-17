@@ -10,6 +10,31 @@ import torch
 from experiments.preflights.fairness import initialize_torch_reward, scalar_head
 
 
+def test_xla_attention_casts_qk_without_changing_mask(monkeypatch):
+    import transformers.integrations.sdpa_attention as sdpa
+    from transformers.modeling_utils import ALL_ATTENTION_FUNCTIONS
+    from experiments.preflights.fairness import enable_xla_mixed_precision_attention
+
+    original = ALL_ATTENTION_FUNCTIONS["sdpa"]
+    observed = []
+    def record(module, query, key, value, mask, **kwargs):
+        observed.append((query, key, value, mask, kwargs))
+        return value, None
+    monkeypatch.setattr(sdpa, "sdpa_attention_forward", record)
+    try:
+        enable_xla_mixed_precision_attention()
+        q = torch.randn(1, 2, 3, 4)
+        v = q.to(torch.bfloat16)
+        mask = torch.ones(1, 1, 3, 3, dtype=torch.bool)
+        ALL_ATTENTION_FUNCTIONS["sdpa"](None, q, q, v, mask, is_causal=False)
+        query, key, value, passed_mask, kwargs = observed[0]
+        assert query.dtype == key.dtype == value.dtype == torch.bfloat16
+        assert value is v and passed_mask is mask and kwargs == {"is_causal": False}
+        torch.testing.assert_close(query, q.bfloat16(), rtol=0, atol=0)
+    finally:
+        ALL_ATTENTION_FUNCTIONS.register("sdpa", original)
+
+
 @pytest.mark.parametrize("tpu", [False, True])
 def test_explicit_xla_autocast_preserves_other_platforms(monkeypatch, tpu):
     from experiments.preflights.fairness import XlaMixedPrecisionTrainer
