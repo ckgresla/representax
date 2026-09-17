@@ -2,16 +2,16 @@
   "authorization": "User explicitly approved another USD 14 to finish the remaining reruns",
   "budget_usd": 14,
   "project": "project-3fed1b4b-1d3e-4ddf-bf8",
-  "zone": "us-central1-a",
+  "zone": "us-west4-a",
   "node": "representax-video-v5e16-20260917",
   "queued_resource": "representax-video-v5e16-20260917-spot",
   "accelerator_type": "v5litepod-16",
   "runtime_version": "v2-tpuv5-litepod",
   "spot": true,
   "on_demand_fallback": false,
-  "request_created_utc": "2026-09-17T14:22:54.343693Z",
+  "request_created_utc": "2026-09-17T14:41:44.510993262Z",
   "hard_cleanup_utc": "2026-09-17T16:45:00Z",
-  "cleanup_timer": "representax-video-tpu-cleanup-20260917.timer",
+  "cleanup_timer": "representax-video-west4-tpu-cleanup-20260917.timer",
   "timer_installed_before_request": true,
   "early_shutdown": "Delete immediately after final results are copied and verified locally",
   "price_sku": "services/6F81-5844-456A/skus/A9FF-6143-F24B",
@@ -19,7 +19,19 @@
   "usd_per_chip_hour": 0.342218,
   "chip_count": 16,
   "usd_per_slice_hour": 5.475488,
-  "compute_allowance_usd_less_than": 13,
+  "compute_allowance_usd_less_than": 12,
+  "inter_region_restore_estimate_usd": 1.4,
+  "inter_region_restore_estimate_basis": "Approximately 17.5 GiB per worker, four workers, USD 0.02/GiB from us-central1 to us-west4",
+  "provisioning_attempts": [
+    {
+      "zone": "us-central1-a",
+      "requested_utc": "2026-09-17T14:22:54.336815833Z",
+      "outcome": "FAILED for insufficient capacity, then deleted; never reached READY",
+      "deletion_completed_utc_from_audit_log": "2026-09-17T14:41:15.869802693Z",
+      "error": "ZONE_RESOURCE_POOL_EXHAUSTED",
+      "last_observed_tpu_error_utc": "2026-09-17T14:38:23.615042430Z"
+    }
+  ],
   "source_commit": "cdcb1047a4fb269fc994b110ff532ae1e38b3b72",
   "recipe": "video-text",
   "framework": "reference",
@@ -27,5 +39,5 @@
   "steps_per_run": 22,
   "scientific_configuration_changed": false,
   "local_artifact_root": "/raid/representax-paper/10-cross-accelerator-framework-comparison/tpu-fairness-20260916",
-  "status": "provisioning"
+  "status": "waiting_for_resources"
 }

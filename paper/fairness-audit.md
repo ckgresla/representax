@@ -20,6 +20,15 @@ Delete immediately after copying and validating the final results, before paper
 generation. Authorization and resource details are recorded in
 `audit/tpu-video-completion-20260917.json`.
 
+The initial `us-central1-a` request repeatedly failed with
+`ZONE_RESOURCE_POOL_EXHAUSTED`, without reaching READY. Cancellation was requested,
+but the API rejects deletion during PROVISIONING. It subsequently entered FAILED
+and was deleted; its listing was verified empty before the `us-west4-a` request
+at 14:41:44 UTC. No two live allocation requests overlapped. The hard cleanup remains
+16:45 UTC; the later request leaves under $12 of compute exposure and approximately
+$1.40 for four copies of the existing assets across regions. Completed cells are
+not rerun; the allocation difference is retained in new collection records.
+
 All 50 corrected GPU runs have completed and passed artifact/timing validation.
 Five-seed median native/reference ratios are 3.9776x late interaction, 1.4388x
 outcome reward, 3.2867x process reward, 2.1262x audio-text and 3.4395x video-text.
