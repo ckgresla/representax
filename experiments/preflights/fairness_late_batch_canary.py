@@ -30,7 +30,7 @@ def worker(_index):
     assert (dist.get_rank(), dist.get_world_size()) == (rank, world)
     assets = Path.home() / "representax-paper-assets"
     seed = int(os.environ.get("AUDIT_SEED", "7"))
-    destination = Path.home() / "representax-fairness-results" / f"late-native-gather-{seed}"
+    destination = Path.home() / "representax-fairness-results" / f"late-forward-boundary-{seed}"
     destination.mkdir(parents=True, exist_ok=True)
     data = assets / "late-fair-20260916/train.jsonl"
     rows = [json.loads(line) for line in data.read_text().splitlines()]
@@ -79,6 +79,9 @@ def worker(_index):
             self.probe_features, _ = self.collect_features(inputs)
             loss = super().compute_loss(model, inputs, **kwargs)
             self.probe_loss = loss.detach().clone()
+            torch_xla.sync(wait=True)
+            if os.environ.get("AUDIT_CAPTURE_BEFORE_BACKWARD") == "1":
+                CaptureCallback().on_step_end(self.args, self.state, self.control)
             return loss
 
     class CaptureCallback(TrainerCallback):
@@ -104,6 +107,13 @@ def worker(_index):
             arrays["scoring_queries"] = torch.cat(scoring_queries).float().cpu().numpy()
             arrays["gathered_documents"] = score_arguments[0][0].float().cpu().numpy()
             arrays["gathered_document_masks"] = score_arguments[0][1].cpu().numpy()
+            import hashlib
+            docs = arrays["gathered_documents"]
+            masks = arrays["gathered_document_masks"]
+            norms = np.linalg.norm(docs, axis=-1)[masks.astype(bool)]
+            result["gathered_documents_sha256"] = hashlib.sha256(docs.tobytes()).hexdigest()
+            result["gathered_valid_norm_range"] = [float(norms.min()), float(norms.max())]
+            result["before_backward"] = os.environ.get("AUDIT_CAPTURE_BEFORE_BACKWARD") == "1"
             np.savez_compressed(destination / f"rank-{rank}.npz", **arrays)
             (destination / f"rank-{rank}.json").write_text(json.dumps(result, indent=2) + "\n")
             print(json.dumps(result), flush=True)
