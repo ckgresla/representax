@@ -2351,6 +2351,12 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
       was 185.59 minutes. Requested an additional 2.5 hours, but no approval
       received: existing hard cutoff remains active.
       The 05:29:27 UTC hard cloud deadline is unchanged.
+      Goal completion requirement, reconfirmed by the author at 04:16 UTC:
+      immediately delete the TPU allocation and queued resource after the last
+      required results are copied locally and their hashes/completeness checked.
+      Do not keep the node running for paper generation, Git work, or review;
+      those continue on the tinybox. Verify cloud deletion before reporting it.
+      This instruction does not authorize an extension of the spending cutoff.
       Audit/walkthrough requested by the author on 2026-09-16. Source of truth:
       =paper/fairness-audit.md=; diagnostics in
       =/raid/representax-paper/fairness-audit-20260916/=.

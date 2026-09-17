@@ -52,6 +52,12 @@ minutes per reference), so the approximately 77 minutes before the existing
 05:29:27 UTC cutoff cannot be assumed sufficient. A 2.5-hour extension is
 requested but not authorized; the existing hard cutoff remains active.
 
+Shutdown is a completion requirement: immediately delete the allocation and
+queued resource once the last required results are copied and verified locally.
+Paper generation, Git work and review must not keep the TPU running. Verify
+deletion before reporting shutdown. The author's 04:16 UTC reconfirmation does
+not extend the existing spending cutoff.
+
 ### Before and After the Fairness Correction
 
 Ratios are native/reference median throughput. The historical ratios are
