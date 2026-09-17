@@ -12,6 +12,8 @@
   GPU references, retaining the original evidence in correction history.
 - `update_fairness.py`: complete paired-panel replacements after the wider audit,
   verifying all ten runs and preserving superseded evidence and analysis exclusions.
+- `update_transfer.py`: hash-checked full-corpus initial dense evaluations,
+  retaining the original trained-seed results unchanged.
 - `methods.json`: hash-checked historical settings and environments for 265 paired
   runs, plus longer-run configurations and prepared-data manifests.
 - `report.py`: current renderer for nine numeric tables and five PDF/PNG figures.
@@ -151,7 +153,7 @@ audit; those paths are not emitted in the PDF or LaTeX source archive.
 | Claim | Source | Limit |
 |---|---|---|
 | Workload-dependent framework throughput | Exp. 10 per-run metrics and summaries, including the five corrected GPU process-reward references in `evidence.json` | Short windows; local negatives on TPU; cache, historical late interaction, short-input process reward and small-batch GPU V-JEPA qualifications |
-| Useful dense learning | Exp. 11 summary and evaluation history | NanoMSMARCO improvement; transfer finals without initial transfer baselines |
+| Useful dense learning | Exp. 11 summary, evaluation history and full-corpus initial transfer reports | One shared pretrained baseline; three trained seeds; finite-budget adaptation |
 | Useful image-text learning | Exp. 13 summary | COCO fine-tuning, not CLIP pretraining from scratch |
 | Multimodal adaptation tradeoffs | Exp. 14 summary with per-arm evaluation history | Different mixtures; text-to-any, not any-to-any |
 | Negative late-interaction result | Exp. 12 hard-negative per-seed reports | Small held-out panel; cause unresolved |

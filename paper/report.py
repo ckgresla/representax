@@ -184,8 +184,9 @@ def learning_tables(e):
         a, b = row["initial"], row["final"]
         rows.append([*labels[key], f'{a["mean"]:.4f}', pm(b["mean"], b["sd"])])
     for name, row in e["transfer_final_only"].items():
-        rows.append(["Dense", {"trec-dl-2019": "TREC DL 2019", "natural-questions": "Natural Questions"}[name], "Not measured", pm(row["mean"], row["sd"])])
-    table("learning", "Held-out nDCG@10 before and after native adaptation. Final scores are mean and sample SD across three seeds. Transfer rows have no initial measurement; they do not establish transfer gains.", "llrr", ["Model", "Evaluation", "Initial", "Final"], rows)
+        initial = e["transfer_initial"][name]["metrics"][f"valid/{name}/cosine_ndcg@10"]
+        rows.append(["Dense", {"trec-dl-2019": "TREC DL 2019", "natural-questions": "Natural Questions"}[name], f"{initial:.4f}", pm(row["mean"], row["sd"])])
+    table("learning", "Held-out nDCG@10 before and after native adaptation. Final scores are mean and sample SD across three seeds. The pretrained transfer baseline is shared across seeds; initial and final evaluations use the same complete corpora.", "llrr", ["Model", "Evaluation", "Initial", "Final"], rows)
     rows = []
     for stage in ("initial", "final"):
         for strategy, label in zip(STRATEGIES, STRATEGY_NAMES):

@@ -288722,6 +288722,78 @@
     "/raid/representax-paper/10-cross-accelerator-framework-comparison/gpu-fairness-20260916/seed-2026/process-reward/reference/environment.json": {
       "sha256": "09cc42925037fa23d14e614034dd9d6e82a9bd87ab30a97de7e4f662135a0209",
       "bytes": 5623
+    },
+    "/raid/representax-paper/11-dense-retrieval-convergence/initial-transfer/gpu-placement-restart/launch.json": {
+      "sha256": "dc40aa12f54822db52aa5bebb08fcdf50f71ea99d559aa0e5ea977003c9eedff",
+      "bytes": 1223
+    },
+    "/raid/representax-paper/11-dense-retrieval-convergence/initial-transfer/gpu-placement-restart/run.py.snapshot": {
+      "sha256": "2cca3eb08ae5c67388fe0533e81c7b4e97a49da46511aa6692b9e0ca0b953504",
+      "bytes": 29997
+    },
+    "/raid/representax-paper/11-dense-retrieval-convergence/initial-transfer/gpu-placement-restart/source.patch": {
+      "sha256": "e273640640af4d364c438db4d31c64c959f9b4e104353b2f846c90f8445386e2",
+      "bytes": 1358337
+    },
+    "/raid/representax-paper/11-dense-retrieval-convergence/initial-transfer/trec-dl-2019.json": {
+      "sha256": "9b715a703cc29f9e7fe0a38bd689a237c21676bf0a3278665b8a95c96fdd7fac",
+      "bytes": 2077
+    },
+    "/raid/representax-paper-assets/dense-transfer-evaluation/manifest.json": {
+      "sha256": "31313a02801c1ee4295d79029d7d45c60175f4f391b5617588f6c52b85449534",
+      "bytes": 1305
+    },
+    "/raid/representax-paper/11-dense-retrieval-convergence/runs/seed-7/run/run.json": {
+      "sha256": "8c9f89c45b64984df60e3b55060a62240cf8b846ae9abf8392acc24f3ce75c3a",
+      "bytes": 18857
+    },
+    "/raid/representax-paper-assets/ettin-encoder-150m/config.json": {
+      "sha256": "2e82da1a748e2a8b64a980429a14e2d6fce17683e92b849174dc15842cb979c5",
+      "bytes": 1944
+    },
+    "/raid/representax-paper-assets/ettin-encoder-150m/model.safetensors": {
+      "sha256": "c4214417c8e2ea5e0de97f52032b5db01b96a49f351d2cdbbe8f3d5e03ebe9a9",
+      "bytes": 596070136
+    },
+    "/raid/representax-paper-assets/ettin-encoder-150m/source.json": {
+      "sha256": "e0658a014b60b43a482a19f8c9612459b32397111d1e6bdf7b9fff5f5b2f4c68",
+      "bytes": 100
+    },
+    "/raid/representax-paper-assets/ettin-encoder-150m/tokenizer.json": {
+      "sha256": "6c8aaa9a542084f2457eab775d4eeb51f92a70c0fd9de28d5edb0ddec3c08d30",
+      "bytes": 3583228
+    },
+    "/raid/representax-paper-assets/ettin-encoder-150m/tokenizer_config.json": {
+      "sha256": "68acf857b869285d8c3ac2757ddd26e6f8030fb275d6800131521eb736084608",
+      "bytes": 378
+    },
+    "/raid/representax-paper/11-dense-retrieval-convergence/runs/seed-7/transfer/trec-dl-2019.json": {
+      "sha256": "5004ee0e7a4240a4bd0c0ed882e6bfcf5acbfdafae9dfed49769b1c6b2cced64",
+      "bytes": 1371
+    },
+    "/raid/representax-paper/11-dense-retrieval-convergence/runs/seed-42/transfer/trec-dl-2019.json": {
+      "sha256": "922cb5e324a69e9db90118baad91d0768bf1c7f0ee9aa4f553eceaa4c10174a8",
+      "bytes": 1369
+    },
+    "/raid/representax-paper/11-dense-retrieval-convergence/runs/seed-773/transfer/trec-dl-2019.json": {
+      "sha256": "8b0833e1009462745b9068089bb446f7878cd5041406380b05664892a18d7dfc",
+      "bytes": 1377
+    },
+    "/raid/representax-paper/11-dense-retrieval-convergence/initial-transfer/natural-questions.json": {
+      "sha256": "280c8e350e52de417cd2474de7af381956e3125ef97f78d00cc7f101be82c893",
+      "bytes": 2141
+    },
+    "/raid/representax-paper/11-dense-retrieval-convergence/runs/seed-7/transfer/natural-questions.json": {
+      "sha256": "1f4adcb9e8615b3f006d77fa126cf5e8fc0190548421861044bab02645bfb48c",
+      "bytes": 1440
+    },
+    "/raid/representax-paper/11-dense-retrieval-convergence/runs/seed-42/transfer/natural-questions.json": {
+      "sha256": "33bcdb8c31393833838a143f8bc1a7faccd7511fa91db2becf9ddda95b58d7e1",
+      "bytes": 1438
+    },
+    "/raid/representax-paper/11-dense-retrieval-convergence/runs/seed-773/transfer/natural-questions.json": {
+      "sha256": "9615286fd2fa59b91430cf6ffeb9a63f6cc0d12b962be20bb11465ac06429da7",
+      "bytes": 1441
     }
   },
   "corrections": {
@@ -298140,5 +298212,124 @@
       "platform": "gpu",
       "recipe": "process-reward"
     }
+  },
+  "transfer_initial": {
+    "trec-dl-2019": {
+      "artifact": "/raid/representax-paper-assets/ettin-encoder-150m",
+      "batches": 2160,
+      "checkpoint_stage": "initial",
+      "compilation_seconds": 21.263031274080276,
+      "data_manifest": "/raid/representax-paper-assets/dense-transfer-evaluation/manifest.json",
+      "data_manifest_sha256": "sha256:31313a02801c1ee4295d79029d7d45c60175f4f391b5617588f6c52b85449534",
+      "data_wait_seconds": 2355.2950597964227,
+      "dataset": "trec-dl-2019",
+      "dispatch_seconds": 3705.299564851448,
+      "duration_seconds": 6549.083747155964,
+      "encoded_examples": 8847360,
+      "evaluation_batch_size": 4096,
+      "metrics": {
+        "valid/trec-dl-2019/cosine_accuracy@1": 0.06976744186046512,
+        "valid/trec-dl-2019/cosine_accuracy@10": 0.09302325581395349,
+        "valid/trec-dl-2019/cosine_map@100": 0.0030581285775095426,
+        "valid/trec-dl-2019/cosine_mrr@10": 0.08139534883720931,
+        "valid/trec-dl-2019/cosine_ndcg@10": 0.017016349957361458,
+        "valid/trec-dl-2019/cosine_precision@1": 0.06976744186046512,
+        "valid/trec-dl-2019/cosine_precision@10": 0.016279069767441864,
+        "valid/trec-dl-2019/cosine_precision@100": 0.007209302325581397,
+        "valid/trec-dl-2019/cosine_recall@1": 0.0011912252580889952,
+        "valid/trec-dl-2019/cosine_recall@10": 0.0022259672959940623,
+        "valid/trec-dl-2019/cosine_recall@100": 0.01016845201908474
+      },
+      "model_files_sha256": {
+        "config.json": "sha256:2e82da1a748e2a8b64a980429a14e2d6fce17683e92b849174dc15842cb979c5",
+        "model.safetensors": "sha256:c4214417c8e2ea5e0de97f52032b5db01b96a49f351d2cdbbe8f3d5e03ebe9a9",
+        "source.json": "sha256:e0658a014b60b43a482a19f8c9612459b32397111d1e6bdf7b9fff5f5b2f4c68",
+        "tokenizer.json": "sha256:6c8aaa9a542084f2457eab775d4eeb51f92a70c0fd9de28d5edb0ddec3c08d30",
+        "tokenizer_config.json": "sha256:68acf857b869285d8c3ac2757ddd26e6f8030fb275d6800131521eb736084608"
+      },
+      "model_revision": "45d08642849e5c5701b162671ac811b7654bfd9f",
+      "placement_seconds": 2.1330285780131817,
+      "queries": 43,
+      "seed": 7,
+      "source_run_config_sha256": "sha256:8c9f89c45b64984df60e3b55060a62240cf8b846ae9abf8392acc24f3ce75c3a"
+    },
+    "natural-questions": {
+      "artifact": "/raid/representax-paper-assets/ettin-encoder-150m",
+      "batches": 656,
+      "checkpoint_stage": "initial",
+      "compilation_seconds": 20.7073914129287,
+      "data_manifest": "/raid/representax-paper-assets/dense-transfer-evaluation/manifest.json",
+      "data_manifest_sha256": "sha256:31313a02801c1ee4295d79029d7d45c60175f4f391b5617588f6c52b85449534",
+      "data_wait_seconds": 853.6320068817586,
+      "dataset": "natural-questions",
+      "dispatch_seconds": 1143.852153012529,
+      "duration_seconds": 2120.591379545629,
+      "encoded_examples": 2686976,
+      "evaluation_batch_size": 4096,
+      "metrics": {
+        "valid/natural-questions/cosine_accuracy@1": 0.002317497103128621,
+        "valid/natural-questions/cosine_accuracy@10": 0.006373117033603708,
+        "valid/natural-questions/cosine_map@100": 0.0029076819693185005,
+        "valid/natural-questions/cosine_mrr@10": 0.0031816154426235537,
+        "valid/natural-questions/cosine_ndcg@10": 0.0032293071135784143,
+        "valid/natural-questions/cosine_precision@1": 0.002317497103128621,
+        "valid/natural-questions/cosine_precision@10": 0.000637311703360371,
+        "valid/natural-questions/cosine_precision@100": 0.0002433371958285054,
+        "valid/natural-questions/cosine_recall@1": 0.0016898416376979527,
+        "valid/natural-questions/cosine_recall@10": 0.005021243723445346,
+        "valid/natural-questions/cosine_recall@100": 0.01955388180764774
+      },
+      "model_files_sha256": {
+        "config.json": "sha256:2e82da1a748e2a8b64a980429a14e2d6fce17683e92b849174dc15842cb979c5",
+        "model.safetensors": "sha256:c4214417c8e2ea5e0de97f52032b5db01b96a49f351d2cdbbe8f3d5e03ebe9a9",
+        "source.json": "sha256:e0658a014b60b43a482a19f8c9612459b32397111d1e6bdf7b9fff5f5b2f4c68",
+        "tokenizer.json": "sha256:6c8aaa9a542084f2457eab775d4eeb51f92a70c0fd9de28d5edb0ddec3c08d30",
+        "tokenizer_config.json": "sha256:68acf857b869285d8c3ac2757ddd26e6f8030fb275d6800131521eb736084608"
+      },
+      "model_revision": "45d08642849e5c5701b162671ac811b7654bfd9f",
+      "placement_seconds": 0.6282140165567398,
+      "queries": 3452,
+      "seed": 7,
+      "source_run_config_sha256": "sha256:8c9f89c45b64984df60e3b55060a62240cf8b846ae9abf8392acc24f3ce75c3a"
+    }
+  },
+  "transfer_initial_provenance": {
+    "git": {
+      "commit": "1ba5e0534692bbe7fa325fdd0b0f19066e840924",
+      "working_tree_clean": false,
+      "working_tree_patch_sha256": "sha256:e273640640af4d364c438db4d31c64c959f9b4e104353b2f846c90f8445386e2"
+    },
+    "jobs": [
+      {
+        "command": [
+          "/home/ckg/fun/representax/experiments/.venv/bin/python",
+          "/home/ckg/fun/representax/experiments/11-dense-retrieval-convergence/run.py",
+          "evaluate-initial",
+          "--dataset",
+          "trec-dl-2019"
+        ],
+        "dataset": "trec-dl-2019",
+        "gpu": 0,
+        "pid": 4099101
+      },
+      {
+        "command": [
+          "/home/ckg/fun/representax/experiments/.venv/bin/python",
+          "/home/ckg/fun/representax/experiments/11-dense-retrieval-convergence/run.py",
+          "evaluate-initial",
+          "--dataset",
+          "natural-questions"
+        ],
+        "dataset": "natural-questions",
+        "gpu": 1,
+        "pid": 4099102
+      }
+    ],
+    "previous_pids": [
+      4088660,
+      4088661
+    ],
+    "reason": "Initial HF weights remained CPU-resident; explicitly place the unchanged initial model on its assigned GPU. Prior attempts stopped without results.",
+    "source_sha256": "sha256:2cca3eb08ae5c67388fe0533e81c7b4e97a49da46511aa6692b9e0ca0b953504"
   }
 }

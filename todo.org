@@ -275,7 +275,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      Report BERT Base, TPU audio and compiled dense retrieval as explicit limits.
 **** 5. End-to-end representation learning [18/18] [100%]
      Baseline completion, 2026-09-16: authorized full-corpus initial ETTIN
-     evaluations are running on GPU 0 (TREC DL 2019, 8,841,823 passages) and
+     evaluations completed on GPU 0 (TREC DL 2019, 8,841,823 passages) and
      GPU 1 (Natural Questions, 2,681,468 documents). One identical pretrained
      checkpoint serves all three seeds. The existing evaluator, length 128,
      batch 4,096, BF16 policy and qrels are unchanged. New =evaluate-initial=
@@ -290,6 +290,11 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      placement on GPUs 0 and 1, leaving all scientific settings unchanged.
      Restart provenance/logs are in =initial-transfer/gpu-placement-restart/=;
      the regression test now checks model placement (10 tests passed).
+     Both full-corpus reports are now incorporated in the paper after verifying
+     saved source/patch, model, manifest and original-run hashes. Initial nDCG@10
+     is 0.01701635 (TREC DL) and 0.00322931 (NQ); existing three-seed mean finals
+     are unchanged at 0.54043131 and 0.29216390. Shared evaluation batch size,
+     query counts and encoded-example counts match every trained seed.
 
      Run three independent Representax seeds (=7, 42, 773=) for each of four
      canonical workloads. These runs establish useful held-out representations

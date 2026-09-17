@@ -72,11 +72,14 @@ strong-scaling measurements are not invalidated by these paired-run findings.
 8. **Adaptation recipes:** multimodal strategies differ in learning rates and
    sampled sources. They demonstrate useful recipes, not an isolated causal
    ablation. Dense TREC DL 2019 and Natural Questions initial-checkpoint
-   evaluations are now running on GPUs 0 and 1 under
+   evaluations completed on GPUs 0 and 1 under
    `/raid/representax-paper/11-dense-retrieval-convergence/initial-transfer/`.
    They reuse the full corpora and original scoring settings; one shared
-   pretrained baseline serves the three trained seeds. Final scores are not
-   overwritten. Flickr30k already has initial and final scores. No convergence-equivalence,
+   pretrained baseline serves the three trained seeds. Initial nDCG@10 is
+   0.01701635 and 0.00322931, respectively; mean final scores remain 0.54043131
+   and 0.29216390. Source snapshot/patch, model weights, data manifest and original
+   run configuration hashes were verified before importing both reports.
+   Final scores are not overwritten. Flickr30k already has initial and final scores. No convergence-equivalence,
    universal speedup, SOTA, production-readiness or FSDP-capacity claim is made.
 9. **TPU audio execution audit, 2026-09-16:** all five seeds use global batch
    48, three examples per chip. Native rematerialized GradCache uses chunk two

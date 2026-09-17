@@ -104,6 +104,18 @@ class ReportTests(unittest.TestCase):
                 self.assertAlmostEqual(stats.mean(deltas), recorded["mean"])
                 self.assertAlmostEqual(stats.stdev(deltas), recorded["sample_standard_deviation"])
 
+    def test_transfer_baselines_cover_the_full_final_evaluation(self):
+        expected = {"trec-dl-2019": (43, 8847360),
+                    "natural-questions": (3452, 2686976)}
+        for name, (queries, encoded) in expected.items():
+            initial = self.e["transfer_initial"][name]
+            self.assertEqual(initial["checkpoint_stage"], "initial")
+            self.assertEqual(initial["queries"], queries)
+            self.assertEqual(initial["encoded_examples"], encoded)
+            self.assertEqual(initial["evaluation_batch_size"], 4096)
+            self.assertGreater(initial["metrics"][f"valid/{name}/cosine_ndcg@10"], 0)
+        self.assertNotIn("Not measured", (HERE / "tables/learning.org").read_text())
+
     def test_negative_results_and_scope_are_retained(self):
         text = (HERE / "paper.org").read_text().split("* Author Notes")[0]
         for phrase in ("0.7104 to 0.6925", "within 256 tokens", "batch one and 24 videos", "not a causal ablation", "finite-budget learning", "per-device negatives"):

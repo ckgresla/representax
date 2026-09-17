@@ -2,14 +2,14 @@
 \begin{table}[tbp]
 \centering\small
 \setlength{\tabcolsep}{4pt}
-\caption{Held-out nDCG@10 before and after native adaptation. Final scores are mean and sample SD across three seeds. Transfer rows have no initial measurement; they do not establish transfer gains.}\label{tab:learning}
+\caption{Held-out nDCG@10 before and after native adaptation. Final scores are mean and sample SD across three seeds. The pretrained transfer baseline is shared across seeds; initial and final evaluations use the same complete corpora.}\label{tab:learning}
 \begin{tabular}{llrr}\toprule
 Model & Evaluation & Initial & Final \\ \midrule
 Dense & NanoMSMARCO & 0.0730 & $0.5794 \pm 0.0111$ \\
 CLIP & Flickr30k text $\to$ image & 0.7373 & $0.8148 \pm 0.0023$ \\
 CLIP & Flickr30k image $\to$ text & 0.7168 & $0.7665 \pm 0.0025$ \\
-Dense & TREC DL 2019 & Not measured & $0.5404 \pm 0.0082$ \\
-Dense & Natural Questions & Not measured & $0.2922 \pm 0.0011$ \\
+Dense & TREC DL 2019 & 0.0170 & $0.5404 \pm 0.0082$ \\
+Dense & Natural Questions & 0.0032 & $0.2922 \pm 0.0011$ \\
 \bottomrule\end{tabular}
 \end{table}
 #+end_export

@@ -304,9 +304,11 @@ with the reference frameworks.
 Dense adaptation starts from ETTIN Encoder 150M and presents 488,576
 duplicate-free MS MARCO pairs once, in 3,817 updates at batch 128
 [cite:@ettin;@bajaj2016msmarco]. NanoMSMARCO nDCG@10 improves from 0.0730 to
-0.5794. Final TREC DL 2019 and Natural Questions retrieval scores are
-0.5404 and 0.2922 [cite:@craswell2020trec;@kwiatkowski2019nq]; without initial
-transfer evaluations these are final scores, not measured transfer gains.
+0.5794. Full-corpus TREC DL 2019 and Natural Questions retrieval scores improve
+from 0.0170 to 0.5404 and from 0.0032 to 0.2922, respectively
+[cite:@craswell2020trec;@kwiatkowski2019nq]. The common pretrained checkpoint is
+evaluated once per dataset with the same corpora and scoring settings used for
+the three trained models.
 
 CLIP ViT-B/32 adaptation presents 588,800 COCO image-caption pairs in 1,150
 updates at batch 512. Five distinct captions per image are exposed over the
