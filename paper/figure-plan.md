@@ -5,6 +5,13 @@ no training runs. Do not select axes, rows or ranges to conceal regressions.
 Keep the current figures as a reproducible first pass until the replacements
 have been reviewed.
 
+2026-09-16 decision: replace the main throughput plot with a GPU/TPU table of
+absolute rates and ratios. Bold the higher of the two reported medians per
+workload and hardware group. Keep the only matched Inductor control (dense
+GPU retrieval) in a dedicated appendix subsection and numeric row rather
+than two mostly empty main-table columns. Retain the per-seed plot in the appendix. This
+supersedes the comparison-plot proposal below; no measurements change.
+
 ## Three Questions for the Main Text
 
 | Question | Main figure | Supporting table |

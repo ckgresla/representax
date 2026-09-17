@@ -210,9 +210,12 @@ does not represent a compiled baseline for every recipe. The seeds are
 guarantee of independently shuffled trajectories: some historical pipelines
 reuse deterministic data order.
 
-Within a hardware/recipe pair, the contract matches global batch, examples,
-objective settings and the intended precision policy, with framework-native
-execution. Encoder chunks may differ. TPU contrastive comparisons use
+Within a hardware/recipe pair, the intended contract matches global batch,
+examples, objective settings and precision, with framework-native execution.
+Historical late-interaction, reward and audio/video rows have discrepancies
+described below; only complete validated replacement panels are restored as
+matched-training comparisons. Encoder
+chunks may differ. The other historical TPU contrastive comparisons use
 per-device negatives in both frameworks; a single-GPU negative pool covers
 the full batch. Cross-accelerator settings are not always identical.
 Appendix [[#sec:paired-methods]] records actual models, batches, shapes,
@@ -220,34 +223,55 @@ reference integrations and known deviations.
 
 For run \(r\), throughput is \(R_r=\sum_t B_t/\sum_t T_t\), where \(T_t\)
 is the complete measured optimizer-step interval, including visible input
-wait. Optimizer steps/s uses the same denominator. The plotted framework
-ratio divides median per-seed rates; individual paired-seed ratios show
-variation without treating consecutive updates as independent replicates.
-Twenty warm updates per seed form a bounded timing screen, not a
-demonstration of long-run stationarity. Native GPU late interaction retains
-15 usable intervals after first-use exclusions. Compilation, initialization,
+wait. Optimizer steps/s uses the same denominator. The tabulated framework
+ratio divides median per-seed rates; the appendix shows individual paired-seed
+ratios without treating consecutive updates as independent replicates.
+Up to twenty warm updates per seed form a bounded timing screen, not a
+demonstration of long-run stationarity. Historical native GPU late interaction
+retains 15 usable intervals after first-use exclusions. Corrected GPU references
+retain 19 after also excluding the post-checkpoint interval, whose timer includes
+save/resume overhead. Compilation, initialization,
 evaluation and checkpointing are outside this primary metric and are
 reported separately where recorded.
 
 ** Results and Qualifications
-Figure [[fig:framework-throughput]] shows substantial workload dependence.
+Table \ref{tab:framework-throughput} shows absolute rates and relative
+throughput, with substantial workload dependence. Bold values identify the
+larger of the two reported medians within each workload and hardware panel,
+not a statistically significant difference. GPU references in the main table
+use eager execution; Appendix [[#sec:compiled-reference]] reports the compiled
+dense control separately.
 MPNet dense retrieval reaches 305.35 examples/s against eager Sentence
-Transformers' 211.22 (1.446x), but the compiled reference reaches 316.61
-(native/reference 0.964x). The two BERT Base sentence-pair controls are
+Transformers' 211.22 (1.446x), but is slightly slower than the compiled
+reference. The two BERT Base sentence-pair controls are
 slower on GPU, despite faster MPNet counterparts. TPU dense retrieval is
-approximately tied; audio-text is slower at 11.25 versus 13.45 examples/s.
-Video-text reaches 80.70 versus 8.47 examples/s on TPU. That large ratio
-describes the tested integration, not an isolated compiler advantage.
-With matched 256-token padding, GPU process reward reaches 56.23 examples/s
-against TRL's 16.95 (3.318x). This replaces a mismatched-padding comparison;
-the five reference runs were repeated and the verified native runs retained.
+approximately tied. Historical audio/video rates remain visible, but their
+ratios are withheld pending matched adapter precision and initialization.
+After matching both 256-token padding and scalar-head initialization, GPU
+process reward reaches 55.16 examples/s against TRL's 16.79 (3.286x).
+Both frameworks were rerun for all five seeds; prior measurements remain in
+the evidence archive rather than being overwritten.
 
-Four qualifications limit interpretation. Historical late interaction has
-duplicated training pairs and an unresolved loss-scale discrepancy [L].
-It achieves higher throughput with similar observed retrieval quality:
+Several qualifications limit interpretation. Historical late interaction [L]
+uses duplicated pairs with sequential native batches but shuffled reference
+batches; its cached GPU reference also backpropagates summed rather than mean
+gradients. On TPU, native execution ignores the configured local-negative
+scope and uses 512 candidates, versus 32 for the reference. These rows require
+corrected controls before matched-training speedup claims. The historical
+GPU runs nevertheless have similar observed retrieval quality:
 mean final NanoMSMARCO nDCG@10 is 0.7129 versus PyLate's 0.7078 across five
 seeds, from initial scores 0.7123 and 0.7089. The panel has only 50 queries
 and scoring precision differs; this is not proof of equivalent convergence.
+Outcome reward [O] uses FP32 native master parameters and optimizer moments,
+but BF16 reference parameters and moments. Its rates also remain historical
+execution measurements, not a matched-precision speedup.
+Audio/video references [M] likewise retain BF16 trainable LoRA parameters,
+where native adapters are FP32. Their default A-matrix initialization also
+differs (uniform versus normal), and reference adapters were constructed
+before applying the run seed. These rows require corrected controls.
+Historical process-reward reference heads [I] were also constructed before
+seeding. The replacement GPU panel uses one shared scalar head and explicit
+seeding before construction; the TPU replacement panel is still in progress.
 Process reward selects examples fitting within 256 tokens [P], with matched
 padding of 256 on GPU and 2,048 on TPU; it does not measure a representative
 long-reasoning workload. TPU image-text and
@@ -256,10 +280,7 @@ pre-materialization moves some input work outside training [C]. Finally,
 GPU V-JEPA uses batch one and 24 videos, whereas TPU uses batch 128 and
 2,816 videos [G]. Its GPU result is a small-batch execution measurement.
 
-#+NAME: fig:framework-throughput
-#+CAPTION: Training throughput relative to the reference, with parity at one. Diamonds are ratios of median per-seed rates; dots are paired-seed ratios, not confidence intervals. The red square is the dense TorchInductor control. [L]: historical loss/data qualification; [P]: short inputs, padded to 256 on GPU and 2,048 on TPU; [C]: TPU cache/preprocessing effects; [G]: small-batch GPU V-JEPA. Absolute rates and global batches appear in Appendix [[#sec:paired-methods]].
-#+ATTR_LATEX: :width \linewidth :placement [tbp]
-[[file:figures/framework-throughput.pdf]]
+#+INCLUDE: "tables/framework-throughput.org"
 
 These measurements support favorable throughput in many tested configurations,
 not a universal speedup or a causal attribution to any one design choice.
@@ -535,9 +556,16 @@ the checkpoint/resume at update 11. Original measurements remain in the
 artifact correction history, not the active throughput table.
 GPU native accumulation uses microbatches four and two,
 respectively, to reach the stated global batches. Both use peak learning
-rate \(10^{-5}\). Outcome reward loads a BF16 base; nominal training precision
-configuration alone should not be read as proof that every model leaf
-originated as FP32.
+rate \(10^{-5}\). Outcome reward loads a BF16 base in both frameworks, but
+native initialization promotes trainable leaves to FP32 before creating
+optimizer state. The TRL integration retains BF16 weights and AdamW moments.
+The scalar reward heads are separately initialized; equal seeds do not imply
+identical JAX and PyTorch random weights. A matched numerical control must
+share the starting head and align master/optimizer precision.
+Process-reward reference construction also precedes Trainer seeding and
+selects one score from a newly initialized classification head without an
+explicit one-label configuration. Its padding correction remains valid, but
+a controlled initialization comparison needs an explicit shared scalar head.
 
 *Multimodal tasks.* Image-text uses 3,840 COCO images with four repeated
 presentations of the first caption per image in the historical timing
@@ -548,6 +576,30 @@ MSR-VTT videos. Both adapt rank-four, alpha-eight text-tower LoRA in the
 GPU and two on TPU. TPU reference execution uses direct MNR at its
 small local batch. These are heavier multimodal workloads than text-only
 encoding, not an equal-compute comparison across modalities.
+Native trainable adapters are FP32, whereas the historical Transformers
+=add_adapter= path leaves them BF16. Native A matrices use a normal
+distribution with standard deviation \(d_{in}^{-1/2}\); PEFT defaults to a
+uniform distribution on \([-d_{in}^{-1/2},d_{in}^{-1/2}]\). Both initialize
+B to zero, but this does not align subsequent optimization. The historical
+reference also constructs these adapters before Trainer applies its seed.
+
+For TPU audio specifically, batch 48 gives three examples per chip. Native
+and reference runs both use device-local negative pools: each audio query
+is compared against three captions, not all 48 captions in the optimizer
+batch. We matched the reference runner's configured objective; its existing
+PJRT integration did not connect Sentence Transformers' cross-device
+embedding gather. This is a limitation of that integration, not of the
+Sentence Transformers MNR objective or its GPU distributed support. Gradient
+synchronization alone does not expand the contrastive candidate pool.
+
+Native rematerialized GradCache uses chunks of two, padding each device's encoder
+input to four slots and discarding the extra representation before the loss.
+The reference directly encodes its three examples. Both enable layer
+activation checkpointing; native execution additionally rematerializes the
+encoder chunks. These are execution differences, not a change in the number
+of examples or negatives contributing to the objective. All five native runs
+are slower. Padding and replay are plausible contributors, but no controlled
+direct-versus-cached TPU audio ablation isolates their effect on throughput.
 
 *Predictive video.* V-JEPA uses a 12-layer, width-768 ViT-B/16 encoder,
 12-layer width-384 predictor, tubelet size two and supervision at layers
@@ -619,6 +671,31 @@ are preserved in the generated analysis file.
 
 #+INCLUDE: "tables/gpu-startup.org"
 #+INCLUDE: "tables/tpu-startup.org"
+
+Figure [[fig:framework-throughput]] complements the main throughput table with
+paired-seed variation. These are descriptive timing repetitions, not
+independent evidence of converged learning quality.
+
+#+NAME: fig:framework-throughput
+#+CAPTION: Per-seed framework throughput ratios, complementing Table \ref{tab:framework-throughput}. Diamonds are ratios of median per-seed rates; dots are paired-seed ratios, not confidence intervals. The red square is the dense GPU reference compiled with TorchInductor. Historical cells awaiting pairing corrections are withheld; validated replacements are shown. Other qualifications are unchanged from the main table; different GPU/TPU allocations and batches preclude an equal-work hardware comparison.
+#+ATTR_LATEX: :width \linewidth :placement [tbp]
+[[file:figures/framework-throughput.pdf]]
+
+** Compiled GPU Reference
+:PROPERTIES:
+:CUSTOM_ID: sec:compiled-reference
+:END:
+TorchInductor is the compilation backend used by PyTorch's =torch.compile=;
+it is not a separate reference framework. The matched suite includes five
+compiled Sentence Transformers runs for MPNet dense retrieval at global
+batch 2,048 on one RTX 4090. Median throughput is 316.61 examples/s, against
+Representax's 305.35 and eager Sentence Transformers' 211.22. Thus the native
+rate is 0.964x the compiled reference, despite its 1.446x eager-relative rate.
+Table \ref{tab:gpu-rates} retains this control as the Dense / Inductor row;
+the per-seed ratio plot also marks it separately. No matched Inductor
+measurements are available for the other recipes. The main table's bold
+values therefore identify winners against its stated references, not against
+every possible compiled configuration.
 
 #+LATEX: \clearpage
 * Learning Recipes and Evaluation
@@ -790,7 +867,7 @@ configuration intended to improve a future run.
 =paper/evidence.json= contains frozen metric records, run summaries and
 source hashes. =paper/methods.json= captures 265 paired-run configurations
 and environment/data references, plus longer-run recipes. Its source
-manifest records 693 artifact hashes. =paper/report.py= generates tables,
+manifest records 693 artifact hashes. =paper/report.py= generates nine tables,
 five vector figures and per-run timing diagnostics without network access,
 model loading or accelerator computation. =paper/collect_methods.py=
 is the one-time, hash-checked capture utility; it is not required to rebuild

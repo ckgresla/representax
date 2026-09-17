@@ -5,6 +5,7 @@ import unittest
 
 from build import PANEL_SEEDS
 from update_fairness import correction_key, replace
+from report import comparison_matched, measured_rows
 
 
 class FairnessEvidenceTests(unittest.TestCase):
@@ -42,6 +43,20 @@ class FairnessEvidenceTests(unittest.TestCase):
         records[0]["recipe"] = "outcome-reward"
         with self.assertRaisesRegex(ValueError, "Wrong replacement recipe"):
             replace(self.evidence, "gpu", "process-reward", records, {})
+
+    def test_approval_is_specific_to_one_hardware_workload(self):
+        result = replace(self.evidence, "gpu", "process-reward", self.records, {})
+        self.assertTrue(comparison_matched(result, "gpu-rtx4090", "process-reward"))
+        self.assertFalse(comparison_matched(result, "tpu-v5e-16", "process-reward"))
+        self.assertFalse(comparison_matched(result, "gpu-rtx4090", "audio-text"))
+
+    def test_checkpoint_interval_exclusion_preserves_raw_metrics(self):
+        metrics = [{"event": "training_step", "iteration": step,
+                    "metrics": {"perf/step_seconds": 1.}}
+                   for step in (3, 11, 12, 13)]
+        run = {"metrics": metrics, "analysis_excluded_iterations": [1, 2, 12]}
+        self.assertEqual([row["iteration"] for row in measured_rows(run)], [3, 11, 13])
+        self.assertEqual(len(metrics), 4)
 
 
 if __name__ == "__main__":

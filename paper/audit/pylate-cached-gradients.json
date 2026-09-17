@@ -1,0 +1,13 @@
+{
+  "pylate_version": "1.6.0",
+  "batch_size": 5,
+  "partial_final_chunk": true,
+  "direct_loss": 19.2142333984375,
+  "cached_reported_loss": 19.2142333984375,
+  "cached_to_mean_gradient_ratio": 5.0,
+  "maximum_error_from_batch_scaled_gradient": 3.814697265625e-06,
+  "direct_gradient_norm": 14.927347183227539,
+  "cached_gradient_norm": 74.6367416381836,
+  "unit_normalized_gradient_maximum_difference": 2.9802322387695312e-08,
+  "limit": "Embedding-gradient diagnostic, not historical model update parity."
+}

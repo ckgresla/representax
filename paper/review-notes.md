@@ -11,6 +11,17 @@ reran five GPU TRL references; no core library/training code was changed.
 
 The writing audit reads historical artifacts, not today's launcher defaults:
 
+**2026-09-16 full paired audit supersedes the earlier interpretation below.**
+See `fairness-audit.md` for all 13 recipes, 265 runs and 693 verified source
+hashes, diagnostic evidence and the repair/rerun matrix. Matched-training
+ratios are now withheld for late interaction, outcome/process reward and
+audio/video pending corrections. This does not delete historical measurements.
+The process-reward padding correction is still valid; its newly discovered
+head-initialization issue is separate. The complete GPU process-reward replacement
+has now passed and is promoted (55.1617 versus 16.7875 examples/s, 3.2859x);
+other affected panels remain queued/in progress. The native learning studies and A100
+strong-scaling measurements are not invalidated by these paired-run findings.
+
 1. **Process reward (2026-09-16 correction):** the shared preparation selected
    1,920 examples containing 102--256 real tokens. All five native GPU runs
    actually used 256-token buckets; the original TRL runs padded to 2,048.
@@ -19,7 +30,8 @@ The writing audit reads historical artifacts, not today's launcher defaults:
    rate is 16.9460 examples/s versus the retained native 56.2287: **3.3181x**.
    Twenty warm updates exclude first-use steps 1 and 12 around resume. The
    original invalid 9.005x comparison is retained only in correction history;
-   active evidence, figures, tables and prose use the corrected runs. The
+   that padding-only panel is also now superseded by ten freshly paired runs
+   with shared scalar-head initialization. The
    native summary's configured maximum was not its actual execution length;
    recorded token capacities establish 256. Both TPU frameworks still use
    2,048-token tensors. `[P]` qualifies short real inputs, not an unresolved
@@ -66,15 +78,38 @@ The writing audit reads historical artifacts, not today's launcher defaults:
    pretrained baseline serves the three trained seeds. Final scores are not
    overwritten. Flickr30k already has initial and final scores. No convergence-equivalence,
    universal speedup, SOTA, production-readiness or FSDP-capacity claim is made.
+9. **TPU audio execution audit, 2026-09-16:** all five seeds use global batch
+   48, three examples per chip. Native rematerialized GradCache uses chunk two
+   plus full layer checkpointing; the reference uses direct MNR plus XLA
+   layer checkpointing. Historical source `5b0d216` pads native encoder inputs
+   from three to four slots per chip, dropping padding before the loss.
+   Commit `576d281` switched the reference to direct MNR after replay
+   compatibility/memory work; the native chunk-two setting was inherited
+   from the earlier GPU preflight. The measured medians are 11.2468 versus
+   13.4512 examples/s. Native warm input-queue waits are below 0.1 ms on
+   average per seed, but placement/enqueue averages 2.75--2.93 s; this can
+   include asynchronous backpressure and is not isolated transfer time.
+   Compilation is excluded. Padding/replay are plausible costs, not an
+   established cause of the entire gap. The author requested a TPU rerun:
+   check direct MNR and chunk-three capacity, then rerun the five-seed pair
+   on one matching slice. The historical direct path ignored local-negative
+   scope; a user-approved isolated patch reuses the cached path's per-device
+   loss without encoder replay. Ten CPU-mesh tests check loss, gradients and
+   optimizer updates against explicitly grouped MNR, including three pairs
+   per chip and two-/four-device Auto/Explicit meshes. The unpatched direct
+   path fails these checks. This does not establish real-model TPU capacity
+   or speed; those remain canary gates. Preserve historical records until reviewed
+  replacement evidence exists; do not present this as a tuned-backend verdict.
 
 ## Artifact Boundaries
 
-- `evidence.json` replaces only five GPU process-reward reference records and
-  their aggregate. Its `corrections` entry preserves the superseded runs,
-  aggregate and new launch provenance. All other measured runs are unchanged.
-  `methods.json` records the resulting 265 paired-run settings and environments
-  and 693 source hashes, including the corrected reference settings.
-- `report.py` reconstructs eight numeric tables, five vector/PNG figures and
+- `evidence.json` preserves both the first five-reference padding correction
+  and the subsequent ten-run GPU process-reward replacement under `corrections`.
+  Complete additional panels are promoted individually after validation;
+  pending historical ratios remain withheld. `methods.json` retains the earlier
+  265-run methods snapshot with 693 source hashes; replacement run records carry
+  their own source, configuration/artifact locations and metric hashes.
+- `report.py` reconstructs nine numeric tables, five vector/PNG figures and
   `analysis.json` from the snapshot; no GPU, network or model weights required.
 - Natural Questions corpus/query counts were checked locally with `wc -l`:
   2,681,468 documents and 3,452 queries. This is analysis, not a new experiment.
@@ -88,9 +123,12 @@ The writing audit reads historical artifacts, not today's launcher defaults:
 
 ## Before Upload
 
-Review the body, reference-integration descriptions and disclosure. Decide
-whether the qualified process-reward and small-batch V-JEPA rows should remain
-in the main throughput figure or move entirely to the appendix. They are
-currently included transparently, without a pooled framework speedup.
+Review the body, reference-integration descriptions and disclosure. The main
+framework comparison is now a four-column table with absolute rates and
+relative ratios; bold denotes the higher of the two reported medians per
+workload/hardware group, not significance. The compiled dense reference and
+per-seed plot are in the appendix.
+Qualified process-reward and small-batch V-JEPA rows remain visible, without a
+pooled framework speedup.
 Confirm current venue formatting and the final public repository state.
 No submission, push or commit is performed by the paper build.

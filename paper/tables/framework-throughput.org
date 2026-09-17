@@ -1,0 +1,38 @@
+#+begin_export latex
+\begin{table}[tbp]
+\centering\small
+\setlength{\tabcolsep}{6pt}
+\caption{Warm training throughput: median examples/s across five seeds. Bold marks the higher of the two reported rates within each workload and hardware panel, not statistical significance. $R$ denotes Representax; ratios divide its median rate by the reference median. GPU references use eager execution; the dense TorchInductor control is in Appendix \ref{sec:compiled-reference}. GPU and TPU allocations/batches differ. Historical cells awaiting replacement retain rates but omit winner styling and ratios; corrected cells use the validated paired protocol. Qualifications [L], [O], [I], [M], [P], [C], [G] are defined in the text; per-seed variation is shown in the appendix.}\label{tab:framework-throughput}
+\begin{tabular}{lrrr}\toprule
+Workload & \shortstack{Representax\\ex/s} & \shortstack{Reference\\ex/s} & $R/\mathrm{Ref.}$ \\ \midrule
+\multicolumn{4}{l}{\textit{Single RTX 4090; reference: PyTorch eager}} \\
+Dense retrieval & \textbf{305.35} & 211.22 & 1.446 \\
+Similarity / MPNet & \textbf{559.72} & 367.80 & 1.522 \\
+Similarity / BERT & 286.21 & \textbf{384.08} & 0.745 \\
+Classification / MPNet & \textbf{552.81} & 361.94 & 1.527 \\
+Classification / BERT & 296.21 & \textbf{382.92} & 0.774 \\
+Cross-encoder & \textbf{670.37} & 441.53 & 1.518 \\
+Late interaction [L] & 262.29 & 40.45 & --- \\
+Outcome reward [O] & 8.00 & 6.51 & --- \\
+Process reward [P,I] & \textbf{55.16} & 16.79 & 3.286 \\
+Image-text [C] & \textbf{321.02} & 106.22 & 3.022 \\
+Audio-text [M] & 2.66 & 1.84 & --- \\
+Video-text [M] & 3.48 & 1.49 & --- \\
+V-JEPA 2.1 [C,G] & \textbf{6.57} & 1.30 & 5.040 \\
+\midrule\multicolumn{4}{l}{\textit{16-chip v5e slice; reference: PyTorch/XLA}} \\
+Dense retrieval & \textbf{2,510.21} & 2,506.15 & 1.002 \\
+Similarity / MPNet & \textbf{4,045.86} & 808.69 & 5.003 \\
+Similarity / BERT & \textbf{3,439.73} & 829.87 & 4.145 \\
+Classification / MPNet & \textbf{4,124.54} & 773.71 & 5.331 \\
+Classification / BERT & \textbf{3,478.86} & 758.16 & 4.589 \\
+Cross-encoder & \textbf{2,701.60} & 807.87 & 3.344 \\
+Late interaction [L] & 2,765.34 & 1,059.69 & --- \\
+Outcome reward [O] & 103.87 & 59.93 & --- \\
+Process reward [P,I] & 85.26 & 24.31 & --- \\
+Image-text [C] & \textbf{2,259.88} & 1,062.06 & 2.128 \\
+Audio-text [M] & 11.25 & 13.45 & --- \\
+Video-text [M] & 80.70 & 8.46 & --- \\
+V-JEPA 2.1 [C,G] & \textbf{87.59} & 59.63 & 1.469 \\
+\bottomrule\end{tabular}
+\end{table}
+#+end_export

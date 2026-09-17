@@ -1,0 +1,37 @@
+[
+  {
+    "seed": 7,
+    "logged_updates": 22,
+    "minimum_norm": 316.5,
+    "minimum_mean_equivalent_norm": 0.6181640625,
+    "updates_where_mean_equivalent_below_clip": 5
+  },
+  {
+    "seed": 42,
+    "logged_updates": 22,
+    "minimum_norm": 224.0,
+    "minimum_mean_equivalent_norm": 0.4375,
+    "updates_where_mean_equivalent_below_clip": 5
+  },
+  {
+    "seed": 773,
+    "logged_updates": 22,
+    "minimum_norm": 292.6,
+    "minimum_mean_equivalent_norm": 0.571484375,
+    "updates_where_mean_equivalent_below_clip": 7
+  },
+  {
+    "seed": 1234,
+    "logged_updates": 22,
+    "minimum_norm": 417.6,
+    "minimum_mean_equivalent_norm": 0.815625,
+    "updates_where_mean_equivalent_below_clip": 6
+  },
+  {
+    "seed": 2026,
+    "logged_updates": 22,
+    "minimum_norm": 253.1,
+    "minimum_mean_equivalent_norm": 0.4943359375,
+    "updates_where_mean_equivalent_below_clip": 6
+  }
+]

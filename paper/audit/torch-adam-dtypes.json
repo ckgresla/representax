@@ -1,0 +1,10 @@
+{
+  "torch_version": "2.11.0+cu128",
+  "parameter_dtype": "torch.bfloat16",
+  "optimizer_tensor_dtypes": {
+    "step": "torch.float32",
+    "exp_avg": "torch.bfloat16",
+    "exp_avg_sq": "torch.bfloat16"
+  },
+  "limit": "CPU AdamW dtype behavior; historical full-model dtypes require loader inspection."
+}

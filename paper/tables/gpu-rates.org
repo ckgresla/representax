@@ -2,7 +2,7 @@
 \begin{table}[tbp]
 \centering\small
 \setlength{\tabcolsep}{4pt}
-\caption{Absolute warm training rates on one RTX 4090. Columns show median per-seed examples/s (ex/s) and optimizer steps/s (st/s); ratio is native/reference examples/s. Batch is global examples per update. Qualifications [L], [P], [C], [G] are defined in the text.}\label{tab:gpu-rates}
+\caption{Absolute warm training rates on one RTX 4090. Columns show median per-seed examples/s (ex/s) and optimizer steps/s (st/s); ratio is native/reference examples/s. Batch is global examples per update. Ratios for historical [L], [O], [I] and [M] rows are withheld pending corrections. Qualifications are defined in the text.}\label{tab:gpu-rates}
 \begin{tabular}{lrrrrrr}\toprule
 Recipe & Batch & Native ex/s & st/s & Ref. ex/s & st/s & Ratio \\ \midrule
 Dense retrieval & 2048 & 305.35 & 0.149 & 211.22 & 0.103 & 1.446 \\
@@ -11,12 +11,12 @@ Similarity / BERT & 256 & 286.21 & 1.118 & 384.08 & 1.500 & 0.745 \\
 Classification / MPNet & 256 & 552.81 & 2.159 & 361.94 & 1.414 & 1.527 \\
 Classification / BERT & 256 & 296.21 & 1.157 & 382.92 & 1.496 & 0.774 \\
 Cross-encoder & 128 & 670.37 & 5.237 & 441.53 & 3.449 & 1.518 \\
-Late interaction [L] & 512 & 262.29 & 0.512 & 40.45 & 0.079 & 6.484 \\
-Outcome reward & 128 & 8.00 & 0.063 & 6.51 & 0.051 & 1.229 \\
-Process reward [P] & 64 & 56.23 & 0.879 & 16.95 & 0.265 & 3.318 \\
+Late interaction [L] & 512 & 262.29 & 0.512 & 40.45 & 0.079 & --- \\
+Outcome reward [O] & 128 & 8.00 & 0.063 & 6.51 & 0.051 & --- \\
+Process reward [P,I] & 64 & 55.16 & 0.862 & 16.79 & 0.262 & 3.286 \\
 Image-text [C] & 512 & 321.02 & 0.627 & 106.22 & 0.207 & 3.022 \\
-Audio-text & 32 & 2.66 & 0.083 & 1.84 & 0.058 & 1.442 \\
-Video-text & 2 & 3.48 & 1.741 & 1.49 & 0.745 & 2.337 \\
+Audio-text [M] & 32 & 2.66 & 0.083 & 1.84 & 0.058 & --- \\
+Video-text [M] & 2 & 3.48 & 1.741 & 1.49 & 0.745 & --- \\
 V-JEPA 2.1 [C,G] & 1 & 6.57 & 6.571 & 1.30 & 1.304 & 5.040 \\
 Dense / Inductor & 2048 & 305.35 & 0.149 & 316.61 & 0.155 & 0.964 \\
 \bottomrule\end{tabular}

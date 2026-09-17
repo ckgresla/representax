@@ -15,13 +15,31 @@ DATASETS = ("flickr30k", "audiocaps", "msrvtt", "nanomsmarco")
 DATASET_NAMES = ("Flickr30k", "AudioCaps", "MSR-VTT", "NanoMSMARCO")
 NAMES = {
     **LABELS,
-    "process-reward": "Process reward [P]",
+    "outcome-reward": "Outcome reward [O]",
+    "process-reward": "Process reward [P,I]",
+    "audio-text": "Audio-text [M]",
+    "video-text": "Video-text [M]",
     "v-jepa": "V-JEPA 2.1 [C,G]",
 }
+UNMATCHED_RECIPES = frozenset({
+    "late-interaction", "outcome-reward", "process-reward", "audio-text", "video-text",
+})
 
 
 def load():
     return json.loads((HERE / "evidence.json").read_text())
+
+
+def comparison_matched(evidence, platform, recipe):
+    short = {"gpu-rtx4090": "gpu", "tpu-v5e-16": "tpu"}[platform]
+    return recipe not in UNMATCHED_RECIPES or (
+        f"fairness-20260916-{short}-{recipe}" in evidence.get("corrections", {})
+    )
+
+
+def measured_rows(run):
+    excluded = set(run.get("analysis_excluded_iterations", ()))
+    return [row for row in warm_rows(run["metrics"]) if row["iteration"] not in excluded]
 
 
 def summary(values):
@@ -84,16 +102,72 @@ def startup_cells(native, reference):
     ]
 
 
-def table(name, caption, columns, headers, rows):
+def table(name, caption, columns, headers, rows, *, tabcolsep=4):
     body = "\n".join(" & ".join(row) + r" \\" for row in rows)
     text = (
-        "#+begin_export latex\n\\begin{table}[tbp]\n\\centering\\small\n\\setlength{\\tabcolsep}{4pt}\n"
+        "#+begin_export latex\n\\begin{table}[tbp]\n\\centering\\small\n"
+        + rf"\setlength{{\tabcolsep}}{{{tabcolsep}pt}}" + "\n"
         + rf"\caption{{{caption}}}\label{{tab:{name}}}" + "\n"
         + rf"\begin{{tabular}}{{{columns}}}\toprule" + "\n"
         + " & ".join(headers) + r" \\ \midrule" + "\n"
         + body + "\n\\bottomrule\\end{tabular}\n\\end{table}\n#+end_export\n"
     )
     (HERE / "tables" / f"{name}.org").write_text(text)
+
+
+def throughput_cells(native, reference, *, matched=True):
+    """Compare measured medians within one workload and hardware allocation."""
+    if not matched:
+        return [f"{native:,.2f}", f"{reference:,.2f}", "---"]
+    rates = (native, reference)
+    best = max(rates)
+    cells = []
+    for rate in rates:
+        value = f"{rate:,.2f}"
+        cells.append(rf"\textbf{{{value}}}" if rate == best else value)
+    cells.append(f"{native / reference:.3f}")
+    return cells
+
+
+def framework_overview(e):
+    def median_rate(runs, recipe, framework):
+        selected = [r for r in runs
+                    if r["recipe"] == recipe and r["framework"] == framework]
+        assert sorted(r["seed"] for r in selected) == sorted(PANEL_SEEDS)
+        return stats.median(r["examples_per_second"] for r in selected)
+
+    rows = []
+    for platform, heading in (
+        ("gpu-rtx4090", "Single RTX 4090; reference: PyTorch eager"),
+        ("tpu-v5e-16", "16-chip v5e slice; reference: PyTorch/XLA"),
+    ):
+        separator = r"\midrule" if rows else ""
+        rows.append([separator + rf"\multicolumn{{4}}{{l}}{{\textit{{{heading}}}}}"])
+        runs = e["panels"][platform]["runs"]
+        for recipe in LABELS:
+            native = median_rate(runs, recipe, "representax")
+            reference = median_rate(runs, recipe, "reference")
+            rows.append([NAMES[recipe], *throughput_cells(
+                native, reference, matched=comparison_matched(e, platform, recipe)
+            )])
+    table(
+        "framework-throughput",
+        "Warm training throughput: median examples/s across five seeds. "
+        "Bold marks the higher of the two reported rates within each workload and hardware panel, "
+        "not statistical significance. $R$ denotes Representax; ratios divide "
+        "its median rate by the reference median. GPU references use eager "
+        "execution; the dense TorchInductor control is in "
+        r"Appendix \ref{sec:compiled-reference}. "
+        "GPU and TPU allocations/batches differ. Historical cells awaiting replacement "
+        "retain rates but omit winner styling and ratios; corrected cells use the "
+        "validated paired protocol. Qualifications [L], [O], [I], [M], [P], [C], [G] are defined in the text; "
+        "per-seed variation is shown in the appendix.",
+        "lrrr",
+        ["Workload", r"\shortstack{Representax\\ex/s}",
+         r"\shortstack{Reference\\ex/s}", r"$R/\mathrm{Ref.}$"],
+        rows,
+        tabcolsep=6,
+    )
 
 
 def learning_tables(e):
@@ -129,6 +203,7 @@ def learning_tables(e):
 
 
 def framework_tables(e):
+    framework_overview(e)
     audit = {}
     for platform, short in (("gpu-rtx4090", "gpu"), ("tpu-v5e-16", "tpu")):
         panel = e["panels"][platform]
@@ -142,7 +217,7 @@ def framework_tables(e):
                 assert [r["seed"] for r in runs] == sorted(PANEL_SEEDS)
                 rates, step_rates, first_use, cvs, diagnostics = [], [], [], [], []
                 for run in runs:
-                    warm = [r["metrics"] for r in warm_rows(run["metrics"])]
+                    warm = [r["metrics"] for r in measured_rows(run)]
                     seconds = [r["perf/step_seconds"] for r in warm]
                     counts = {r["perf/examples"] for r in warm}
                     assert len(counts) == 1
@@ -158,7 +233,8 @@ def framework_tables(e):
                 audit[f"{short}/{recipe}"][framework] = {"step_time_cv": cvs, "first_use_seconds": first_use, "examples_per_second": rates, "startup_diagnostics": diagnostics}
             assert len(set(batches)) == 1, (recipe, batches)
             ratio = stats.median(audit[f"{short}/{recipe}"]["representax"]["examples_per_second"]) / stats.median(audit[f"{short}/{recipe}"]["reference"]["examples_per_second"])
-            rows.append([NAMES[recipe], str(int(batches[0])), *values, f"{ratio:.3f}"])
+            rows.append([NAMES[recipe], str(int(batches[0])), *values,
+                         f"{ratio:.3f}" if comparison_matched(e, platform, recipe) else "---"])
             startup.append([NAMES[recipe], *startup_cells(startup_by_framework["representax"], startup_by_framework["reference"])])
         if short == "gpu":
             rates = [r["examples_per_second"] for r in e["panels"]["gpu-rtx4090-torchinductor"]["runs"]]
@@ -168,7 +244,7 @@ def framework_tables(e):
             startup.append(["Dense / Inductor", *startup_cells([], diagnostics)])
             audit["gpu/dense-retrieval-torchinductor"] = {"reference": {"startup_diagnostics": diagnostics}}
         title = "one RTX 4090" if short == "gpu" else "the full 16-chip v5e slice"
-        table(short + "-rates", f"Absolute warm training rates on {title}. Columns show median per-seed examples/s (ex/s) and optimizer steps/s (st/s); ratio is native/reference examples/s. Batch is global examples per update. Qualifications [L], [P], [C], [G] are defined in the text.", "lrrrrrr", ["Recipe", "Batch", "Native ex/s", "st/s", "Ref. ex/s", "st/s", "Ratio"], rows)
+        table(short + "-rates", f"Absolute warm training rates on {title}. Columns show median per-seed examples/s (ex/s) and optimizer steps/s (st/s); ratio is native/reference examples/s. Batch is global examples per update. Ratios for historical [L], [O], [I] and [M] rows are withheld pending corrections. Qualifications are defined in the text.", "lrrrrrr", ["Recipe", "Batch", "Native ex/s", "st/s", "Ref. ex/s", "st/s", "Ratio"], rows)
         table(short + "-startup", f"Recorded early-step diagnostics on {title}, median seconds over five seeds. Native first-use is the sum of dispatch-to-completion intervals across the reported number of events, including new shapes and resumed execution. Reference columns are complete first and second optimizer-step intervals, including input wait. They are different timing boundaries, not a compilation-speed comparison; neither isolates pure compilation or full startup. Cache states vary. A dash means unrecorded, not zero, or no separate native Inductor run.", "lrrrr", ["Recipe", "Native first-use (s)", "Events", "Ref. step 1 (s)", "Ref. step 2 (s)"], startup)
     (HERE / "analysis.json").write_text(json.dumps(audit, indent=2) + "\n")
 
@@ -229,6 +305,10 @@ def figures(e):
         panel = e["panels"][platform]
         lookup = {r["recipe"]: r["representax_to_reference_ratio"] for r in panel["aggregates"]}
         for i, recipe in enumerate(recipes):
+            if not comparison_matched(e, platform, recipe):
+                ax.text(.52, i, "Pairing under correction", va="center",
+                        fontsize=7, color=COLORS["slate"])
+                continue
             v = paired_rates(panel, recipe)
             ax.scatter(v, i+np.linspace(-.13, .13, len(v)), s=12, color=color, alpha=.45, edgecolors="none")
             ax.scatter(lookup[recipe], i, marker="D", s=28, color=color, zorder=3)
@@ -308,7 +388,7 @@ def main():
     learning_tables(e)
     scaling_table(e)
     figures(e)
-    print("Generated eight tables, five figures, and per-run timing diagnostics.")
+    print("Generated nine tables, five figures, and per-run timing diagnostics.")
 
 
 if __name__ == "__main__":

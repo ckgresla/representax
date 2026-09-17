@@ -1,0 +1,21 @@
+{
+  "native_sequential": {
+    "first_batch": {
+      "distinct_queries": 11,
+      "distinct_documents": 11,
+      "distinct_pairs": 11
+    },
+    "mean_distinct_queries": 10.636363636363637,
+    "mean_distinct_pairs": 11.363636363636363
+  },
+  "reference_default_seed7": {
+    "first_batch": {
+      "distinct_queries": 191,
+      "distinct_documents": 205,
+      "distinct_pairs": 205
+    },
+    "mean_distinct_queries": 193.86363636363637,
+    "mean_distinct_pairs": 206.9090909090909
+  },
+  "note": "Reference sampler reproduced from pinned ST; not a recorded batch trace."
+}

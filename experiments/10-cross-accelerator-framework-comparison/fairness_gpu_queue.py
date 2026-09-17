@@ -20,7 +20,7 @@ OUTPUT = Path("/raid/representax-paper/10-cross-accelerator-framework-comparison
 ASSETS = Path("/raid/representax-paper-assets")
 SEEDS = (7, 42, 773, 1234, 2026)
 RECIPES = {0: ("late-interaction",), 1: ("outcome-reward",),
-           2: ("process-reward",), 3: ("audio-text", "video-text")}
+           2: ("process-reward", "video-text"), 3: ("audio-text",)}
 
 
 def completed(directory):
@@ -51,11 +51,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--gpu", type=int, choices=tuple(RECIPES), required=True)
     gpu = parser.parse_args().gpu
-    checkout = RECOVERY_CHECKOUT if gpu in {1, 3} else CHECKOUT
-    expected_revision = RECOVERY_REVISION if gpu in {1, 3} else REVISION
-    if gpu in {0, 3}:
-        checkout, expected_revision = CAPACITY_CHECKOUT, CAPACITY_REVISION
     for recipe in RECIPES[gpu]:
+        checkout, expected_revision = CHECKOUT, REVISION
+        if recipe == "outcome-reward":
+            checkout, expected_revision = RECOVERY_CHECKOUT, RECOVERY_REVISION
+        elif recipe in {"late-interaction", "audio-text", "video-text"}:
+            checkout, expected_revision = CAPACITY_CHECKOUT, CAPACITY_REVISION
         scope = "global" if recipe in {"late-interaction", "audio-text"} else "local"
         for seed in SEEDS:
             for framework in ("reference", "representax"):

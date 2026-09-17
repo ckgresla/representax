@@ -10,13 +10,16 @@
 - `evidence.json`: frozen compact evidence, raw metric records and source hashes.
 - `update_process_reward.py`: audited, one-time replacement of five mismatched
   GPU references, retaining the original evidence in correction history.
+- `update_fairness.py`: complete paired-panel replacements after the wider audit,
+  verifying all ten runs and preserving superseded evidence and analysis exclusions.
 - `methods.json`: hash-checked historical settings and environments for 265 paired
   runs, plus longer-run configurations and prepared-data manifests.
-- `report.py`: current renderer for eight numeric tables and five PDF/PNG figures.
+- `report.py`: current renderer for nine numeric tables and five PDF/PNG figures.
 - `tables/`, `figures/`, `analysis.json`: generated paper assets and timing diagnostics.
 - `results.md`, `captions.md`: historical first-pass summaries; the Org manuscript
   and `report.py` own the current presentation.
 - `review-notes.md`: author-review handoff and qualifications found during writing.
+- `fairness-audit.md`: full paired-configuration audit, reproductions and repair matrix.
 
 No training code or original measured artifacts are changed by this directory. The
 roadmap and remaining submission tasks stay in `../todo.org`.
@@ -85,6 +88,17 @@ license in `assets/`; source: `https://github.com/rsms/inter`,
 `docs/font-files/InterVariable.ttf`, downloaded 2026-09-11. The font bytes are
 hashed in the evidence manifest. Colors use the author's named light palette.
 
+The main framework comparison is `tables/framework-throughput.org`: stacked
+GPU/TPU panels show absolute median examples/s and reference-relative ratios.
+GPU references in this table use eager execution. The dedicated compiled-GPU
+appendix subsection and `tables/gpu-rates.org` retain the five-seed dense
+TorchInductor control. Bold marks the higher of the two reported medians
+within each workload/hardware group, not statistical significance. The
+per-seed ratio plot remains in the appendix so variability is not hidden.
+Rows with unresolved objective, precision or initialization discrepancies retain
+absolute rates but have no winner styling or ratio. See `fairness-audit.md`;
+historical raw evidence is not silently deleted or replaced.
+
 The evidence was captured with:
 
 ```bash
@@ -106,9 +120,21 @@ new source/data/metric hashes, observed 256-token execution shapes, batch order
 against the five retained native runs and twenty warm intervals per seed.
 It replaces only those five reference cells and their aggregate, preserving
 the originals under `corrections`; it refuses to apply the correction twice.
-The corrected TRL median is 16.9460 examples/s, giving a 3.3181x native/reference
-ratio. The original 9.005x ratio compared different padded shapes and is not a
-valid matched-throughput result. TPU measurements are unchanged.
+The corrected TRL median is 16.9460 examples/s (arithmetic rate ratio 3.3181).
+The subsequent audit found a separate scalar-head initialization issue. Both
+frameworks have now been rerun with a shared scalar head: medians are 55.1617
+and 16.7875 examples/s (3.2859x). This replacement was promoted using
+`python paper/update_fairness.py --platform gpu --recipe process-reward`.
+The original 9.005x ratio compared different padded shapes and is invalid.
+The intervening padding-only panel and original panel both remain in correction
+history. The other affected panels are still pending.
+
+The paired-panel importer requires 22 finite updates and matching data manifests,
+checks stored hashes and clean source provenance, and requires a final replica
+hash for TPU references. A TPU-derived GPU launcher's empty native outer log is
+left untouched; the importer instead records and hashes `run/metrics.jsonl`.
+Corrected GPU reference timing excludes updates 1, 2 and 12, leaving 19 intervals:
+the last exclusion removes checkpoint work included in the following step timer.
 
 The historical-methods snapshot was captured separately with
 `experiments/.venv/bin/python paper/collect_methods.py`. It refuses replacement

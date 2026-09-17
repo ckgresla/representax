@@ -81,6 +81,16 @@ class ExportTests(unittest.TestCase):
         )
         self.assertFalse(stale.exists())
 
+    def test_main_comparison_is_a_table_and_seed_plot_is_in_appendix(self):
+        tex = (self.root / "build/preprint/paper.tex").read_text()
+        table = tex.index(r"\label{tab:framework-throughput}")
+        appendix = tex.index(r"\appendix")
+        figure = tex.index(r"\includegraphics[width=\linewidth]{figures/framework-throughput.pdf}")
+        compiled = tex.index(r"\label{sec:compiled-reference}")
+        self.assertLess(table, appendix)
+        self.assertGreater(figure, appendix)
+        self.assertGreater(compiled, appendix)
+
 
 if __name__ == "__main__":
     unittest.main()

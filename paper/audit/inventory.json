@@ -1,0 +1,635 @@
+{
+  "run_count": 265,
+  "source_count": 693,
+  "missing_sources": [],
+  "changed_sources": [],
+  "pairs": [
+    {
+      "platform": "gpu-rtx4090",
+      "recipe": "audio-text",
+      "seeds": {
+        "representax": [
+          7,
+          42,
+          773,
+          1234,
+          2026
+        ],
+        "reference": [
+          7,
+          42,
+          773,
+          1234,
+          2026
+        ]
+      },
+      "manifest_hashes_match": true,
+      "source_commits": [
+        "7b7d27e3d8a61197b9a4e88094a096ff17192be5"
+      ]
+    },
+    {
+      "platform": "gpu-rtx4090",
+      "recipe": "cross-encoder",
+      "seeds": {
+        "representax": [
+          7,
+          42,
+          773,
+          1234,
+          2026
+        ],
+        "reference": [
+          7,
+          42,
+          773,
+          1234,
+          2026
+        ]
+      },
+      "manifest_hashes_match": true,
+      "source_commits": [
+        "7b7d27e3d8a61197b9a4e88094a096ff17192be5"
+      ]
+    },
+    {
+      "platform": "gpu-rtx4090",
+      "recipe": "dense-retrieval",
+      "seeds": {
+        "representax": [
+          7,
+          42,
+          773,
+          1234,
+          2026
+        ],
+        "reference": [
+          7,
+          42,
+          773,
+          1234,
+          2026
+        ]
+      },
+      "manifest_hashes_match": true,
+      "source_commits": [
+        "7b7d27e3d8a61197b9a4e88094a096ff17192be5"
+      ]
+    },
+    {
+      "platform": "gpu-rtx4090",
+      "recipe": "image-text",
+      "seeds": {
+        "representax": [
+          7,
+          42,
+          773,
+          1234,
+          2026
+        ],
+        "reference": [
+          7,
+          42,
+          773,
+          1234,
+          2026
+        ]
+      },
+      "manifest_hashes_match": true,
+      "source_commits": [
+        "7b7d27e3d8a61197b9a4e88094a096ff17192be5"
+      ]
+    },
+    {
+      "platform": "gpu-rtx4090",
+      "recipe": "late-interaction",
+      "seeds": {
+        "representax": [
+          7,
+          42,
+          773,
+          1234,
+          2026
+        ],
+        "reference": [
+          7,
+          42,
+          773,
+          1234,
+          2026
+        ]
+      },
+      "manifest_hashes_match": true,
+      "source_commits": [
+        "7b7d27e3d8a61197b9a4e88094a096ff17192be5"
+      ]
+    },
+    {
+      "platform": "gpu-rtx4090",
+      "recipe": "outcome-reward",
+      "seeds": {
+        "representax": [
+          7,
+          42,
+          773,
+          1234,
+          2026
+        ],
+        "reference": [
+          7,
+          42,
+          773,
+          1234,
+          2026
+        ]
+      },
+      "manifest_hashes_match": true,
+      "source_commits": [
+        "7b7d27e3d8a61197b9a4e88094a096ff17192be5"
+      ]
+    },
+    {
+      "platform": "gpu-rtx4090",
+      "recipe": "pair-classification-bert-base",
+      "seeds": {
+        "representax": [
+          7,
+          42,
+          773,
+          1234,
+          2026
+        ],
+        "reference": [
+          7,
+          42,
+          773,
+          1234,
+          2026
+        ]
+      },
+      "manifest_hashes_match": true,
+      "source_commits": [
+        "7b7d27e3d8a61197b9a4e88094a096ff17192be5"
+      ]
+    },
+    {
+      "platform": "gpu-rtx4090",
+      "recipe": "pair-classification-mpnet-base",
+      "seeds": {
+        "representax": [
+          7,
+          42,
+          773,
+          1234,
+          2026
+        ],
+        "reference": [
+          7,
+          42,
+          773,
+          1234,
+          2026
+        ]
+      },
+      "manifest_hashes_match": true,
+      "source_commits": [
+        "7b7d27e3d8a61197b9a4e88094a096ff17192be5"
+      ]
+    },
+    {
+      "platform": "gpu-rtx4090",
+      "recipe": "process-reward",
+      "seeds": {
+        "representax": [
+          7,
+          42,
+          773,
+          1234,
+          2026
+        ],
+        "reference": [
+          7,
+          42,
+          773,
+          1234,
+          2026
+        ]
+      },
+      "manifest_hashes_match": true,
+      "source_commits": [
+        "1ba5e0534692bbe7fa325fdd0b0f19066e840924",
+        "7b7d27e3d8a61197b9a4e88094a096ff17192be5"
+      ]
+    },
+    {
+      "platform": "gpu-rtx4090",
+      "recipe": "semantic-similarity-bert-base",
+      "seeds": {
+        "representax": [
+          7,
+          42,
+          773,
+          1234,
+          2026
+        ],
+        "reference": [
+          7,
+          42,
+          773,
+          1234,
+          2026
+        ]
+      },
+      "manifest_hashes_match": true,
+      "source_commits": [
+        "7b7d27e3d8a61197b9a4e88094a096ff17192be5"
+      ]
+    },
+    {
+      "platform": "gpu-rtx4090",
+      "recipe": "semantic-similarity-mpnet-base",
+      "seeds": {
+        "representax": [
+          7,
+          42,
+          773,
+          1234,
+          2026
+        ],
+        "reference": [
+          7,
+          42,
+          773,
+          1234,
+          2026
+        ]
+      },
+      "manifest_hashes_match": true,
+      "source_commits": [
+        "7b7d27e3d8a61197b9a4e88094a096ff17192be5"
+      ]
+    },
+    {
+      "platform": "gpu-rtx4090",
+      "recipe": "v-jepa",
+      "seeds": {
+        "representax": [
+          7,
+          42,
+          773,
+          1234,
+          2026
+        ],
+        "reference": [
+          7,
+          42,
+          773,
+          1234,
+          2026
+        ]
+      },
+      "manifest_hashes_match": true,
+      "source_commits": [
+        "7b7d27e3d8a61197b9a4e88094a096ff17192be5"
+      ]
+    },
+    {
+      "platform": "gpu-rtx4090",
+      "recipe": "video-text",
+      "seeds": {
+        "representax": [
+          7,
+          42,
+          773,
+          1234,
+          2026
+        ],
+        "reference": [
+          7,
+          42,
+          773,
+          1234,
+          2026
+        ]
+      },
+      "manifest_hashes_match": true,
+      "source_commits": [
+        "7b7d27e3d8a61197b9a4e88094a096ff17192be5"
+      ]
+    },
+    {
+      "platform": "tpu-v5e-16",
+      "recipe": "audio-text",
+      "seeds": {
+        "representax": [
+          7,
+          42,
+          773,
+          1234,
+          2026
+        ],
+        "reference": [
+          7,
+          42,
+          773,
+          1234,
+          2026
+        ]
+      },
+      "manifest_hashes_match": true,
+      "source_commits": [
+        "1471cbc3f026e823c9563cff4cbd049bd90287fa",
+        "5b0d216375a0f3ef9de3fcc6504ef45d19a30b93"
+      ]
+    },
+    {
+      "platform": "tpu-v5e-16",
+      "recipe": "cross-encoder",
+      "seeds": {
+        "representax": [
+          7,
+          42,
+          773,
+          1234,
+          2026
+        ],
+        "reference": [
+          7,
+          42,
+          773,
+          1234,
+          2026
+        ]
+      },
+      "manifest_hashes_match": true,
+      "source_commits": [
+        "63207d0f14eedb7c0646c4e5000ea3c0d4fe972c"
+      ]
+    },
+    {
+      "platform": "tpu-v5e-16",
+      "recipe": "dense-retrieval",
+      "seeds": {
+        "representax": [
+          7,
+          42,
+          773,
+          1234,
+          2026
+        ],
+        "reference": [
+          7,
+          42,
+          773,
+          1234,
+          2026
+        ]
+      },
+      "manifest_hashes_match": true,
+      "source_commits": [
+        "63207d0f14eedb7c0646c4e5000ea3c0d4fe972c"
+      ]
+    },
+    {
+      "platform": "tpu-v5e-16",
+      "recipe": "image-text",
+      "seeds": {
+        "representax": [
+          7,
+          42,
+          773,
+          1234,
+          2026
+        ],
+        "reference": [
+          7,
+          42,
+          773,
+          1234,
+          2026
+        ]
+      },
+      "manifest_hashes_match": true,
+      "source_commits": [
+        "63207d0f14eedb7c0646c4e5000ea3c0d4fe972c"
+      ]
+    },
+    {
+      "platform": "tpu-v5e-16",
+      "recipe": "late-interaction",
+      "seeds": {
+        "representax": [
+          7,
+          42,
+          773,
+          1234,
+          2026
+        ],
+        "reference": [
+          7,
+          42,
+          773,
+          1234,
+          2026
+        ]
+      },
+      "manifest_hashes_match": true,
+      "source_commits": [
+        "63207d0f14eedb7c0646c4e5000ea3c0d4fe972c"
+      ]
+    },
+    {
+      "platform": "tpu-v5e-16",
+      "recipe": "outcome-reward",
+      "seeds": {
+        "representax": [
+          7,
+          42,
+          773,
+          1234,
+          2026
+        ],
+        "reference": [
+          7,
+          42,
+          773,
+          1234,
+          2026
+        ]
+      },
+      "manifest_hashes_match": true,
+      "source_commits": [
+        "63207d0f14eedb7c0646c4e5000ea3c0d4fe972c"
+      ]
+    },
+    {
+      "platform": "tpu-v5e-16",
+      "recipe": "pair-classification-bert-base",
+      "seeds": {
+        "representax": [
+          7,
+          42,
+          773,
+          1234,
+          2026
+        ],
+        "reference": [
+          7,
+          42,
+          773,
+          1234,
+          2026
+        ]
+      },
+      "manifest_hashes_match": true,
+      "source_commits": [
+        "63207d0f14eedb7c0646c4e5000ea3c0d4fe972c"
+      ]
+    },
+    {
+      "platform": "tpu-v5e-16",
+      "recipe": "pair-classification-mpnet-base",
+      "seeds": {
+        "representax": [
+          7,
+          42,
+          773,
+          1234,
+          2026
+        ],
+        "reference": [
+          7,
+          42,
+          773,
+          1234,
+          2026
+        ]
+      },
+      "manifest_hashes_match": true,
+      "source_commits": [
+        "63207d0f14eedb7c0646c4e5000ea3c0d4fe972c"
+      ]
+    },
+    {
+      "platform": "tpu-v5e-16",
+      "recipe": "process-reward",
+      "seeds": {
+        "representax": [
+          7,
+          42,
+          773,
+          1234,
+          2026
+        ],
+        "reference": [
+          7,
+          42,
+          773,
+          1234,
+          2026
+        ]
+      },
+      "manifest_hashes_match": true,
+      "source_commits": [
+        "63207d0f14eedb7c0646c4e5000ea3c0d4fe972c"
+      ]
+    },
+    {
+      "platform": "tpu-v5e-16",
+      "recipe": "semantic-similarity-bert-base",
+      "seeds": {
+        "representax": [
+          7,
+          42,
+          773,
+          1234,
+          2026
+        ],
+        "reference": [
+          7,
+          42,
+          773,
+          1234,
+          2026
+        ]
+      },
+      "manifest_hashes_match": true,
+      "source_commits": [
+        "63207d0f14eedb7c0646c4e5000ea3c0d4fe972c"
+      ]
+    },
+    {
+      "platform": "tpu-v5e-16",
+      "recipe": "semantic-similarity-mpnet-base",
+      "seeds": {
+        "representax": [
+          7,
+          42,
+          773,
+          1234,
+          2026
+        ],
+        "reference": [
+          7,
+          42,
+          773,
+          1234,
+          2026
+        ]
+      },
+      "manifest_hashes_match": true,
+      "source_commits": [
+        "63207d0f14eedb7c0646c4e5000ea3c0d4fe972c"
+      ]
+    },
+    {
+      "platform": "tpu-v5e-16",
+      "recipe": "v-jepa",
+      "seeds": {
+        "representax": [
+          7,
+          42,
+          773,
+          1234,
+          2026
+        ],
+        "reference": [
+          7,
+          42,
+          773,
+          1234,
+          2026
+        ]
+      },
+      "manifest_hashes_match": true,
+      "source_commits": [
+        "3491fb008f94253f3521e2f4fde29d3957f57727"
+      ]
+    },
+    {
+      "platform": "tpu-v5e-16",
+      "recipe": "video-text",
+      "seeds": {
+        "representax": [
+          7,
+          42,
+          773,
+          1234,
+          2026
+        ],
+        "reference": [
+          7,
+          42,
+          773,
+          1234,
+          2026
+        ]
+      },
+      "manifest_hashes_match": true,
+      "source_commits": [
+        "3491fb008f94253f3521e2f4fde29d3957f57727"
+      ]
+    }
+  ],
+  "limit": "Manifest equality does not prove reader ordering or loss semantics."
+}

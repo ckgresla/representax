@@ -13,6 +13,18 @@ class CorrectionTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.evidence = json.loads((HERE / "evidence.json").read_text())
+        later = cls.evidence.get("corrections", {}).get(
+            "fairness-20260916-gpu-process-reward")
+        if later:
+            # Test the earlier padding-only correction against its own snapshot.
+            panel = cls.evidence["panels"]["gpu-rtx4090"]
+            old = {(r["framework"], r["seed"]): r for r in later["superseded_runs"]}
+            panel["runs"] = [old[r["framework"], r["seed"]]
+                             if r["recipe"] == "process-reward" else r
+                             for r in panel["runs"]]
+            panel["aggregates"] = [later["superseded_aggregate"]
+                                   if r["recipe"] == "process-reward" else r
+                                   for r in panel["aggregates"]]
 
     def test_correction_reconstructs_and_changes_only_five_cells(self):
         current = self.evidence

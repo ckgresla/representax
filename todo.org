@@ -2349,10 +2349,13 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
       studies automatically. The author approved the affected paired reruns
       with a six-hour limit; no core library patch is landed.
       Active completion goal includes collection/hash checks, replacement paper
-      evidence, and verified TPU deletion. At 2026-09-17 00:50 UTC all five native
-      TPU process-reward cells are copied locally; the reference failed final
-      replica identity and is being corrected, not accepted. Four local queues
-      run on GPUs 0-3. Every accepted cell must have clean Git provenance.
+      evidence, and verified TPU deletion. At 2026-09-17 01:04 UTC all five native
+      TPU process-reward cells and two references are copied locally. Functional
+      gradient averaging/reassignment resolved the reference replica-identity
+      failure; final hashes must match on all 16 ranks for each accepted run.
+      GPU process reward is complete (ten cells) and promoted with superseded
+      evidence preserved. GPUs 0-3 now run late interaction, outcome reward,
+      video-text and audio-text. Every accepted cell has clean Git provenance.
       Rerun budget requested by the author: conservative five recipes x two
       frameworks x five seeds = 50 TPU jobs and 50 local GPU jobs. Historical
       TPU launch-to-completion sum is 313.35 minutes (5.22 hours). Approved

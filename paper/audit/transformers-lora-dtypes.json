@@ -1,0 +1,9 @@
+{
+  "transformers_version": "5.6.0",
+  "peft_version": "0.19.1",
+  "trainable_parameters": {
+    "layers.0.self_attn.q_proj.lora_A.default.weight": "torch.bfloat16",
+    "layers.0.self_attn.q_proj.lora_B.default.weight": "torch.bfloat16"
+  },
+  "limit": "Tiny CPU model using the same Transformers add_adapter API; real TPU audio separately instrumented."
+}

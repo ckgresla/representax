@@ -1,0 +1,20 @@
+[
+  {
+    "devices": 2,
+    "configured_scope": "local",
+    "observed_loss": 0.8319249153137207,
+    "global_loss": 0.8319249749183655,
+    "expected_local_loss": 0.6082249879837036,
+    "matches_global": true,
+    "matches_local": false
+  },
+  {
+    "devices": 4,
+    "configured_scope": "local",
+    "observed_loss": 0.8319249153137207,
+    "global_loss": 0.8319249749183655,
+    "expected_local_loss": 0.33065104484558105,
+    "matches_global": true,
+    "matches_local": false
+  }
+]

@@ -2,21 +2,37 @@
 
 Audit date: 2026-09-16. This is a configuration/source audit with focused CPU
 diagnostics, not a new proof of numerical equivalence for every model.
-The frozen evidence remains unchanged until replacement measurements are
-reviewed. Passing an inventory check does not establish identical minibatches.
+Historical evidence is preserved under correction history when complete,
+validated replacement panels are promoted. Passing an inventory check does
+not establish identical minibatches.
 
-## Live Rerun Readiness (2026-09-17 00:50 UTC)
+## Live Rerun Readiness (2026-09-17 01:04 UTC)
 
-All five native TPU process-reward runs are complete and hash-verified locally
-(5/50 TPU cells). Four GPU queues are executing the five affected groups on
-GPUs 0-3. Production library code is unchanged. Experiment corrections are
+All five native TPU process-reward runs and two reference runs are complete
+and hash-verified locally (7/50 TPU cells). GPU process reward has completed
+all ten paired runs and passed evidence-import checks. GPUs 0-3 now execute
+late interaction, outcome reward, video-text and audio-text, respectively.
+Production library code is unchanged. Experiment corrections are
 frozen in commits `23a61b0`, `328aa74`, `026e80f`, `8c9fc7e`, and `cdcb104`;
 every run records its actual clean source revision. Nine focused CPU checks pass.
 
 The first corrected TPU process reference completed 22 updates but failed final
-replica identity. It is excluded, not a usable timing result. The next attempt
-uses functional gradient averaging before clipping, with initial and final
-replica hash checks. Passing this new runtime gate is still required.
+replica identity. It is excluded, not a usable timing result. Functional
+gradient averaging before clipping, with explicit gradient reassignment,
+resolved this gate: the seed-7 replacement completed all 22 updates with
+identical final trainable-parameter hashes on all 16 ranks. The same assertions
+remain mandatory for each subsequent reference run.
+
+The TPU-derived launcher omitted the flat GPU native metrics path and wrote an
+empty outer metrics file. Complete native logs remain at `run/metrics.jsonl`.
+The paper importer verifies the original outer hash, then reads, hashes and
+records this actual log path without modifying either original artifact. It
+requires all 22 finite training updates. For GPU references it excludes the
+post-checkpoint interval (update 12), in addition to the two first-use updates:
+19 warm intervals remain. Raw metrics and explicit analysis exclusions are kept.
+The first promoted panel is GPU process reward: median 55.1617 versus 16.7875
+examples/s (3.2859x). This is a short-input, matched-padding control, not
+long-context reasoning training.
 
 GPU startup exposed two execution-porting errors: direct audio training was
 incorrectly enabled on GPU, and the historical GPU media chunk size of one had
@@ -28,12 +44,15 @@ Duplicate-free late-interaction data exposed a previously latent limit mismatch:
 checkpoint metadata allows 48/300 tokens, whereas this recipe uses 32/256.
 A derived checkpoint config now applies 32/256 to native tokenization as well as
 PyLate; original weights are unchanged. This does not increase padded shapes.
+The sixteen longest queries and sixteen longest positives in the actual table
+produce exactly matching token IDs and attention masks in both processors.
 
 The real audio three-update diagnostic now reports identical gradient norms on
 all 16 ranks after functional flattened gradient reduction and explicit
 reassignment, unlike the in-place reduction. This is not yet a final-parameter
-identity proof. The corrected runner checks trainable-parameter hashes after
-training, outside measured step timing. That updated runner has not run yet.
+identity proof for audio. The corrected runner checks trainable-parameter hashes
+after training, outside measured step timing. Process reward has passed this
+gate; the complete audio run remains queued.
 The standalone global-MNR loss/gradient/update oracle was also rerun and passed.
 
 PyLate's global-loss oracle now passes against a same-backend, full-global-batch

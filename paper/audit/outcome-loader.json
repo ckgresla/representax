@@ -1,0 +1,10 @@
+{
+  "trainable_parameter_counts_by_dtype": {
+    "torch.bfloat16": 596050944
+  },
+  "optimizer": "AdamW",
+  "precision": {
+    "bf16": true
+  },
+  "limit": "Historical model and TRL construction on CPU; no training or accelerator timing."
+}

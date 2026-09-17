@@ -51,6 +51,13 @@ def collect(platform, recipe, root=ROOT):
             require(run["source"]["working_tree_clean"], f"Unfrozen source: {directory}")
             summary = read(directory / "summary.json", run["summary_sha256"])
             metrics = read(directory / "metrics.jsonl", run["metrics_sha256"], jsonl=True)
+            metrics_path = directory / "metrics.jsonl"
+            if framework == "representax" and not metrics:
+                # The TPU-derived launcher omitted the flat GPU native path.
+                # Preserve its empty canonical file and cite the actual log.
+                metrics_path = directory / "run/metrics.jsonl"
+                metrics = read(metrics_path, jsonl=True)
+            metrics_hash = "sha256:" + sources[str(metrics_path)]["sha256"]
             read(directory / "data-manifest.json", run["data_manifest_sha256"])
             read(directory / "environment.json")
             batch = summary.get("global_batch_size", summary.get("batch_size"))
@@ -68,7 +75,7 @@ def collect(platform, recipe, root=ROOT):
             require(all(math.isfinite(value) for value in losses), f"Nonfinite loss: {directory}")
             # Historical GPU reference timers include save work in the next
             # interval. Exclude that interval; do not rewrite the raw metrics.
-            excluded = {1, 2, 12} if platform == "gpu" and framework == "reference" else {1, 2}
+            excluded = {1, 2, 12} if platform == "gpu" and framework == "reference" else set()
             measured = [row for row in warm_rows(metrics) if row["iteration"] not in excluded]
             require(len(measured) >= 15, f"Insufficient warm updates: {directory}")
             durations = [row["metrics"]["perf/step_seconds"] for row in measured]
@@ -84,7 +91,8 @@ def collect(platform, recipe, root=ROOT):
                 "examples_per_second": batch * len(measured) / seconds,
                 "median_step_seconds": stats.median(durations),
                 "first_loss": losses[0], "final_loss": losses[-1],
-                "summary_sha256": run["summary_sha256"], "metrics_sha256": run["metrics_sha256"],
+                "summary_sha256": run["summary_sha256"], "metrics_sha256": metrics_hash,
+                "metrics_path": str(metrics_path),
                 "source_commit": run["source"]["commit"], "source": run["source"],
                 "result_directory": str(directory), "resolved_directory": str(directory),
                 "metrics": metrics, "run": run, "contract": summary.get("contract"),
