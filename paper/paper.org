@@ -276,7 +276,10 @@ moments, but BF16 reference parameters and moments. The corrected GPU panel
 shares BF16-rounded starting weights and a scalar head, with FP32 master weights
 and moments in both frameworks. It reaches 7.81 versus 5.43 examples/s (1.439x).
 Final paired losses differ by at most 0.0081 across the five seeds; this is
-short-run agreement, not convergence equivalence. The TPU replacement is pending.
+short-run agreement, not convergence equivalence. The corrected TPU panel
+reaches 103.87 versus 66.29 examples/s (1.567x), with final paired losses
+differing by at most 0.0057 and identical final reference parameters across
+all sixteen ranks for each seed.
 Historical audio/video references [M] likewise retain BF16 trainable LoRA
 parameters, where native adapters are FP32. Their default A-matrix initialization also
 differs (uniform versus normal), and reference adapters were constructed
@@ -584,6 +587,11 @@ same BF16-rounded base and shared scalar head to FP32 in both frameworks;
 forward computation remains BF16. Each framework uses microbatch four and
 32 accumulation rounds for global batch 128. The independently initialized
 historical heads and BF16 reference optimizer are not the active GPU comparison.
+The corrected TPU control uses the same precision and shared-head policy,
+with global batch 128. Its reference uses microbatch two and four local
+accumulation rounds; native execution retains its recorded configuration.
+The TPU reference averages parameter gradients before clipping and checks
+full trainable-parameter identity across ranks outside measured timing.
 Historical process-reward reference construction preceded Trainer seeding and
 selected one score from a newly initialized classification head without an
 explicit one-label configuration. The replacement controls correct both issues.

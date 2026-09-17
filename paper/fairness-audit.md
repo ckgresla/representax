@@ -6,20 +6,25 @@ Historical evidence is preserved under correction history when complete,
 validated replacement panels are promoted. Passing an inventory check does
 not establish identical minibatches.
 
-## Live Rerun Readiness (2026-09-17 02:22 UTC)
+## Live Rerun Readiness (2026-09-17 02:51 UTC)
 
 All 50 corrected GPU runs have completed and passed artifact/timing validation.
 Five-seed median native/reference ratios are 3.9776x late interaction, 1.4388x
 outcome reward, 3.2867x process reward, 2.1262x audio-text and 3.4395x video-text.
-The TPU process panel is promoted; all five native outcome runs are collected,
-and the per-parameter reduction fix passed all 22 reference updates for seed 7
-with final replica equality. The remaining outcome references are running.
+Both TPU reward panels are promoted. Outcome reward completed all ten runs,
+including final replica equality for every reference seed: median rates
+103.8667 versus 66.2923 examples/s (1.5668x), with final paired losses differing
+by at most 0.00564. Its per-parameter reduction fix is commit `f86dddf`.
 All ten TPU late-interaction jobs finished, but promotion is held while checking
 unexpected seed-dependent reference loss logs against the deterministic reader.
 A local first-batch diagnostic gives global loss 0.02829 with FP32 scoring and
 0.02798 with BF16 scoring, whereas the TPU logs start at 0.03198--0.07509.
 This local probe alone does not identify the TPU cause. The saved timings are
 not discarded, but completion and replica identity alone do not resolve this gate.
+The actual first-step trace now confirms the correct 512 input rows and matching
+functional distributed/logged mean losses. One local rank has an unexpectedly
+large contribution; tensor-level scoring diagnostics are in progress. This is
+not a demonstrated logging-only discrepancy.
 
 ### Earlier Readiness Gates
 
@@ -142,12 +147,14 @@ evidence about every historical reference's physical precision.
 
 ## Scope
 
-`methods.json` contains 265 runs: 13 recipes x two accelerators x two frameworks
+The initial `methods.json` audit contained 265 runs: 13 recipes x two accelerators x two frameworks
 x five seeds, plus five GPU dense TorchInductor controls. Each ordinary paired
 cell has seeds 7, 42, 773, 1234, 2026 and matching preparation-manifest hashes.
 We inspected recorded configs and historical execution code, not current defaults.
-All 693 source artifacts recorded in `methods.json` were present and matched
-their stored hashes. Small diagnostic JSON reports are copied verbatim into
+All 693 source artifacts in that initial snapshot were present and matched
+their stored hashes. The methods inventory is now refreshed from promoted
+replacement runs, with commit/manifest correspondence checked against active
+evidence. Small diagnostic JSON reports are copied verbatim into
 `paper/audit/`; original artifacts remain under the paths below.
 
 Historical sources: GPU `7b7d27e3d8a61197b9a4e88094a096ff17192be5`;

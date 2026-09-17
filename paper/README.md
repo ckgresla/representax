@@ -130,7 +130,7 @@ and 16.7875 examples/s (3.2867x). This replacement was promoted using
 The original 9.005x ratio compared different padded shapes and is invalid.
 The intervening padding-only panel and original panel both remain in correction
 history. All five affected GPU panels are now replaced. TPU process reward is
-also replaced; other TPU panels remain pending validation/completion. See the
+also replaced, as is TPU outcome reward; other TPU panels remain pending validation/completion. See the
 live status at the top of `fairness-audit.md`.
 
 The paired-panel importer requires 22 finite updates and matching data manifests,
@@ -144,11 +144,13 @@ update indices within every seed pair.
 
 The historical-methods snapshot was captured separately with
 `experiments/.venv/bin/python paper/collect_methods.py`. It refuses replacement
-and verifies saved summary/manifest hashes. It retains 693 source-artifact
+and verifies saved summary/manifest hashes. It retains source-artifact
 hashes, per-run environments and actual executed configurations. It is not part
 of an ordinary rebuild, and no current configuration is substituted for an old
-run. Following the explicit correction, its `collect()` function was rerun to
-record the new references' actual settings and environments. Files in the
+run. Following each promoted correction, its `collect()` function is rerun to
+record both frameworks' actual settings and environments. A regression check
+matches each methods record's commit and data manifest to the active evidence.
+Files in the
 evidence inventories retain absolute source paths for local
 audit; those paths are not emitted in the PDF or LaTeX source archive.
 

@@ -27,7 +27,7 @@ Classification / MPNet & \textbf{4,124.54} & 773.71 & 5.331 \\
 Classification / BERT & \textbf{3,478.86} & 758.16 & 4.589 \\
 Cross-encoder & \textbf{2,701.60} & 807.87 & 3.344 \\
 Late interaction [L] & 2,765.34 & 1,059.69 & --- \\
-Outcome reward [O] & 103.87 & 59.93 & --- \\
+Outcome reward [O] & \textbf{103.87} & 66.29 & 1.567 \\
 Process reward [P,I] & \textbf{85.26} & 9.94 & 8.578 \\
 Image-text [C] & \textbf{2,259.88} & 1,062.06 & 2.128 \\
 Audio-text [M] & 11.25 & 13.45 & --- \\

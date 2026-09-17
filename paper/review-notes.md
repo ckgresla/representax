@@ -24,7 +24,10 @@ The TPU process replacement is also complete (85.2563 versus 9.93935 examples/s,
 All 50 corrected GPU cells are now complete and promoted: late interaction
 3.9776x, outcome reward 1.4388x, process reward 3.2867x, audio-text 2.1262x,
 and video-text 3.4395x. TPU late interaction has completed ten jobs but is held
-for a real-batch/loss-reporting check; the other TPU panels remain in progress.
+for a tensor-level scoring check. TPU outcome reward is also complete and
+promoted: 103.8667 versus 66.2923 examples/s (1.5668x), with final paired
+losses differing by at most 0.00564 and all sixteen reference replicas equal.
+TPU audio/video remain in progress.
 The native learning studies and A100
 strong-scaling measurements are not invalidated by these paired-run findings.
 
@@ -115,9 +118,11 @@ strong-scaling measurements are not invalidated by these paired-run findings.
 - `evidence.json` preserves both the first five-reference padding correction
   and the subsequent ten-run GPU process-reward replacement under `corrections`.
   Complete additional panels are promoted individually after validation;
-  pending historical ratios remain withheld. `methods.json` retains the earlier
-  265-run methods snapshot with 693 source hashes; replacement run records carry
-  their own source, configuration/artifact locations and metric hashes.
+  pending historical ratios remain withheld. `methods.json` is refreshed from
+  the 265 active runs, including each promoted correction. Its commit/manifest
+  records are checked against active evidence; historical methods remain in Git.
+  Replacement run records carry their own source, configuration/artifact
+  locations and metric hashes.
 - `report.py` reconstructs nine numeric tables, five vector/PNG figures and
   `analysis.json` from the snapshot; no GPU, network or model weights required.
 - Natural Questions corpus/query counts were checked locally with `wc -l`:

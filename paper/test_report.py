@@ -83,8 +83,13 @@ class ReportTests(unittest.TestCase):
         self.assertEqual(len(actual), 265)
         self.assertEqual(len(set(actual)), 265)
         self.assertEqual(set(actual), set(expected))
-        self.assertEqual(len(self.methods["sources"]), 693)
+        active = {(p, r["recipe"], r["seed"], r["framework"]): r
+                  for p, panel in self.e["panels"].items() for r in panel["runs"]}
         for r in self.methods["paired_runs"]:
+            measured = active[key(r)]
+            self.assertEqual(r["source_commit"], measured["source_commit"])
+            self.assertEqual(r["manifest"], measured.get("data_manifest_sha256")
+                             or measured["run"]["data_manifest_sha256"])
             if r["manifest"]:
                 self.assertIn(r["manifest"], self.methods["data_manifests"])
             if r["environment"]:
