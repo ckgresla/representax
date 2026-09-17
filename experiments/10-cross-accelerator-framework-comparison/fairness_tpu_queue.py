@@ -99,6 +99,7 @@ def collect(recipe, framework, seed):
     validate(destination)
     (destination / "collection.json").write_text(json.dumps({
         "remote_phase": phase, "source_worker_directory": str(candidates[0]),
+        "allocation": {"project": PROJECT, "zone": ZONE, "node": NODE},
         "archive_sha256": sorted(observed.elements()), "collected_at_unix": time.time(),
     }, indent=2) + "\n")
     print(f"collected {recipe} {framework} seed={seed}", flush=True)
