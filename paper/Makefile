@@ -1,6 +1,7 @@
 .DEFAULT_GOAL := pdf
 EMACS ?= emacs
 LATEXMK ?= latexmk
+PYTHON ?= python3
 
 .PHONY: pdf review tex arxiv check
 
@@ -13,6 +14,7 @@ pdf: tex
 review:
 	$(EMACS) --batch -Q --script export.el review
 	cd build/review && $(LATEXMK) -pdf -interaction=nonstopmode -halt-on-error -file-line-error paper.tex
+	$(PYTHON) check_submission.py
 
 # Explicit source-only allowlist: no evidence JSON, Org, logs, or author notes.
 arxiv: pdf

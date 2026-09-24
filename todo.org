@@ -39,6 +39,27 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   a flat shell file beside each numbered experiment's Python launcher.
 
 *** Paper draft
+    Introduction second pass, 2026-09-17: addressed the next 21 PDF comments.
+    The argument now progresses from modality-specific research through
+    present multimodal approaches to native multimodal pretraining/post-training,
+    then derives the toolkit requirements. Revised the purpose, abstractions,
+    ecosystem transition and evaluation questions; moved community extension
+    to the conclusion. Verified upstream JAX/Grain/Optax/Orbax citations and
+    added BLIP-2; replaced Ettin's undated entry with its recommended paper.
+    All 41 paper tests pass; both PDFs compile to 25 pages without warnings.
+    The ten-page main text still fails the strict nine-page submission guard,
+    with trimming deferred as requested. Approved abstract, results, tables
+    and figures are unchanged. Full response map: =paper/review-notes.md=.
+    Author-feedback revision, 2026-09-17: rewrote the introduction around
+    representation-learning history, the multimodal research vision and the
+    resulting need for a composable framework. Carried the framing through
+    the walkthrough, results, discussion and conclusion. All 17 PDF comments
+    are mapped in =paper/review-notes.md=. Appendix F adds the seven-approach
+    learning-signal map, distinguishing implementation from measured evidence
+    and future work. There are now five figures and fourteen tables; approved
+    abstract and experimental results remain unchanged. The author deferred
+    page-limit trimming until the content is settled; the strict submission
+    guard remains in place. The closeout below records the earlier draft.
     Closeout, 2026-09-17: training/evaluation and all approved fairness reruns
     are complete for this paper's scope. The 265 active paired-run records
     include all 100 corrected GPU/TPU runs; native learning and twelve A100
@@ -2664,6 +2685,25 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
     These commands use the current checked-in recipes. Historical measurements
     retain their original data, seeds and source snapshots; do not relabel them
     when a launcher changes. The aggregate command performs no training.
+**** TODO Prepare a reviewed public release tree without rewriting experiment history
+     Preserve experiment-linked commits and superseded evidence. Review current
+     documentation, public API/dependency claims, reproduction instructions,
+     licenses and compact artifact inventory. Inspect untracked design studies
+     and canaries before any cleanup; do not silently delete them. Keep bulk
+     training state on =/raid=, outside package distributions.
+**** TODO Build, validate and publish a new PyPI release
+     2026-09-17: PyPI and local metadata are still =0.0.1=; the published README
+     predates the paper's implemented tasks. Choose the next version after review
+     (=0.1.0= is proposed, not set). Inspect wheel and sdist, run strict metadata
+     checks and clean CPU/GPU install smokes, rebuild from sdist, review CI and
+     trusted publishing, then approve the matching release tag explicitly.
+     Verify published hashes, metadata and installation after release.
+     =docs/releasing.md= owns the procedure; no tag or upload has been made.
+**** TODO Prepare a separate anonymous review code and evidence artifact
+     Omit Git history, identities, identifying links and private paths from the
+     review snapshot, preserving required third-party attribution. Keep the public
+     release and original provenance unchanged. Audit the actual archive before
+     uploading it; the manuscript build does not produce this supplement.
 *** NEXT Write the paper on the portable JAX representation-training system [6/8] [75%] :research:paper:
 **** DONE Freeze the selected evidence and verify numeric extraction
      =paper/build.py freeze= reads historical metric/summary hashes and recomputes
@@ -2731,9 +2771,22 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      Public package publication is still part
      of release, not claimed complete by this local audit.
 **** TODO Typeset and review the final manuscript for submission
+     Latest prose revision addresses all 17 annotated comments and subsequent
+     requests for less repetition and stronger historical motivation. Full
+     response: =paper/review-notes.md=. Keep this item open: author review and
+     page-limit trimming (explicitly deferred during writing) remain, even
+     though both PDF variants and the source archive can be generated.
+     Venue requirements checked 2026-09-17 and recorded in
+     =paper/submission-checklist.md=. Initial ICLR main text is capped at nine
+     pages. =make -C paper review= now checks the compiled boundary, official
+     style hashes and known identity leaks in rendered text, metadata and links.
+     Ethics and AI use now have separate headings; approved abstract unchanged.
+     Final visual/claim/disclosure review, anonymous supplement and submission
+     metadata still need author approval. Requirements checks are not submission.
      Closeout verification, 2026-09-17: all five figure and thirteen table pages
      reviewed in the rendered preprint; current generated assets reproduce
-     without a diff. All 35 paper checks pass on CPU. Preprint/review PDFs build
+     without a diff. All 41 paper checks pass on CPU, including the new submission
+     guards. Preprint/review PDFs build
      to 22 pages without overfull boxes or undefined references. The standalone
      arXiv archive builds outside the repository and matches the preprint text.
      Typesetting and evidence assembly are complete; final author approval and
@@ -2755,6 +2808,12 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      Verify current venue formatting, anonymity and submission requirements
      before upload. The draft and local figures do not themselves submit it.
 *** TODO Release the Representax systems paper as an arXiv preprint :research:paper:
+     After author review, verify the source bundle in arXiv's own compiler and
+     confirm metadata, category, license and account/endorsement status. ICLR
+     currently permits arXiv posting during review; keep its submission artifacts
+     anonymous. Recommended outreach: colleagues' feedback first, then share the
+     preprint and repository publicly without implying conference acceptance or
+     soliciting reviewers. See =paper/submission-checklist.md= for official links.
 **** TODO Delete retained Google Cloud paper assets after the final preprint is published
      Once the final preprint and reproducibility package are complete, verify
      that every required manifest and result is durable under =/raid=, then

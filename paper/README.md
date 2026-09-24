@@ -3,6 +3,8 @@
 - `paper.org`: canonical editable manuscript, including the approved abstract.
 - `references.bib`: primary toolkit, method, model and dataset bibliography.
 - `export.el`, `preamble.tex`, `Makefile`: Org -> LaTeX -> PDF and source archive.
+- `submission-checklist.md`, `check_submission.py`: current venue/release checklist
+  and mechanical checks run by every review-PDF build.
 - `abstract-variants.md`: three original voices and the author's blend decision.
 - `scaling-context.md`: published scaling context and comparison boundaries.
 - `figure-plan.md`: historical plan for the visual revisions.
@@ -34,8 +36,8 @@ adaptation, full-corpus initial transfer evaluations and twelve A100 scaling
 runs are also present. No additional training is required for the current
 manuscript scope; an FSDP capacity demonstration remains future work.
 
-The manuscript uses five current figures and thirteen tables: nine generated
-numeric tables plus four methods/capability tables. `report.py` reproduces the
+The manuscript uses five current figures and fourteen tables: nine generated
+numeric tables plus five methods/capability/research-map tables. `report.py` reproduces the
 current assets without changes. The older `cross-accelerator` figure and
 `results.md`, `captions.md`, and `figure-plan.md` are historical working material,
 not current paper results or release inputs. Use `paper.org` and its referenced
@@ -46,6 +48,14 @@ is intentional and has a post-preprint cleanup item in `../todo.org`. Closing
 the training work does not delete checkpoints, logs, manifests or run history.
 Final author review, venue-specific checks, reviewed artifact publication and
 submission remain open.
+
+The editorial revisions address the author's first 17 PDF comments and the
+next 21 introduction comments. They add the learning-signal research map in
+Appendix F, develop the multimodal motivation and replace undated software
+citations with upstream recommended references. See `review-notes.md` for
+both point-by-point responses. The author has deferred page-limit trimming until
+the content is settled: an over-limit review draft still compiles, but the
+submission guard deliberately reports a failure until its main text fits.
 
 ## Manuscript Build
 
@@ -60,7 +70,7 @@ author review before submission.
 On Debian/Ubuntu, install the system typesetting tools once:
 
 ```bash
-sudo apt-get install --no-install-recommends emacs-nox make latexmk texlive-latex-extra texlive-fonts-recommended
+sudo apt-get install --no-install-recommends emacs-nox make latexmk texlive-latex-extra texlive-fonts-recommended poppler-utils
 ```
 
 From the repository root:
@@ -83,8 +93,10 @@ finite gradients. It neither downloads weights/data nor runs a training job.
 The unmodified official ICLR 2027 style is vendored with provenance in
 `vendor/README.md`. The preprint uses its named-author layout but replaces the
 acceptance banner with `Preprint. Work in progress.` The review mode does not
-enable the accepted-paper setting. It still needs a human anonymity and
-page-limit audit; producing a review PDF does not mean a submission was made.
+enable the accepted-paper setting. Each review build checks the nine-page
+main-text limit, official style and known identity leaks, including metadata and
+links. A human layout/anonymity audit is still required; producing a review PDF
+does not mean a submission was made. See [the checklist](submission-checklist.md).
 
 arXiv compiles the exported LaTeX, not Org. The source archive contains only
 `paper.tex`, `paper.bbl`, `references.bib`, `preamble.tex`, the two ICLR style

@@ -91,6 +91,13 @@ class ExportTests(unittest.TestCase):
         self.assertGreater(figure, appendix)
         self.assertGreater(compiled, appendix)
 
+    def test_excluded_statements_follow_flushed_main_text(self):
+        tex = (self.root / "build/review/paper.tex").read_text()
+        boundary = tex.index(r"\section*{Reproducibility Statement}")
+        self.assertTrue(tex[:boundary].rstrip().endswith(r"\clearpage"))
+        self.assertIn(r"\label{sec:statements-start}", tex[boundary:])
+        self.assertLess(tex.index(r"\section*{AI Use Statement}"), tex.index(r"\bibliography"))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -32,58 +32,103 @@ adapted, and for taking new ideas from exploration to scale.
 :PROPERTIES:
 :CUSTOM_ID: sec:introduction
 :END:
-Representation-learning research requires more than an encoder and a loss.
-An experiment must turn raw observations into model inputs, specify which
-relationships a representation should preserve, and evaluate whether the
-learned structure transfers beyond the training examples. Adding another
-modality also adds practical decisions about decoding, sampling, sequence
-shapes, and memory. These decisions are part of making a method usable, but
-rebuilding their infrastructure for each objective makes research harder to
-extend and compare.
+A recurring lesson in artificial intelligence is the power of general methods
+that scale with computation over approaches built around hand-engineered
+knowledge [cite:@sutton2019bitterlesson]. In representation learning, the emphasis
+shifts from specifying representations by hand to developing methods that learn
+them from observations of the world [cite:@bengio2013representation]. The research
+challenge is to learn representations that both capture meaningful structure
+in the world and support prediction, generation, and action. This development
+spans early hierarchies of visual features and subsequent reconstruction-based
+and predictive approaches to learning compact encodings, linguistic relationships,
+and speech features
+[cite:@fukushima1980neocognitron;@hinton2006dimensionality;@mikolov2013wordrepresentations;@baevski2020wav2vec].
+Model architectures and learning signals shape not only what representations
+capture, but how efficiently they are learned and how well they transfer to new
+settings. In World Models, compressed visual observations and learned temporal dynamics
+support a latent simulation in which an agent can learn a policy before
+transferring it to the original environment [cite:@ha2018worldmodels]. Latent diffusion
+makes image synthesis more computationally tractable by operating in a
+learned latent space [cite:@rombach2022latentdiffusion]. In these systems,
+representations provide more than features for a downstream task: they define
+the spaces in which simulation, policy learning, and generation take place.
 
-We develop Representax around a simple aim: let researchers change what a
-model learns without reconstructing how a training job runs. Native Equinox
-models, task-specific objectives, and configurable data pipelines share
-optimization, evaluation, checkpointing, and distributed execution. The
-library includes established methods for retrieval, multimodal contrastive
-learning, reward modeling, and joint-embedding prediction, providing starting
-points as well as interfaces for new methods. Its contribution is this shared
-research infrastructure, not a new compiler or representation-learning
-objective.
+Multimodal learning extends this pursuit across different forms of observation.
+CLIP learns image-text alignment jointly through contrastive supervision
+[cite:@radford2021clip], while systems such as BLIP-2 connect separately pretrained visual
+and language components [cite:@li2023blip2]. We suspect that future learning
+systems will be natively multimodal throughout pretraining and post-training,
+integrating information from a variety of data modalities. A longer-term
+ambition is to learn unified representations of the world from these
+different observations. [cite/t:@huh2024platonic] demonstrate increasing alignment
+between visual and language representations as models scale, and propose the
+Platonic Representation Hypothesis: that this convergence reflects progress
+towards a shared statistical model of reality. Research in this direction examines how
+representations are learned, aligned, and adapted, and when shared structure
+supports transfer across tasks and modalities, prediction, and decision-making.
 
-The design separates scientific choices from execution choices. For example,
-the contrastive negative pool is part of an objective, whereas encoder chunk
-size determines how that objective is evaluated under a memory constraint.
-Keeping these decisions explicit helps researchers tune execution without
-silently substituting a different experiment. The separation is an interface
-discipline, not a guarantee that arbitrary configurations are equivalent;
-supported combinations require numerical and workload-specific checks.
+Progress towards this natively multimodal future requires software that enables researchers to
+develop and test new ideas. Research in representation learning spans several
+interdependent choices: model architectures, mechanisms for combining
+modalities, learning objectives, relationships used as supervision, and
+training recipes. Implementing a new idea should require changes that express
+the method itself, with minimal additional code to integrate it into a complete
+experiment. A framework for this research must support flexible experimentation,
+efficient execution, and consistent evaluation against relevant benchmarks and
+reference implementations.
 
-We evaluate three questions: (1) how training throughput compares with maintained
-reference implementations, (2) whether the framework supports useful held-out
-learning in complete adaptation runs, and (3) how a fixed training workload
-scales across GPUs. Results are favorable in many measured settings but not
-uniformly: backend choice, input processing, compilation and interconnect
-constraints materially affect the outcome.
+We introduce Representax, a JAX framework for representation-learning research
+towards natively multimodal models. The library is built on unified abstractions
+for models, learning tasks, data, and evaluation. Together,
+they connect method development to a shared training system while keeping
+scientific decisions separate from execution strategies. Within supported
+configurations, researchers can optimize execution for the available hardware
+without coupling their model and objective definitions to a particular device
+topology.
 
-Paired runs measure performance, longer adaptation runs test useful learning,
-and fixed-work scaling tests distributed execution. None alone establishes
-all three. We release the implementation and experiment configurations as a
-basis for further research, not a closed collection of benchmarks.
+Representax extends the JAX ecosystem [cite:@jax], building on its composable
+transformations and compiled GPU/TPU execution. It integrates Equinox for
+native models [cite:@kidger2021equinox], Grain for data processing [cite:@grain],
+Optax for optimization [cite:@optax], and Orbax for checkpointing [cite:@orbax].
+For our initial implementation, we select established methods that provide
+meaningful benchmarks and building blocks for further research: dense and
+late-interaction retrieval, supervised similarity and ranking, reward modeling,
+multimodal contrastive learning, masked language modeling, and joint-embedding
+prediction.
+
+We evaluate Representax through matched comparisons with established
+implementations, end-to-end adaptation experiments, and fixed-work
+multi-accelerator scaling. Our aim is to make ideas about how models represent
+the world easier to turn into informative experiments, and those experiments
+easier to build upon.
 
 * Related Work
-Research libraries contribute through their interfaces, implementations, and
-the experiments they make practical. Equinox expresses parameterized functions
-as callable PyTrees and filters JAX transformations [cite:@kidger2021equinox].
-Scenic emphasizes rapid experimentation and GPU/TPU execution
+Work on representational convergence asks whether separately trained models
+recover common structure from different observations [cite:@huh2024platonic].
+A learned linear projection can connect frozen visual representations to a
+frozen language model for captioning and visual question answering
+[cite:@merullo2023linearly]. Within language models, spatial and temporal
+representations provide evidence that learned features can reflect
+real-world structure without joint multimodal training
+[cite:@gurnee2024spacetime]. These results motivate studying shared
+representations, but do not make greater alignment a universal objective.
+Its relationship with performance depends on modality heterogeneity and
+on the balance of shared and unique task-relevant information
+[cite:@tjandrasuwita2025alignment]. For Representax, this motivates
+infrastructure for comparing learning objectives and adaptation strategies
+through their effects on downstream performance, rather than assuming
+that representational similarity alone measures progress.
+
+Research libraries make methods accessible through reusable interfaces.
+Equinox combines callable PyTrees with filtered JAX transformations
+[cite:@kidger2021equinox]. Scenic emphasizes experimentation and GPU/TPU execution
 [cite:@dehghani2022scenic], while solo-learn combines extensible visual
 representation-learning methods with efficient pipelines
 [cite:@dacosta2022sololearn]. JaxPruner demonstrates the value of a common
 interface and ecosystem integration [cite:@lee2023jaxpruner].
-Stable-Baselines3 emphasizes reliable implementations and reference comparisons
-[cite:@raffin2021stablebaselines]. Representax follows this research-toolkit
-direction, organizing representation learning across objectives and modalities
-around a shared training lifecycle.
+Stable-Baselines3 emphasizes reliable reference implementations
+[cite:@raffin2021stablebaselines]. Representax organizes representation learning
+across objectives and modalities around a shared training lifecycle.
 
 Task-focused frameworks provide important reference points. Sentence
 Transformers builds on bi-encoder sentence representations
@@ -91,32 +136,35 @@ Transformers builds on bi-encoder sentence representations
 retrieval [cite:@khattab2020colbert;@chaffin2025pylate]. CLIP establishes a
 widely used image-text contrastive formulation [cite:@radford2021clip], while
 V-JEPA 2.1 learns dense video features through joint-embedding prediction
-[cite:@murlabadia2026vjepa]. Representax does not replace these scientific
-contributions. It implements their task families in a common JAX system and
-evaluates concrete integrations against PyTorch-based references
+[cite:@murlabadia2026vjepa]. Representax brings these task families into a
+common JAX system and evaluates concrete integrations against PyTorch-based references
 [cite:@paszke2019pytorch].
 
 Gradient caching [cite:@gao2021gradcache], Matryoshka objectives
-[cite:@kusupati2022matryoshka] and low-rank adaptation [cite:@hu2021lora]
-are established techniques, not new algorithms introduced here.
-Jina's geometry-preserving multimodal adaptation motivates the connector-only
-arm of our text-anchored study [cite:@honicke2026jina]. Our experiments test
-whether this breadth can share an extensible training system with practical
-performance; they do not compare every library's complete feature set.
+[cite:@kusupati2022matryoshka], and low-rank adaptation [cite:@hu2021lora]
+provide complementary ways to control representation size, memory, and adaptation.
+Jina's geometry-preserving multimodal adaptation motivates our connector-only
+recipe [cite:@honicke2026jina]. We evaluate concrete workloads, not every
+library's complete feature set.
 
 * Representax
 :PROPERTIES:
 :CUSTOM_ID: sec:system
 :END:
-Figure [[fig:architecture]] summarizes the division of responsibilities.
-Scientific configuration specifies data, supervision, model parameters and
-the optimizer schedule. Execution configuration specifies device placement,
-precision, prefetch and memory strategies. Some choices cross this boundary:
-sequence truncation and contrastive negative scope change the learning
-problem, even when motivated by memory or speed.
+Representax connects reusable model, objective, data, and evaluation components
+through explicit interfaces (Figure [[fig:architecture]]). Scientific configuration
+specifies data, supervision, model parameters, and the optimizer schedule;
+execution configuration specifies device placement, prefetch, and memory
+strategies. Precision is also explicit because it affects numerical behavior.
+For example, a contrastive negative pool defines comparisons in the objective,
+whereas encoder chunk size controls its evaluation under a memory constraint.
+Truncation and loss reduction change the scientific problem even when motivated
+by speed. This separation supports deliberate tuning, not an assumption that
+arbitrary configurations are equivalent; supported paths require numerical
+and workload-specific checks.
 
 #+NAME: fig:architecture
-#+CAPTION: Representax's training lifecycle. Task-specific data, models and objectives share optimization, evaluation and state management. The representation boundary enables loss modifiers and supported GradCache paths; ordinary scalar-loss tasks need not expose it. Evaluation uses a separate corpus-aggregation path. Equinox, Grain, Optax and Orbax supply the model, data, optimization and persistence foundations.
+#+CAPTION: Representax's training lifecycle. Task-specific data, models, and objectives share optimization, evaluation, and state management. The representation boundary enables loss modifiers and supported GradCache paths; ordinary scalar-loss tasks need not expose it. Evaluation uses a separate corpus-aggregation path. Equinox, Grain, Optax, and Orbax supply the model, data, optimization, and persistence foundations.
 #+ATTR_LATEX: :width \linewidth :placement [tbp]
 [[file:figures/architecture.pdf]]
 
@@ -137,10 +185,10 @@ their required capabilities. Joint-embedding predictive tasks additionally
 support a post-update transition for a target encoder updated without
 gradient descent.
 
-Evaluation separates traced per-batch computation from host-side accumulation
-and finalization. Corpus-level retrieval metrics need not be approximated by
-averages of minibatch metrics or embedded in the optimizer step. Complete
-runs use a =JobConfig= to construct the model, task, data, optimizer and
+Training and evaluation share model routes and processors. Evaluation separates
+traced per-batch computation from host-side accumulation and finalization,
+supporting corpus-level retrieval metrics rather than minibatch approximations. Complete
+runs use a =JobConfig= to construct the model, task, data, optimizer, and
 training settings. Adapter insertion and trainable-parameter selection are
 orthogonal: adding LoRA does not require freezing every other module.
 The multimodal study uses this distinction to train connectors alone,
@@ -178,9 +226,19 @@ multimodal inputs require model-specific sample slicing. Activation
 checkpointing inside an encoder chunk is a separate memory choice.
 In contrast, the masked-language-modeling scaling study uses ordinary
 gradient accumulation: local contributions accumulate before synchronization,
-clipping and one optimizer update. It does not use contrastive GradCache.
+clipping, and one optimizer update. It does not use contrastive GradCache.
 
 ** Data and Distributed Execution
+Data access is independent of the learning objective. Built-in resolvers read
+pinned Hugging Face datasets and local sources; custom resolvers can supply
+other indexable records. Python callers can also provide Grain map or iterable
+datasets directly, with a data contract for checkpoint resume. No conversion
+to a second, Representax-specific dataset is required. Media references are
+decoded lazily, avoiding a separate fully decoded tensor corpus; readers may
+still cache or download source bytes. Simulation-backed inputs can use these
+interfaces when they meet the iterator and state contracts, but are not
+evaluated here.
+
 Source mappers translate records into task examples; processors create
 model-native arrays. Source-per-batch sampling draws a source according to
 configured weights and consumes a complete source-local batch. This supports
@@ -189,13 +247,13 @@ into one batch. Example-level mixing is also available. Preprocessing and
 prefetch remain outside the compiled update, and complete-interval throughput
 includes any input wait visible to training.
 
-Representax builds on Equinox, Grain, Optax and Orbax
-[cite:@kidger2021equinox;@grain;@optax;@orbax]. Model transformations operate on
-PyTrees, data iterators provide batches and resumable state, optimizer
-transformations process gradients, and checkpoints persist training state.
-JAX sharding supplies replicated and partitioned execution. DDP, FSDP and
-custom parameter-sharding configurations are library capabilities; the GPU
-scaling results here evaluate replicated DDP, not every sharding strategy.
+Equinox, Grain, Optax, and Orbax supply the model, data, optimizer, and persistence
+foundations [cite:@kidger2021equinox;@grain;@optax;@orbax]. JAX/XLA compiles
+updates for configured device meshes and array shardings.
+DDP, FSDP, and custom parameter-sharding configurations are library capabilities;
+for supported combinations they reuse the same model and task code. The GPU
+scaling study evaluates replicated DDP. Configuration makes distribution
+accessible, but topology and workload still determine achieved scaling.
 
 * Framework and Accelerator Comparisons
 :PROPERTIES:
@@ -204,130 +262,74 @@ scaling results here evaluate replicated DDP, not every sharding strategy.
 ** Protocol
 The suite contains 13 concrete recipes, five seeds per framework, on single
 RTX 4090 GPUs and 16-chip v5e slices: 130 runs per accelerator panel.
-Five additional dense GPU runs use TorchInductor. This compiled control
-does not represent a compiled baseline for every recipe. The seeds are
-7, 42, 773, 1234 and 2026. They are seeded execution repetitions, not a
-guarantee of independently shuffled trajectories: some historical pipelines
-reuse deterministic data order.
+Five additional dense GPU runs use TorchInductor. Seeds 7, 42, 773, 1234,
+and 2026 are execution repetitions; deterministic data order in some
+pipelines means they are not independent scientific trajectories.
 
-Within a hardware/recipe pair, the intended contract matches global batch,
-examples, objective settings and precision, with framework-native execution.
-Historical late-interaction, reward and audio/video rows have discrepancies
-described below; only complete validated replacement panels are restored as
-matched-training comparisons. Encoder
-chunks may differ; these are declared recipe settings, not an exhaustive
-search for each framework's maximum throughput. GPU replacement runs use
-one device per job, with up to four concurrent jobs sharing host resources;
-we retain the resulting per-seed timing variation. The other historical TPU contrastive comparisons use
-per-device negatives in both frameworks; a single-GPU negative pool covers
-the full batch. Cross-accelerator settings are not always identical.
-Appendix [[#sec:paired-methods]] records actual models, batches, shapes,
-reference integrations and known deviations.
+Within a hardware/recipe pair, the comparison contract matches global batch,
+examples, objective settings, and precision, with framework-native execution.
+A configuration audit led to complete five-seed reruns of late interaction,
+both reward tasks, and audio/video contrastive training on each backend.
+The table uses validated replacements. Encoder chunks may differ: these
+are documented runnable recipes, not exhaustive performance searches.
+GPU replacement jobs share host resources; TPU negative pools and batches
+are matched within each pair, not necessarily across accelerators.
+Appendix [[#sec:paired-methods]] records shapes, execution settings, timing
+exclusions, and the audit history.
 
 For run \(r\), throughput is \(R_r=\sum_t B_t/\sum_t T_t\), where \(T_t\)
 is the complete measured optimizer-step interval, including visible input
-wait. Optimizer steps/s uses the same denominator. The tabulated framework
-ratio divides median per-seed rates; the appendix shows individual paired-seed
-ratios without treating consecutive updates as independent replicates.
-Up to twenty warm updates per seed form a bounded timing screen, not a
-demonstration of long-run stationarity. Historical native GPU late interaction
-retains 15 usable intervals after first-use exclusions. Corrected GPU pairs
-retain the same 19 update indices after excluding first use and the
-post-checkpoint interval, whose reference timer includes save/resume overhead.
-Compilation, initialization,
-evaluation and checkpointing are outside this primary metric and are
-reported separately where recorded.
+wait. Framework ratios divide median per-seed rates; the appendix retains
+paired-seed variation. At most twenty warm updates per seed form a bounded
+timing screen. Compilation, initialization, evaluation, and checkpointing
+are excluded and reported separately where recorded.
 
-** Results and Qualifications
+** Training Throughput
 Table \ref{tab:framework-throughput} shows absolute rates and relative
-throughput, with substantial workload dependence. Bold values identify the
-larger of the two reported medians within each workload and hardware panel,
-not a statistically significant difference. GPU references in the main table
-use eager execution; Appendix [[#sec:compiled-reference]] reports the compiled
-dense control separately.
+throughput. Bold marks the larger median within each pair, not statistical
+significance. Main-table GPU references use eager execution; Appendix
+[[#sec:compiled-reference]] gives the compiled dense control.
 MPNet dense retrieval reaches 305.35 examples/s against eager Sentence
-Transformers' 211.22 (1.446x), but is slightly slower than the compiled
-reference. The two BERT Base sentence-pair controls are
-slower on GPU, despite faster MPNet counterparts. TPU dense retrieval is
-approximately tied. Corrected GPU video-text reaches 3.44 versus 1.00
-examples/s (3.440x), and audio-text reaches 2.66 versus 1.25 (2.126x).
-Corrected TPU audio-text reaches 11.24 versus 8.50 examples/s (1.322x),
-using direct MNR with global pools of 48 in both frameworks.
-Corrected TPU video-text reaches 88.66 versus 7.38 examples/s (12.015x).
-After matching both 256-token padding and scalar-head initialization, GPU
-process reward reaches 55.18 examples/s against TRL's 16.79 (3.287x).
-On TPU the corrected rates are 85.26 and 9.94 examples/s (8.578x).
-Both frameworks were rerun for all five seeds on each accelerator; prior
-measurements remain in the evidence archive rather than being overwritten.
+Transformers' 211.22 (1.446x), but is slightly slower than its compiled
+reference. BERT Base sentence-pair controls are slower on GPU; TPU dense
+retrieval is approximately tied. Audio/video comparisons yield gains of
+2.126x/3.440x on GPU and 1.322x/12.015x on TPU. The TPU audio pair uses
+direct MNR with global pools of 48. Process reward, with matched padding
+and scalar-head initialization, reaches 3.287x on GPU and 8.578x on TPU.
 
-Several qualifications limit interpretation. Historical late interaction [L]
-uses duplicated pairs with sequential native batches but shuffled reference
-batches; its cached GPU reference also backpropagates summed rather than mean
-gradients. On TPU, native execution ignores the configured local-negative
-scope and uses 512 candidates, versus 32 for the reference. The replacement
-GPU panel uses shared duplicate-free data, sequential batches, 32/256-token
-limits, and corrected mean-loss cached gradients. It reaches 219.50 versus
-55.18 examples/s (3.978x). Mean final NanoMSMARCO nDCG@10 is 0.7151 versus
-PyLate's 0.7089 across five seeds, from initial scores 0.7123 and 0.7089.
-Reference trajectories are identical across seeds with this deterministic
-schedule; they are timing repetitions, not independent data draws.
-The corrected TPU panel uses global pools of 512 in both frameworks and reaches
-2,545.55 versus 1,593.27 examples/s (1.598x). Final short-run losses are
-0.02067 and 0.02254; the loss histories are deterministic within each framework.
-The GPU evaluation panel has only 50 queries and scoring precision differs;
-these observations are not proof of equivalent convergence.
-Historical outcome reward [O] used FP32 native master parameters and optimizer
-moments, but BF16 reference parameters and moments. The corrected GPU panel
-shares BF16-rounded starting weights and a scalar head, with FP32 master weights
-and moments in both frameworks. It reaches 7.81 versus 5.43 examples/s (1.439x).
-Final paired losses differ by at most 0.0081 across the five seeds; this is
-short-run agreement, not convergence equivalence. The corrected TPU panel
-reaches 103.87 versus 66.29 examples/s (1.567x), with final paired losses
-differing by at most 0.0057 and identical final reference parameters across
-all sixteen ranks for each seed.
-Historical audio/video references [M] likewise retain BF16 trainable LoRA
-parameters, where native adapters are FP32. Their default A-matrix initialization also
-differs (uniform versus normal), and reference adapters were constructed
-before applying the run seed. The corrected audio/video panels use FP32 adapters
-and moments in both frameworks, seeded normal A matrices at the same scale,
-and zero B matrices. Random A draws are independent across frameworks, not
-bitwise shared. Both GPU frameworks use GradCache microbatch one, at global
-batches 32 for audio and two for video. The corrected TPU audio panel retains
-three examples per chip but uses direct global-negative MNR; final paired
-losses differ by at most 0.0544. Corrected TPU video retains 112 examples per
-update and seven device-local candidates, with native chunk seven removing
-encoder padding. Final paired losses differ by at most 0.0055.
-Historical process-reward reference heads [I] were also constructed before
-seeding. Replacement GPU and TPU panels use one shared scalar head and explicit
-seeding before construction. Each TPU reference verifies identical initial and
-final trainable parameters across all sixteen ranks.
-Process reward selects examples fitting within 256 tokens [P], with matched
-padding of 256 on GPU and 2,048 on TPU; it does not measure a representative
-long-reasoning workload. TPU image-text and
-V-JEPA exhibit first-seed cold-filesystem effects, and reference
-pre-materialization moves some input work outside training [C]. Finally,
-GPU V-JEPA uses batch one and 24 videos, whereas TPU uses batch 128 and
-2,816 videos [G]. Its GPU result is a small-batch execution measurement.
+Corrected late interaction reaches 219.50 versus 55.18 examples/s on GPU
+(3.978x), with similar observed final NanoMSMARCO nDCG@10: 0.7151 versus
+0.7089. Its TPU ratio is 1.598x. The GPU quality panel has only 50 queries
+and scoring precision differs, so this supports similar short-run retrieval
+quality, not equivalent convergence. Corrected outcome-reward ratios are
+1.439x on GPU and 1.567x on TPU.
+
+Table markers identify qualifications and audit history, detailed in
+Appendix [[#sec:paired-methods]]: [L] late-interaction data, gradients, and
+negative pools; [O] outcome-reward optimizer precision; [I] process-reward
+head initialization; and [M] audio/video adapter precision, initialization,
+and execution. Those discrepancies have been corrected in the active panels.
+Three workload qualifications remain: process reward uses inputs fitting
+within 256 tokens [P]; image-text and V-JEPA have input-preparation/cache
+effects [C]; and GPU V-JEPA uses batch one and 24 videos, unlike the larger
+TPU workload [G]. These are comparisons within each documented hardware
+regime, not fixed-work comparisons between accelerators.
 
 #+INCLUDE: "tables/framework-throughput.org"
 
-These measurements support favorable throughput in many tested configurations,
-not a universal speedup or a causal attribution to any one design choice.
-No aggregate score combines recipes with different scientific or timing
-qualifications. In particular, earlier repeated-sample controls and optimized
-ETTIN runs are not substituted for the MPNet comparison shown here.
+Together, the comparisons demonstrate practical throughput across a broad
+set of tasks, with explicit exceptions rather than a universal framework
+ranking. Earlier repeated-sample controls and optimized ETTIN runs are not
+substituted for the MPNet comparison.
 
 * End-to-End Representation Learning
 :PROPERTIES:
 :CUSTOM_ID: sec:learning
 :END:
-Longer native-only runs complement the short reference comparisons. Dense
-and CLIP adaptation each use seeds 7, 42 and 773; the multimodal study uses
-those seeds for each of three strategies. We report the final scheduled
-checkpoint, rather than choosing a best held-out checkpoint. These studies
-establish finite-budget learning, not asymptotic convergence or
-state-of-the-art performance. They do not establish convergence equivalence
-with the reference frameworks.
+Complete training runs test useful held-out learning. Dense, CLIP, and each
+of three multimodal strategies use seeds 7, 42, and 773. We report final
+scheduled checkpoints, not the best held-out checkpoint. These studies
+demonstrate finite-budget learning, not asymptotic or reference-matched convergence.
 
 ** Dense and Image-Text Adaptation
 Dense adaptation starts from ETTIN Encoder 150M and presents 488,576
@@ -351,15 +353,15 @@ rather than reproduction of CLIP's original pretraining regime.
 
 ** Text-Anchored Multimodal Adaptation
 Jina v5 Omni Nano [cite:@honicke2026jina] is adapted on COCO, AudioCaps,
-MSR-VTT and MS MARCO [cite:@kim2019audiocaps;@xu2016msrvtt].
+MSR-VTT, and MS MARCO [cite:@kim2019audiocaps;@xu2016msrvtt].
 All runs use batch 32, symmetric contrastive learning at temperature 0.02,
-and Matryoshka dimensions 32, 64, 128, 256, 512 and 768. Three strategies
+and Matryoshka dimensions 32, 64, 128, 256, 512, and 768. Three strategies
 train connectors and selected delimiter embeddings, those parameters plus
 rank-eight LoRA, or the full model. Each run completes 2,000 updates.
 Learning rates are \(2\times10^{-4}\), \(5\times10^{-5}\), and \(10^{-5}\),
 respectively.
 
-Connector-only uniformly samples image-text, audio-text and video-text
+Connector-only uniformly samples image-text, audio-text, and video-text
 sources; text-only examples would bypass its trainable parameters.
 The other strategies uniformly sample those three sources plus text-text.
 One source is chosen per update, not necessarily an equal realized number
@@ -390,6 +392,7 @@ modality-to-modality retrieval directions.
 :CUSTOM_ID: sec:scaling
 :END:
 ** Fixed-Work Protocol
+We hold the scientific workload, model, and task fixed while adding GPUs.
 We use a randomly initialized 505,072,128-parameter ModernBERT masked-language
 model [cite:@warner2024modernbert;@devlin2019bert], sequence length 512,
 BF16 compute, FP32 parameters and AdamW state, and full activation
@@ -398,7 +401,7 @@ rematerialization. The scientific batch is fixed at 256 sequences
 accumulation rounds on 1/2/4/8 A100 SXM4 40-GB GPUs. Parameter-gradient
 synchronization follows accumulation.
 
-Seeds 7, 42 and 773 each run 21 updates, with the final 20 measured.
+Seeds 7, 42, and 773 each run 21 updates, with the final 20 measured.
 Token and masking hashes match across device counts within each seed.
 WikiText-2 supplies repeated real text [cite:@merity2016wikitext].
 This is a controlled strong-scaling workload, not complete pretraining
@@ -409,12 +412,12 @@ For device count \(n\) and seed \(s\), we compute
 \(S_{n,s}=R_{n,s}/R_{1,s}\) and \(E_{n,s}=S_{n,s}/n\).
 Mean throughput rises from 32,015 input tokens/s on one GPU to 219,975 on
 eight (Table \ref{tab:scaling}). Mean within-seed speedups are 1.968x,
-3.810x and 6.871x for two, four and eight GPUs, corresponding to 98.4%,
-95.2% and 85.9% efficiency. This is near-linear strong scaling through
+3.810x, and 6.871x for two, four, and eight GPUs, corresponding to 98.4%,
+95.2%, and 85.9% efficiency. This is near-linear strong scaling through
 four GPUs and high efficiency on eight for the measured workload.
 
 #+NAME: fig:scaling
-#+CAPTION: Replicated-DDP strong scaling with 131,072 input tokens per update held fixed. Left: speedup against the same seed's one-GPU baseline and ideal scaling. Right: parallel efficiency. Diamonds/lines show means; faint points show three seeds. Each run supplies 20 warm updates. Input preparation and placement are included; offline tokenization, compilation and cache loading are excluded. This is not an FSDP capacity result.
+#+CAPTION: Replicated-DDP strong scaling with 131,072 input tokens per update held fixed. Left: speedup against the same seed's one-GPU baseline and ideal scaling. Right: parallel efficiency. Diamonds/lines show means; faint points show three seeds. Each run supplies 20 warm updates. Input preparation and placement are included; offline tokenization, compilation, and cache loading are excluded. This is not an FSDP capacity result.
 #+ATTR_LATEX: :width \linewidth :placement [tbp]
 [[file:figures/strong-scaling.pdf]]
 
@@ -429,13 +432,12 @@ Cold compilation of the selected signatures takes roughly 126--148 seconds;
 subsequent cached executable loading takes about 14 seconds. These costs
 are distinct from warm throughput.
 
-* Discussion and Limitations
-The evidence supports three different conclusions: the framework executes
-a broad set of objectives on GPUs and multi-host TPUs; native adaptation
-can improve held-out retrieval; and a fixed-work MLM workload scales
-efficiently on a well-connected GPU node. None implies the others.
-Table \ref{tab:capabilities} distinguishes observed execution from
-unmeasured capacity or deployment claims.
+* Discussion and Research Directions
+The results establish a practical starting point for research: one system
+supports varied objectives and modalities, useful held-out learning, and
+efficient distributed execution. Its value is the ability to build on these
+components and test new ideas. Table \ref{tab:capabilities} separates the
+demonstrated combinations from capabilities still requiring study.
 
 #+begin_export latex
 \begin{table}[tbp]
@@ -443,56 +445,92 @@ unmeasured capacity or deployment claims.
 \caption{Evidence scope. A capability is not a claim of uniform performance across every supported configuration.}\label{tab:capabilities}
 \begin{tabular}{p{.27\linewidth}p{.65\linewidth}}\toprule
 Capability & Evidence in this paper \\ \midrule
-Task and modality breadth & Retrieval, sentence pairs, reranking, reward, image/audio/video contrastive training and joint-embedding prediction. \\
+Task and modality breadth & Retrieval, sentence pairs, reranking, reward, image/audio/video contrastive training, and joint-embedding prediction. \\
 GPU and TPU execution & Thirteen recipe rows per backend; qualifications are retained. \\
 Multi-host execution & Four TPU worker VMs, four chips each; coherent JAX and PyTorch/XLA jobs on the same slice. \\
-Adaptation and evaluation & Dense, CLIP and three text-anchored recipes; final held-out scores and the negative late-interaction result. \\
+Adaptation and evaluation & Dense, CLIP, and three text-anchored recipes; final held-out scores and the negative late-interaction result. \\
 Training lifecycle & Saved checkpoints and exports; the CLIP study includes a midpoint resume and export/reload checks. \\
 Multi-GPU scaling & Three-seed 1/2/4/8-GPU replicated-DDP experiment on one A100 node. \\
-Not established & Multi-node GPU scaling, FSDP capacity gains, production reliability, universal speedups or state-of-the-art quality. \\
+Not established & Multi-node GPU scaling, FSDP capacity gains, production reliability, universal speedups, or state-of-the-art quality. \\
 \bottomrule\end{tabular}
 \end{table}
 #+end_export
 
-The short comparison window and five repetitions do not characterize all
-cache states, input stalls or long-run failures. Native streaming and
-reference preprocessing sometimes place work on different sides of the
-timing boundary. Consequently, the results describe the documented runnable
-configurations, not intrinsic limits of JAX or PyTorch/XLA. Compilation
-is visible startup cost; it is not erased by reporting amortized performance.
+Short timing windows do not characterize every cache state or long-run failure.
+Streaming and reference preprocessing can place work outside different timing
+boundaries; results characterize the documented recipes, not intrinsic
+backend limits. Compilation remains a separate startup cost.
 
-Learning results are also bounded. NanoMSMARCO is small, and pretrained
-checkpoints may have seen related source corpora. Dataset split discipline
-does not prove absence of upstream pretraining contamination. The revised
-late-interaction run decreases training loss but regresses on NanoMSMARCO
-from 0.7104 to 0.6925. It is retained in Appendix [[#sec:learning-details]],
-rather than counted as a successful adaptation demonstration. Replacing
-distillation-trained supervision with a hard-label recipe is a plausible
-explanation, not an established cause.
+NanoMSMARCO is small, and dataset splits cannot rule out upstream pretraining
+contamination. Revised late-interaction training reduces loss but regresses
+on NanoMSMARCO from 0.7104 to 0.6925 (Appendix [[#sec:learning-details]]).
+Replacing distillation-trained supervision with hard labels is a plausible
+explanation, but its effect has not been isolated.
 
-The system's separation of objectives and execution is useful precisely
-because equivalence is not automatic. Negative scope, truncation, sample
-duplication and loss reduction all require explicit review. Future work
-includes broader transfer evaluation, matched ablations of data and memory
-strategies, resource-constrained sharding studies, and integration of
-Representax tasks into other JAX training frameworks. Those integrations
-remain proposed work.
+** Expanding the Research Space
+An extensible toolkit should leave room to question its starting assumptions.
+Which units should a model encode: subword tokens, byte groups, image patches,
+or temporal events? When should it reconstruct observations, predict latent
+structure, or align views? Inductive biases, including biologically inspired
+ones, motivate such choices; transfer, robustness, and task performance must
+test their usefulness. Appendix [[#sec:research-directions]] organizes seven
+overlapping learning approaches and distinguishes current implementations
+from proposed extensions.
+
+Text, images, audio, and video provide today's implemented multimodal routes.
+Work on olfactory representations [cite:@lee2023odor] illustrates a wider
+research space, while time-aligned sensors and simulation-generated streams
+raise questions about sampling, synchronization, and supervision. Extending
+Representax to these settings requires appropriate processors, models, and
+evaluations; the common interfaces are a starting point, not completed support.
+Further studies should compare learning signals and modality mixtures,
+including how new capabilities affect previously learned representations.
+
+** Execution and Ecosystem
+The separation of scientific and execution settings also motivates a future
+profiling and autotuning tool, provisionally called Profilax. Given a fixed
+objective, effective batch, and data contract, it could search chunking,
+prefetch, and sharding choices using JAX/XLA compiled-program measurements.
+Candidate plans would need numerical checks and separate accounting of
+compilation, memory, and steady-state throughput. This is proposed work,
+alongside capacity studies and integrations with other JAX training systems.
+We intend the library's development to be informed by community methods,
+new workloads, and reproducible evidence, rather than a fixed benchmark panel.
 
 * Conclusion
-Representax provides a shared JAX foundation for representation-learning
-research across tasks and modalities. Reference comparisons, held-out
-adaptation and fixed-work scaling offer complementary evidence of its
-practical utility. The framework makes established methods available as
-extensible components and makes their execution choices explicit, providing
-a starting point for taking new representation-learning ideas from
-exploration to scale.
+Representax provides a shared foundation for representation-learning research,
+connecting flexible method development with the infrastructure needed to train,
+evaluate, and scale experiments. Its separation of scientific choices from
+execution strategies allows researchers to investigate learning methods while
+adapting supported workloads to available hardware. Our evaluations demonstrate
+competitive training throughput across a range of GPU and TPU workloads,
+improvements in held-out retrieval through adaptation, and efficient fixed-work
+scaling to eight accelerators.
 
+These results provide a starting point for research towards natively multimodal
+systems. Our adaptation studies motivate a concrete challenge: jointly improving
+representations across modalities while preserving or strengthening existing
+text capabilities, rather than relying on a frozen text pathway. Beyond fixed
+training recipes, future work could investigate online representation learning,
+reinforcement learning that shapes representations through interaction,
+evolutionary search over architectures and learning objectives, and adaptive
+datasets whose composition, sampling, or generation changes with the learner.
+Indeed, some of these approaches may draw
+inspiration from biological systems, informing how models integrate sensory
+information, learn from experience, and adapt to changing environments. We intend
+Representax to make these ideas practical to develop, compare, and refine.
+With the community, we aim to build on this foundation to
+investigate a shared question: how should models represent and understand the
+world?
+
+#+LATEX: \clearpage
 * Reproducibility Statement
 :PROPERTIES:
 :UNNUMBERED: t
+:CUSTOM_ID: sec:statements-start
 :END:
 The repository contains numbered experiment launchers, configuration objects,
-per-run source revisions, data/checkpoint revisions and content hashes.
+per-run source revisions, data/checkpoint revisions, and content hashes.
 The paper's frozen evidence includes measured update records; a separate
 historical-methods inventory records the settings actually used.
 All numerical tables and plots are rebuilt locally without training-data
@@ -509,18 +547,22 @@ the accompanying code artifact (identifying repository URL omitted).
 Appendix [[#sec:reproduction]] describes the artifact boundaries and exact
 reconstruction procedure.
 
-* Responsible Use and AI Assistance
+* Ethics Statement
 :PROPERTIES:
 :UNNUMBERED: t
 :END:
 The experiments reuse public datasets and checkpoints under their respective
 terms; the software's license does not supersede those terms. Representation
 models may preserve biases or sensitive information in their training data.
-The reported retrieval metrics do not establish fairness, privacy or
+The reported retrieval metrics do not establish fairness, privacy, or
 suitability for high-stakes deployment.
 
+* AI Use Statement
+:PROPERTIES:
+:UNNUMBERED: t
+:END:
 Generative AI tools assisted implementation, debugging, experiment design,
-analysis, literature discovery and manuscript drafting. The human author
+analysis, literature discovery, and manuscript drafting. The human author
 is responsible for the final contents and claims. Automated tests and
 artifact checks support, but do not replace, scientific review.
 
@@ -535,7 +577,7 @@ artifact checks support, but do not replace, scientific review.
 :PROPERTIES:
 :CUSTOM_ID: sec:paired-methods
 :END:
-** Models, Shapes and Data
+** Models, Shapes, and Data
 Table \ref{tab:paired-design} describes the actual timing workloads. These
 bounded datasets often cycle during 22 updates; their size is not the
 number of unique examples consumed by the training job. A fixed padded
@@ -571,7 +613,7 @@ uses a bounded duplicate-question collection and a cosine contrastive
 objective with margin 0.5. Cross-encoder training uses binary labels from
 3,840 pairs involving 1,920 queries. Historical late interaction uses
 15,360 source-order pairs with repeated query-positive examples, temperature
-0.02 and native chunk eight. It must not be conflated with the revised
+0.02, and native chunk eight. It must not be conflated with the revised
 hard-negative learning experiment.
 
 *Reward tasks.* Outcome reward uses Bradley--Terry preference training on
@@ -580,11 +622,11 @@ Math-Shepherd, with examples selected for four steps and mixed labels.
 The latter's preparation bound is 256 tokens. Both frameworks execute padded
 length 256 on GPU and 2,048 on TPU. The original GPU reference incorrectly
 used 2,048 while native execution used 256; the corrected reference rerun
-retains the same data, checkpoint, five seeds, optimizer and batch settings.
+retains the same data, checkpoint, five seeds, optimizer, and batch settings.
 Its actual training tensors are checked as microbatch two by length 256.
 The replacement process-reward panel also shares the initial one-row scalar
 head. GPU timing uses identical update indices in both frameworks, excluding
-1, 2 and the post-checkpoint update 12; TPU timing excludes 1 and 2.
+1, 2, and the post-checkpoint update 12; TPU timing excludes 1 and 2.
 Original measurements remain in the artifact correction history, not the
 active throughput table.
 GPU native accumulation uses microbatches four and two,
@@ -643,7 +685,7 @@ direct-versus-cached TPU audio ablation isolates their effect on throughput.
 The corrected audio panel uses direct MNR in both frameworks with all 48
 captions as candidates: each reference rank scores its three queries against
 the complete gathered pool. Both use FP32 adapters and optimizer moments, the
-same initialization distribution and zero B matrices. Native and reference
+same initialization distribution, and zero B matrices. Native and reference
 median rates are 11.24 and 8.50 examples/s. This replacement changes the
 negative pool and execution together; it does not isolate the historical
 padding overhead. All five reference runs pass final sixteen-rank adapter
@@ -654,22 +696,22 @@ of seven in both frameworks. Native GradCache uses chunk seven without padding;
 the reference directly encodes seven examples per rank. Both retain layer
 activation checkpointing and use FP32 adapters and optimizer moments. All five
 reference runs pass final sixteen-rank parameter identity. Reference seeds
-773, 1234 and 2026 ran on a replacement allocation in =us-west1-c=; the other
+773, 1234, and 2026 ran on a replacement allocation in =us-west1-c=; the other
 corrected video cells ran in =us-central1-a=. Both allocations use sixteen v5e
 chips in a 4x4 topology and the same locked training environments. This is a
 same-configuration comparison across documented allocations, not a claim that
 all cells occupied the same physical slice.
 
 *Predictive video.* V-JEPA uses a 12-layer, width-768 ViT-B/16 encoder,
-12-layer width-384 predictor, tubelet size two and supervision at layers
-2, 5, 8 and 11. The EMA coefficient is 0.99925. The initialization and
+12-layer width-384 predictor, tubelet size two, and supervision at layers
+2, 5, 8, and 11. The EMA coefficient is 0.99925. The initialization and
 short schedule define an execution test, not a released checkpoint's quality
 evaluation. GPU and TPU use 24 and 2,816 Something-Something-v2 training
 videos, respectively. Per-run manifests establish this difference; a later
 shared asset directory is not authoritative for an earlier run.
 
 Except for the noted reward and predictive-video schedules, paired tasks
-use AdamW with peak learning rate \(2\times10^{-5}\), zero weight decay and
+use AdamW with peak learning rate \(2\times10^{-5}\), zero weight decay, and
 gradient clipping at one; late interaction uses \(3\times10^{-6}\).
 Most use one warmup update followed by cosine decay across 22 updates.
 V-JEPA instead uses weight decay 0.04, no clipping, and a linear
@@ -679,10 +721,10 @@ precision policy. Frozen multimodal bases and outcome-reward loading have
 the exceptions described above.
 
 ** Reference Execution and Environments
-Sentence Transformers supplies dense, sentence-pair, cross-encoder and
+Sentence Transformers supplies dense, sentence-pair, cross-encoder, and
 contrastive multimodal reference paths. PyLate supplies the late-interaction
 path. Reward adapters use the Torch/TRL ecosystem; predictive video uses
-the official V-JEPA implementation. Launch, data and metric adapters make
+the official V-JEPA implementation. Launch, data, and metric adapters make
 these programs fit the shared measurement contract. Thus /reference/
 means the documented upstream-based integration, not that every upstream
 training loop was used unchanged.
@@ -710,7 +752,7 @@ post-backward execution boundary is included in measured step time. These
 are implementation-level comparisons, not isolated compiler benchmarks.
 
 The native environment records JAX/jaxlib 0.11.1, Equinox 0.13.8,
-Grain 0.2.18, Optax 0.2.8 and Orbax 0.12.4. GPU references record
+Grain 0.2.18, Optax 0.2.8, and Orbax 0.12.4. GPU references record
 PyTorch 2.11.0+cu128; TPU references record PyTorch 2.9.0+cpu and
 Torch/XLA 2.9.0. Sentence Transformers is 5.6.1 in the principal environment;
 the PyLate environment uses 5.3.0, alongside PyLate 1.6.0. Transformers
@@ -718,9 +760,55 @@ versions differ between these environments. Rather than assigning one
 invented common version, the supplementary inventory preserves each
 run's complete environment.
 
+** Pairing Audit and Short-Run Checks
+The original late-interaction comparison [L] used duplicated pairs with
+sequential native batches but shuffled GPU reference batches. Its cached
+reference backpropagated summed rather than mean gradients. Native TPU
+execution also ignored the configured local-negative scope, comparing 512
+candidates against the reference's 32. The corrected GPU panel uses shared
+duplicate-free data, sequential batches, 32/256-token limits, and mean-loss
+cached gradients. Initial NanoMSMARCO nDCG@10 is 0.7123 versus 0.7089;
+mean final scores are 0.7151 versus 0.7089. GPU reference trajectories are
+identical across seeds under this deterministic schedule. Both corrected
+TPU frameworks use global pools of 512; final losses are 0.02067 and 0.02254,
+with deterministic histories within each framework.
+
+Outcome reward [O] aligns FP32 master weights and moments as described above.
+Final paired losses differ by at most 0.0081 on GPU and 0.0057 on TPU.
+Process reward [I] aligns scalar-head initialization and applies seeds before
+model construction. Every corrected TPU reference verifies identical initial
+and final trainable parameters across all sixteen ranks. These checks support
+paired execution, not equivalence of long-run learning.
+
+Corrected audio/video adapters [M] use FP32 trainable parameters and moments,
+seeded normal A matrices at the same scale, and zero B matrices. The random
+A draws are independent across frameworks, not bitwise shared. Final paired
+TPU losses differ by at most 0.0544 for audio and 0.0055 for video. Audio's
+replacement changes both the negative pool and execution method; video's
+native chunk seven removes padding while preserving seven local candidates.
+Neither comparison isolates a single source of performance improvement.
+
+Two input-cache qualifications [C] remain: TPU image-text and V-JEPA show
+first-seed cold-filesystem effects, and reference pre-materialization moves
+some preprocessing outside the training timer. The V-JEPA GPU/TPU batch and
+data differences [G] are recorded above. Process reward's short valid inputs
+[P], even when padded to 2,048 on TPU, do not represent long-reasoning training.
+
 ** Absolute Rates and Startup
+The other historical TPU contrastive pairs use per-device negatives in
+both frameworks, while a single-GPU negative pool covers the full batch.
+GPU replacement jobs each use one device, with up to four concurrent jobs
+sharing host resources; per-seed timing variation is retained.
+
+Optimizer steps/s uses the same measured-time denominator as examples/s.
+Consecutive updates are not independent replicates. Historical native GPU
+late interaction retains 15 usable intervals after first-use exclusions.
+Corrected GPU pairs retain the same 19 update indices after excluding first
+use and the post-checkpoint interval, whose reference timer includes
+save/resume overhead. The evidence archive preserves the replaced measurements.
+
 Tables \ref{tab:gpu-rates} and \ref{tab:tpu-rates} report absolute rates.
-Because a batch can mean retrieval pairs, preference pairs or videos,
+Because a batch can mean retrieval pairs, preference pairs, or videos,
 examples/s should be compared within a recipe, not averaged across recipes.
 Different GPU/TPU batch sizes and allocations preclude an equal-cost or
 equal-work hardware ranking.
@@ -738,7 +826,7 @@ All 135 reference runs retain both early intervals; all 130 native runs
 retain first-use events and separate setup timings. These measurements are
 not interchangeable startup costs or pure compiler benchmarks. The paired
 suite was not a balanced randomized cold-cache experiment. Per-seed early
-intervals, setup records, warm step-time coefficients of variation and rates
+intervals, setup records, warm step-time coefficients of variation, and rates
 are preserved in the generated analysis file.
 
 #+INCLUDE: "tables/gpu-startup.org"
@@ -774,11 +862,11 @@ every possible compiled configuration.
 :PROPERTIES:
 :CUSTOM_ID: sec:learning-details
 :END:
-** Dense, CLIP and the Late-Interaction Regression
+** Dense, CLIP, and the Late-Interaction Regression
 Dense adaptation uses ETTIN Encoder 150M (149,014,272 parameters), maximum
-sequence length 128 and buckets 16/96/128. Its custom-VJP query/document
+sequence length 128, and buckets 16/96/128. Its custom-VJP query/document
 chunks are 128/64 and loss-row chunk 64. AdamW uses learning rate
-\(2\times10^{-5}\), zero weight decay, clipping at one and cosine decay
+\(2\times10^{-5}\), zero weight decay, clipping at one, and cosine decay
 with approximately 6% warmup. NanoMSMARCO has 50 queries and 5,043 documents;
 TREC DL 2019 uses 43 queries over 8,841,823 passages. Natural Questions
 has 3,452 queries and 2,681,468 documents and is a transfer collection,
@@ -797,9 +885,9 @@ export/reload checks.
 
 The revised late-interaction recipe uses 452,096 unique query-positive
 triples with one mined negative per query, global batch 512, query/document
-caps 32/256, native GradCache chunk eight, temperature 0.02 and AdamW peak
+caps 32/256, native GradCache chunk eight, temperature 0.02, and AdamW peak
 learning rate \(3\times10^{-6}\). It runs 1,000 updates, with 60 warmup
-updates, zero weight decay and clipping at one. It therefore cycles
+updates, zero weight decay, and clipping at one. It therefore cycles
 through more presentations than unique triples. MaxSim evaluation scores
 are accumulated in FP32. Initial nDCG@10 is 0.7104; final mean is
 \(0.6925\pm0.0010\). This small-panel regression persists across three seeds.
@@ -835,11 +923,11 @@ Availability filtering means counts need not equal the original dataset
 release inventories (Table \ref{tab:omni-data}).
 
 All three strategies use FP32 parameters, BF16 compute, full activation
-rematerialization and custom-VJP GradCache chunk two. Earlier capacity
+rematerialization, and custom-VJP GradCache chunk two. Earlier capacity
 probes with larger chunks are not the settings of these final runs.
-AdamW uses weight decay 0.01, gradient clipping at one and 120 warmup
+AdamW uses weight decay 0.01, gradient clipping at one, and 120 warmup
 updates followed by cosine decay. Connector selection includes the vision
-merger, audio projection and selected vocabulary delimiter rows. The
+merger, audio projection, and selected vocabulary delimiter rows. The
 adapter arm adds rank-eight, alpha-sixteen LoRA across its configured
 linear modules. The exact name patterns and token rows are preserved in
 the executable configuration rather than inferred from the strategy name.
@@ -847,7 +935,7 @@ the executable configuration rather than inferred from the strategy name.
 Each run presents 64,000 pairs, allocated by its sampled source sequence.
 Thus the experiment neither covers every available pair nor trains for an
 equal number of epochs per modality. Evaluations at updates 0, 500, 1,000,
-1,500 and 2,000 are retained; the paper reports the last checkpoint.
+1,500, and 2,000 are retained; the paper reports the last checkpoint.
 Additional final recall metrics appear in Table \ref{tab:omni-recall}.
 These are selected retrieval tasks, not a complete MTEB evaluation
 [cite:@muennighoff2022mteb].
@@ -857,7 +945,7 @@ These are selected retrieval tasks, not a complete MTEB evaluation
 #+LATEX: \clearpage
 * Scaling Workload Details
 The controlled ModernBERT encoder uses 32 layers, width 1,280,
-intermediate width 2,048, twenty attention heads and vocabulary size
+intermediate width 2,048, twenty attention heads, and vocabulary size
 32,768. Global attention occurs every third layer; local attention
 uses window 128. Global/local RoPE bases are 160,000/10,000 and layer
 normalization epsilon is \(10^{-5}\). The MLM head uses exact GELU.
@@ -872,16 +960,16 @@ The masking procedure selects 15% of eligible tokens with the standard
 the valid tokenizer vocabulary. This small real-text corpus is adequate
 for a compute workload but not evidence of general-purpose pretraining.
 
-AdamW uses learning rate \(10^{-4}\), weight decay 0.01 and clipping
+AdamW uses learning rate \(10^{-4}\), weight decay 0.01, and clipping
 at one. Timing includes input preparation and device placement but not
 offline tokenization. The first update is excluded from warm rates.
 Memory is derived from the compiled executable's arguments, outputs,
-temporary buffers and aliasing, rather than equating JAX's reserved
+temporary buffers, and aliasing, rather than equating JAX's reserved
 allocator pool with live model memory.
 
 A prior six-RTX-4090 workstation diagnostic showed substantial exposed
 gradient-collective time. It motivated measurement on the A100 SXM4 node.
-This is not a controlled NVLink ablation: processors, hosts and selected
+This is not a controlled NVLink ablation: processors, hosts, and selected
 microbatches also differ. The paper therefore reports the A100 strong-scaling
 experiment on its own terms and does not assign all hardware differences
 to one interconnect feature. FSDP capacity remains unmeasured.
@@ -936,12 +1024,12 @@ image-text adaptation (13), text-anchored adaptation (14), and MLM scaling
 distinguishes a configuration that describes a historical run from a newer
 configuration intended to improve a future run.
 
-=paper/evidence.json= contains frozen metric records, run summaries and
+=paper/evidence.json= contains frozen metric records, run summaries, and
 source hashes. =paper/methods.json= captures 265 paired-run configurations
 and environment/data references, plus longer-run recipes. Its source
 manifest records 693 artifact hashes. =paper/report.py= generates nine tables,
-five vector figures and per-run timing diagnostics without network access,
-model loading or accelerator computation. =paper/collect_methods.py=
+five vector figures, and per-run timing diagnostics without network access,
+model loading, or accelerator computation. =paper/collect_methods.py=
 is the one-time, hash-checked capture utility; it is not required to rebuild
 the paper. Training datasets and checkpoints are obtained through their
 pinned upstream sources and are not embedded in the LaTeX archive.
@@ -970,7 +1058,7 @@ Data revisions include MS MARCO
 \texttt{0d5435254808}, COCO \texttt{036f3f8291db}, AudioCaps
 \texttt{b29b3243d6ce}, MSR-VTT \texttt{947b139d0c59}, and WikiText
 \texttt{b08601e04326}. Full identifiers, hashes of prepared files,
-availability filters and evaluation manifests accompany the records.
+availability filters, and evaluation manifests accompany the records.
 These preserve the chosen distributions, not a guarantee that upstream
 media remain downloadable indefinitely.
 
@@ -989,6 +1077,53 @@ requires checking repository links and supplementary artifacts as well.
 The arXiv archive is a compilation package, not the complete experimental
 artifact bundle.
 
+#+LATEX: \clearpage
+* Learning Signals and Extension Directions
+:PROPERTIES:
+:CUSTOM_ID: sec:research-directions
+:END:
+Learning signals shape what an encoding is encouraged to retain, discard, or
+predict. Table \ref{tab:learning-signals} maps the approaches motivating this
+toolkit. These categories overlap: masked prediction can reconstruct an input,
+a latent predictor can use a moving teacher, and supervised pairs can define
+a contrastive objective. The table is a research map, not a taxonomy of
+mutually exclusive algorithms or a claim that all listed routes are benchmarked.
+
+#+begin_export latex
+\begin{table}[htbp]
+\centering\small
+\caption{Learning signals, intended representational effects, and current scope. Effects are motivations, not guaranteed properties of a learned model.}\label{tab:learning-signals}
+\begin{tabular}{@{}p{.15\linewidth}p{.24\linewidth}p{.27\linewidth}p{.24\linewidth}@{}}\toprule
+Approach & Training signal & What it encourages & Representax scope \\ \midrule
+Supervised learning & Labels, relevance judgments, or preferences & Features useful for the specified task & Classification, ranking, and reward tasks; selected paired measurements. \\
+Reconstruction & Recover an observation from its encoding & Information needed to recover the chosen target & Denoising text autoencoder implemented; not benchmarked here. \\
+Contrastive learning & Relate selected positives and distinguish alternatives & Geometry reflecting the chosen relationships & Dense, token-level, and multimodal objectives; throughput and adaptation studies. \\
+Masked prediction & Infer missing content from context & Dependencies within observations & ModernBERT MLM implemented and used for scaling; broader modality recipes remain open. \\
+Generative prediction & Predict future tokens or observations & Features supporting conditional prediction & Autoregressive decoder used for text reconstruction; general forecasting and world-model recipes are future work. \\
+Latent prediction & Predict a target representation & Predictable structure without requiring raw-input recovery & Joint-embedding predictive tasks; V-JEPA timing measurements. \\
+Self-distillation & Match a teacher or another view's outputs & Consistency across model states or transformed views & Offline teacher-target tasks and JEPA target updates exist; broader online self-distillation recipes are future work. \\
+\bottomrule\end{tabular}
+\end{table}
+#+end_export
+
+The implemented denoising task reconstructs clean token sequences through an
+autoregressive decoder conditioned on an encoder representation. Offline
+distillation tasks match teacher embeddings, score margins, or candidate-score
+distributions. Those components are not evidence that image autoencoders,
+diffusion training, arbitrary forecasting, or complete online self-distillation
+systems have been implemented or evaluated. Extending the toolkit in those
+directions requires the corresponding models, data transformations, and
+task-appropriate evaluation, not merely another loss name.
+
+World-model and latent-diffusion research
+[cite:@ha2018worldmodels;@rombach2022latentdiffusion] motivates studying
+representations as components of generative and decision-making systems.
+Additional modalities, including olfactory measurements and asynchronous
+sensor streams, motivate different encoders and alignment assumptions.
+The transferable design idea is to expose those scientific decisions while
+reusing data access, optimization, state management, and distributed execution.
+Whether a proposed representation helps must be established experimentally.
+
 * Author Notes :noexport:
 The author has confirmed Chris Kerwell Gresla, Independent Researcher.
 The abstract remains exactly the approved version. This is a complete
@@ -999,7 +1134,7 @@ Before release:
   short-input selection; GPU V-JEPA batch one; repeated-caption paired CLIP;
   deterministic data order in some timing runs; historical late interaction.
 - Review the interpretation of reference integration and timing boundaries.
-- Approve all prose, the responsible-use/AI disclosure and final venue format.
+- Approve all prose, the responsible-use/AI disclosure, and final venue format.
 - Push the reviewed manuscript and frozen reproduction artifacts before
   representing the current working-tree additions as publicly available.
 - Do not claim new training, unmeasured FSDP capacity, any-to-any evaluation,

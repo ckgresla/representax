@@ -7,6 +7,192 @@ and limitations, with detailed recipes and reproduction records in appendices.
 The initial writing pass launched no training. The subsequent padding correction
 reran five GPU TRL references; no core library/training code was changed.
 
+## Introduction Review, Second Pass (2026-09-17)
+
+This pass addresses the next 21 comments and supersedes the introduction and
+layout counts in the earlier records below. The argument now moves from
+representation-learning history to current multimodal approaches, the ambition
+of natively multimodal pretraining and post-training, and the software needed
+to investigate that future. Page-limit trimming remains deferred.
+
+1. **Latent space.** Replaced "an autoencoder's latent space" with "a learned
+   latent space." This removes implementation detail without implying that
+   every latent feature is semantic.
+2. **Definition after examples.** The historical examples now lead into a
+   definition of representation learning in terms of learned features useful
+   for prediction, generation or decision-making.
+3. **Transition wording.** Removed "This repertoire" and introduced the
+   modality-specific history directly.
+4. **Incremental multimodal vision.** Distinguished modality-specific work,
+   jointly trained image-text alignment, and separately pretrained components.
+   CLIP and BLIP-2 ground the latter two cases; the paragraph then develops the
+   ambition of learning across available modalities throughout pretraining and
+   post-training. This is a research direction, not an implemented universal
+   capability or a claim that all existing multimodal systems are stitched
+   together after pretraining.
+5. **Framework bridge.** The next paragraph derives software requirements from
+   this evolving research agenda rather than simply asserting a framework need.
+6. **Research scope.** Begins the description with "Research in representation
+   learning can involve" and leaves the experiment structure open.
+7. **Model, not only encoder.** Uses "changing the model." Representation-learning
+   tasks need not be encoder-only.
+8. **Novel approaches.** Explicitly includes introducing an entirely new approach.
+9. **Proper citations.** Replaced the undated Grain, Optax and Orbax entries with
+   upstream recommended citations and added JAX's citation. The bibliography
+   audit also replaced Ettin's undated model-card citation with its recommended
+   paper; the recorded checkpoint revision remains in the methods inventory.
+10. **Research-software requirements.** States flexibility to modify and compose
+    methods, efficient iteration, and evaluation against relevant benchmarks
+    and reference implementations. Established recipes provide grounding
+    without defining the limits of the toolkit.
+11. **Purpose.** Introduces Representax directly as a JAX framework for
+    representation-learning research towards natively multimodal models,
+    rather than calling tractability its primary goal.
+12. **Model claim.** Replaced "reusable models" with "model interfaces." Checked
+    the generic `Task[ModelT]` contract and shared encoder protocol: compatible
+    tasks can reuse models, but arbitrary model/task interchangeability is not
+    promised.
+13. **Unified abstractions.** Connects the library introduction to its model,
+    task, data and evaluation abstractions, then explains their role in the
+    shared training system rather than leaving a flat component list.
+14. **Detail placement.** Kept processor sharing and data-source behavior in
+    Section 3; the introduction describes their higher-level organization.
+15. **Execution separation.** Connects the abstractions to hardware-aware tuning
+    of supported workloads, without tying model/objective definitions to a
+    device topology. Operational and numerical qualifications remain in the
+    walkthrough; automatic tuning is not claimed as an existing capability.
+16. **JAX ecosystem.** Leads with JAX, its composable transformations and compiled
+    GPU/TPU execution, then explains the Equinox, Grain, Optax and Orbax roles.
+17. **Method selection.** Explains that the selected established methods offer
+    meaningful benchmarks and building blocks for subsequent research.
+18. **Community direction.** Moved the community-extension commitment to the
+    conclusion, including additional learning methods and modalities.
+19. **Question transition.** Uses "through investigating three questions."
+20. **Evaluation purpose.** The questions address matched training efficiency,
+    useful scientific results about learning/transfer/adaptation tradeoffs,
+    and fixed-work scaling. Detailed results retain their existing scope and
+    limitations; the questions do not assert new experiments or universal gains.
+21. **Cleaner ending.** Removed the numerical results list from the introduction.
+    It now closes by connecting evaluation to developing, testing and scaling
+    representation-learning methods. Measurements remain in the results.
+
+Citation provenance checked against primary sources:
+
+- [JAX's citation file](https://raw.githubusercontent.com/jax-ml/jax/main/CITATION.bib):
+  Bradbury et al. (2018), *JAX: Composable Transformations of Python+NumPy Programs*.
+- [Grain's recommended citation](https://github.com/google/grain#citing-grain):
+  Ritter et al. (2023), *Grain: Feeding JAX Models*.
+- [Optax's recommended citation](https://github.com/google-deepmind/optax#citing-optax):
+  DeepMind et al. (2020), *The DeepMind JAX Ecosystem*. No standalone Optax paper
+  is invented.
+- [Orbax's recommended citation](https://github.com/google/orbax#citing-orbax):
+  Gaffney et al. (2026), *Orbax: Distributed Checkpointing with JAX*,
+  [arXiv:2605.23066](https://arxiv.org/abs/2605.23066).
+- [Ettin's model-card citation](https://huggingface.co/jhu-clsp/ettin-encoder-150m#citation):
+  Weller et al. (2025), *Seq vs Seq: An Open Suite of Paired Encoders and Decoders*,
+  [arXiv:2507.11412](https://arxiv.org/abs/2507.11412).
+- [BLIP-2's ICML proceedings entry](https://proceedings.mlr.press/v202/li23q.html):
+  Li et al. (2023), pages 19730--19742, PMLR volume 202.
+
+Software citations use `@misc`, supported by the unmodified ICLR bibliography
+style. Citation years identify the cited works, not the installed experiment
+versions; illustrative upstream version fields were not copied over the actual
+run records. No undated `developers` placeholders remain in the bibliography.
+
+Verification: all 41 paper tests pass on CPU, including the approved-abstract
+regression and numerical/evidence checks. Named and anonymous PDFs compile to
+25 pages with no overfull boxes, unresolved citations or final-pass warnings;
+the source archive is rebuilt. Rendered introduction pages were inspected.
+The main text still occupies ten pages, so the review target correctly fails
+the unchanged nine-page submission guard after compiling the PDF. The approved
+abstract, evidence records, tables and figures are unchanged. No training,
+core-library edits, commit, push or publication occurred in this pass.
+
+## Author Feedback Revision, First Pass (2026-09-17)
+
+This earlier editorial pass superseded the layout counts in the closeout below.
+The introduction now follows a single argument: learned features and latent
+representations enabled different kinds of systems; broader multimodal learning
+requires investigating across objectives and input types; that agenda motivates
+composable representation-learning infrastructure. The author requested that
+page-limit trimming wait until the content is settled. The submission limit and
+its build guard remain unchanged; an over-limit draft is not submission-ready.
+
+Responses to all 17 PDF comments:
+
+1. **Anonymous submission.** Use `build/review/paper.pdf`, whose visible author
+   block and PDF metadata say "Anonymous authors." The named-author
+   `build/preprint/paper.pdf` is for public preprint review. This separation
+   follows the [ICLR author guidelines](https://iclr.cc/Conferences/2027/AuthorGuidelines).
+   Anonymous supplementary material still needs separate review.
+2. **Opening and motivation.** Replaced the infrastructure-first opening with
+   a short, cited history of learned features, deep autoencoders, World Models,
+   CLIP and latent diffusion, leading to open representation-design questions.
+3. **No prescribed experiment flow.** Removed the "an experiment must" sequence.
+   The motivation now concerns recombining research decisions, not enforcing
+   one experiment lifecycle or requiring every use to be a full training job.
+4. **Multimodal vision and data.** The introduction motivates learning beyond a
+   fixed set of modalities. Section 3 explains custom/remote sources, direct
+   Grain input and lazy decoding without mandatory dataset duplication; caches
+   and downloads remain possible. Section 7 discusses olfaction, temporal and
+   simulation streams as extensions, not implemented or measured modalities.
+5. **Primary goal.** Changed "simple aim" to a primary research-enablement goal.
+6. **Capability and research ambition.** The goal is a framework for tractable
+   representation-learning research, not merely avoiding training-loop rewrites.
+   No unsupported claim of being the best or a measured usability winner is made.
+7. **Abstractions and ecosystem.** Separate paragraphs introduce reusable
+   models/objectives/data/evaluators and the Equinox/Grain/Optax/Orbax ecosystem.
+   Train/eval share interfaces and processors; supported distribution and memory
+   choices are configurable. Section 3 retains the operational detail.
+8. **Initial methods.** Integrated the existing methods as the initial set of
+   research tools following the design, without repeating the goal afterwards.
+9. **Redundant disclaimers.** Removed the introductory "not a compiler or new
+   objective" statement. Citations and explicit ecosystem attribution remain.
+10. **Scientific/execution separation.** Retained the requested core-design
+    sentence. Section 7 proposes constrained profiling/autotuning (Profilax),
+    holding the objective, effective batch and data contract fixed while
+    examining execution choices. This is explicitly future work.
+11. **Technical detail placement.** Moved negative-pool/chunk-size distinctions
+    and numerical-equivalence qualifications to the Section 3 walkthrough.
+12. **Demonstration framing.** The initial framework is evaluated through the
+    three requested questions, not presented as a finished research agenda.
+13. **Throughput.** Matched reference throughput remains the first demonstration.
+    "State of the art" is not assigned to every baseline; measured exceptions,
+    compiled controls and timing boundaries remain in the results and appendix.
+14. **Scientific utility.** Complete adaptation and held-out learning form the
+    second demonstration. Finite-budget endpoint gains are not labeled proven
+    convergence or reference-equivalent learning dynamics.
+15. **Scaling.** Additional-accelerator scaling is the third demonstration,
+    with the fixed workload and observed eight-A100 6.87x result explicit.
+16. **Compelling, open-ended toolkit.** The introduction makes the case for
+    the framework and its development with the community. Results, discussion
+    and conclusion follow that framing without deleting unfavorable evidence.
+17. **Peer-paper style and empirical questions.** Equinox, Scenic and JaxPruner
+    informed the toolkit-first organization. Removed the "none alone" closing
+    disclaimer. Historical examples motivate the field; Section 7 treats input
+    units and inductive biases as hypotheses requiring empirical evaluation.
+
+The requested seven-approach table is Table 14 in Appendix F. It separates
+training signal, intended representational effect and implementation/evidence
+scope. Denoising text reconstruction and offline distillation already exist;
+general forecasting, broader online self-distillation and additional sensory
+modalities remain extensions. No World Models or diffusion implementation is
+claimed. These approaches overlap rather than partitioning the field.
+
+The approved abstract, frozen results and five figures are unchanged. The
+manuscript now has fourteen tables: nine generated results tables and five
+inline methods/capability/research-map tables. No training, core implementation,
+commit, push or publication was performed in this revision.
+
+Verification: all 41 paper tests pass on CPU, including the fixed abstract,
+reproducible numerical tables and evidence qualifications. Both PDFs compile
+to 24 pages without overfull boxes or undefined references; the source archive
+is regenerated. The main text occupies ten pages, so the strict review target
+correctly rejects it against the nine-page limit after producing the PDF.
+That remaining editorial task is deferred at the author's request, not waived.
+The introduction, walkthrough, discussion/conclusion and new table were also
+checked in rendered pages.
+
 ## Closeout Review (2026-09-17)
 
 Training, evaluation and approved fairness reruns are complete for the current
