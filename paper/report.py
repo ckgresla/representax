@@ -13,6 +13,17 @@ STRATEGIES = ("connectors", "connectors-lora", "full")
 STRATEGY_NAMES = ("Connectors", "Connectors + LoRA", "Full fine-tuning")
 DATASETS = ("flickr30k", "audiocaps", "msrvtt", "nanomsmarco")
 DATASET_NAMES = ("Flickr30k", "AudioCaps", "MSR-VTT", "NanoMSMARCO")
+DESIGN_NAMES = {
+    "native_coarse": "Representax / coarse buckets",
+    "native_fine": "Representax / fine buckets",
+    "eager_native": "ST eager / dynamic padding",
+    "eager_fixed": "ST eager / fixed padding",
+    "inductor_native": "ST Inductor / dynamic padding",
+    "inductor_fixed": "ST Inductor / fixed padding",
+    "native_rematerialized": "Representax / rematerialized",
+    "native_optimized": "Representax / optimized, cold",
+    "native_cached": "Representax / optimized, cached",
+}
 NAMES = {
     **LABELS,
     "outcome-reward": "Outcome reward [O]",
@@ -28,6 +39,10 @@ UNMATCHED_RECIPES = frozenset({
 
 def load():
     return json.loads((HERE / "evidence.json").read_text())
+
+
+def load_design():
+    return json.loads((HERE / "design-evidence.json").read_text())
 
 
 def comparison_matched(evidence, platform, recipe):
@@ -152,16 +167,13 @@ def framework_overview(e):
             )])
     table(
         "framework-throughput",
-        "Warm training throughput: median examples/s across five seeds. "
-        "Bold marks the higher of the two reported rates within each workload and hardware panel, "
-        "not statistical significance. $R$ denotes Representax; ratios divide "
-        "its median rate by the reference median. GPU references use eager "
-        "execution; the dense TorchInductor control is in "
-        r"Appendix \ref{sec:compiled-reference}. "
-        "GPU and TPU allocations/batches differ. Winner styling and ratios are shown "
-        "only for validated matched protocols; historical discrepancies and replacements "
-        "are documented in the text. Qualifications [L], [O], [I], [M], [P], [C], [G] are defined in the text; "
-        "per-seed variation is shown in the appendix.",
+        "Warm throughput: median examples/s over five seeds. Bold identifies "
+        "the higher reported median within a matched pair, not significance. "
+        "$R$ denotes Representax; ratios divide its median by the reference's. "
+        "GPU references use eager execution; the dense TorchInductor control "
+        r"is in Appendix \ref{sec:compiled-reference}. "
+        "Hardware panels differ in allocation and batch. Lettered protocol "
+        r"qualifications and per-seed variation appear in Appendix \ref{sec:paired-methods}.",
         "lrrr",
         ["Workload", r"\shortstack{Representax\\ex/s}",
          r"\shortstack{Reference\\ex/s}", r"$R/\mathrm{Ref.}$"],
@@ -262,46 +274,79 @@ def scaling_table(e):
     table("scaling", "Strong scaling of a fixed 131,072-token update. Means and sample SD use three seeds. Speedup is the mean within-seed ratio; efficiency divides it by GPU count. Memory is the maximum compiled executable footprint per device, not the allocator's reserved pool.", "rrrrrrr", ["GPUs", "Accum.", "Tokens/s", "Seconds/update", "Speedup", "Efficiency", "GiB"], rows)
 
 
+def design_table(e):
+    rows = []
+    for key, label in DESIGN_NAMES.items():
+        r = e["rows"][key]["report"]
+        startup = r["compilation_and_first_use_seconds"]
+        rows.append([
+            label, str(r["steady_state_step_count"]),
+            f'{r["steady_state_examples_per_second"]:.2f}',
+            "---" if startup is None else f"{startup:.2f}",
+        ])
+    table(
+        "design-diagnostics",
+        "Single-seed ModernBERT execution diagnostics. Each process runs 30 "
+        "updates; the recorded warm subset contains 13--15 updates. Rates use "
+        "those subsets, not equal-length wall-clock trials. ST denotes Sentence "
+        "Transformers. First-use includes compilation or cache loading plus "
+        "execution; a dash means unrecorded, not zero. The optimized rows combine "
+        "several changes and are not a single-factor ablation.",
+        "lrrr", ["Configuration", "Warm updates", "Examples/s", "First-use (s)"],
+        rows,
+    )
+
+
 def figures(e):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     import numpy as np
     from matplotlib import font_manager
-    from matplotlib.patches import Rectangle
     font_manager.fontManager.addfont(HERE / "assets/InterVariable.ttf")
     font = font_manager.FontProperties(fname=HERE / "assets/InterVariable.ttf").get_name()
-    plt.rcParams.update({"font.family": font, "font.size": 9, "axes.spines.top": False, "axes.spines.right": False, "pdf.fonttype": 42, "svg.fonttype": "none"})
+    plt.rcParams.update({
+        "font.family": font, "font.size": 10.5, "axes.titlesize": 10.5,
+        "axes.labelsize": 10.5, "xtick.labelsize": 9.5, "ytick.labelsize": 9.5,
+        "text.color": "#24272b", "axes.labelcolor": "#24272b",
+        "axes.edgecolor": "#d7dbe0", "axes.linewidth": .7,
+        "axes.spines.top": False, "axes.spines.right": False,
+        "xtick.color": COLORS["slate"], "ytick.color": COLORS["slate"],
+        "grid.color": "#d7dbe0", "grid.linewidth": .6,
+        "pdf.fonttype": 42, "svg.fonttype": "none",
+    })
 
     def save(fig, name):
         for ext in ("pdf", "png"):
             fig.savefig(HERE / "figures" / f"{name}.{ext}", bbox_inches="tight", facecolor="white", dpi=180, metadata={"CreationDate": None} if ext == "pdf" else None)
         plt.close(fig)
 
-    fig, ax = plt.subplots(figsize=(7.1, 3.5))
-    ax.set(xlim=(0, 10), ylim=(0, 5.0))
+    fig, ax = plt.subplots(figsize=(7.2, 2.95))
+    ax.set(xlim=(0, 10), ylim=(0, 4.45))
     ax.axis("off")
-    def block(x, y, w, h, title, lines, color):
-        ax.add_patch(Rectangle((x, y), w, h, facecolor="white", edgecolor=color, lw=1.2))
-        ax.plot([x, x+w], [y+h, y+h], color=color, lw=3)
-        ax.text(x+.13, y+h-.24, title, fontsize=10, va="top")
-        ax.text(x+.13, y+h-.70, lines, fontsize=7.8, va="top", linespacing=1.45)
-    block(.05, 2.02, 2.1, 1.90, "Data", "Source sampling\nDecode + map\nProcess + prefetch", COLORS["mint"])
-    block(2.62, 2.02, 2.1, 1.90, "Model", "Modality towers\nConnectors + LoRA\nTrainable selection", COLORS["sky"])
-    block(5.19, 2.02, 2.1, 1.90, "Task", "Representations\nLoss + modifiers\nMetrics", COLORS["periwinkle"])
-    block(7.76, 2.02, 2.1, 1.90, "Update", "Gradients\nClip + optimize\nTarget update", COLORS["apricot"])
+    ax.text(.05, 4.18, "Scientific choices")
+    for x, title, lines, color in (
+        (.05, "Data", "Sources + mixtures\nProcessing", COLORS["mint"]),
+        (2.62, "Model", "Encoders + adapters\nConnectors", COLORS["sky"]),
+        (5.19, "Task", "Learning objective\nLoss modifiers", COLORS["periwinkle"]),
+        (7.76, "Update", "Optimizer + schedule\nTarget transitions", COLORS["apricot"]),
+    ):
+        ax.plot([x, x + 2.10], [3.84, 3.84], color=color, lw=2.5)
+        ax.text(x, 3.55, title, va="top")
+        ax.text(x, 2.99, lines, fontsize=9.5, va="top", linespacing=1.5)
     for start in (2.15, 4.72, 7.29):
-        ax.annotate("", xy=(start+.46, 3.1), xytext=(start+.04, 3.1), arrowprops={"arrowstyle": "->", "color": COLORS["slate"]})
-    ax.text(.05, 4.48, "ONE CONFIGURATION: scientific choices + execution choices", fontsize=10)
-    ax.text(.05, 1.54, "Shared execution", color=COLORS["slate"])
-    ax.text(.05, 1.22, "GradCache / accumulation    ·    precision / sharding    ·    checkpoint / resume", fontsize=9)
-    ax.plot([.05, 9.86], [.88, .88], color="#d7dbe0", lw=1)
-    ax.text(.05, .46, "Evaluation", color=COLORS["rose"])
-    ax.text(1.8, .46, "Model outputs → batch evaluation → corpus accumulation → metrics", fontsize=9)
+        ax.annotate("", xy=(start + .40, 3.38), xytext=(start, 3.38),
+                    arrowprops={"arrowstyle": "->", "color": COLORS["slate"], "lw": .9})
+    ax.plot([.05, 9.86], [1.98, 1.98], color="#d7dbe0", lw=.8)
+    ax.text(.05, 1.57, "Shared execution")
+    ax.text(3.05, 1.57, "Chunking / precision / sharding / checkpoint + resume", fontsize=9.5)
+    ax.plot([.05, 9.86], [1.10, 1.10], color="#d7dbe0", lw=.8)
+    ax.text(.05, .66, "Evaluation", color=COLORS["rose"])
+    ax.text(3.05, .66, "Model + processor → corpus accumulation → metrics", fontsize=9.5)
     save(fig, "architecture")
 
-    recipes = [r for r in LABELS if r != "late-interaction"] + ["late-interaction"]
-    fig, axes = plt.subplots(1, 2, figsize=(7.2, 4.9), sharey=True, layout="constrained")
+    recipes = list(LABELS)
+    fig, axes = plt.subplots(1, 2, figsize=(7.2, 5.0), sharey=True, layout="constrained")
     for ax, platform, title, color in zip(axes, ("gpu-rtx4090", "tpu-v5e-16"), ("Single RTX 4090", "16-chip v5e slice"), (COLORS["sky"], COLORS["mint"])):
         panel = e["panels"][platform]
         lookup = {r["recipe"]: r["representax_to_reference_ratio"] for r in panel["aggregates"]}
@@ -314,11 +359,11 @@ def figures(e):
             ax.scatter(v, i+np.linspace(-.13, .13, len(v)), s=12, color=color, alpha=.45, edgecolors="none")
             ax.scatter(lookup[recipe], i, marker="D", s=28, color=color, zorder=3)
         ax.axvline(1, ls="--", lw=.9, color=COLORS["slate"])
-        ax.axhspan(11.55, 12.45, color="#f0f1f2", zorder=-1)
         ax.set(xscale="log", xlim=(.45, 16), title=title)
         ax.set_xticks([.5, 1, 2, 4, 8, 16], ["0.5", "1", "2", "4", "8", "16"])
-        ax.grid(axis="x", alpha=.15)
+        ax.grid(axis="x")
         ax.tick_params(axis="y", length=0)
+        ax.spines["left"].set_visible(False)
     axes[0].set_yticks(range(len(recipes)), [NAMES[r] for r in recipes])
     axes[0].invert_yaxis()
     # The compiled dense control uses the same native runs, not a new native trial.
@@ -327,11 +372,12 @@ def figures(e):
     ratio = stats.median(native.values()) / stats.median(compiled.values())
     axes[0].scatter(ratio, -.36, marker="s", s=22, color=COLORS["rose"], zorder=4)
     axes[0].annotate("Inductor", xy=(ratio, -.36), xytext=(1.65, -.36), va="center", fontsize=7.5, color=COLORS["rose"])
-    fig.supxlabel("Representax / reference examples per second (log scale)", fontsize=9)
+    fig.supxlabel("Representax / reference examples per second (log scale)", fontsize=10.5)
     save(fig, "framework-throughput")
 
-    fig, axes = plt.subplots(1, 4, figsize=(7.2, 2.65), sharey=True, layout="constrained")
-    for ax, dataset, label in zip(axes, DATASETS, DATASET_NAMES):
+    fig, axes = plt.subplots(1, 4, figsize=(7.2, 2.45), sharey=True, layout="constrained")
+    directions = ("Text → image", "Text → audio", "Text → video", "Text → text")
+    for ax, dataset, label, direction in zip(axes, DATASETS, DATASET_NAMES, directions):
         for i, strategy in enumerate(STRATEGIES):
             values = []
             for seed in SEEDS:
@@ -340,45 +386,98 @@ def figures(e):
                 values.append(hist[-1]["metrics"][key] - hist[0]["metrics"][key])
             mean, sd = summary(values)
             color = (COLORS["sky"], COLORS["mint"], COLORS["rose"])[i]
-            ax.scatter(np.arange(3)*.12 + i-.12, values, s=18, alpha=.5, color=color)
-            ax.errorbar(i, mean, yerr=sd, fmt="D", color=color, capsize=3, ms=4)
-        ax.axhline(0, lw=.9, color=COLORS["slate"], ls="--")
-        ax.set(title=label, xticks=[0, 1, 2], xticklabels=["C", "C+L", "Full"], ylim=(-.075, .205), xlim=(-.5, 2.5))
-        ax.grid(axis="y", alpha=.12)
-    axes[0].set_ylabel("Change in nDCG@10")
+            ax.scatter(values, i + np.linspace(-.14, .14, len(values)),
+                       s=18, alpha=.55, color=color, edgecolors="none")
+            ax.errorbar(mean, i, xerr=sd, fmt="D", color=color, capsize=3, ms=4.5)
+        ax.axvline(0, lw=.9, color=COLORS["slate"], ls="--")
+        ax.set(title=f"{direction}\n{label}", ylim=(2.48, -.48), xlim=(-.1, .22))
+        ax.set_xticks([-.1, 0, .1, .2], ["−0.1", "0", "+0.1", "+0.2"])
+        ax.tick_params(axis="y", length=0)
+        ax.spines["left"].set_visible(False)
+        ax.grid(axis="x")
+    axes[0].set_yticks(range(3), ["Connectors", "+ LoRA", "Full tuning"])
+    fig.supxlabel("Change in nDCG@10 from each recipe's initial checkpoint", fontsize=10.5)
     save(fig, "multimodal-adaptation")
 
-    fig, axes = plt.subplots(1, 2, figsize=(7.2, 2.9), layout="constrained")
+    fig, axes = plt.subplots(1, 2, figsize=(7.2, 2.7), layout="constrained")
     counts = (1, 2, 4, 8)
     for seed in SEEDS:
         rows = sorted([r for r in e["scaling"]["rows"] if r["seed"] == seed], key=lambda r: r["gpus"])
         axes[0].plot(counts, [r["speedup"] for r in rows], color=COLORS["sky"], alpha=.35, marker="o", ms=3)
         axes[1].scatter(counts, [r["efficiency"]*100 for r in rows], color=COLORS["mint"], alpha=.45, s=20)
     means = [stats.mean(r["speedup"] for r in e["scaling"]["rows"] if r["gpus"] == n) for n in counts]
-    axes[0].plot(counts, counts, color=COLORS["slate"], ls="--", lw=1, label="Ideal")
-    axes[0].plot(counts, means, color=COLORS["sky"], marker="D", ms=4, label="Measured")
+    axes[0].plot(counts, counts, color=COLORS["slate"], ls="--", lw=1)
+    axes[0].plot(counts, means, color=COLORS["sky"], marker="D", ms=4)
     axes[0].set(ylabel="Speedup over one GPU", ylim=(0, 8.5), yticks=[0, 2, 4, 6, 8])
-    axes[0].legend(frameon=False, fontsize=8)
+    axes[0].text(4.7, 7.1, "Ideal", color=COLORS["slate"])
+    axes[0].annotate(f"{means[-1]:.2f}×", (8, means[-1]), xytext=(-2, -18),
+                     textcoords="offset points", ha="right", color=COLORS["sky"])
     axes[1].plot(counts, [100*s/n for n, s in zip(counts, means)], color=COLORS["mint"], marker="D", ms=4)
     axes[1].axhline(100, color=COLORS["slate"], ls="--", lw=1)
     axes[1].set(ylabel="Parallel efficiency (%)", ylim=(0, 105), yticks=[0, 25, 50, 75, 100])
+    axes[1].annotate(f"{100 * means[-1] / 8:.1f}%", (8, 100 * means[-1] / 8),
+                     xytext=(-2, -18), textcoords="offset points", ha="right",
+                     color=COLORS["mint"])
     for ax in axes:
         ax.set(xticks=counts, xlabel="A100 SXM4 GPUs", xlim=(.6, 8.4))
-        ax.grid(alpha=.13)
+        ax.grid(axis="y")
     save(fig, "strong-scaling")
 
-    fig, axes = plt.subplots(1, 4, figsize=(7.2, 2.55), layout="constrained")
-    for ax, (name, row) in zip(axes, e["learning"].items()):
+    fig, ax = plt.subplots(figsize=(7.2, 2.9), layout="constrained")
+    for i, (name, row) in enumerate(e["learning"].items()):
         a, b = row["initial"], row["final"]
         color = COLORS["rose"] if name.startswith("Late") else COLORS["sky"]
-        ax.plot([0, 1], [a["mean"], b["mean"]], color=color, lw=1)
-        ax.scatter([0], [a["mean"]], color=color, facecolors="white", zorder=3)
-        ax.errorbar(1, b["mean"], yerr=b["sd"], fmt="o", color=color, capsize=3)
-        title = {"Dense / NanoMSMARCO": "Dense\nNanoMSMARCO", "CLIP / text-to-image": "CLIP\nText → image", "CLIP / image-to-text": "CLIP\nImage → text", "Late interaction / NanoMSMARCO": "Late interaction\nNanoMSMARCO"}[name]
-        ax.set(title=title, xticks=[0, 1], xticklabels=["Initial", "Final"], ylim=(0, 1), xlim=(-.25, 1.25))
-        ax.grid(axis="y", alpha=.15)
-    axes[0].set_ylabel("nDCG@10")
+        ax.plot([a["mean"], b["mean"]], [i, i], color=color, lw=1.3)
+        ax.scatter(a["mean"], i, facecolors="white", edgecolors=COLORS["slate"], zorder=4, s=24)
+        ax.errorbar(b["mean"], i, xerr=b["sd"], fmt="D", color=color, capsize=3, ms=4)
+        ax.text(1.08, i, f'{a["mean"]:.4f}', va="center", ha="center", fontsize=9.5)
+        ax.text(1.32, i, f'{b["mean"]:.4f}', va="center", ha="center", fontsize=9.5, color=color)
+    ax.text(1.08, -.60, "Initial", ha="center", fontsize=9.5)
+    ax.text(1.32, -.60, "Final", ha="center", fontsize=9.5)
+    ax.set(xlim=(0, 1.45), ylim=(3.6, -.90), xlabel="nDCG@10",
+           xticks=np.linspace(0, 1, 6), yticks=range(4),
+           yticklabels=["Dense / NanoMSMARCO", "CLIP / text → image",
+                        "CLIP / image → text", "Late / NanoMSMARCO"])
+    ax.spines["bottom"].set_bounds(0, 1)
+    ax.spines["left"].set_visible(False)
+    ax.tick_params(axis="y", length=0)
+    ax.grid(axis="x")
     save(fig, "held-out-learning")
+
+    design = load_design()["rows"]
+    fig, axes = plt.subplots(1, 2, figsize=(7.2, 3.15), layout="constrained",
+                             gridspec_kw={"width_ratios": [1.2, 1]})
+    keys = ("native_coarse", "native_fine", "eager_fixed", "eager_native",
+            "inductor_fixed", "inductor_native")
+    for i, key in enumerate(keys):
+        value = design[key]["report"]["steady_state_examples_per_second"]
+        color = COLORS[("sky", "sky", "mint", "mint", "periwinkle", "periwinkle")[i]]
+        axes[0].plot([0, value], [i, i], color=color, alpha=.35, lw=1.4)
+        axes[0].scatter(value, i, color=color, marker="D" if i % 2 else "o", s=25)
+        axes[0].annotate(f"{value:.0f}", (value, i), xytext=(5, 0),
+                         textcoords="offset points", va="center", fontsize=9)
+    axes[0].set(title="Padding and warm throughput", xlim=(0, 810), ylim=(5.6, -.6),
+                xlabel="Examples/s", xticks=[0, 200, 400, 600, 800], yticks=range(6),
+                yticklabels=["Native / coarse", "Native / fine", "Eager / fixed",
+                             "Eager / dynamic", "Inductor / fixed", "Inductor / dynamic"])
+    for i, key in enumerate(("native_optimized", "native_cached")):
+        r = design[key]["report"]
+        seconds = r["compilation_and_first_use_seconds"]
+        color = COLORS["sky" if i == 0 else "mint"]
+        axes[1].plot([0, seconds], [i, i], color=color, alpha=.35, lw=1.4)
+        axes[1].scatter(seconds, i, color=color, s=30, marker="D")
+        axes[1].annotate(f"{seconds:.1f} s", (seconds, i), xytext=(0, 13),
+                         textcoords="offset points", ha="center", fontsize=9.5, color=color)
+        axes[1].text(0, i + .25, f'{r["steady_state_examples_per_second"]:.1f} examples/s warm',
+                     fontsize=9, color=COLORS["slate"])
+    axes[1].set(title="Persistent-cache replay", xlim=(-5, 350), ylim=(1.6, -.65),
+                xlabel="Compilation + first execution (s)", xticks=[0, 100, 200, 300],
+                yticks=[0, 1], yticklabels=["Cold", "Cached"])
+    for ax in axes:
+        ax.spines["left"].set_visible(False)
+        ax.tick_params(axis="y", length=0)
+        ax.grid(axis="x")
+    save(fig, "design-diagnostics")
 
 
 def main():
@@ -388,8 +487,9 @@ def main():
     framework_tables(e)
     learning_tables(e)
     scaling_table(e)
+    design_table(load_design())
     figures(e)
-    print("Generated nine tables, five figures, and per-run timing diagnostics.")
+    print("Generated ten tables, six figures, and per-run timing diagnostics.")
 
 
 if __name__ == "__main__":

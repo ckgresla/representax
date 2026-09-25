@@ -30,7 +30,7 @@ The statements start on a new page after all main-text floats have been flushed;
 do not move substantive results into the excluded statements to fit the limit.
 Keep the boundary immediately after the conclusion.
 
-The current main text uses all nine pages. Prefer shortening or moving supporting
+The September 23 interior draft uses eight main-text pages. Prefer shortening or moving supporting
 detail to the appendix over shrinking fonts, margins or line spacing. The guard
 does not certify all formatting or anonymity: visually review each final PDF,
 inspect supplementary files, and check identifying acknowledgements/self-citations.
@@ -41,6 +41,24 @@ area, reviewer exemption if applicable, AI-use categories, license, ethics and
 visibility acknowledgements. The author makes those attestations. The PDF and
 supplementary limits shown in the supplied form are 50 MB and 100 MB respectively.
 No anonymous code supplement has yet been assembled by this checklist.
+
+### Final Layout Review
+
+- [ ] Author requirement (2026-09-25): place each figure and its caption on the
+  same page as its first substantive discussion, not merely somewhere nearby.
+  In particular, Figure 1 must accompany Section 3.1, Core Abstractions, rather
+  than floating onto the preceding page. Later cross-references need not repeat
+  the figure. Verify both named and anonymous PDFs after the content settles.
+- [ ] Adjust figure dimensions, source placement, and float constraints together;
+  preserve readable labels and official margins/type sizes. Recheck the page
+  budget and visually inspect for whitespace and orphaned headings.
+- [ ] First-page logo proposal, pending author approval: a compact selected
+  vector mark beside the author block in the named preprint, optionally with
+  one explanatory first-page footnote, not a numbered research figure or a
+  repeated footer. Canonical asset: `../docs/assets/representax/representax-mark.pdf`.
+  Omit from the anonymous review build as a conservative branding/anonymity
+  choice, not a claim that ICLR explicitly bans logos. Any adopted asset must
+  also be included in the self-contained preprint source archive.
 
 ## arXiv and Sharing
 

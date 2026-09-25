@@ -39,6 +39,78 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   a flat shell file beside each numbered experiment's Python launcher.
 
 *** Paper draft
+    Author approval, 2026-09-25: Sections 2 (Related Work) and 3 (Representax)
+    are approved as written. This supersedes the pending paragraph-three and
+    Section 3 review notes below. Preserve their prose alongside the approved
+    abstract, introduction, and conclusion during the remaining interior pass.
+    The author authorizes a checkpoint of the current paper source, revisions
+    to Sections 4--8 using the same editorial principles, and the first-page
+    logo in both named and anonymous PDFs. No upload or submission is performed
+    by this drafting pass. Same-page figure placement remains a final-layout
+    requirement. The remaining sections require final author review.
+    Final-layout requirement, 2026-09-25: place each figure and its caption on
+    the same page as its first substantive discussion, including Figure 1
+    alongside Section 3.1 Core Abstractions rather than on the preceding page.
+    Check the rendered named and anonymous PDFs after prose/layout settles;
+    do not shrink fonts or margins to force placement. First-page logo placement
+    and an optional explanatory footnote are under discussion, not yet applied.
+    Use the selected vector assets if approved. See the layout checklist in
+    =paper/submission-checklist.md=.
+    Section 3 rewrite landed, 2026-09-25: applied the approved draft and latest
+    21 annotations around explicit abstractions, source-backed data, reproducible
+    configuration, and task-specific execution. Added the Henderson et al.
+    MNR citation. Sections 2 and 3 still await final author review; Related
+    Work paragraph-three refinement and the overview-figure redesign remain
+    open. Seven export tests pass; named and anonymous PDFs and the source
+    archive rebuild. Both PDFs now have 10 main-text pages and 29 total pages,
+    so the nine-page submission guard fails. Pages 3--5 were visually checked.
+    Approved opening/closing copy, results, and core code are unchanged.
+    Current verification and wording boundaries: =paper/review-notes.md=.
+    Author-review status, 2026-09-25: Introduction and Conclusion are approved
+    and landed. Related Work is in progress (paragraph-three flow pending);
+    Representax is in progress (Section 3 author review). Sections 4--8 are
+    drafted with evidence incorporated, but their current prose and figures
+    await section-by-section author review. Completed experiment counters do
+    not mean those manuscript sections are approved. Sections 7 and 8 already
+    appear in the 2026-09-08 outline at commit =022d161=; Related Work was later
+    moved forward and Experimental Protocol folded into Section 4.
+    Approved citation follow-ups, 2026-09-25: added LAVIS and LiT to Related
+    Work, plus Transformers and TRL citations at their experiment-method uses.
+    The software paragraph's closing is unchanged. The paragraph-three rewrite
+    remains a chat proposal. Seven export tests and the review guard pass;
+    named/review PDFs have nine main-text pages and 28 total pages.
+    Approved follow-ups, 2026-09-24: landed the research-code-centered Section 3
+    opening, the conclusion's fixed-recipe hardware-autotuning direction, and
+    Tian/Ha's ES-CLIP citation in Related Work. This supersedes the pending
+    Section 3 proposal below. Abstract, introduction, and results are unchanged;
+    only the approved sentence is added to the conclusion. Details and
+    verification: =paper/review-notes.md=.
+    Related Work review, 2026-09-24: landed the approved opening, DINOv2
+    description, and positive contribution sentence in four topical paragraphs.
+    Added the missing Ngiam/Karpathy citations, connected Jina to adaptation,
+    and distinguished ColBERT's method from PyLate's software role. Strengthened
+    the account of linear space/time probes while keeping shared-representation
+    convergence a hypothesis. Citation coverage and exclusions are recorded in
+    =paper/review-notes.md=. Seven export tests and the review guard pass; both
+    PDFs now contain nine main-text pages and 27 total pages. Related Work
+    pages were visually inspected. Approved abstract/introduction/conclusion
+    and numerical results are unchanged. Section 3's research-code-centered
+    opening remains a chat proposal pending author approval.
+    Interior revision, 2026-09-23: author approved a complete interior/figure
+    pass following the nine-section outline and the landed introduction and
+    conclusion. Checkpoint =187488f836ada1720de4d9af82091c5c01c3aa32= preserves
+    the approved draft. Work plan and verification are in =paper/revision-plan.md=.
+    No new training, public release, push, or submission is included.
+    Completed pass: revised Sections 2--8, retained the approved abstract,
+    introduction, and conclusion, and redesigned six figure pairs in the named
+    palette. Added a source-hashed snapshot of nine existing Experiment 09
+    diagnostics, explicitly separate from replicated comparisons and quality
+    evidence. The original evidence, methods, and analysis remain unchanged.
+    All 47 paper tests pass. Both PDFs have eight main-text pages and 26 total;
+    the review guard passes, and the named source archive builds independently.
+    Author review of the new interior prose and figures remains open. Current
+    handoff: =paper/review-notes.md=; PDFs: =paper/build/preprint/paper.pdf= and
+    =paper/build/review/paper.pdf=. No anonymous code supplement has been assembled.
     Introduction second pass, 2026-09-17: addressed the next 21 PDF comments.
     The argument now progresses from modality-specific research through
     present multimodal approaches to native multimodal pretraining/post-training,
@@ -2717,8 +2789,8 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      A100 scaling. No universal-speedup, asymptotic-convergence, novel-compiler,
      any-to-any supervision or demonstrated FSDP-capacity claim.
 **** DONE Assemble the first comparison, learning and scaling figures
-     Current renderer: =paper/report.py= rebuilds five PDF/PNG figure pairs,
-     nine numeric tables and =paper/analysis.json= from the frozen data without
+     Current renderer: =paper/report.py= rebuilds six PDF/PNG figure pairs,
+     ten numeric tables and =paper/analysis.json= from the frozen data without
      checkpoints or access to =/raid=. Use Inter and the author's named palette.
      Show all five seed ratios, per-arm initial evaluation, sample SD and retained
      negative results. Startup tables distinguish native first-use from reference

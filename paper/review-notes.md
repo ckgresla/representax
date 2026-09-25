@@ -7,6 +7,259 @@ and limitations, with detailed recipes and reproduction records in appendices.
 The initial writing pass launched no training. The subsequent padding correction
 reran five GPU TRL references; no core library/training code was changed.
 
+## Sections 2 and 3 Approved (2026-09-25)
+
+The author approves Related Work and Representax as written. This supersedes
+their outstanding prose-review notes below, including paragraph-three flow.
+Preserve those sections, the abstract, introduction, and conclusion while
+revising Sections 4--8. The next pass should lead with scientific questions,
+explain design choices before implementation detail, emphasize explicit and
+auditable behavior, and keep results beside their relevant qualifications.
+The author requests a checkpoint of the current paper source before that pass.
+The first-page logo is approved for both named and anonymous variants; final
+figure placement must keep each figure with its first substantive discussion.
+No external submission or publication is authorized by these source edits.
+
+## Section 3 Rewrite Landed (2026-09-25)
+
+Applied the approved Section 3 draft and its latest 21 annotations. The section
+now proceeds through Core Abstractions, Source-Backed Data, Configuring
+Experiments, and Efficient Execution. Explicit choices and defined behavior
+connect the design discussion to inspectable research code. Related Work is
+unchanged in this pass; its paragraph-three refinement and final author review
+of Sections 2 and 3 remain open. The existing overview figure is unchanged and
+still awaits the separate visual-design discussion.
+
+Implementation checks informing the wording:
+
+- Models are Equinox modules, which are JAX PyTrees; fields hold parameters and
+  submodules, and Python methods define forward computations. Architecture
+  changes reuse the training loop when model and task interfaces are preserved.
+- Data selection is broader than weighted mixtures. Built-in weighted source
+  draws are categorical, not Gaussian; custom Grain datasets and iterators are
+  extension points for other policies. Example interleaving and source-local
+  batches are alternatives subject to compatible collation and processing.
+- Evaluator composition shares a batch traversal, not necessarily encoder
+  computation. Fourteen evaluator implementations are distinguished from the
+  composition wrapper and from the number of benchmark families.
+- Remote-media reads can be on demand, but the built-in Hugging Face resolver
+  is not a universal streaming reader. Custom readers/iterators are extension
+  points. No end-to-end zero-copy claim is made. Shape-bucket detail and the
+  unnecessary prefetch/sample-selection caveat were removed.
+- Supported loaders restore iterator and sampling state without replaying
+  consumed batches, conditional on fixed sources and deterministic processing.
+  This does not promise instantaneous checkpoint loading or compilation.
+  Learner-dependent data selection remains a future research direction.
+- The approved scientific/execution configuration and lifecycle paragraphs are
+  preserved. Hydra-Zen composes Python configurations without requiring YAML;
+  the text does not claim static validation of arbitrary dynamic factories.
+- Added Henderson et al. (2017), "Efficient Natural Language Response Suggestion
+  for Smart Reply," for multiple-negatives ranking. GradCache remains an
+  example of a tested, task-specific execution path, not a universal guarantee.
+  Primary sources: https://arxiv.org/abs/1705.00652 and
+  https://docs.kidger.site/equinox/api/module/module/.
+
+Validation: all seven export tests pass, including approved-copy protection.
+Named and anonymous PDFs compile, and the source archive rebuilds. Both PDFs
+now have 10 main-text pages and 29 total pages; the nine-page submission guard
+fails. Page-limit trimming remains open rather than changing style or silently
+cutting approved copy. Rendered pages 3--5 were visually checked, including the
+resolved MNR citation. Final logs have no undefined references or overfull
+boxes; existing underfull-box diagnostics remain. No results, core library
+code, or approved abstract/introduction/conclusion copy changed.
+
+## Citations and Outline Status (2026-09-25)
+
+Added the author-approved LAVIS sentence to the research-software paragraph
+and LiT as a precedent for tuning text representations against a frozen image
+tower. Added Transformers and TRL citations at their existing experimental
+method descriptions. Bibliographic metadata comes from ACL Anthology, the LiT
+paper, and TRL's official `CITATION.cff`. The software paragraph's closing is
+unchanged; no "representation-aware execution" claim was added to Related Work.
+The broader paragraph-three reordering remains a proposal pending approval.
+
+The original roadmap at commit `022d161` (2026-09-08) already includes Section 7,
+Design Analysis, and Section 8, Capabilities, Limitations and Reproducibility.
+Later changes moved Related Work forward and put Experimental Protocol within
+Section 4. Current editorial status: Introduction and Conclusion approved;
+Related Work and Representax in author review; Sections 4--8 drafted and awaiting
+section-by-section review. Completed evidence is not manuscript approval.
+
+Validation: all seven export tests pass, including the approved-copy hashes.
+Named and anonymous PDFs and the source archive rebuild; both PDFs have nine
+main-text pages and 28 total pages. The review guard passes. Final logs have no
+undefined references or overfull boxes; existing underfull-box diagnostics
+remain. Related Work pages 2--3 were visually checked, and all four new
+bibliography entries resolve. No results, core code, or approved opening and
+closing prose changed.
+
+## Approved Follow-Ups (2026-09-24)
+
+Landed three author-approved changes, superseding the pending items below:
+
+- Section 3 now begins with the exact approved research-code opening and the
+  explicit distinction between scientific parameters and execution parameters.
+  The existing configuration explanation and negative-pool example follow.
+- The conclusion's first paragraph ends with the approved hardware-aware
+  autotuning sentence. This is future work for fixed scientific recipes, not
+  a claim of an implemented autotuner. All other conclusion text is unchanged.
+- Related Work's third paragraph now cites Tian and Ha's ES-CLIP paper (2021)
+  for CLIP similarity as an objective for evolutionary search over drawings.
+  This resolves the earlier "EvoCLIP" pointer. The work evolves triangle
+  parameters, not CLIP's representations. Primary source:
+  https://arxiv.org/abs/2109.08857; project: https://es-clip.github.io/.
+
+The approved abstract and introduction, results, and core library code remain
+unchanged. The approved-copy regression is updated only for the authorized
+conclusion addition. The prior core configuration-test failure is unrelated
+and remains recorded below; its expectations are not changed in this pass.
+
+Validation: all seven export tests pass with the updated conclusion hash.
+Named and anonymous PDFs and the named source archive are rebuilt. Both PDFs
+contain 27 total pages and nine main-text pages; the review guard passes.
+Rendered pages 3 and 9 contain the approved wording and resolved Tian/Ha
+citation without overlap. Final logs contain no undefined references or
+overfull boxes, and `git diff --check` passes for this pass's files.
+
+## Related Work Review (2026-09-24)
+
+The author approved four topic paragraphs and the exact opening, DINOv2
+description, and positive Representax contribution sentence. This revision
+lands those sentences, strengthens the empirical account of learned world
+structure, and checks citation coverage against the introduction discussion.
+The approved abstract, introduction, and conclusion remain unchanged.
+
+| Paragraph | Positioning question | Citation coverage |
+| --- | --- | --- |
+| Learning within and across modalities | Where do learning signals and cross-modal connections enter? | DINOv2, V-JEPA 2.1, Ngiam et al., Karpathy and Fei-Fei, CLIP, ImageBind, BLIP-2, Idefics3, Chameleon, Qwen3-Omni |
+| Learned world structure and alignment | What has been recovered, and what might encourage useful shared structure? | Gurnee and Tegmark, Merullo et al., Platonic Representation Hypothesis, Tjandrasuwita et al. |
+| Learning and adaptation methods | Which choices can be composed, and what capabilities should adaptation preserve? | ColBERT, Matryoshka, LoRA, GradCache, Jina GELATO, promptable representations for RL |
+| Research software | Which libraries provide the closest precedents for reusable experimentation? | Scenic, solo-learn, Sentence Transformers, PyLate |
+
+Citation audit and editorial decisions:
+
+- Added Ngiam et al. (ICML 2011) for the earlier audiovisual work discussed in
+  the introduction exchange, and Karpathy and Fei-Fei (CVPR 2015) for the
+  previously missing image-language alignment example. Neither is described
+  as the first multimodal work.
+- Jina was already cited in the adaptation experiment, but missing from Related
+  Work. Its frozen-tower, connector-training approach now motivates the
+  adaptation/retention comparison. This does not claim that our runs reproduce
+  Jina's published results.
+- ColBERT is the late-interaction method citation. PyLate is the research
+  library citation, not a newly attributed learning objective.
+- Gurnee and Tegmark use supervised linear ridge probes of frozen model
+  activations to predict coordinates and dates on held-out entities, not t-SNE.
+  The manuscript now states this recoverability directly. It does not claim
+  that the coordinates were obtained without probe labels or that probing
+  establishes their causal use by the language model.
+- Huh et al.'s observed alignment trend remains distinct from the proposed
+  shared-reality interpretation. A common external reality alone does not
+  identify a unique internal representation or guarantee convergence.
+- Scenic (2021) and solo-learn (JMLR 2022) are established modern research
+  software precedents; PyLate (2025) is a more recent one. No claim about
+  current maintenance activity is inferred from these publication dates.
+- The historical introduction already retains Sutton, Bengio et al.,
+  Fukushima, Hinton and Salakhutdinov, word2vec, wav2vec 2.0, World Models,
+  and latent diffusion. BERT remains cited with the experiments. These need
+  not be repeated in Related Work.
+- DINOv2 and wav2vec 2.0 remain the selected visual/speech examples rather than
+  adding original DINO and Whisper as redundant examples. V-JEPA 2.1, already
+  cited with the workloads, now connects predictive representation learning
+  to this section. The earlier LeCun/Cho question did not identify an
+  additional definite paper; no claim of causal world modeling is added.
+- GANs and the earlier ambiguous "EvoCLIP" mention remain possible background
+  for novel recipes or future work, not automatic additions to this section.
+  A definite EvoCLIP citation was not identified. This is coverage of the
+  selected research threads, not a claim to cite every work considered.
+- JaxPruner and Stable-Baselines3 remain in the bibliography but leave this
+  paragraph, whose comparison now emphasizes the closest representation
+  learning libraries. The community invitation stays in the conclusion.
+
+Primary sources checked include the original papers linked in the bibliography,
+the ICML proceedings for Huh et al. and Tjandrasuwita et al., and the methods
+section of Gurnee and Tegmark. No new training or numerical results are added.
+
+Validation: all seven export tests pass, including citation resolution and the
+approved-copy hashes. Named and anonymous PDFs rebuild to 27 total pages with
+nine main-text pages; the review guard passes. Neither final log contains
+undefined references or overfull boxes. Bibliography/appendix underfull-box
+diagnostics remain. Rendered Related Work pages 2--3 were inspected.
+
+Follow-up received during validation: revise the Section 3 opening to center
+research code that reuses validated implementations, isolates the changes under
+study, and separates those changes from hardware execution. The replacement
+is proposed in chat, not applied in this pass. Avoid promising universally
+optimal execution or scientifically informative results independent of the
+experimental design.
+
+Section 3 implementation check: `Scientific[...]` and `Execution[...]` mark
+configuration roles in `src/representax/_config.py`; `JobConfig` classifies the
+task/loss/model subtrees, and `TrainingConfig` separates scientific batch and
+adaptation choices from mesh, sharding, replay, and precision. The shared loop
+records both projections. This is a real code-level distinction, not a guarantee
+that every task supports every execution strategy. `JobConfig` capability
+validation and `GradCache.validate` explicitly reject unsupported combinations;
+gradient accumulation requires task-specific reduction contracts.
+
+CPU check of `tests/planning/test_specs.py`: 20 passed, one failed. The role
+projection assertion still expects only four scientific training fields and
+omits the existing `trainable_pattern` and `trainable_embedding_rows` fields.
+The execution-independent fingerprint and accumulation-capability tests pass.
+No core code or test expectations were changed during this manuscript review.
+
+## Interior and Figure Revision (2026-09-23)
+
+Checkpoint before this pass: `187488f836ada1720de4d9af82091c5c01c3aa32`.
+The abstract, introduction, and conclusion are unchanged and now protected by
+regression hashes. The new interior prose and figures await author review.
+Earlier dated notes below are historical, not descriptions of the current copy.
+
+The nine-section structure is Introduction; Related Work; Representax;
+Framework and Accelerator Comparisons; End-to-End Representation Learning;
+Scaling and Sharding; Design Analysis; Capabilities, Limitations, and
+Reproducibility; and Conclusion. The argument connects the freedom to change
+learning methods to interfaces, matched execution, informative adaptation,
+scaling, and evidence-bounded research directions.
+
+- Related Work distinguishes unimodal learning, cross-modal alignment, fusion,
+  task-relevant shared structure, and research software. New primary citations
+  cover [DINOv2](https://arxiv.org/abs/2304.07193),
+  [ImageBind](https://arxiv.org/abs/2305.05665),
+  [Idefics3](https://arxiv.org/abs/2408.12637),
+  [Chameleon](https://arxiv.org/abs/2405.09818),
+  [Qwen3-Omni](https://arxiv.org/abs/2509.17765), and
+  [promptable representations for RL](https://arxiv.org/abs/2402.02651).
+- The framework walkthrough explains four interfaces and their lifecycle,
+  including the distinction between scientific batch size and encoder replay.
+  It does not claim arbitrary task/model compatibility or novel objectives.
+- Results keep the eager/compiled distinction, full-corpus transfer baselines,
+  the late-interaction regression, multimodal recipe confounds, and fixed-work
+  scaling. Main throughput is still a table; seed ratios stay in the appendix.
+- Design Analysis uses nine existing Experiment 09 reports. The added snapshot
+  records source hashes, configurations, and measured windows. These single-seed
+  30-update diagnostics are not new experiments or quality evidence. The cold
+  and cache-warm final losses differ; only their execution costs are compared.
+- Six vector figures use Inter and the author's named light palette, with
+  visible seeds, direct labels, sample SD, and consistent axes. The manuscript
+  has fifteen tables: ten generated numerical tables and five contextual ones.
+
+Validation: 47 CPU paper tests pass, including the executable task example,
+all regenerated tables, citation resolution, approved-copy hashes, and capture
+provenance. The anonymous and named PDFs both contain 26 pages, with eight
+main-text pages. The official-style and known-identity checks pass; no undefined
+references or overflowing boxes remain. The named source archive also compiles
+after extraction outside the repository. Figure panels and rendered main-text
+pages were visually inspected. The original evidence, methods, and timing
+analysis files remain byte-identical to the checkpoint.
+
+Author review should focus on the research-interface explanation, the emphasis
+given to the systems diagnostics in Section 7, and the interpretation of
+adaptation/retention. The anonymous code supplement, disclosure attestations,
+release, and submission are still separate tasks. The anonymous PDF no longer
+claims an accompanying code artifact that has not yet been assembled.
+No new training, core-library edits, push, publication, or submission occurred.
+
 ## Introduction Review, Second Pass (2026-09-17)
 
 This pass addresses the next 21 comments and supersedes the introduction and

@@ -8,6 +8,7 @@
 - `abstract-variants.md`: three original voices and the author's blend decision.
 - `scaling-context.md`: published scaling context and comparison boundaries.
 - `figure-plan.md`: historical plan for the visual revisions.
+- `revision-plan.md`: scope and progress of the current interior/figure revision.
 - `capabilities.md`: capability/evidence boundaries and recorded reference pins.
 - `evidence.json`: frozen compact evidence, raw metric records and source hashes.
 - `update_process_reward.py`: audited, one-time replacement of five mismatched
@@ -18,7 +19,9 @@
   retaining the original trained-seed results unchanged.
 - `methods.json`: hash-checked historical settings and environments for 265 paired
   runs, plus longer-run configurations and prepared-data manifests.
-- `report.py`: current renderer for nine numeric tables and five PDF/PNG figures.
+- `design-evidence.json`, `collect_design.py`: selected existing Experiment 09
+  diagnostics, with source hashes and measurement windows; no new training.
+- `report.py`: current renderer for ten numeric tables and six PDF/PNG figures.
 - `tables/`, `figures/`, `analysis.json`: generated paper assets and timing diagnostics.
 - `results.md`, `captions.md`: historical first-pass summaries; the Org manuscript
   and `report.py` own the current presentation.
@@ -36,7 +39,7 @@ adaptation, full-corpus initial transfer evaluations and twelve A100 scaling
 runs are also present. No additional training is required for the current
 manuscript scope; an FSDP capacity demonstration remains future work.
 
-The manuscript uses five current figures and fourteen tables: nine generated
+The manuscript uses six current figures and fifteen tables: ten generated
 numeric tables plus five methods/capability/research-map tables. `report.py` reproduces the
 current assets without changes. The older `cross-accelerator` figure and
 `results.md`, `captions.md`, and `figure-plan.md` are historical working material,
@@ -51,11 +54,12 @@ submission remain open.
 
 The editorial revisions address the author's first 17 PDF comments and the
 next 21 introduction comments. They add the learning-signal research map in
-Appendix F, develop the multimodal motivation and replace undated software
+the appendices, develop the multimodal motivation, and replace undated software
 citations with upstream recommended references. See `review-notes.md` for
-both point-by-point responses. The author has deferred page-limit trimming until
-the content is settled: an over-limit review draft still compiles, but the
-submission guard deliberately reports a failure until its main text fits.
+the dated review history. The September 23 interior pass preserves the approved
+abstract, introduction, and conclusion while following the nine-section outline.
+The revised main text fits eight pages in the unmodified official style.
+Author approval of the new interior prose and figures remains open.
 
 ## Manuscript Build
 
@@ -100,7 +104,7 @@ does not mean a submission was made. See [the checklist](submission-checklist.md
 
 arXiv compiles the exported LaTeX, not Org. The source archive contains only
 `paper.tex`, `paper.bbl`, `references.bib`, `preamble.tex`, the two ICLR style
-files, and the five referenced PDF figures. It contains neither the manuscript
+files, and the six referenced PDF figures. It contains neither the manuscript
 PDF nor evidence JSON, checkpoint data, notes, or absolute workspace paths.
 After extraction it builds with `latexmk -pdf paper.tex`, without Emacs, Python,
 the repository, or `/raid`. Bibliography processing is standard BibTeX/natbib.
@@ -122,6 +126,19 @@ The renderer requires Matplotlib and NumPy. Inter is vendored under its OFL
 license in `assets/`; source: `https://github.com/rsms/inter`,
 `docs/font-files/InterVariable.ttf`, downloaded 2026-09-11. The font bytes are
 hashed in the evidence manifest. Colors use the author's named light palette.
+Run the renderer to completion before exporting either PDF so an export cannot
+copy a figure while it is being written. The six current figures are the research
+interfaces, paired throughput, multimodal adaptation, strong scaling, held-out
+learning, and design diagnostics. Individual seeds remain visible; whiskers
+denote sample SD, not confidence intervals. Detailed narrative tables use
+ragged-right columns to avoid excessive inter-word spacing.
+
+`design-evidence.json` is a separate, small capture of nine existing Experiment
+09 reports. It neither replaces nor changes the main frozen evidence. Its
+single-seed 30-update diagnostics are explicitly separated from the five-seed
+framework panel and from quality evidence. Capturing another snapshot requires
+an explicit new `--output` path; the collector refuses to overwrite an existing
+file. Ordinary report generation uses the checked-in snapshot, not `/raid`.
 
 The main framework comparison is `tables/framework-throughput.org`: stacked
 GPU/TPU panels show absolute median examples/s and reference-relative ratios.
@@ -200,6 +217,7 @@ audit; those paths are not emitted in the PDF or LaTeX source archive.
 | Multimodal adaptation tradeoffs | Exp. 14 summary with per-arm evaluation history | Different mixtures; text-to-any, not any-to-any |
 | Negative late-interaction result | Exp. 12 hard-negative per-seed reports | Small held-out panel; cause unresolved |
 | 3.81x / 6.87x strong scaling | Exp. 15 A100 summary and 12 raw results | One workload; DDP; short window; not FSDP capacity |
+| Padding, replay, and cache costs | Nine Exp. 09 reports captured in `design-evidence.json` | One seed, 30 updates, 13--15 warm intervals; duplicate-heavy data; cumulative optimization is not a single-factor ablation |
 
 Figure readiness is not submission readiness. Venue-format/anonymity checks,
 author review and public artifact publication

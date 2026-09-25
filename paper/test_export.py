@@ -44,6 +44,17 @@ class ExportTests(unittest.TestCase):
         block = re.search(r"\\begin\{abstract\}(.*?)\\end\{abstract\}", tex, re.S)[1]
         self.assertEqual(" ".join(block.split()), abstract.decode().strip())
 
+    def test_approved_introduction_and_conclusion_are_unchanged(self):
+        text = (self.root / "paper.org").read_text()
+        # Introduction: checkpoint 187488f; conclusion: approved 2026-09-24 addition.
+        expected = {
+            "Introduction": "cb805d51be9e69f1ac499e281180606351eb24541a09b6332eb10cfc07c6607e",
+            "Conclusion": "4ac820b5cad37be35338236ba2a1ad5c21e99f0502b6d519cdf01280590d3474",
+        }
+        for name, digest in expected.items():
+            section = re.search(r"(?m)^\* " + name + r"\n.*?(?=^\* )", text, re.S)[0]
+            self.assertEqual(hashlib.sha256(section.encode()).hexdigest(), digest, name)
+
     def test_review_has_no_author_identity_and_notes_are_excluded(self):
         tex = (self.root / "build/review/paper.tex").read_text()
         self.assertIn(r"\author{Anonymous authors}", tex)
@@ -60,11 +71,12 @@ class ExportTests(unittest.TestCase):
         output = self.root / "build/preprint"
         tex = (output / "paper.tex").read_text()
         figures = re.findall(r"\\includegraphics(?:\[[^]]*\])?\{([^}]+)\}", tex)
-        self.assertEqual(len(figures), 5)
+        self.assertEqual(len(figures), 6)
+        self.assertEqual(len(set(figures)), len(figures))
         for figure in figures:
             self.assertTrue((output / figure).is_file(), figure)
         bib = (output / "references.bib").read_text()
-        for group in re.findall(r"\\citep\{([^}]+)\}", tex):
+        for group in re.findall(r"\\cite[pt]\{([^}]+)\}", tex):
             for citation in group.split(","):
                 self.assertIn("{" + citation.strip() + ",", bib)
         self.assertIn(r"\bibliography{references}", tex)
@@ -90,6 +102,8 @@ class ExportTests(unittest.TestCase):
         self.assertLess(table, appendix)
         self.assertGreater(figure, appendix)
         self.assertGreater(compiled, appendix)
+        self.assertLess(tex.index(r"\label{sec:design}"), appendix)
+        self.assertGreater(tex.index(r"\label{tab:design-diagnostics}"), appendix)
 
     def test_excluded_statements_follow_flushed_main_text(self):
         tex = (self.root / "build/review/paper.tex").read_text()

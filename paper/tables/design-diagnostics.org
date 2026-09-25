@@ -1,0 +1,19 @@
+#+begin_export latex
+\begin{table}[tbp]
+\centering\small
+\setlength{\tabcolsep}{4pt}
+\caption{Single-seed ModernBERT execution diagnostics. Each process runs 30 updates; the recorded warm subset contains 13--15 updates. Rates use those subsets, not equal-length wall-clock trials. ST denotes Sentence Transformers. First-use includes compilation or cache loading plus execution; a dash means unrecorded, not zero. The optimized rows combine several changes and are not a single-factor ablation.}\label{tab:design-diagnostics}
+\begin{tabular}{lrrr}\toprule
+Configuration & Warm updates & Examples/s & First-use (s) \\ \midrule
+Representax / coarse buckets & 15 & 361.08 & 27.85 \\
+Representax / fine buckets & 13 & 393.16 & 92.04 \\
+ST eager / dynamic padding & 15 & 391.69 & --- \\
+ST eager / fixed padding & 15 & 346.35 & --- \\
+ST Inductor / dynamic padding & 15 & 667.90 & --- \\
+ST Inductor / fixed padding & 15 & 583.96 & --- \\
+Representax / rematerialized & 15 & 341.31 & 27.28 \\
+Representax / optimized, cold & 14 & 618.67 & 287.51 \\
+Representax / optimized, cached & 14 & 620.02 & 21.60 \\
+\bottomrule\end{tabular}
+\end{table}
+#+end_export

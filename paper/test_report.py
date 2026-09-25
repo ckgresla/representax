@@ -18,6 +18,7 @@ class ReportTests(unittest.TestCase):
     def setUpClass(cls):
         cls.e = report.load()
         cls.methods = json.loads((HERE / "methods.json").read_text())
+        cls.design = report.load_design()
 
     def test_tables_are_reproducible_from_frozen_inputs(self):
         with tempfile.TemporaryDirectory() as d:
@@ -27,8 +28,9 @@ class ReportTests(unittest.TestCase):
                 report.framework_tables(self.e)
                 report.learning_tables(self.e)
                 report.scaling_table(self.e)
+                report.design_table(self.design)
             generated = sorted((root / "tables").glob("*.org"))
-            self.assertEqual(len(generated), 9)
+            self.assertEqual(len(generated), 10)
             for file in generated:
                 self.assertEqual(file.read_bytes(), (HERE / "tables" / file.name).read_bytes())
             self.assertEqual((root / "analysis.json").read_bytes(), (HERE / "analysis.json").read_bytes())
@@ -122,11 +124,50 @@ class ReportTests(unittest.TestCase):
         self.assertNotIn("Not measured", (HERE / "tables/learning.org").read_text())
 
     def test_negative_results_and_scope_are_retained(self):
-        text = (HERE / "paper.org").read_text().split("* Author Notes")[0]
+        text = " ".join((HERE / "paper.org").read_text().split("* Author Notes")[0].split())
         for phrase in ("0.7104 to 0.6925", "within 256 tokens", "batch one and 24 videos", "not a causal ablation", "finite-budget learning", "per-device negatives"):
             self.assertIn(phrase, text)
         self.assertNotIn("Draft:", text)
         self.assertNotIn("TODO", text)
+
+    def test_design_diagnostics_retain_measurement_contracts(self):
+        rows = self.design["rows"]
+        self.assertEqual(set(rows), set(report.DESIGN_NAMES))
+        self.assertEqual(self.design["schema"], "representax-design-diagnostics-v1")
+        for row in rows.values():
+            r = row["report"]
+            self.assertFalse(Path(row["source"]).is_absolute())
+            self.assertNotIn("..", Path(row["source"]).parts)
+            self.assertRegex(row["sha256"], r"^[0-9a-f]{64}$")
+            self.assertEqual((r["seed"], r["steps"], r["batch_size"], r["world_size"]),
+                             (17, 30, 128, 1))
+            self.assertEqual(r["revision"], "45d08642849e5c5701b162671ac811b7654bfd9f")
+            self.assertIn(r["steady_state_step_count"], (13, 14, 15))
+            self.assertEqual(r["steady_state_examples"], 128 * r["steady_state_step_count"])
+            self.assertAlmostEqual(r["steady_state_examples_per_second"],
+                                   r["steady_state_examples"] / r["steady_state_seconds"])
+            if r["framework"] == "sentence-transformers":
+                self.assertIsNone(r["compilation_and_first_use_seconds"])
+            else:
+                self.assertGreater(r["compilation_and_first_use_seconds"], 0)
+        cold = rows["native_optimized"]["report"]
+        cached = rows["native_cached"]["report"]
+        for key in ("sequence_length_buckets", "cache_chunk_size", "grad_cache_implementation",
+                    "compiled_signature_count", "steady_state_step_count"):
+            self.assertEqual(cold[key], cached[key], key)
+        self.assertIn("a dash means unrecorded, not zero",
+                      (HERE / "tables/design-diagnostics.org").read_text())
+
+    def test_multimodal_plot_range_includes_seeds_and_standard_deviations(self):
+        for strategy in report.STRATEGIES:
+            for dataset in report.DATASETS:
+                key = f"valid/{dataset}/cosine_ndcg@10"
+                values = []
+                for seed in report.SEEDS:
+                    h = self.e["omni"]["runs"][f"{strategy}/seed-{seed}"]["evaluation_history"]
+                    values.append(h[-1]["metrics"][key] - h[0]["metrics"][key])
+                mean, sd = report.summary(values)
+                self.assertTrue(all(-.1 < v < .22 for v in [*values, mean - sd, mean + sd]))
 
     def test_framework_plot_does_not_clip_seed_observations(self):
         for platform in ("gpu-rtx4090", "tpu-v5e-16"):

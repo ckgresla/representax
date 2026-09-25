@@ -2,7 +2,7 @@
 \begin{table}[tbp]
 \centering\small
 \setlength{\tabcolsep}{6pt}
-\caption{Warm training throughput: median examples/s across five seeds. Bold marks the higher of the two reported rates within each workload and hardware panel, not statistical significance. $R$ denotes Representax; ratios divide its median rate by the reference median. GPU references use eager execution; the dense TorchInductor control is in Appendix \ref{sec:compiled-reference}. GPU and TPU allocations/batches differ. Winner styling and ratios are shown only for validated matched protocols; historical discrepancies and replacements are documented in the text. Qualifications [L], [O], [I], [M], [P], [C], [G] are defined in the text; per-seed variation is shown in the appendix.}\label{tab:framework-throughput}
+\caption{Warm throughput: median examples/s over five seeds. Bold identifies the higher reported median within a matched pair, not significance. $R$ denotes Representax; ratios divide its median by the reference's. GPU references use eager execution; the dense TorchInductor control is in Appendix \ref{sec:compiled-reference}. Hardware panels differ in allocation and batch. Lettered protocol qualifications and per-seed variation appear in Appendix \ref{sec:paired-methods}.}\label{tab:framework-throughput}
 \begin{tabular}{lrrr}\toprule
 Workload & \shortstack{Representax\\ex/s} & \shortstack{Reference\\ex/s} & $R/\mathrm{Ref.}$ \\ \midrule
 \multicolumn{4}{l}{\textit{Single RTX 4090; reference: PyTorch eager}} \\
