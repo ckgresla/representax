@@ -11,6 +11,23 @@ STYLE_HASHES = {
     "iclr2027_conference.sty": "797deef41724e93761426ac0cbcca46279a91cc650dd1f0ce76a4f08d2098ea6",
     "iclr2027_conference.bst": "2d67552db7ed38ccfccb5957b52f95656e25c249724761d3cf5f7922ad1844c5",
 }
+FIGURES = (
+    "architecture", "multimodal", "scaling", "framework-throughput", "learning", "design",
+    "loss-gpu", "loss-tpu",
+)
+
+
+def check_figure_pages(aux):
+    pages = dict(re.findall(r"\\newlabel\{([^}]+)\}\{\{[^}]*\}\{(\d+)\}", aux))
+    for name in FIGURES:
+        figure, discussion = f"fig:{name}", f"discussion:{name}"
+        if figure not in pages or discussion not in pages:
+            raise ValueError(f"Missing figure/discussion page labels: {name}")
+        if pages[figure] != pages[discussion]:
+            raise ValueError(
+                f"Figure {name} is on page {pages[figure]}, "
+                f"but its discussion is on page {pages[discussion]}"
+            )
 
 
 def main_pages(aux):
@@ -40,7 +57,9 @@ def check(root):
     tex = (root / "paper.tex").read_text()
     if r"\author{Anonymous authors}" not in tex or r"\representaxreview" not in tex:
         raise ValueError("Not an anonymous review export")
-    pages = main_pages((root / "paper.aux").read_text())
+    aux = (root / "paper.aux").read_text()
+    pages = main_pages(aux)
+    check_figure_pages(aux)
     pdf = root / "paper.pdf"
     if pdf.stat().st_size > 50_000_000:
         raise ValueError("Review PDF exceeds the submission form's 50 MB limit")
@@ -63,7 +82,7 @@ def check(root):
             raise ValueError(f"Missing rendered section: {heading}")
     if not re.search(r"^Author:\s+Anonymous authors\s*$", outputs[1], re.M):
         raise ValueError("PDF author metadata is not anonymous")
-    print(f"Review checks passed: {pages}/9 main-text pages, official style, known-identity scan.")
+    print(f"Review checks passed: {pages}/9 main-text pages, figure adjacency, official style, known-identity scan.")
     print("Human review of claims, layout, disclosure, and anonymous supplements remains required.")
 
 

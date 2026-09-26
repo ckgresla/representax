@@ -28,7 +28,11 @@
   (make-directory output t)
   (let ((figures (expand-file-name "figures" output)))
     (when (file-directory-p figures)
-      (delete-directory figures t)))
+      (delete-directory figures t))
+    (make-directory figures t)
+    (unless (equal mode "review")
+      (copy-file (expand-file-name "assets/representax-mark.pdf" root)
+                 (expand-file-name "representax-mark.pdf" figures) t)))
   (dolist (file '("preamble.tex" "references.bib"
                   "vendor/iclr2027_conference.sty"
                   "vendor/iclr2027_conference.bst"))

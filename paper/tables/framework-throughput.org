@@ -1,8 +1,9 @@
 #+begin_export latex
-\begin{table}[tbp]
+\begin{table}[H]
 \centering\small
-\setlength{\tabcolsep}{6pt}
-\caption{Warm throughput: median examples/s over five seeds. Bold identifies the higher reported median within a matched pair, not significance. $R$ denotes Representax; ratios divide its median by the reference's. GPU references use eager execution; the dense TorchInductor control is in Appendix \ref{sec:compiled-reference}. Hardware panels differ in allocation and batch. Lettered protocol qualifications and per-seed variation appear in Appendix \ref{sec:paired-methods}.}\label{tab:framework-throughput}
+\setlength{\tabcolsep}{10pt}
+\renewcommand{\arraystretch}{1.12}
+\caption{Warm throughput: median examples/s across five seeds. Bold identifies the higher reported median within a matched pair, not significance. $R$ denotes Representax; ratios divide its median by the reference's. GPU references use eager execution; the dense TorchInductor control is in Appendix \ref{sec:compiled-reference}. Ratios compare frameworks within a hardware panel, not GPU and TPU performance across different allocations and batches. Lettered protocol qualifications and per-seed variation appear in Appendix \ref{sec:paired-methods}.}\label{tab:framework-throughput}
 \begin{tabular}{lrrr}\toprule
 Workload & \shortstack{Representax\\ex/s} & \shortstack{Reference\\ex/s} & $R/\mathrm{Ref.}$ \\ \midrule
 \multicolumn{4}{l}{\textit{Single RTX 4090; reference: PyTorch eager}} \\

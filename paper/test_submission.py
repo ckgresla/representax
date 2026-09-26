@@ -2,10 +2,27 @@
 
 import unittest
 
-from check_submission import check_identity, main_pages
+from check_submission import FIGURES, check_figure_pages, check_identity, main_pages
 
 
 class SubmissionTests(unittest.TestCase):
+    def test_figures_share_their_discussion_pages(self):
+        aux = "\n".join(
+            rf"\newlabel{{{kind}:{name}}}{{{{1}}{{{i}}}{{Caption}}{{}}{{}}}}"
+            for i, name in enumerate(FIGURES, start=3)
+            for kind in ("fig", "discussion")
+        )
+        check_figure_pages(aux)
+        with self.assertRaisesRegex(ValueError, "discussion is on page 4"):
+            check_figure_pages(aux.replace(
+                r"\newlabel{discussion:architecture}{{1}{3}",
+                r"\newlabel{discussion:architecture}{{1}{4}",
+            ))
+
+    def test_missing_figure_discussion_fails_closed(self):
+        with self.assertRaisesRegex(ValueError, "Missing figure/discussion"):
+            check_figure_pages("")
+
     def test_limit_excludes_statements_references_and_appendix(self):
         aux = (
             r"\newlabel{sec:statements-start}{{7}{10}{Reproducibility Statement}{section*.1}{}}"

@@ -7,6 +7,237 @@ and limitations, with detailed recipes and reproduction records in appendices.
 The initial writing pass launched no training. The subsequent padding correction
 reran five GPU TRL references; no core library/training code was changed.
 
+## Section 5 Comments Landed and Section 6 Rewritten (2026-09-25, evening)
+
+The author's six PDF comments on Section 5 are applied:
+
+- Dropped the purpose sentence that claimed the studies expose adaptation
+  tradeoffs; the opening sentence already states the purpose.
+- Late interaction is no longer counted in Section 5: fifteen runs across
+  three workload families, with a one-clause pointer that the fourth family
+  did not improve under the recipe applied and that Appendix B.2 reports the
+  regression. The appendix subsection is unchanged.
+- Dense retrieval now asks whether contrastive retrieval fine-tuning in
+  Representax turns a pretrained encoder into a retriever.
+- Table 2 gains a Gain column (final minus initial) and shows the sample SD
+  as a superscript. Values are unchanged; `report.py` regenerates the table.
+
+Section 6 follows the question-led pattern of Sections 4--5: the question
+(does a fixed workload scale when only execution parameters change), the
+setup, the measured result, and a labeled Limitations paragraph. All numbers
+are the frozen values from Appendix C. The results paragraph and figure
+remain in one minipage so the figure-adjacency guard still holds.
+
+Later the same evening, after a full read of the manuscript, the author
+approved these further changes:
+
+- Section 4 results now match Table 1's bold: the higher median in eleven of
+  thirteen GPU and all thirteen TPU configurations, with TPU dense retrieval
+  effectively tied at 1.002x.
+- Section 6 says "on a single node".
+- The conclusion's autotuning sentence moved directly after its antecedent,
+  so the paragraph ends on the results; no words changed. The protected
+  conclusion hash in `test_export.py` is updated accordingly.
+- All paper-tooling mentions are removed from the manuscript: the
+  reproducibility statement, Appendix E, and Appendix F no longer describe
+  `report.py`, collection scripts, `make` targets, LaTeX/Org export, archives,
+  the README, or identity review. Experiment launchers, `setup.sh`/`run.py`,
+  the frozen evidence, the methods inventory, pins, and data revisions remain.
+- The AI Use Statement drops its sentence about automated tests and checks.
+- Appendix F names the diagnostic model ModernBERT throughout.
+
+Validation: 59 CPU paper tests pass; both PDFs rebuild without overfull boxes
+or undefined references; figure/discussion pairing and identity scans pass.
+Main text remains eleven pages by explicit author decision; length reduction
+follows the complete draft. No commit, upload, or submission was performed.
+
+## Scientific Studies Expanded and PDF Comments Applied (2026-09-25)
+
+The author requested a fuller Section 5 before any length reduction. The
+roadmap and frozen evidence confirm four workload families and eighteen runs:
+dense retrieval, revised late interaction, CLIP image-text adaptation, and
+three multimodal adaptation recipes, each across three seeds. Section 5 now
+has separate Dense Retrieval and Transfer, Image-Text Alignment, and Multimodal
+Adaptation and Retention subsections. Each introduces the scientific question,
+states the experiment and measured outcome, and keeps its scope nearby.
+
+The general introduction explains scientific utility rather than opening with
+retrieval-panel details. nDCG@10 applies across these studies, but the 50-query
+qualification belongs to NanoMSMARCO, not Flickr30k or the full-corpus dense
+evaluations. These details now accompany their uses. The multimodal discussion
+separates the three update strategies and media gains from text retention;
+different mixtures and learning rates still preclude a causal ablation claim.
+
+The ten PDF comments are addressed as follows:
+
+- Drop the generic short-window reliability warning and the transition to
+  Section 5. Retain a brief definition of warm timing and place the
+  within-hardware interpretation in Table 1's caption.
+- Prevent Table 1 from floating ahead of the completed workload list. The two
+  video workloads now precede it, and all numeric rows are unchanged.
+- Mark the TPU qualification with bold "Limitations" and use "a shared recipe."
+- Reframe and expand Section 5 as described above, without page-budget cuts.
+- Move the late-interaction result to dedicated Appendix B.2, with a main-text
+  pointer. Preserve the observed 0.7104-to-0.6925 decline and distinguish it
+  from proposed, unperformed follow-up evaluations.
+
+Validation: all 59 CPU paper tests pass. Both PDFs and the named source archive
+rebuild; the archive matches the current export. Both PDFs have 34 total pages
+and eleven main-text pages. The strict nine-page guard therefore still fails;
+length reduction is explicitly deferred, not achieved by changing the guard,
+style, fonts, or margins. All eight figure/discussion page pairs match, review
+identity scans pass, and the anonymous export omits the logo. No undefined
+references or overfull boxes remain. Sections 1--3, the conclusion, numerical
+results, and the concurrent overview-figure design are unchanged. No commit,
+new experiment, upload, or submission was performed.
+
+## Design and Limitations Integrated (2026-09-25)
+
+At the author's request, the standalone Capabilities, Limitations, and
+Reproducibility section has been removed. Its content is retained where relevant:
+
+- Section 4 records the four TPU worker VMs and the limits of short warm timings
+  for reliability and cache-state claims, beside the throughput comparison.
+- Section 5 records the 50-query NanoMSMARCO scope and possible upstream
+  pretraining contamination, and limits the result to finite-budget adaptation
+  rather than state-of-the-art quality. Existing multimodal confounds and the
+  unresolved causes of text degradation remain beside that experiment.
+- Section 6 retains the single-node, replicated-scaling scope and the unmeasured
+  FSDP-capacity/multi-node-GPU limits.
+- Appendix G retains the capability/evidence inventory and the distinction
+  between implementation support and measured configurations.
+- The reproducibility statement and Appendix E distinguish frozen-report
+  reconstruction from retraining and preserve hardware/artifact requirements.
+
+Design Analysis is now Appendix F, merged with its existing setup, table, and
+figure rather than duplicated. All reported padding, replay, and cache numbers
+are retained. Section 4 points to the analysis. Sections 1--3 and the conclusion
+remain unchanged; the conclusion is now Section 7. The seed wording correction
+below is also present in both PDFs and Table 1.
+
+Validation: all 56 CPU paper tests pass. Both PDFs compile without undefined
+references or overfull boxes. The design figure and its discussion share page
+30. The main text still occupies ten pages (32 total), with the conclusion on
+page 10, so the strict nine-page guard remains a submission blocker. No fonts,
+margins, or approved prose were compressed to conceal that remaining issue.
+
+## Section 4 Seed Wording (2026-09-25)
+
+The author clarified the intended wording: the same workload is run across five
+seeds. Section 4 now states this directly, and Table 1 reports the median across
+five seeds. This supersedes "five seeded runs" in the earlier landing note below;
+the experimental records, numerical values, and comparison scope are unchanged.
+
+## Approved Section 4 Landed (2026-09-25)
+
+The author approved the chat revision of Framework and Accelerator Comparisons.
+It now introduces the paired recipes and hardware, preserves the agreed matching
+protocol, and describes eleven workload families as bullets rather than separate
+subsections. The exact approved lead-in is retained. "Five seeded runs" replaces
+"five repetitions" without implying five different data orders or trajectories.
+
+The author clarified that Table 1 means the PDF's existing stacked GPU/TPU table,
+not the chat's ratio-only replacement. All 26 absolute-rate and ratio rows remain
+numerically unchanged, with wider columns and taller rows. The compiled control
+remains in the appendix, so the chat-only missing TPU cell requiring "N/A" is not
+introduced. The new compiled-reference sentence describes approaching
+GPU-specialized TorchInductor execution through standard JAX/XLA, without GPU
+kernels written specifically for this recipe. The upstream PyTorch 2 paper and
+local benchmark/model code support this wording; it does not imply XLA lacks
+GPU-specific compiler optimizations.
+
+Appendix A now contains GPU and TPU loss panels, generated directly from all
+265 active run records. Thin lines show individual runs, and thick lines show
+pointwise medians. The GPU compiled panel reuses its native comparison runs.
+No smoothing, normalization, missing-step filling, or new training is involved.
+The appendix explains the difference between roughly similar training behavior
+and systematic trajectory differences; pointwise equality is not the criterion.
+
+Validation: all 55 CPU paper tests pass; both PDFs and the arXiv source archive
+rebuild. Approved Sections 1--3 and the conclusion remain unchanged. Section 4
+and Table 1 render on pages 6--8, and the loss plots are on pages 22--23. The
+expanded main text now occupies ten pages (31 total), so the strict nine-page
+submission check fails. No fonts or margins were reduced, and Sections 7--8 were
+not moved or removed without a separate structural decision. No commit, upload,
+or submission was performed by this revision.
+
+## Anonymous Submission Branding (2026-09-25)
+
+The author's latest direction supersedes the earlier approval to include the
+logo in both variants: today's anonymous submission omits the logo and its
+explanatory footnote. The named preprint and arXiv source retain both. Review
+export also removes the logo asset, including stale copies from earlier builds.
+Approved manuscript prose and the scientific figures are unchanged by this fix.
+
+Validation: both PDFs and the arXiv source archive rebuild; all 52 paper tests
+pass in the CPU experiment environment. The review guard passes with nine
+main-text pages and all six figure/discussion page pairs intact. Both PDFs
+remain 28 pages. First-page renders and extracted text confirm that the review
+copy omits the mark and footnote while the named preprint retains both. No
+commit, upload, or submission was performed by this fix.
+
+## Remaining Sections Revised (2026-09-25)
+
+Checkpoint before this pass: `647aae52bd22938db9161ca7c0fc30b2714e1c5c`.
+That commit includes the paper's source, existing figures, frozen design
+diagnostics, build tooling, and approval notes. It excludes unrelated untracked
+experiment scripts and logo studies. The subsequent revisions are left for
+author review, not committed or submitted automatically.
+
+Sections 4--8 now follow the reviewed sections' editorial pattern: identify
+the scientific question, make the choices explicit, report the relevant
+evidence, and state the limits where they affect its interpretation.
+
+- Section 4 distinguishes matched execution from learning quality, retains the
+  compiled dense control and slower BERT controls, and makes comparison scope
+  and timing boundaries explicit.
+- Section 5 connects learning, transfer, and retention. The late-interaction
+  regression remains in the main text. Multimodal results remain comparisons
+  of complete recipes, not causal effects of parameter selection.
+- Section 6 holds the workload fixed across device counts and separates
+  demonstrated one-node replicated scaling from unmeasured FSDP capacity and
+  multi-node GPU performance.
+- Section 7 explains padding, replay, and startup using the existing bounded
+  diagnostics, without treating cumulative optimizations as isolated ablations.
+- Section 8 separates implemented support, measured evidence, limitations,
+  report reconstruction, and rerunning training. Appendix E now documents the
+  lightweight reconstruction commands and their prerequisites. Detailed seeds,
+  learning rates, Matryoshka dimensions, and scaling settings remain in the
+  corresponding appendices; frozen measurements and numeric tables are unchanged.
+
+The selected vector logo and explanatory footnote appear in both PDF variants,
+as approved. A paper-local asset copy keeps the source archive self-contained.
+All six figures are grouped with their labeled discussion, including Figure 1
+with Section 3.1. The submission guard now checks those page pairs. The
+architecture image itself remains the checkpoint version; separate ongoing
+`figure1.py`/`overview` design work was not selected or modified by this pass.
+The official style, margins, and text sizes are unchanged.
+
+Validation:
+
+- All 51 paper tests pass in the experiment environment on CPU, including the
+  executable example. The system-Python `make check` passes 50 tests and skips
+  that example because its ML dependencies are absent.
+- New regression hashes protect the approved Related Work and framework prose
+  while permitting figure-placement changes. Existing approved abstract,
+  introduction, and conclusion protections pass.
+- The isolated renderer reproduces the ten tables, six figures, and analysis
+  from local evidence with the pinned NumPy/Matplotlib versions. Numerical
+  tables, evidence inventories, and analysis match the checkpoint unchanged.
+- Named and anonymous PDFs both have nine main-text pages and 28 total pages.
+  The review guard passes page count, all six figure/discussion pairs, official
+  style hashes, and known-identity scans. Main pages and the appendix figure
+  pages were visually checked. Final logs have no undefined references,
+  duplicate destinations, or overfull boxes; existing underfull diagnostics
+  remain in supporting text and bibliography.
+- The source archive builds independently after extraction, including the logo.
+  No model/data downloads, accelerator computation, or new training were used
+  for this drafting pass. Initial renderer setup downloads Python dependencies.
+
+Sections 1--3 and the conclusion are approved; Sections 4--8 are revised and
+await the author's final read. The overview redesign, human anonymity review
+of supplementary artifacts, and actual upload remain separate final tasks.
+
 ## Sections 2 and 3 Approved (2026-09-25)
 
 The author approves Related Work and Representax as written. This supersedes

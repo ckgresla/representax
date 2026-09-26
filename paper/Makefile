@@ -2,8 +2,12 @@
 EMACS ?= emacs
 LATEXMK ?= latexmk
 PYTHON ?= python3
+UV ?= uv
 
-.PHONY: pdf review tex arxiv check
+.PHONY: pdf review tex arxiv check figures
+
+figures:
+	$(UV) run --no-project --python 3.13 --with-requirements requirements-render.txt report.py
 
 tex:
 	$(EMACS) --batch -Q --script export.el preprint

@@ -39,6 +39,63 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
   a flat shell file beside each numbered experiment's Python launcher.
 
 *** Paper draft
+    Scientific-studies expansion, 2026-09-25: the author requested a fuller
+    Section 5 and explicitly deferred length reduction. Recovered the four
+    workload families/eighteen runs from the roadmap and frozen evidence.
+    Dense retrieval/transfer, CLIP alignment, and multimodal adaptation now
+    have separate scientific treatments. Late interaction remains an observed
+    negative result in Appendix B.2, with a main-text pointer and clearly
+    unperformed follow-up questions. Applied all ten PDF comments, including
+    Table 1 after the complete workload list, brief warm-timing scope, the
+    within-hardware caption note, and labeled TPU limitations. Numeric values
+    and approved Sections 1--3/conclusion are unchanged. All 59 CPU paper tests
+    pass; both PDFs and the source archive rebuild. The draft has eleven main
+    pages (34 total), so the strict nine-page guard still fails; no page-budget
+    cuts or style changes were made. All eight figure/discussion pairs match
+    and review identity scans pass. No new training, commit, or submission.
+    Details: =paper/review-notes.md=; PDF: =paper/build/review/paper.pdf=.
+    Design/limitations integration, 2026-09-25: moved Design Analysis into
+    Appendix F with all diagnostic results retained, and removed the standalone
+    Capabilities, Limitations, and Reproducibility section. Qualifications now
+    accompany Sections 4--6; capability scope remains in Appendix G, while the
+    reproducibility statement and Appendix E retain reconstruction/retraining
+    requirements. The unchanged conclusion is now Section 7. Corrected Section 4
+    and Table 1 to describe the same workload across five seeds. All 56 paper
+    tests pass; PDFs compile to 32 pages, but main text still occupies ten pages
+    and fails the nine-page submission guard. Further page-budget work remains.
+    Approved Section 4 landed, 2026-09-25: paired-recipe framing, eleven workload
+    bullets, the same workload across five seeds, and the GPU-specialized TorchInductor comparison
+    through standard JAX/XLA. Kept the PDF's original 26-row absolute-throughput
+    table, with wider columns/taller rows and unchanged values. Added unsmoothed
+    GPU/TPU loss trajectories to Appendix A from the 265 frozen run records.
+    All 55 paper tests pass; named/anonymous PDFs and the source archive rebuild.
+    Main text is now ten pages (31 total), so the nine-page submission guard fails.
+    Sections 7--8 remain unchanged pending the structural/page-budget decision;
+    approved Sections 1--3 and the conclusion remain unchanged. No submission.
+    Final anonymous-branding decision, 2026-09-25: omit the first-page logo and
+    its explanatory footnote from today's anonymous submission. Retain both
+    in the named preprint/arXiv source. This supersedes the earlier approval
+    for both variants below; no manuscript prose changes are involved.
+    Both PDFs and the source archive rebuild; all 52 paper tests pass. The
+    review guard passes at nine main-text pages with all six figure/discussion
+    pairs intact. First-page renders confirm branding only in the preprint.
+    Remaining interior pass, 2026-09-25: checkpoint committed at
+    =647aae52bd22938db9161ca7c0fc30b2714e1c5c= before revising Sections 4--8.
+    The revised sections use question-led, evidence-bounded prose, preserve
+    negative results and comparison qualifications, and separate report
+    reconstruction from rerunning training. Sections 1--3 and the conclusion
+    remain approved; Sections 4--8 await final author review. Both PDFs now
+    include the approved logo/footnote and have nine main-text pages, 28 total.
+    All six figures share a page with their labeled discussion; the guard
+    verifies this along with the unchanged style, page limit, and identity scan.
+    All 51 paper tests pass on CPU in the experiment environment. The isolated
+    renderer and extracted LaTeX source archive rebuild successfully; evidence,
+    numerical tables, and core library code are unchanged. Reproduction:
+    =make -C paper figures pdf review arxiv=, then =make -C paper check=.
+    The latter skips the API example without its ML dependencies; the complete
+    check is documented in =paper/README.md=. No push, new training, or upload.
+    Final figure-design and supplement-review tasks remain separate. Details:
+    =paper/review-notes.md=.
     Author approval, 2026-09-25: Sections 2 (Related Work) and 3 (Representax)
     are approved as written. This supersedes the pending paragraph-three and
     Section 3 review notes below. Preserve their prose alongside the approved
@@ -280,10 +337,13 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      steady-state throughput while preserving the intended optimization work;
      it does not promise a universal speedup.
 **** 2. Related work
+     Prose status, 2026-09-25: approved and protected by a regression hash.
      Position the research-toolkit contribution alongside Equinox, Scenic,
      JaxPruner, solo-learn and other maintained frameworks. Complete the method,
      model and dataset citations before submission.
 **** 3. Representax
+     Prose status, 2026-09-25: approved and protected by a regression hash;
+     figure placement may change without rewriting the prose.
      Describe the model/processor bundle, task and loss surface, one canonical
      training entrypoint, exact GradCache, static-shape bucketing, prefetch,
      checkpoint/resume/export, shared evaluation, and explicit JAX sharding.
@@ -297,6 +357,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      numerical checks. Preserve raw logs so alternate summaries remain
      computable after the runs.
 **** 4. Framework and accelerator comparison
+     Prose status, 2026-09-25: revised, awaiting final author review.
      Presentation revision, 2026-09-16: replace the main throughput plot with
      a table containing separate GPU/TPU panels, absolute median examples/s,
      and Representax/reference ratios. Keep the matched TorchInductor control
@@ -379,6 +440,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      speedup, trajectory correlation, and the capability/reproducibility table.
      Report BERT Base, TPU audio and compiled dense retrieval as explicit limits.
 **** 5. End-to-end representation learning [18/18] [100%]
+     Prose status, 2026-09-25: revised, awaiting final author review.
      Baseline completion, 2026-09-16: authorized full-corpus initial ETTIN
      evaluations completed on GPU 0 (TREC DL 2019, 8,841,823 passages) and
      GPU 1 (Natural Questions, 2,681,468 documents). One identical pretrained
@@ -424,6 +486,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
        forgetting explicitly; novel methods and recipe optimization are future
        work. Fixed-budget gains do not establish an asymptotic plateau.
 **** 6. Scaling and sharding [12/12]
+     Prose status, 2026-09-25: revised, awaiting final author review.
      Run a canonical BERT-style masked-language-model workload with the 500M
      controlled encoder for seeds =7, 42, 773= at 1, 2, 4 and 8 A100 GPUs. Hold examples,
      non-padding tokens, optimizer updates, masking, precision and global batch
@@ -443,11 +506,13 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      DDP scaling result establishes a capacity improvement. Describe sharding
      as an implemented API capability with its measured limits.
 **** 7. Design analysis
+     Prose status, 2026-09-25: revised, awaiting final author review.
      Reuse the accepted GradCache implementation, bucketing-versus-padding,
      prefetch and layer-unroll measurements. Keep only ablations that explain a
      material end-to-end result; place detailed compilation tradeoffs in the
      appendix.
 **** 8. Capabilities, limitations and reproducibility
+     Prose status, 2026-09-25: revised, awaiting final author review.
      Publish the model/modality table, GPU and multi-host TPU execution,
      checkpoint/resume/export and evaluation coverage, exact reference commits,
      environment locks, commands and artifact hashes. State unsupported or

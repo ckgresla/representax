@@ -30,7 +30,12 @@ The statements start on a new page after all main-text floats have been flushed;
 do not move substantive results into the excluded statements to fit the limit.
 Keep the boundary immediately after the conclusion.
 
-The September 23 interior draft uses eight main-text pages. Prefer shortening or moving supporting
+The latest revision uses eleven main-text pages, so the strict nine-page guard
+currently fails. Design Analysis is now in the appendix, and the standalone
+capabilities/limitations section is removed; the conclusion is Section 7.
+The author has requested a complete scientific treatment in Section 5 before
+length reduction; do not treat the expanded working draft as submission-ready.
+Prefer shortening or moving supporting
 detail to the appendix over shrinking fonts, margins or line spacing. The guard
 does not certify all formatting or anonymity: visually review each final PDF,
 inspect supplementary files, and check identifying acknowledgements/self-citations.
@@ -44,21 +49,24 @@ No anonymous code supplement has yet been assembled by this checklist.
 
 ### Final Layout Review
 
-- [ ] Author requirement (2026-09-25): place each figure and its caption on the
+- [x] Author requirement (2026-09-25): place each figure and its caption on the
   same page as its first substantive discussion, not merely somewhere nearby.
   In particular, Figure 1 must accompany Section 3.1, Core Abstractions, rather
   than floating onto the preceding page. Later cross-references need not repeat
   the figure. Verify both named and anonymous PDFs after the content settles.
-- [ ] Adjust figure dimensions, source placement, and float constraints together;
+- [ ] Restore the nine-page budget after content review of the expanded Sections 4--5. Adjust figure
+  dimensions, source placement, and float constraints together;
   preserve readable labels and official margins/type sizes. Recheck the page
   budget and visually inspect for whitespace and orphaned headings.
-- [ ] First-page logo proposal, pending author approval: a compact selected
-  vector mark beside the author block in the named preprint, optionally with
-  one explanatory first-page footnote, not a numbered research figure or a
-  repeated footer. Canonical asset: `../docs/assets/representax/representax-mark.pdf`.
-  Omit from the anonymous review build as a conservative branding/anonymity
-  choice, not a claim that ICLR explicitly bans logos. Any adopted asset must
-  also be included in the self-contained preprint source archive.
+- [x] Author-approved first-page logo in the named preprint only: a compact selected
+  vector mark beside the author block, with one explanatory footnote, not a
+  numbered research figure or a repeated footer. Canonical asset:
+  `../docs/assets/representax/representax-mark.pdf`; the paper-local copy is
+  `assets/representax-mark.pdf`. The named export and self-contained arXiv source
+  archive include it. The anonymous submission omits the logo asset and its
+  explanatory footnote, superseding the earlier approval for both variants.
+  Known-identity scans still run on the anonymous variant;
+  they do not replace human review of all identifying content.
 
 ## arXiv and Sharing
 

@@ -3,6 +3,8 @@
 - `paper.org`: canonical editable manuscript, including the approved abstract.
 - `references.bib`: primary toolkit, method, model and dataset bibliography.
 - `export.el`, `preamble.tex`, `Makefile`: Org -> LaTeX -> PDF and source archive.
+- `requirements-render.txt`: pinned NumPy/Matplotlib renderer dependencies,
+  independent of the training environments.
 - `submission-checklist.md`, `check_submission.py`: current venue/release checklist
   and mechanical checks run by every review-PDF build.
 - `abstract-variants.md`: three original voices and the author's blend decision.
@@ -21,7 +23,7 @@
   runs, plus longer-run configurations and prepared-data manifests.
 - `design-evidence.json`, `collect_design.py`: selected existing Experiment 09
   diagnostics, with source hashes and measurement windows; no new training.
-- `report.py`: current renderer for ten numeric tables and six PDF/PNG figures.
+- `report.py`: current renderer for ten numeric tables and eight PDF/PNG figures.
 - `tables/`, `figures/`, `analysis.json`: generated paper assets and timing diagnostics.
 - `results.md`, `captions.md`: historical first-pass summaries; the Org manuscript
   and `report.py` own the current presentation.
@@ -39,7 +41,7 @@ adaptation, full-corpus initial transfer evaluations and twelve A100 scaling
 runs are also present. No additional training is required for the current
 manuscript scope; an FSDP capacity demonstration remains future work.
 
-The manuscript uses six current figures and fifteen tables: ten generated
+The manuscript uses eight current figures and fifteen tables: ten generated
 numeric tables plus five methods/capability/research-map tables. `report.py` reproduces the
 current assets without changes. The older `cross-accelerator` figure and
 `results.md`, `captions.md`, and `figure-plan.md` are historical working material,
@@ -58,8 +60,21 @@ the appendices, develop the multimodal motivation, and replace undated software
 citations with upstream recommended references. See `review-notes.md` for
 the dated review history. The September 23 interior pass preserves the approved
 abstract, introduction, and conclusion while following the nine-section outline.
-The revised main text fits eight pages in the unmodified official style.
-Author approval of the new interior prose and figures remains open.
+The September 25 pass preserves the now-approved Sections 2 and 3 as well,
+revises Sections 4--8, and adds the selected logo to the named preprint. The
+anonymous submission omits both the logo and its explanatory footnote. The
+approved Section 4 revision has now been landed with workload bullets, the
+original absolute-throughput table, and appendix loss trajectories. Design
+Analysis is now Appendix F, and the standalone capabilities/limitations section
+is removed: qualifications accompany the experiments, capability scope remains
+in Appendix G, and reproduction details are in the statement and Appendix E.
+Section 5 now gives dense retrieval, CLIP alignment, and multimodal adaptation
+separate scientific treatments; the fourth workload family's late-interaction
+regression and follow-up questions are in Appendix B.2. The expanded draft has
+eleven main-text pages (34 total) in the unmodified official style, so the
+nine-page submission guard currently fails. The author has deferred length
+reduction until the content is settled. Final review of Sections 5--6 remains
+open; the conclusion is now Section 7.
 
 ## Manuscript Build
 
@@ -80,13 +95,28 @@ sudo apt-get install --no-install-recommends emacs-nox make latexmk texlive-late
 From the repository root:
 
 ```bash
-make -C paper pdf       # build/preprint/paper.pdf, named-author draft
-make -C paper review    # build/review/paper.pdf, anonymous ICLR layout
-make -C paper arxiv     # build/representax-arxiv.tar.gz, self-contained TeX sources
+make -C paper figures pdf review arxiv
+make -C paper check
+```
+
+The figure target additionally requires `uv`; it runs the renderer in an
+isolated Python 3.13 environment with the versions in `requirements-render.txt`.
+The first invocation may download Python and renderer dependencies. The renderer
+itself uses local evidence only, without model loading, data downloads, or `/raid`.
+Without `figures`, the PDF targets use the checked-in figures directly.
+`make check` runs the source/evidence checks on CPU; the executable API example
+is skipped unless JAX, Equinox, and Representax are installed. For the full
+suite including that example, use the prepared experiment environment:
+
+```bash
 experiments/.venv/bin/python -m unittest discover -s paper -p 'test_*.py'
 ```
 
-Paths above are relative to `paper/`. `make -C paper tex` exports LaTeX without
+Outputs are `paper/build/preprint/paper.pdf`, `paper/build/review/paper.pdf`, and
+`paper/build/representax-arxiv.tar.gz`. Review checks require each figure to share
+a page with its labeled discussion, as well as the nine-page and identity checks.
+
+`make -C paper tex` exports LaTeX without
 requiring a TeX installation. Each export also writes `abstract.txt` beside
 `paper.tex` for the OpenReview form. Emacs runs with `-Q`, and Babel evaluation
 is disabled: no personal editor configuration or executable notebook blocks.
@@ -104,7 +134,7 @@ does not mean a submission was made. See [the checklist](submission-checklist.md
 
 arXiv compiles the exported LaTeX, not Org. The source archive contains only
 `paper.tex`, `paper.bbl`, `references.bib`, `preamble.tex`, the two ICLR style
-files, and the six referenced PDF figures. It contains neither the manuscript
+files, the eight referenced PDF figures, and the selected vector logo. It contains neither the manuscript
 PDF nor evidence JSON, checkpoint data, notes, or absolute workspace paths.
 After extraction it builds with `latexmk -pdf paper.tex`, without Emacs, Python,
 the repository, or `/raid`. Bibliography processing is standard BibTeX/natbib.
@@ -119,7 +149,7 @@ remain before publication.
 Rebuild figures without checkpoints, model downloads or access to `/raid`:
 
 ```bash
-experiments/.venv/bin/python paper/report.py
+make -C paper figures
 ```
 
 The renderer requires Matplotlib and NumPy. Inter is vendored under its OFL
@@ -127,9 +157,9 @@ license in `assets/`; source: `https://github.com/rsms/inter`,
 `docs/font-files/InterVariable.ttf`, downloaded 2026-09-11. The font bytes are
 hashed in the evidence manifest. Colors use the author's named light palette.
 Run the renderer to completion before exporting either PDF so an export cannot
-copy a figure while it is being written. The six current figures are the research
+copy a figure while it is being written. The eight current figures are the research
 interfaces, paired throughput, multimodal adaptation, strong scaling, held-out
-learning, and design diagnostics. Individual seeds remain visible; whiskers
+learning, design diagnostics, and the GPU/TPU training-loss panels. Individual seeds remain visible; whiskers
 denote sample SD, not confidence intervals. Detailed narrative tables use
 ragged-right columns to avoid excessive inter-word spacing.
 
@@ -147,6 +177,11 @@ appendix subsection and `tables/gpu-rates.org` retain the five-seed dense
 TorchInductor control. Bold marks the higher of the two reported medians
 within each workload/hardware group, not statistical significance. The
 per-seed ratio plot remains in the appendix so variability is not hidden.
+The appendix loss plots show every recorded optimizer update for the five seeded
+runs, with thin individual traces and thick pointwise medians, without smoothing
+or normalization. They include timing-excluded updates and reuse the native dense
+runs for the additional compiled-reference panel. The main table retains all 26
+absolute-rate rows and uses wider columns and taller rows for readability.
 Rows with unresolved objective, precision or initialization discrepancies retain
 absolute rates but have no winner styling or ratio. See `fairness-audit.md`;
 historical raw evidence is not silently deleted or replaced.

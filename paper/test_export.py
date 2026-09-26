@@ -22,7 +22,7 @@ class ExportTests(unittest.TestCase):
         shutil.copytree(
             HERE,
             cls.root,
-            ignore=shutil.ignore_patterns("build", "__pycache__", "evidence.json", "assets"),
+            ignore=shutil.ignore_patterns("build", "__pycache__", "evidence.json"),
         )
         for mode in ("preprint", "review"):
             cls.export(mode)
@@ -46,10 +46,11 @@ class ExportTests(unittest.TestCase):
 
     def test_approved_introduction_and_conclusion_are_unchanged(self):
         text = (self.root / "paper.org").read_text()
-        # Introduction: checkpoint 187488f; conclusion: approved 2026-09-24 addition.
+        # Introduction: checkpoint 187488f; conclusion: approved 2026-09-24 addition,
+        # with the autotuning sentence moved before the results summary on 2026-09-25.
         expected = {
             "Introduction": "cb805d51be9e69f1ac499e281180606351eb24541a09b6332eb10cfc07c6607e",
-            "Conclusion": "4ac820b5cad37be35338236ba2a1ad5c21e99f0502b6d519cdf01280590d3474",
+            "Conclusion": "6daf21115cf6e2a0fbf2c6b15ede455fc66224682483a9741bc40f494763f12e",
         }
         for name, digest in expected.items():
             section = re.search(r"(?m)^\* " + name + r"\n.*?(?=^\* )", text, re.S)[0]
@@ -67,11 +68,26 @@ class ExportTests(unittest.TestCase):
             self.assertNotIn(str(self.root), text)
             self.assertNotIn(r"\begin{figure}tbp", text)
 
+    def test_approved_related_work_and_framework_prose_are_unchanged(self):
+        text = (self.root / "paper.org").read_text()
+        # Approved checkpoint 647aae5; figure placement is not part of the prose.
+        related = re.search(r"(?m)^\* Related Work\n.*?(?=^\* )", text, re.S)[0]
+        self.assertEqual(hashlib.sha256(related.encode()).hexdigest(),
+                         "10422d897fb2e92774f9f8e824974263789ef4a5ac162a2091a35ad693010617")
+        framework = re.search(r"(?m)^\* Representax\n.*?(?=^\* )", text, re.S)[0]
+        framework = re.sub(
+            r"(?m)^#\+(?:LATEX|NAME|CAPTION|ATTR_LATEX):.*\n|^\[\[file:figures/.*\n",
+            "", framework,
+        )
+        normalized = re.sub(r"\s+", " ", framework)
+        self.assertEqual(hashlib.sha256(normalized.encode()).hexdigest(),
+                         "c568fc36cc4489e5c27deb21d75867f112e6f017ad1ad193b60404c21f7118f8")
+
     def test_citations_and_figures_resolve_locally(self):
         output = self.root / "build/preprint"
         tex = (output / "paper.tex").read_text()
         figures = re.findall(r"\\includegraphics(?:\[[^]]*\])?\{([^}]+)\}", tex)
-        self.assertEqual(len(figures), 6)
+        self.assertEqual(len(figures), 8)
         self.assertEqual(len(set(figures)), len(figures))
         for figure in figures:
             self.assertTrue((output / figure).is_file(), figure)
@@ -80,6 +96,19 @@ class ExportTests(unittest.TestCase):
             for citation in group.split(","):
                 self.assertIn("{" + citation.strip() + ",", bib)
         self.assertIn(r"\bibliography{references}", tex)
+
+    def test_selected_logo_is_packaged_only_in_preprint(self):
+        expected = (self.root / "assets/representax-mark.pdf").read_bytes()
+        output = self.root / "build/preprint"
+        self.assertEqual((output / "figures/representax-mark.pdf").read_bytes(), expected)
+        self.assertIn("figures/representax-mark.pdf", (output / "preamble.tex").read_text())
+        self.assertFalse((self.root / "build/review/figures/representax-mark.pdf").exists())
+
+    def test_review_export_removes_stale_logo(self):
+        logo = self.root / "build/review/figures/representax-mark.pdf"
+        shutil.copyfile(self.root / "assets/representax-mark.pdf", logo)
+        self.export("review")
+        self.assertFalse(logo.exists())
 
     def test_export_is_stable_and_removes_stale_figures(self):
         output = self.root / "build/preprint"
@@ -102,8 +131,67 @@ class ExportTests(unittest.TestCase):
         self.assertLess(table, appendix)
         self.assertGreater(figure, appendix)
         self.assertGreater(compiled, appendix)
-        self.assertLess(tex.index(r"\label{sec:design}"), appendix)
+        self.assertGreater(tex.index(r"\label{sec:design}"), appendix)
         self.assertGreater(tex.index(r"\label{tab:design-diagnostics}"), appendix)
+        for name in ("loss-gpu", "loss-tpu"):
+            self.assertGreater(tex.index(r"\label{fig:" + name + "}"), appendix)
+
+    def test_comparisons_use_workload_bullets_and_five_seeds(self):
+        text = (self.root / "paper.org").read_text()
+        section = re.search(r"(?m)^\* Framework and Accelerator Comparisons\n.*?(?=^\* )",
+                            text, re.S)[0]
+        self.assertEqual(len(re.findall(r"(?m)^- \*", section)), 11)
+        self.assertIn("the same workload across five seeds for each configuration", section)
+        self.assertIn("The workloads cover the following training settings.", section)
+        self.assertIn("written specifically for this recipe", section)
+
+    def test_main_tables_follow_their_complete_study_descriptions(self):
+        tex = (self.root / "build/preprint/paper.tex").read_text()
+        for name, preceding in (("framework-throughput", "Predictive video learning"),
+                                ("learning", "Image--Text Alignment")):
+            label = tex.index(r"\label{tab:" + name + "}")
+            start = tex.rfind(r"\begin{table}", 0, label)
+            self.assertTrue(tex[start:].startswith(r"\begin{table}[H]"))
+            self.assertLess(tex.index(preceding), start)
+        comparison = tex[tex.index(r"\label{sec:comparisons}"):
+                         tex.index(r"\label{tab:framework-throughput}")]
+        self.assertIn(r"\end{itemize}", comparison)
+
+    def test_learning_has_distinct_studies_and_appendix_negative_result(self):
+        text = (self.root / "paper.org").read_text()
+        learning = re.search(r"(?m)^\* End-to-End Representation Learning\n.*?(?=^\* )",
+                             text, re.S)[0]
+        intro = learning.split("\n** ", 1)[0]
+        self.assertIn("fifteen runs across three workload families", intro)
+        self.assertIn("retrieval regression", intro)
+        self.assertIn("[[#sec:late-followup]]", intro)
+        self.assertNotIn("nDCG@10", intro)
+        self.assertNotIn("50 queries", intro)
+        self.assertEqual(re.findall(r"(?m)^\*\* (.+)$", learning), [
+            "Dense Retrieval and Transfer", "Image--Text Alignment",
+            "Multimodal Adaptation and Retention",
+        ])
+        self.assertNotIn("0.7104", learning)
+        appendix = text[text.index("#+LATEX: \\appendix"):]
+        self.assertIn(":CUSTOM_ID: sec:late-followup", appendix)
+        self.assertIn("0.7104 to 0.6925", appendix)
+        self.assertIn("Those evaluations have not been performed", appendix)
+
+    def test_limits_stay_with_experiments_and_design_is_in_appendix(self):
+        tex = (self.root / "build/preprint/paper.tex").read_text()
+        main = tex[:tex.index(r"\appendix")]
+        comparisons = main[main.index(r"\label{sec:comparisons}"):main.index(r"\label{sec:learning}")]
+        learning = main[main.index(r"\label{sec:learning}"):main.index(r"\label{sec:scaling}")]
+        self.assertNotIn(r"\section{Design Analysis}", main)
+        self.assertNotIn(r"\section{Capabilities, Limitations, and Reproducibility}", main)
+        self.assertNotIn("long-running", comparisons)
+        self.assertIn("Startup and checkpoint-related", comparisons)
+        self.assertIn(r"\textbf{Limitations.}", comparisons)
+        self.assertIn("evaluate a shared recipe", comparisons)
+        self.assertIn("50 queries and 5,043 passages", learning)
+        self.assertIn("upstream pretraining contamination", learning)
+        self.assertIn("not state-of-the-art quality", learning)
+        self.assertIn("requires the recorded accelerator configurations, environments, and upstream", main)
 
     def test_excluded_statements_follow_flushed_main_text(self):
         tex = (self.root / "build/review/paper.tex").read_text()

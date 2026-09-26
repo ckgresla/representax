@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import statistics as stats
 from pathlib import Path
 
@@ -117,11 +118,14 @@ def startup_cells(native, reference):
     ]
 
 
-def table(name, caption, columns, headers, rows, *, tabcolsep=4):
+def table(name, caption, columns, headers, rows, *, tabcolsep=4, arraystretch=None,
+          placement="tbp"):
     body = "\n".join(" & ".join(row) + r" \\" for row in rows)
     text = (
-        "#+begin_export latex\n\\begin{table}[tbp]\n\\centering\\small\n"
+        f"#+begin_export latex\n\\begin{{table}}[{placement}]\n\\centering\\small\n"
         + rf"\setlength{{\tabcolsep}}{{{tabcolsep}pt}}" + "\n"
+        + (rf"\renewcommand{{\arraystretch}}{{{arraystretch}}}" + "\n"
+           if arraystretch is not None else "")
         + rf"\caption{{{caption}}}\label{{tab:{name}}}" + "\n"
         + rf"\begin{{tabular}}{{{columns}}}\toprule" + "\n"
         + " & ".join(headers) + r" \\ \midrule" + "\n"
@@ -167,19 +171,102 @@ def framework_overview(e):
             )])
     table(
         "framework-throughput",
-        "Warm throughput: median examples/s over five seeds. Bold identifies "
+        "Warm throughput: median examples/s across five seeds. Bold identifies "
         "the higher reported median within a matched pair, not significance. "
         "$R$ denotes Representax; ratios divide its median by the reference's. "
         "GPU references use eager execution; the dense TorchInductor control "
         r"is in Appendix \ref{sec:compiled-reference}. "
-        "Hardware panels differ in allocation and batch. Lettered protocol "
+        "Ratios compare frameworks within a hardware panel, not GPU and TPU "
+        "performance across different allocations and batches. Lettered protocol "
         r"qualifications and per-seed variation appear in Appendix \ref{sec:paired-methods}.",
         "lrrr",
         ["Workload", r"\shortstack{Representax\\ex/s}",
          r"\shortstack{Reference\\ex/s}", r"$R/\mathrm{Ref.}$"],
         rows,
-        tabcolsep=6,
+        tabcolsep=10,
+        arraystretch=1.12,
+        placement="H",
     )
+
+
+def training_losses(run):
+    """Read optimizer-update losses, retaining first-use and checkpoint intervals."""
+    updates = [row for row in run["metrics"] if row.get("event") == "training_step"]
+    points = [(row["iteration"], row["metrics"]["train/loss"])
+              for row in updates if "train/loss" in row.get("metrics", {})]
+    # The corrected GPU outcome reference stores losses beside its timing rows.
+    if not points and run.get("loss_history"):
+        points = [(row["iteration"], loss)
+                  for row, loss in zip(updates, run["loss_history"], strict=True)]
+    if not points or len(points) != len(updates):
+        raise ValueError("Incomplete optimizer-update loss history")
+    steps = [step for step, _ in points]
+    if steps != sorted(set(steps)):
+        raise ValueError("Loss updates must be unique and ordered")
+    if not all(math.isfinite(loss) for _, loss in points):
+        raise ValueError("Non-finite training loss")
+    return points
+
+
+def loss_figures(e):
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import numpy as np
+    from matplotlib import font_manager
+    from matplotlib.lines import Line2D
+
+    font_path = HERE / "assets/InterVariable.ttf"
+    font_manager.fontManager.addfont(font_path)
+    font = font_manager.FontProperties(fname=font_path).get_name()
+    styles = (("representax", "Representax", COLORS["sky"], "-"),
+              ("reference", "Reference", COLORS["rose"], "--"))
+    with plt.rc_context({
+        "font.family": font, "font.size": 9, "axes.titlesize": 9,
+        "axes.spines.top": False, "axes.spines.right": False,
+        "axes.edgecolor": "#d7dbe0", "axes.linewidth": .6,
+        "grid.color": "#d7dbe0", "grid.linewidth": .5,
+        "xtick.labelsize": 8, "ytick.labelsize": 8, "pdf.fonttype": 42,
+    }):
+        for platform, name in (("gpu-rtx4090", "loss-gpu"), ("tpu-v5e-16", "loss-tpu")):
+            runs = e["panels"][platform]["runs"]
+            panels = [(recipe, LABELS[recipe], runs) for recipe in LABELS]
+            if platform == "gpu-rtx4090":
+                panels.append(("dense-retrieval", "Dense / Inductor reference",
+                               [r for r in runs if r["framework"] == "representax"]
+                               + e["panels"]["gpu-rtx4090-torchinductor"]["runs"]))
+            fig, axes = plt.subplots(5, 3, figsize=(7.2, 8.2), layout="constrained")
+            fig.get_layout_engine().set(rect=(0, 0, 1, .955))
+            for ax, (recipe, title, source) in zip(axes.flat, panels):
+                for framework, _, color, linestyle in styles:
+                    selected = [r for r in source
+                                if r["recipe"] == recipe and r["framework"] == framework]
+                    assert sorted(r["seed"] for r in selected) == sorted(PANEL_SEEDS)
+                    histories = [training_losses(run) for run in selected]
+                    steps = [step for step, _ in histories[0]]
+                    assert all([step for step, _ in h] == steps for h in histories)
+                    values = np.array([[loss for _, loss in h] for h in histories])
+                    for values_for_run in values:
+                        ax.plot(steps, values_for_run, color=color, linestyle=linestyle,
+                                alpha=.25, linewidth=.6)
+                    ax.plot(steps, np.median(values, axis=0), color=color,
+                            linestyle=linestyle, linewidth=1.4)
+                ax.set(title=title, xlim=(1, 22), xticks=[1, 11, 22])
+                ax.set_ylim(bottom=min(0, ax.get_ylim()[0]))
+                ax.grid(axis="y")
+                ax.tick_params(length=2)
+            for ax in list(axes.flat)[len(panels):]:
+                ax.set_visible(False)
+            fig.legend([Line2D([], [], color=c, linestyle=s, linewidth=1.4)
+                        for _, _, c, s in styles], [label for _, label, _, _ in styles],
+                       loc="upper center", ncol=2, frameon=False)
+            fig.supxlabel("Optimizer update", fontsize=10)
+            fig.supylabel("Training loss", fontsize=10)
+            for ext in ("pdf", "png"):
+                fig.savefig(HERE / "figures" / f"{name}.{ext}", bbox_inches="tight",
+                            facecolor="white", dpi=180,
+                            metadata={"CreationDate": None} if ext == "pdf" else None)
+            plt.close(fig)
 
 
 def learning_tables(e):
@@ -189,16 +276,20 @@ def learning_tables(e):
         "CLIP / image-to-text": ("CLIP", r"Flickr30k image $\to$ text"),
         "Late interaction / NanoMSMARCO": ("Late interaction", "NanoMSMARCO"),
     }
+    def learning_cells(initial, final, sd):
+        # Sample SD as a superscript keeps the column narrow; gain is final minus initial.
+        return [f"{initial:.4f}", rf"${final:.4f}^{{\pm {sd:.4f}}}$", f"{final - initial:+.4f}"]
+
     rows = []
     for key, row in e["learning"].items():
         if key.startswith("Late"):
             continue
         a, b = row["initial"], row["final"]
-        rows.append([*labels[key], f'{a["mean"]:.4f}', pm(b["mean"], b["sd"])])
+        rows.append([*labels[key], *learning_cells(a["mean"], b["mean"], b["sd"])])
     for name, row in e["transfer_final_only"].items():
         initial = e["transfer_initial"][name]["metrics"][f"valid/{name}/cosine_ndcg@10"]
-        rows.append(["Dense", {"trec-dl-2019": "TREC DL 2019", "natural-questions": "Natural Questions"}[name], f"{initial:.4f}", pm(row["mean"], row["sd"])])
-    table("learning", "Held-out nDCG@10 before and after native adaptation. Final scores are mean and sample SD across three seeds. The pretrained transfer baseline is shared across seeds; initial and final evaluations use the same complete corpora.", "llrr", ["Model", "Evaluation", "Initial", "Final"], rows)
+        rows.append(["Dense", {"trec-dl-2019": "TREC DL 2019", "natural-questions": "Natural Questions"}[name], *learning_cells(initial, row["mean"], row["sd"])])
+    table("learning", "Held-out nDCG@10 before and after native adaptation. Final scores are means across three seeds, with the sample SD as a superscript; gain is final minus initial. The pretrained transfer baseline is shared across seeds; initial and final evaluations use the same complete corpora.", "llrrr", ["Model", "Evaluation", "Initial", "Final", "Gain"], rows, placement="H")
     rows = []
     for stage in ("initial", "final"):
         for strategy, label in zip(STRATEGIES, STRATEGY_NAMES):
@@ -489,7 +580,8 @@ def main():
     scaling_table(e)
     design_table(load_design())
     figures(e)
-    print("Generated ten tables, six figures, and per-run timing diagnostics.")
+    loss_figures(e)
+    print("Generated ten tables, eight figures, and per-run timing diagnostics.")
 
 
 if __name__ == "__main__":

@@ -59,6 +59,9 @@ class ReportTests(unittest.TestCase):
         self.assertTrue(all(len(row) == 4 for row in rows))
         self.assertNotIn("Ref.+Inductor", text)
         self.assertNotIn("316.61", text)
+        self.assertIn(r"\renewcommand{\arraystretch}{1.12}", text)
+        self.assertIn("median examples/s across five seeds", text)
+        self.assertIn("Ratios compare frameworks within a hardware panel", text)
         self.assertEqual(rows[0][:3],
                          ["Dense retrieval", r"\textbf{305.35}", "211.22"])
         for platform_index, platform in enumerate(("gpu-rtx4090", "tpu-v5e-16")):
@@ -111,6 +114,18 @@ class ReportTests(unittest.TestCase):
                 self.assertAlmostEqual(stats.mean(deltas), recorded["mean"])
                 self.assertAlmostEqual(stats.stdev(deltas), recorded["sample_standard_deviation"])
 
+    def test_multimodal_media_gains_hold_for_every_recipe_and_seed(self):
+        self.assertEqual(len(self.e["omni"]["runs"]), 9)
+        for strategy in report.STRATEGIES:
+            for seed in report.SEEDS:
+                history = self.e["omni"]["runs"][f"{strategy}/seed-{seed}"]["evaluation_history"]
+                for dataset in ("flickr30k", "audiocaps", "msrvtt"):
+                    key = f"valid/{dataset}/cosine_ndcg@10"
+                    self.assertGreater(history[-1]["metrics"][key], history[0]["metrics"][key])
+                if strategy == "connectors":
+                    key = "valid/nanomsmarco/cosine_ndcg@10"
+                    self.assertEqual(history[-1]["metrics"][key], history[0]["metrics"][key])
+
     def test_transfer_baselines_cover_the_full_final_evaluation(self):
         expected = {"trec-dl-2019": (43, 8847360),
                     "natural-questions": (3452, 2686976)}
@@ -125,7 +140,7 @@ class ReportTests(unittest.TestCase):
 
     def test_negative_results_and_scope_are_retained(self):
         text = " ".join((HERE / "paper.org").read_text().split("* Author Notes")[0].split())
-        for phrase in ("0.7104 to 0.6925", "within 256 tokens", "batch one and 24 videos", "not a causal ablation", "finite-budget learning", "per-device negatives"):
+        for phrase in ("0.7104 to 0.6925", "at most 256 tokens", "batch one and 24 videos", "not a causal ablation", "finite-budget learning", "per-device negatives"):
             self.assertIn(phrase, text)
         self.assertNotIn("Draft:", text)
         self.assertNotIn("TODO", text)
@@ -241,6 +256,26 @@ class ReportTests(unittest.TestCase):
         diagnostic = report.startup_diagnostics(run)
         self.assertIsNone(diagnostic["reference_step_1_seconds"])
         self.assertIsNone(diagnostic["reference_step_2_seconds"])
+
+    def test_loss_curves_retain_all_updates_for_every_run(self):
+        count = 0
+        for panel in self.e["panels"].values():
+            for run in panel["runs"]:
+                points = report.training_losses(run)
+                self.assertEqual([step for step, _ in points], list(range(1, 23)))
+                if run["framework"] == "reference" and run["recipe"] == "outcome-reward":
+                    self.assertEqual([loss for _, loss in points], run["loss_history"])
+                count += 1
+        self.assertEqual(count, 265)
+
+    def test_loss_curves_do_not_fill_missing_updates(self):
+        row = {"event": "training_step", "iteration": 1, "metrics": {"train/loss": 1.0}}
+        with self.assertRaisesRegex(ValueError, "Incomplete"):
+            report.training_losses({"metrics": [row, {**row, "iteration": 2, "metrics": {}}]})
+        with self.assertRaisesRegex(ValueError, "unique and ordered"):
+            report.training_losses({"metrics": [row, row]})
+        with self.assertRaisesRegex(ValueError, "Non-finite"):
+            report.training_losses({"metrics": [{**row, "metrics": {"train/loss": float("nan")}}]})
 
     def test_native_events_and_reference_steps_stay_separate(self):
         runs = self.e["panels"]["gpu-rtx4090"]["runs"]

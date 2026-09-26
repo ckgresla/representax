@@ -186,16 +186,19 @@ for Representax is to make implementing a new idea require only the changes
 needed to express it, with minimal additional code to train, evaluate, and build
 upon the result.
 
-#+NAME: fig:architecture
-#+CAPTION: From a research idea to an experiment. Models, tasks, data, and evaluators connect to a shared training lifecycle. Scientific choices define the learning problem; execution choices determine how supported workloads run. Representation-aware tasks expose an optional boundary for modifiers and gradient caching. Evaluation reuses the model and processor but aggregates over the evaluation corpus.
-#+ATTR_LATEX: :width \linewidth :placement [tbp]
-[[file:figures/architecture.pdf]]
-
+#+LATEX: \begin{minipage}{\linewidth}
 ** Core Abstractions
+#+LATEX: \label{discussion:architecture}
 Four abstractions are core to experiments in representation learning: models
 and processors, learning tasks, data distributions, and evaluators. Efficient
 shared infrastructure connects these components into complete experiments
 (Figure [[fig:architecture]]).
+
+#+NAME: fig:architecture
+#+CAPTION: From a research idea to an experiment. Models, tasks, data, and evaluators connect to a shared training lifecycle. Scientific choices define the learning problem; execution choices determine how supported workloads run. Representation-aware tasks expose an optional boundary for modifiers and gradient caching. Evaluation reuses the model and processor but aggregates over the evaluation corpus.
+#+ATTR_LATEX: :width \linewidth :placement [H]
+[[file:figures/architecture.pdf]]
+#+LATEX: \end{minipage}
 
 - *Models and processors.* We implement models as Equinox modules, which are
   JAX PyTrees with parameters and submodules stored in fields and forward
@@ -314,222 +317,263 @@ experiments without treating every objective as computationally interchangeable.
 :PROPERTIES:
 :CUSTOM_ID: sec:comparisons
 :END:
-We first ask whether a common research framework can execute established
-workloads at practical training rates. This comparison measures execution,
-not the quality of newly learned representations; Section [[#sec:learning]]
-addresses learning separately.
+We evaluate our framework through paired training recipes against existing
+canonical implementations. In each paired throughput study, we run the same
+recipe in Representax and a reference framework. The comparisons span thirteen
+configurations across retrieval, sentence-pair learning, reward modeling,
+multimodal alignment, and predictive video learning, assessing execution
+performance across the methods our framework supports.
 
-** Matched-Work Protocol
-Thirteen recipes run on a single RTX 4090 and on a 16-chip v5e TPU slice,
-with five repetitions per framework and recipe (seeds 7, 42, 773, 1234, and
-2026). Each panel contains 130 runs; five further GPU runs provide a dense
-TorchInductor control. Some repetitions retain deterministic data order,
-so seeds describe execution variation, not independent learning experiments.
+For these experiments, we used NVIDIA RTX 4090 GPUs, with one GPU per run, and
+a sixteen-chip TPU v5e allocation across four worker VMs. Within each hardware panel, we configure
+paired implementations with the same model, data, objective, training batch,
+optimization schedule, and precision policy, while allowing framework-specific
+execution choices. GPU references use PyTorch eager execution unless specified
+otherwise; TPU references use PyTorch/XLA [cite:@paszke2019pytorch].
 
-Within each hardware/recipe pair, we match examples, global batch, objectives,
-and precision policies, while retaining framework-native execution.
-The references are documented integrations with maintained PyTorch-based
-libraries [cite:@paszke2019pytorch], not claims of each library's best possible
-configuration. GPU references use eager execution in the main table;
-the matched compiled dense control is reported in Appendix [[#sec:compiled-reference]].
-GPU and TPU batch sizes can differ; ratios compare frameworks on the same
-allocation, not accelerator types against one another.
+We run the same workload across five seeds for each configuration and measure
+warm training throughput, including input wait, gradient computation,
+synchronization, and parameter updates. Startup and checkpoint-related
+intervals are excluded; Appendix [[#sec:paired-methods]] gives the timing protocol
+and startup measurements.
 
-For run \(r\), throughput is \(R_r=\sum_t B_t/\sum_t T_t\), where \(T_t\)
-covers a complete optimizer-step interval, including visible input wait,
-replay, synchronization, and optimization. We select up to 20 final warm
-updates and exclude first-use and checkpoint-contaminated intervals.
-Compilation, initialization, evaluation, and checkpointing are accounted for
-separately where recorded. Appendix [[#sec:paired-methods]] documents workloads,
-corrections, timing exclusions, and per-seed variation.
+The workloads cover the following training settings.
 
-** Results and Scope
-Table \ref{tab:framework-throughput} reports median rates, not a task-averaged
-score. Representax improves throughput in many tested workloads, including
-audio/video contrastive learning and reward modeling, but the exceptions matter.
-GPU dense retrieval reaches 305.35 examples/s against eager Sentence
-Transformers' 211.22 (1.446x), yet remains below the compiled control's 316.61.
-BERT Base sentence-pair controls are slower on GPU, and TPU dense retrieval is
-approximately tied. The outcome therefore depends on the workload and backend,
-rather than on a universal framework ordering.
+- *Dense retrieval.* MPNet training on MS MARCO with multiple-negatives ranking
+  loss, compared against Sentence Transformers [cite:@reimers2019sentencebert],
+  tests large-batch contrastive learning with gradient caching. An additional
+  GPU control uses TorchInductor compilation.
+- *Semantic similarity.* MPNet Base and BERT Base training on STS Benchmark
+  with cosine-similarity regression, compared against Sentence Transformers,
+  tests the same learning task across two encoder architectures.
+- *Pair classification.* The same encoders learn from duplicate-question pairs
+  using a cosine contrastive objective, again compared against Sentence
+  Transformers.
+- *Cross-encoder training.* MiniLM-L6 learns to score query--passage pairs
+  jointly, compared against the Sentence Transformers cross-encoder
+  implementation. This complements the independently encoded retrieval workloads.
+- *Late-interaction retrieval.* GTE-ModernColBERT training, compared against
+  PyLate [cite:@chaffin2025pylate], tests token-level representations and their
+  pairwise scoring, using matched negative pools and mean-loss gradients.
+- *Outcome reward modeling.* Qwen3-0.6B learns preferences from UltraFeedback
+  with a Bradley--Terry objective, compared against a Torch/TRL-based reference
+  [cite:@vonwerra2020trl]. This exercises decoder-based scoring and gradient
+  accumulation.
+- *Process reward modeling.* The same model family learns step-level
+  Math-Shepherd labels, compared against a Torch/TRL-based reference. Valid
+  inputs contain at most 256 tokens; this is not a long-reasoning workload.
+- *Image--text alignment.* CLIP ViT-B/32 training on COCO, compared against
+  Sentence Transformers, introduces image processing and joint visual--textual
+  encoding.
+- *Audio--text alignment.* LoRA adaptation of LCO Omni 3B on AudioCaps, compared
+  against a Sentence Transformers integration, extends contrastive training
+  to audio inputs.
+- *Video--text alignment.* The same adaptation approach on MSR-VTT tests video
+  processing and encoding, using a Sentence Transformers integration as the
+  reference.
+- *Predictive video learning.* A ViT-B/16 V-JEPA 2.1 configuration
+  [cite:@murlabadia2026vjepa], compared against the official implementation,
+  exercises prediction in representation space and a moving-average target
+  encoder. The GPU workload uses batch one and 24 videos.
+
+*Limitations.* Some TPU contrastive recipes use device-local negative pools to match the
+reference integration, even though Representax supports global pools. These
+comparisons therefore evaluate a shared recipe rather than each framework's
+most capable configuration. Image--text and predictive-video timing also retain
+input-preparation and filesystem-cache differences, documented alongside the
+full execution settings in Appendix [[#sec:paired-methods]].
+
+** Results
+Table \ref{tab:framework-throughput} reports absolute and relative throughput.
+Representax has the higher median in eleven of thirteen GPU configurations and
+in all thirteen TPU configurations, although TPU dense retrieval is effectively
+tied at 1.002x. Performance remains architecture-dependent: the BERT
+sentence-pair workloads favor the GPU reference, whereas their MPNet
+counterparts favor Representax.
 
 #+INCLUDE: "tables/framework-throughput.org"
 
-The active panel incorporates matched reruns for late interaction, both reward
-tasks, and audio/video contrastive learning. Table markers retain their audit
-history. Remaining qualifications include process-reward inputs fitting within
-256 tokens [P], input-preparation/cache effects for image-text and V-JEPA [C],
-and GPU V-JEPA's batch one and 24 videos [G]. The late-interaction GPU runs end
-at similar small-panel retrieval scores, but neither these short trajectories
-nor throughput ratios establish reference-matched convergence.
+The compiled dense control illustrates the importance of reference execution
+settings: Representax outperforms eager Sentence Transformers but runs slightly
+below its compiled configuration. At 0.964x the compiled reference's throughput,
+Representax approaches TorchInductor's GPU-specialized execution
+[cite:@ansel2024pytorch2] using standard JAX/XLA execution, without GPU kernels
+written specifically for this recipe. Overall, these experiments demonstrate
+competitive throughput across diverse training recipes, with substantial gains
+in many of the tested configurations. Appendix [[#sec:paired-methods]] presents
+absolute rates, seed-level variation, and paired loss trajectories, including
+residual differences in several TPU recipes. Appendix [[#sec:design]] examines padding,
+gradient replay, and compilation-cache reuse as contributors to execution cost.
 
 * End-to-End Representation Learning
 :PROPERTIES:
 :CUSTOM_ID: sec:learning
 :END:
-Efficient execution is useful only if complete experiments can reveal how
-representations change. We therefore evaluate adaptation on held-out retrieval
-tasks using normalized discounted cumulative gain at rank ten (nDCG@10).
-We report seeds 7, 42, and 773 at the final scheduled checkpoint, rather
-than selecting the best evaluation score. These experiments establish
-finite-budget learning, not asymptotic or reference-matched convergence.
+We evaluate whether canonical representation-learning recipes produce useful
+held-out improvements when trained end to end in Representax. The studies
+examine learning a transferable text retriever, improving image--text alignment,
+and adapting a multimodal model while retaining its existing capabilities.
 
-** Learning and Transfer
-Dense adaptation trains ETTIN Encoder 150M on one presentation of 488,576
-duplicate-free MS MARCO pairs [cite:@ettin;@bajaj2016msmarco].
-NanoMSMARCO nDCG@10 rises from 0.0730 to 0.5794. Evaluation against the full
-TREC DL 2019 and Natural Questions corpora also improves, from 0.0170 to
-0.5404 and from 0.0032 to 0.2922, respectively
-[cite:@craswell2020trec;@kwiatkowski2019nq]. Each comparison uses the same corpus
-and scoring settings before and after adaptation.
+The studies comprise fifteen runs across three workload families: dense
+retrieval, CLIP image--text adaptation, and multimodal adaptation with three
+choices of trainable parameters. Each recipe runs across three seeds. We
+compare the initial model with the final scheduled checkpoint, without
+selecting checkpoints by their evaluation scores. These are finite-budget
+learning experiments, not tests of asymptotic convergence. A fourth family,
+late-interaction retrieval, did not improve under the recipe we applied;
+Appendix [[#sec:late-followup]] reports that retrieval regression and the
+follow-up it motivates.
 
-CLIP ViT-B/32 trains on 588,800 COCO image-caption pairs, exposing five distinct
-captions per image over the run without repeating an image within a batch
-[cite:@radford2021clip;@lin2014coco]. Both text-to-image and image-to-text
-retrieval improve on a held-out 1,000-image Flickr30k panel
-[cite:@young2014flickr]. Table \ref{tab:learning} summarizes the results.
-These are adaptation experiments, not reproductions of the original pretraining
-regimes. The same infrastructure also exposes an unfavorable result:
-late-interaction adaptation reduces training loss but regresses from
-0.7104 to 0.6925 nDCG@10 on NanoMSMARCO
-(Appendix [[#sec:learning-details]]).
+** Dense Retrieval and Transfer
+This study asks whether contrastive retrieval fine-tuning in Representax turns
+a pretrained text encoder into a retriever, and whether the resulting
+representations transfer beyond the training collection. We train ETTIN Encoder 150M
+[cite:@ettin] on 488,576 duplicate-free MS MARCO query--passage pairs
+[cite:@bajaj2016msmarco] using multiple-negatives ranking loss. Each pair is
+presented once, giving 3,817 updates at batch 128. Gradient caching supports
+the contrastive computation through the task interface described in Section
+[[#sec:system]].
+
+We measure normalized discounted cumulative gain at rank ten (nDCG@10) on
+NanoMSMARCO, TREC DL 2019, and Natural Questions
+[cite:@craswell2020trec;@kwiatkowski2019nq]. NanoMSMARCO provides a small
+in-domain panel of 50 queries and 5,043 passages. The larger evaluations rank
+43 TREC DL queries against the complete 8.84-million-passage MS MARCO corpus
+and 3,452 Natural Questions queries against 2.68 million documents. Natural
+Questions is used only for evaluation in this study, testing transfer beyond
+MS MARCO adaptation.
+
+Mean nDCG@10 rises from 0.0730 to 0.5794 on NanoMSMARCO, from 0.0170 to
+0.5404 on TREC DL, and from 0.0032 to 0.2922 on Natural Questions
+(Table \ref{tab:learning}). Initial and final evaluations use identical
+corpora and scoring settings. The gains therefore extend beyond the small
+NanoMSMARCO panel to full-corpus retrieval and a separate query distribution.
+They demonstrate useful adaptation, not state-of-the-art quality. Held-out
+evaluation does not exclude upstream pretraining contamination.
+
+** Image--Text Alignment
+CLIP adaptation tests whether the same framework supports learning across
+modalities and transfer to a separate image--caption collection. We fine-tune
+CLIP ViT-B/32 [cite:@radford2021clip] on 588,800 COCO image--caption pairs,
+covering 117,760 images with five distinct captions per image
+[cite:@lin2014coco]. A symmetric contrastive objective trains both retrieval
+directions over 1,150 updates at batch 512. Each caption is presented once,
+and no image is repeated within a training batch.
+
+Evaluation uses a held-out Flickr30k panel with 1,000 images and 5,000 captions
+[cite:@young2014flickr], ranking the full panel in both directions. Mean
+nDCG@10 improves from 0.7373 to 0.8148 for text-to-image retrieval and from
+0.7168 to 0.7665 for image-to-text retrieval (Table \ref{tab:learning}). Thus
+training on COCO improves alignment as measured on Flickr30k, rather than
+only reducing the loss on the training pairs. This is adaptation of a
+pretrained CLIP model, not a reproduction of CLIP pretraining; the evaluation
+is confined to this Flickr30k panel. Appendix [[#sec:learning-details]] gives
+the full training and evaluation settings for both studies.
 
 #+INCLUDE: "tables/learning.org"
 
 ** Multimodal Adaptation and Retention
-We next use Jina v5 Omni Nano to study how adapting modality pathways affects
-retrieval [cite:@honicke2026jina]. Three recipes train connectors and selected
-delimiter embeddings, those parameters plus rank-eight LoRA, or the full model.
-Each runs 2,000 updates at batch 32 with symmetric contrastive learning and
-Matryoshka dimensions 32, 64, 128, 256, 512, and 768.
+The multimodal study asks how adaptation can improve several modalities while
+preserving an existing text-retrieval capability. Using Jina v5 Omni Nano
+[cite:@honicke2026jina], we compose a symmetric contrastive task with
+Matryoshka objectives and compare three ways to update the model:
 
-Connector-only training samples image-text, audio-text, and video-text sources.
-The other recipes also sample text-text pairs. Learning rates differ
-(\(2\times10^{-4}\), \(5\times10^{-5}\), and \(10^{-5}\), respectively).
-This is a comparison of complete adaptation recipes, not a causal ablation of
-parameter selection: data mixtures and optimization also change.
-All retrieval directions are text-anchored; no unseen modality-to-modality
-transfer is evaluated.
+- *Connector-only adaptation* trains the modality connectors and selected
+  delimiter embeddings while keeping the text pathway frozen.
+- *LoRA-based adaptation* trains those parameters together with rank-eight
+  LoRA adapters in the text, vision, and audio towers.
+- *Full fine-tuning* updates all model parameters.
+
+Each recipe runs for 2,000 updates at batch 32, with three seeds per recipe.
+Training draws image--text, audio--text, and video--text pairs from COCO,
+AudioCaps, and MSR-VTT, respectively
+[cite:@lin2014coco;@kim2019audiocaps;@xu2016msrvtt]. The LoRA and full
+fine-tuning recipes also include MS MARCO text--text pairs. We evaluate
+text-to-media retrieval on Flickr30k, AudioCaps, and MSR-VTT, and text
+retention on NanoMSMARCO. Reporting these separately reveals whether media
+gains accompany a loss of text capability, rather than obscuring the tradeoff
+in a single aggregate score.
+
+#+LATEX: \begin{minipage}{\linewidth}\label{discussion:multimodal}
+All three recipes improve retrieval in every media panel and every seed
+(Figure [[fig:multimodal]]). Connectors plus LoRA achieve the highest mean image
+and video scores, 0.7466 and 0.4984 nDCG@10; full fine-tuning achieves the
+highest audio score, 0.5028. Connector-only adaptation preserves the frozen
+text pathway's score of 0.6509. Text retrieval instead falls to 0.6121 with
+LoRA and 0.5994 with full fine-tuning, despite including text--text pairs in
+training. The study therefore demonstrates joint media improvements while
+making their relationship to text retention explicit.
 
 #+NAME: fig:multimodal
-#+CAPTION: Adaptation gains and text retention. Each point is a seed's change in nDCG@10 relative to its own initial checkpoint; diamonds and whiskers show means and sample SD. All three recipes improve text-to-media retrieval. Recipes that update the text pathway reduce text retrieval; connector-only training leaves that pathway frozen. Source mixtures and learning rates differ, so these are recipe comparisons, not isolated effects of parameter selection.
-#+ATTR_LATEX: :width \linewidth :placement [tbp]
+#+CAPTION: Adaptation gains and text retention. Points show each seed's change in nDCG@10 from its own initial checkpoint; diamonds and whiskers show means and sample SD. Source mixtures and learning rates differ across recipes. Connector-only training leaves the text pathway frozen. Absolute scores and full settings appear in Appendix \ref{sec:learning-details}.
+#+ATTR_LATEX: :width \linewidth :placement [H]
 [[file:figures/multimodal-adaptation.pdf]]
+#+LATEX: \end{minipage}
 
-All three recipes improve media retrieval (Figure [[fig:multimodal]]).
-Connectors plus LoRA achieve the highest image and video scores among the
-tested recipes; full fine-tuning achieves the highest audio score.
-Connector-only training preserves the frozen text pathway's score, whereas
-the other recipes reduce text retrieval. Absolute initial and final scores
-appear in Appendix [[#sec:learning-details]]. This tradeoff motivates joint
-training that improves modality-specific representations without sacrificing
-text performance, while leaving its causes and remedies open to further study.
+*Limitations.* These are comparisons of complete adaptation recipes, not a
+causal ablation of parameter selection: learning rates differ, and only the
+LoRA and full fine-tuning recipes include text--text training. The text
+retention result uses the same 50-query NanoMSMARCO panel as the dense study.
+Evaluation is text-anchored rather than any-to-any, and these selected tasks
+do not constitute a complete multimodal benchmark suite. Within that scope,
+the results motivate methods that improve media retrieval without sacrificing
+text capabilities. Appendix [[#sec:learning-details]] records absolute scores,
+source mixtures, and the remaining recipe settings.
 
 * Scaling and Sharding
 :PROPERTIES:
 :CUSTOM_ID: sec:scaling
 :END:
-The third study asks whether execution scales when the learning problem is
-held fixed. A controlled 505-million-parameter ModernBERT masked-language
-model runs on 1, 2, 4, and 8 A100 SXM4 40-GB GPUs
-[cite:@warner2024modernbert;@devlin2019bert]. Global batch remains 256
-sequences of length 512 (131,072 tokens per update). Local microbatch 16 and
-16/8/4/2 accumulation rounds preserve that batch across device counts.
-Parameter-gradient synchronization follows accumulation.
+Here we investigate how a fixed training job scales across multiple
+accelerators. Only execution parameters change with the device count: the mesh
+and the number of accumulation rounds per update. The training job itself, its
+global batch, tokens, and masks, is identical at every device count. The study
+therefore exercises, on hardware, the separation between scientific and
+execution parameters described in Section [[#sec:system]].
 
-Three seeds each run 21 updates, with 20 measured after first use. Within each
-seed, token and masking hashes match across device counts, and all runs use
-BF16 compute, FP32 parameters and optimizer state, and full rematerialization.
-The model is randomly initialized and the text repeated from WikiText-2
-[cite:@merity2016wikitext]; this is strong scaling of a fixed workload, not a
-complete pretraining study or a quality comparison.
+We train a controlled 505-million-parameter ModernBERT masked-language model
+[cite:@warner2024modernbert;@devlin2019bert] on 1, 2, 4, and 8 A100 SXM4 40-GB
+GPUs on a single node with replicated data parallelism. Each update processes 256
+sequences of 512 tokens, 131,072 tokens in total. A local microbatch of 16
+sequences with 16, 8, 4, and 2 accumulation rounds preserves that global batch,
+and token and masking hashes match within each seed across device counts.
+Three seeds each run 21 updates; the first update is excluded from warm rates.
+The model is randomly initialized and the text is WikiText-2
+[cite:@merity2016wikitext], repeated to fill the 21 updates. This is a
+pretraining-like workload for measuring execution, not a pretraining run: we
+do not train to convergence or evaluate the resulting model.
+
+#+LATEX: \begin{minipage}{\linewidth}\label{discussion:scaling}
+Throughput rises from 32,015 to 219,975 tokens/s (Figure [[fig:scaling]]). Mean
+within-seed speedups are 1.968x, 3.810x, and 6.871x on 2, 4, and 8 GPUs,
+corresponding to 98.4%, 95.2%, and 85.9% parallel efficiency. All updates are
+finite and non-skipped, and the compiled executable footprint stays between
+32.5 and 33.6 GiB per device. BF16 loss trajectories are close but not identical
+across device counts, with a maximum cross-device loss spread of 0.0523.
 
 #+NAME: fig:scaling
-#+CAPTION: Fixed-work strong scaling on one A100 node. The scientific workload remains 131,072 tokens per update. Small points show three seeded runs; diamonds show means. Speedup is normalized to the same seed's one-GPU run, and efficiency divides speedup by GPU count. Dashed lines denote ideal scaling. Warm timings include input preparation and placement but exclude compilation and cache loading.
-#+ATTR_LATEX: :width \linewidth :placement [tbp]
+#+CAPTION: Fixed-work strong scaling on one A100 node. Small points show three seeds; diamonds show means. Speedup uses each seed's one-GPU rate; efficiency divides speedup by GPU count. Dashed lines mark ideal scaling. Warm timings include input preparation and placement, excluding compilation and cache loading.
+#+ATTR_LATEX: :width \linewidth :placement [H]
 [[file:figures/strong-scaling.pdf]]
+#+LATEX: \end{minipage}
 
-Mean throughput rises from 32,015 to 219,975 tokens/s. Mean within-seed
-speedups are 1.968x, 3.810x, and 6.871x on 2, 4, and 8 GPUs, corresponding
-to 98.4%, 95.2%, and 85.9% efficiency. All 252 updates are finite and
-non-skipped; BF16 trajectories are close but not identical (maximum
-cross-device loss spread 0.0523). These results demonstrate efficient
-replicated execution on one node, not FSDP capacity gains or multi-node GPU
-scaling. Memory, compilation, and the complete numeric results are in
-Appendix [[#sec:scaling-details]].
-
-* Design Analysis
-:PROPERTIES:
-:CUSTOM_ID: sec:design
-:END:
-The separation of scientific and execution choices is useful only when it helps
-explain measured behavior. Earlier dense-retrieval diagnostics with ETTIN
-Encoder 150M illustrate why a framework comparison must account for both the
-learning problem and the work executed. They are short, single-seed systems
-studies, separate from the replicated panel in Section [[#sec:comparisons]];
-their duplicate-heavy data support systems diagnostics, not conclusions about
-representation quality.
-
-In a 30-update padding study, coarse native buckets reach 361.08 examples/s
-against eager Sentence Transformers' 391.69. Forcing the reference to the same
-padded shapes reduces its rate to 346.35. Finer native buckets reach 393.16,
-while the native-padding compiled reference remains faster at 667.90.
-Thus padding explains the eager crossover, but not the remaining compiled
-reference advantage. Smaller padded shapes are not automatically better
-overall: they also alter the compiled signatures that must be prepared.
-
-The execution schedule matters independently of the objective. In the same
-diagnostic program, the custom-VJP path reaches 361.08 examples/s against
-341.31 for rematerialized GradCache. Subsequent layout and static-execution
-changes reach 618.67 examples/s; these cumulative changes are not a single
-factor ablation. A fresh process loads the persistent cache, reducing
-compilation plus first execution from 287.51 to 21.60 seconds while reproducing
-620.02 examples/s. Appendix [[#sec:design-details]] preserves these measurements
-and their boundaries. The design lesson is to expose execution choices and
-measure their effects, rather than assume that one configuration is optimal
-for every workload.
-
-* Capabilities, Limitations, and Reproducibility
-:PROPERTIES:
-:CUSTOM_ID: sec:limits
-:END:
-The evidence supports a research framework spanning multiple objectives and
-modalities, useful held-out adaptation, and GPU/TPU execution. It does not
-establish state-of-the-art representation quality, universal speedups,
-production reliability, or performance across all implemented combinations.
-Appendix [[#sec:capabilities]] separates implemented capabilities from evaluated
-configurations. In particular, the TPU panel uses four worker VMs, but the
-GPU scaling study stays within one node.
-
-Training rates depend on data preparation, compilation, and timing boundaries;
-short windows do not characterize long-running failures or every cache state.
-Retrieval studies cover selected benchmarks, and held-out splits cannot rule
-out upstream pretraining contamination. NanoMSMARCO contains only 50 queries.
-The multimodal comparison changes complete recipes, so it cannot isolate
-whether text degradation arises from parameter updates, sampling, or learning
-rate.
-
-The frozen evidence retains per-run measurements, source revisions, data
-manifests, and environment records. Figures and numerical tables are regenerated
-locally from those records without model loading or new training. Numbered
-experiment launchers specify the original recipes; Appendix [[#sec:reproduction]]
-documents reconstruction and provenance. New research should extend that
-record: adaptive data, online learning, and representation learning through
-interaction require their own protocols, evaluation, and state-management
-contracts, not merely another loss function.
+*Limitations.* This is strong scaling of replicated execution on one node,
+measured over 20 warm updates per run. FSDP capacity gains remain unmeasured,
+and multi-node GPU execution remains untested. Absolute rates, memory, and
+compilation costs appear in Appendix [[#sec:scaling-details]].
 
 * Conclusion
 Representax provides a shared foundation for representation-learning research,
 connecting flexible method development with the infrastructure needed to train,
 evaluate, and scale experiments. Its separation of scientific choices from
 execution strategies allows researchers to investigate learning methods while
-adapting supported workloads to available hardware. Our evaluations demonstrate
-competitive training throughput across a range of GPU and TPU workloads,
-improvements in held-out retrieval through adaptation, and efficient fixed-work
-scaling to eight accelerators.
-This separation also opens a path to hardware-aware autotuning, selecting
-execution configurations for a fixed training recipe and compute environment
-while preserving the intended learning computation.
+adapting supported workloads to available hardware. This separation also opens
+a path to hardware-aware autotuning, selecting execution configurations for a
+fixed training recipe and compute environment while preserving the intended
+learning computation. Our evaluations demonstrate competitive training
+throughput across a range of GPU and TPU workloads, improvements in held-out
+retrieval through adaptation, and efficient fixed-work scaling to eight
+accelerators.
 
 These results provide a starting point for research towards natively multimodal
 systems. Our adaptation studies motivate a concrete challenge: jointly improving
@@ -554,20 +598,19 @@ world?
 :CUSTOM_ID: sec:statements-start
 :END:
 The repository contains numbered experiment launchers, configuration objects,
-per-run source revisions, data/checkpoint revisions, and content hashes.
-The paper's frozen evidence includes measured update records; a separate
-historical-methods inventory records the settings actually used.
-All numerical tables and plots are rebuilt locally without training-data
-downloads or model checkpoints. The Org manuscript exports to self-contained
-LaTeX/PDF, and a source archive contains only the files needed to compile it.
+per-run source revisions, data and checkpoint revisions, and content hashes.
+The paper's frozen evidence includes the measured update records, and a
+historical-methods inventory records the settings actually used; every
+numerical table and plot derives from these records. Rerunning training
+requires the recorded accelerator configurations, environments, and upstream
+datasets and checkpoints.
 #+begin_export latex
 \ifdefined\representaxreview\else
 The implementation and reproduction instructions are available at
 \url{https://github.com/ckgresla/representax}.
 \fi
 #+end_export
-Appendix [[#sec:reproduction]] describes the artifact boundaries and exact
-reconstruction procedure.
+Appendix [[#sec:reproduction]] lists these artifacts and their scope.
 
 * Ethics Statement
 :PROPERTIES:
@@ -585,8 +628,7 @@ suitability for high-stakes deployment.
 :END:
 Generative AI tools assisted implementation, debugging, experiment design,
 analysis, literature discovery, and manuscript drafting. The human author
-is responsible for the final contents and claims. Automated tests and
-artifact checks support, but do not replace, scientific review.
+is responsible for the final contents and claims.
 
 #+begin_export latex
 \bibliographystyle{iclr2027_conference}
@@ -600,6 +642,8 @@ artifact checks support, but do not replace, scientific review.
 :CUSTOM_ID: sec:paired-methods
 :END:
 ** Models, Shapes, and Data
+The paired panel uses seeds 7, 42, 773, 1234, and 2026: 130 runs per backend,
+plus five compiled GPU dense-retrieval controls.
 Table \ref{tab:paired-design} describes the actual timing workloads. These
 bounded datasets often cycle during 22 updates; their size is not the
 number of unique examples consumed by the training job. A fixed padded
@@ -849,19 +893,21 @@ retain first-use events and separate setup timings. These measurements are
 not interchangeable startup costs or pure compiler benchmarks. The paired
 suite was not a balanced randomized cold-cache experiment. Per-seed early
 intervals, setup records, warm step-time coefficients of variation, and rates
-are preserved in the generated analysis file.
+are preserved with the frozen evidence.
 
 #+INCLUDE: "tables/gpu-startup.org"
 #+INCLUDE: "tables/tpu-startup.org"
 
+#+LATEX: \begin{minipage}{\linewidth}\label{discussion:framework-throughput}
 Figure [[fig:framework-throughput]] complements the main throughput table with
 paired-seed variation. These are descriptive timing repetitions, not
 independent evidence of converged learning quality.
 
 #+NAME: fig:framework-throughput
 #+CAPTION: Per-seed framework throughput ratios, complementing Table \ref{tab:framework-throughput}. Diamonds are ratios of median per-seed rates; dots are paired-seed ratios, not confidence intervals. The red square is the dense GPU reference compiled with TorchInductor. Only validated paired protocols are shown. Other qualifications are unchanged from the main table; different GPU/TPU allocations and batches preclude an equal-work hardware comparison.
-#+ATTR_LATEX: :width \linewidth :placement [tbp]
+#+ATTR_LATEX: :width \linewidth :placement [H]
 [[file:figures/framework-throughput.pdf]]
+#+LATEX: \end{minipage}
 
 ** Compiled GPU Reference
 :PROPERTIES:
@@ -880,12 +926,47 @@ values therefore identify winners against its stated references, not against
 every possible compiled configuration.
 
 #+LATEX: \clearpage
+** Paired Training Trajectories
+:PROPERTIES:
+:CUSTOM_ID: sec:paired-trajectories
+:END:
+#+LATEX: \begin{minipage}{\linewidth}\label{discussion:loss-gpu}
+Figure [[fig:loss-gpu]] compares GPU training losses over all 22 optimizer updates,
+including updates excluded from throughput timing. The five configured seeds
+are 7, 42, 773, 1234, and 2026; deterministic recipes can produce overlapping
+curves. We inspect the shape and scale of the trajectories rather than require
+pointwise equality or infer long-run convergence from these short runs.
+
+#+NAME: fig:loss-gpu
+#+CAPTION: Paired GPU training trajectories. Thin lines show individual seeded runs; thick lines show pointwise medians. Curves are neither smoothed nor normalized, and each workload has its own loss scale. The compiled dense panel reuses the same Representax runs against the additional TorchInductor reference.
+#+ATTR_LATEX: :width \linewidth :placement [H]
+[[file:figures/loss-gpu.pdf]]
+#+LATEX: \end{minipage}
+
+#+LATEX: \clearpage
+#+LATEX: \begin{minipage}{\linewidth}\label{discussion:loss-tpu}
+Figure [[fig:loss-tpu]] presents the corresponding TPU trajectories. Several
+recipes follow similar broad trends while retaining systematic differences
+in loss level or rate of decrease, notably cross-encoder and image--text
+training. We retain these differences rather than attribute them to numerical
+noise without a controlled diagnosis. Comparisons are within a workload and
+hardware panel, not between GPU and TPU curves with different recipes.
+
+#+NAME: fig:loss-tpu
+#+CAPTION: Paired TPU training trajectories on sixteen v5e chips. Thin lines show individual seeded runs; thick lines show pointwise medians, using the same convention as Figure \ref{fig:loss-gpu}. All optimizer updates are shown without smoothing or normalization. Systematic trajectory differences remain visible alongside the throughput results.
+#+ATTR_LATEX: :width \linewidth :placement [H]
+[[file:figures/loss-tpu.pdf]]
+#+LATEX: \end{minipage}
+
+#+LATEX: \clearpage
 * Learning Recipes and Evaluation
 :PROPERTIES:
 :CUSTOM_ID: sec:learning-details
 :END:
-** Dense, CLIP, and the Late-Interaction Regression
-Dense adaptation uses ETTIN Encoder 150M (149,014,272 parameters), maximum
+** Dense and CLIP Recipes
+All adaptation studies report seeds 7, 42, and 773 at the final scheduled
+checkpoint. Dense adaptation presents each of its 488,576 training pairs once.
+It uses ETTIN Encoder 150M (149,014,272 parameters), maximum
 sequence length 128, and buckets 16/96/128. Its custom-VJP query/document
 chunks are 128/64 and loss-row chunk 64. AdamW uses learning rate
 \(2\times10^{-5}\), zero weight decay, clipping at one, and cosine decay
@@ -900,26 +981,46 @@ CLIP uses images at \(224\times224\), text length 77, symmetric contrastive
 loss with scale 20, GradCache chunk eight, and the same peak learning rate
 and optimizer regularization as dense adaptation. Warmup is 69 of 1,150
 updates. The COCO training inventory contains 117,760 images and five
-captions per image. Flickr30k evaluation has 5,000 text queries and 1,000
+captions per image, each presented during the run without repeating an image
+within a training batch. Flickr30k evaluation has 5,000 text queries and 1,000
 image documents; reverse retrieval uses 1,000 image queries and 5,000
 text documents. The seed-seven run resumes at update 575 and includes
 export/reload checks.
 
+** Late-Interaction Regression and Follow-Up
+:PROPERTIES:
+:CUSTOM_ID: sec:late-followup
+:END:
+The fourth workload family adapts GTE-ModernColBERT for late-interaction
+retrieval. It is retained here as a negative result and a direction for
+further investigation, rather than a positive learning demonstration.
+
+#+LATEX: \begin{minipage}{\linewidth}\label{discussion:learning}
 The revised late-interaction recipe uses 452,096 unique query-positive
 triples with one mined negative per query, global batch 512, query/document
 caps 32/256, native GradCache chunk eight, temperature 0.02, and AdamW peak
 learning rate \(3\times10^{-6}\). It runs 1,000 updates, with 60 warmup
 updates, zero weight decay, and clipping at one. It therefore cycles
 through more presentations than unique triples. MaxSim evaluation scores
-are accumulated in FP32. Initial nDCG@10 is 0.7104; final mean is
-\(0.6925\pm0.0010\). This small-panel regression persists across three seeds.
-It limits claims about this recipe, even though the system can execute
-and optimize its training objective.
+are accumulated in FP32. Training loss decreases, but mean NanoMSMARCO
+nDCG@10 falls from 0.7104 to 0.6925, with final sample SD 0.0010. This
+regression on the 50-query panel persists across three seeds. It separates
+objective optimization from held-out improvement (Figure [[fig:learning]]).
 
 #+NAME: fig:learning
 #+CAPTION: Initial and final nDCG@10 for native learning runs, including the negative late-interaction result. Open circles are initial scores; filled circles and whiskers are final means and sample SD over three seeds. Connecting lines mark endpoints, not interpolated learning curves. All panels share a zero-to-one scale.
-#+ATTR_LATEX: :width \linewidth :placement [tbp]
+#+ATTR_LATEX: :width \linewidth :placement [H]
 [[file:figures/held-out-learning.pdf]]
+#+LATEX: \end{minipage}
+
+The starting checkpoint was distilled, whereas this adaptation uses hard-label
+contrastive learning without teacher scores. That difference suggests a
+possible explanation for the regression, but this experiment does not isolate
+its cause. A useful follow-up would retain per-query rankings, evaluate an
+additional untouched retrieval panel, and compare objectives while controlling
+preprocessing and precision. Those evaluations have not been performed; the
+reported result remains a reproducible small-panel decline, not evidence of
+a general failure of late-interaction training.
 
 ** Multimodal Data and Adaptation
 Image, audio, video, and text sources use COCO, AudioCaps, MSR-VTT, and
@@ -952,6 +1053,9 @@ visual-patch and audio-layout buckets recorded in the configuration.
 Availability filtering means counts need not equal the original dataset
 release inventories (Table \ref{tab:omni-data}).
 
+The learning rates are \(2\times10^{-4}\), \(5\times10^{-5}\), and
+\(10^{-5}\) for connectors, connectors plus LoRA, and full fine-tuning,
+respectively. Matryoshka dimensions are 32, 64, 128, 256, 512, and 768.
 All three strategies use FP32 parameters, BF16 compute, full activation
 rematerialization, and custom-VJP GradCache chunk two. Earlier capacity
 probes with larger chunks are not the settings of these final runs.
@@ -982,7 +1086,9 @@ These are selected retrieval tasks, not a complete MTEB evaluation
 Speedup is \(S_{n,s}=R_{n,s}/R_{1,s}\) for device count \(n\) and seed \(s\);
 efficiency is \(E_{n,s}=S_{n,s}/n\). The reported speedup averages within-seed
 ratios, not the ratio of independently averaged rates. Compiled executable
-memory is approximately 32.5--33.6 GiB per device. Cold compilation takes
+memory is approximately 32.5--33.6 GiB per device. All 252 updates, including
+first-use updates, are finite and non-skipped. Parameter-gradient synchronization
+follows accumulation, and all runs use full rematerialization. Cold compilation takes
 roughly 126--148 seconds, versus about 14 seconds for cached executable loading.
 These startup costs are separate from warm throughput.
 
@@ -994,6 +1100,9 @@ normalization epsilon is \(10^{-5}\). The MLM head uses exact GELU.
 Tokenization uses BERT Base Uncased; the larger configured output vocabulary
 is part of this controlled capacity workload, not a claim of a standard
 released model.
+
+Global batch is 256 sequences of length 512. All runs use BF16 computation
+with FP32 parameters and optimizer state; seeds are 7, 42, and 773.
 
 WikiText-2 supplies 23,767 nonempty rows and 2,327,462 corpus tokens.
 Text is repeated as needed to supply 2,752,512 tokens for 21 updates.
@@ -1066,15 +1175,12 @@ image-text adaptation (13), text-anchored adaptation (14), and MLM scaling
 distinguishes a configuration that describes a historical run from a newer
 configuration intended to improve a future run.
 
-=paper/evidence.json= contains frozen metric records, run summaries, and
-source hashes. =paper/methods.json= captures 265 paired-run configurations
-and environment/data references, plus longer-run recipes. Its source
-manifest records 693 artifact hashes. =paper/report.py= generates nine tables,
-five vector figures, and per-run timing diagnostics without network access,
-model loading, or accelerator computation. =paper/collect_methods.py=
-is the one-time, hash-checked capture utility; it is not required to rebuild
-the paper. Training datasets and checkpoints are obtained through their
-pinned upstream sources and are not embedded in the LaTeX archive.
+The frozen evidence contains the metric records, run summaries, and source
+hashes behind every table and figure. A historical-methods inventory captures
+the 265 paired-run configurations with their environment and data references,
+plus the longer-run recipes; its source manifest records 693 artifact hashes.
+Training datasets and checkpoints are obtained through their pinned upstream
+sources rather than redistributed.
 
 #+begin_export latex
 \begin{table}[tbp]
@@ -1104,30 +1210,30 @@ availability filters, and evaluation manifests accompany the records.
 These preserve the chosen distributions, not a guarantee that upstream
 media remain downloadable indefinitely.
 
-From the repository root, the manuscript workflow is:
-#+begin_src sh
-experiments/.venv/bin/python paper/report.py
-make -C paper pdf
-make -C paper arxiv
-experiments/.venv/bin/python -m unittest discover \
-  -s paper -p 'test_*.py'
-#+end_src
-The approved abstract is checked by hash. Export tests verify local
-citations, figures, absence of author notes, and deterministic LaTeX.
-The review build removes the author block, but a full anonymous submission
-requires checking repository links and supplementary artifacts as well.
-The arXiv archive is a compilation package, not the complete experimental
-artifact bundle.
+To rerun training, =experiments/setup.sh= prepares the locked native and reference
+environments; numbered =run.py= launchers define each experiment. Historical
+environment records and source revisions remain authoritative for the reported
+runs. Repetition also requires suitable accelerators, upstream data and
+checkpoint access, and the recorded preparation steps.
 
 #+LATEX: \clearpage
-* Design Diagnostics
+* Design Analysis
+:PROPERTIES:
+:CUSTOM_ID: sec:design
+:END:
+Explicit execution choices help explain performance differences. Earlier
+ModernBERT diagnostics examine padding, replay, and compilation-cache
+reuse. These single-seed, 30-update studies use duplicate-heavy data and support
+systems analysis, not representation-quality claims.
+
+** Diagnostic Setup
 :PROPERTIES:
 :CUSTOM_ID: sec:design-details
 :END:
 These diagnostics come from the earlier ModernBERT dense-retrieval experiment,
 not the five-seed MPNet panel. Each uses seed 17, batch 128, BF16 compute,
 FP32 parameters, and 30 updates on one RTX 4090. They retain the same pinned
-ETTIN checkpoint and duplicate-heavy source used in that development study;
+ModernBERT checkpoint and duplicate-heavy source used in that development study;
 no representation-quality claim is drawn from it. The rate window is the
 run's recorded warm subset, with 13--15 updates depending on first-use events.
 Table \ref{tab:design-diagnostics} reports those counts explicitly. They are
@@ -1135,32 +1241,40 @@ short diagnostics, not statistically replicated estimates of an optimum.
 
 #+INCLUDE: "tables/design-diagnostics.org"
 
+** Execution Choices
+#+LATEX: \begin{minipage}{\linewidth}\label{discussion:design}
+*Padding.* The shape controls hold the source examples and learning objective
+fixed while changing padding. Coarse native buckets reach 361.08 examples/s
+against eager Sentence Transformers' 391.69. Dynamic reference padding executes
+fewer token positions; matching padded shapes reduces the reference to 346.35,
+reversing the comparison. Finer native buckets reach 393.16; the compiled
+reference remains faster at 667.90 and wins under both shape policies.
+
+*Replay and startup.* Custom-VJP gradient caching reaches 361.08 examples/s
+against rematerialized GradCache's 341.31. Cumulative changes to layout, replay
+chunking, RoPE reuse, and static layer execution reach 618.67, without isolating
+individual effects. Cache reuse reduces compilation plus first execution from
+287.51 to 21.60 seconds at similar warm throughput (620.02 examples/s).
+Repeated-step and startup costs therefore need separate measurement, with their
+execution settings recorded. Compilation plus first execution includes both
+activities, rather than measuring pure compilation in isolation.
+The cold and cache-warm runs have final losses of 4.1371 and 4.1576;
+this comparison concerns execution cost, not bitwise trajectory equivalence
+(Figure [[fig:design]]).
+
 #+NAME: fig:design
 #+CAPTION: Padding and startup are different execution costs. Left: recorded warm throughput for the coarse/fine native and fixed/dynamic reference padding controls. Each point is one 30-update diagnostic, not a seed average. Right: the final optimized native configuration and a fresh-process cache replay have similar warm rates but different compilation-plus-first-execution costs. Missing reference startup measurements are not plotted as zero.
-#+ATTR_LATEX: :width \linewidth :placement [tbp]
+#+ATTR_LATEX: :width \linewidth :placement [H]
 [[file:figures/design-diagnostics.pdf]]
-
-The shape controls hold the source examples and learning objective fixed while
-changing padding. Dynamic reference padding executes fewer token positions than
-the coarse native buckets; forcing equal padded shapes reverses the eager
-comparison. Inductor remains faster under both shape policies. The optimized
-native recipe additionally changes layout, replay chunking, RoPE reuse, and
-static layer execution. Its cumulative improvement cannot be assigned to one
-of those changes from this table. Compilation plus first execution includes
-both activities, rather than measuring pure compilation in isolation.
-The cold and cache-warm runs have final losses of 4.1371 and 4.1576;
-this comparison concerns execution cost, not bitwise trajectory equivalence.
-
-The compact =design-evidence.json= retains source-relative report locations,
-SHA-256 hashes, configuration fields, rates, warm-window counts, and startup
-measurements. =collect_design.py= captures the existing reports without running
-training. The primary frozen benchmark and learning evidence are unchanged.
+#+LATEX: \end{minipage}
 
 * Capability and Evidence Boundaries
 :PROPERTIES:
 :CUSTOM_ID: sec:capabilities
 :END:
-The following inventory distinguishes implementation from executed experiments.
+The experiments exercise complete training and evaluation, four-worker TPU
+execution, and single-node GPU scaling. The following inventory distinguishes
+these measurements from broader implementation support.
 It is not a ranking of framework breadth or a promise that arbitrary combinations
 have been validated. Precision, objective reduction, stochastic replay, and
 distributed negative pools require checks for each supported path.
