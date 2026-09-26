@@ -2844,7 +2844,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      review snapshot, preserving required third-party attribution. Keep the public
      release and original provenance unchanged. Audit the actual archive before
      uploading it; the manuscript build does not produce this supplement.
-*** NEXT Write the paper on the portable JAX representation-training system [7/8] [88%] :research:paper:
+*** DONE Write the paper on the portable JAX representation-training system [8/8] [100%] :research:paper:
 **** DONE Freeze the selected evidence and verify numeric extraction
      =paper/build.py freeze= reads historical metric/summary hashes and recomputes
      rates from raw optimizer intervals. It verifies all 12 A100 cells, finite
@@ -2914,12 +2914,12 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      =paper/evidence.json= preserves the originals in correction history.
      Public package publication is still part
      of release, not claimed complete by this local audit.
-**** TODO Typeset and review the final manuscript for submission
-     2026-09-25, evening: the anonymous PDF passes every mechanical check at
+**** DONE Typeset and review the final manuscript for submission
+     2026-09-25: closed by the author after the ICLR 2027 OpenReview upload.
+     Earlier that evening: the anonymous PDF passes every mechanical check at
      nine main-text pages (=make -C paper review=), all 59 paper tests pass,
      and the author reviewed Sections 4--6, the figures, and the tables.
-     Remaining: the author's OpenReview upload and form attestations. The
-     submitted tree is tagged =iclr2027-submission=.
+     The submitted tree is tagged =iclr2027-submission=.
      Latest prose revision addresses all 17 annotated comments and subsequent
      requests for less repetition and stronger historical motivation. Full
      response: =paper/review-notes.md=. Keep this item open: author review and
@@ -2956,7 +2956,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      remains open; a successful build is not a submission-ready paper.
      Verify current venue formatting, anonymity and submission requirements
      before upload. The draft and local figures do not themselves submit it.
-*** TODO Release the Representax systems paper as an arXiv preprint :research:paper:
+*** NEXT Release the Representax systems paper as an arXiv preprint :research:paper:
      After author review, verify the source bundle in arXiv's own compiler and
      confirm metadata, category, license and account/endorsement status. ICLR
      currently permits arXiv posting during review; keep its submission artifacts
