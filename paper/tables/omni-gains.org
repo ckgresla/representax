@@ -2,7 +2,7 @@
 \begin{table}[H]
 \centering\small
 \setlength{\tabcolsep}{4pt}
-\caption{Adaptation gains and text retention: change in nDCG@10 from each recipe's own initial checkpoint, mean over three seeds with the sample SD as a superscript. Source mixtures and learning rates differ across recipes. Connector-only training leaves the text pathway frozen. Absolute scores and full settings appear in Appendix \ref{sec:learning-details}.}\label{tab:omni-gains}
+\caption{Change in nDCG@10 from each recipe's own initial checkpoint: mean over three seeds, sample SD as a superscript. Source mixtures and learning rates differ across recipes; connector-only training leaves the text pathway frozen. Absolute scores are in Appendix \ref{sec:learning-details}.}\label{tab:omni-gains}
 \begin{tabular}{lrrrr}\toprule
 Recipe & Flickr30k & AudioCaps & MSR-VTT & NanoMSMARCO \\ \midrule
 Connectors & $+0.1398^{\pm 0.0021}$ & $+0.0313^{\pm 0.0011}$ & $+0.1041^{\pm 0.0091}$ & $+0.0000^{\pm 0.0000}$ \\

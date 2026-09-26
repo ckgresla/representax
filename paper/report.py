@@ -175,15 +175,14 @@ def framework_overview(e):
         rows.append(cells)
     table(
         "framework-throughput",
-        "Warm throughput: median examples/s across five seeds. Bold identifies "
-        "the higher reported median within a matched pair, not significance. "
-        "$R$ denotes Representax; ratios divide its median by the reference's. "
-        "GPU columns compare one RTX 4090 against PyTorch eager; the dense "
-        r"TorchInductor control is in Appendix \ref{sec:compiled-reference}. "
-        "TPU columns compare a 16-chip v5e slice against PyTorch/XLA. "
-        "Ratios compare frameworks within a hardware panel, not GPU and TPU "
-        "performance across different allocations and batches. Lettered protocol "
-        r"qualifications are defined in Appendix \ref{sec:paired-methods}.",
+        "Warm throughput: median examples/s across five seeds; bold marks the "
+        "higher median within a matched pair, not significance. $R$ denotes "
+        "Representax and ratios divide its median by the reference's. GPU columns "
+        "compare one RTX 4090 against PyTorch eager (the dense TorchInductor "
+        r"control is in Appendix \ref{sec:compiled-reference}); TPU columns compare "
+        "a 16-chip v5e slice against PyTorch/XLA. Ratios compare frameworks within "
+        "a hardware panel, not GPU against TPU. Lettered qualifications are "
+        r"defined in Appendix \ref{sec:paired-methods}.",
         "lrrrrrr",
         ["Workload", r"$R$ ex/s", "Ref. ex/s", r"$R/\mathrm{Ref.}$",
          r"$R$ ex/s", "Ref. ex/s", r"$R/\mathrm{Ref.}$"],
@@ -315,7 +314,7 @@ def learning_tables(e):
             mean, sd = summary(deltas)
             cells.append(rf"${mean:+.4f}^{{\pm {sd:.4f}}}$")
         rows.append([label, *cells])
-    table("omni-gains", "Adaptation gains and text retention: change in nDCG@10 from each recipe's own initial checkpoint, mean over three seeds with the sample SD as a superscript. Source mixtures and learning rates differ across recipes. Connector-only training leaves the text pathway frozen. Absolute scores and full settings appear in Appendix \\ref{sec:learning-details}.", "lrrrr", ["Recipe", *DATASET_NAMES], rows, placement="H")
+    table("omni-gains", "Change in nDCG@10 from each recipe's own initial checkpoint: mean over three seeds, sample SD as a superscript. Source mixtures and learning rates differ across recipes; connector-only training leaves the text pathway frozen. Absolute scores are in Appendix \\ref{sec:learning-details}.", "lrrrr", ["Recipe", *DATASET_NAMES], rows, placement="H")
     table("omni", "Text-anchored multimodal adaptation: nDCG@10, mean over three seeds with the sample SD as a superscript. Each strategy is compared with its own initial model. Learning rates and source mixtures differ across strategies.", "lrrrr", ["Strategy", *DATASET_NAMES], rows)
     rows = []
     for strategy, label in zip(STRATEGIES, STRATEGY_NAMES):

@@ -195,7 +195,7 @@ shared infrastructure connects these components into complete experiments
 (Figure [[fig:architecture]]).
 
 #+NAME: fig:architecture
-#+CAPTION: Representax at a glance. A typed job configuration is partitioned into scientific parameters, which define what is learned, and execution parameters, which set how the job runs. The scientific fields build the four core abstractions; execution parameters select sharding, gradient caching, and prefetching. Both enter the shared lifecycle of training, scheduled evaluation, checkpointing, and export.
+#+CAPTION: Representax at a glance. Scientific parameters define what is learned and build the four core abstractions; execution parameters set how the job runs. Both enter the shared lifecycle of training, evaluation, checkpointing, and export.
 #+ATTR_LATEX: :width \linewidth :placement [H]
 [[file:figures/architecture.pdf]]
 #+LATEX: \end{minipage}
@@ -237,30 +237,19 @@ shared infrastructure connects these components into complete experiments
 
 ** Source-Backed Data
 Representax constructs training inputs from declared data sources without
-requiring a second, framework-specific dataset. Source adapters provide access
-to records; example mappings define their interpretation for a learning task;
-model-associated processors prepare the relevant model inputs. Changing a data
-source mixture can therefore reuse the same processing and training code.
-Each stage has a defined role, keeping data selection and processing explicit
-while sharing efficient input execution.
-
-For efficiency, supported pipelines read records and decode media on demand,
-with bounded prefetch overlapping input preparation and accelerator computation.
-Built-in adapters cover local datasets and revision-pinned Hugging Face sources,
-while referenced media can be fetched as needed from local or HTTP(S) locations.
-Remote media references need not be fully staged on the host before training;
-custom readers and Grain iterators provide extension points for other remote
-or streaming sources. Examples can be interleaved across sources or drawn as
-source-local batches, according to the task's collation and model-processing
-requirements.
-
-Reproducibility depends on the data policy as well as the model. With fixed
-source contents and deterministic processing, supported data loaders restore
-saved sampling and iterator state directly, avoiding replay of previously
-consumed batches. Caller-defined Grain datasets and iterators also provide an
-extension point for alternative sampling and curation methods. Future research
-investigating learner-dependent data selection and curation can build upon
-this interface.
+requiring a second, framework-specific dataset: source adapters provide access
+to records, example mappings interpret them for a learning task, and
+model-associated processors prepare the model inputs, so changing a data source
+mixture reuses the same processing and training code. Supported pipelines read
+records and decode media on demand, with bounded prefetch overlapping input
+preparation and accelerator computation. Built-in adapters cover local datasets
+and revision-pinned Hugging Face sources, referenced media can be fetched from
+local or HTTP(S) locations without staging them on the host, and custom readers
+and Grain iterators provide extension points for other sources and sampling
+policies. With fixed source contents and deterministic processing, supported
+loaders restore saved sampling and iterator state directly, without replaying
+consumed batches. Future research investigating learner-dependent data
+selection and curation can build upon this interface.
 
 ** Configuring Experiments
 A job configuration assembles the model, learning task, data distributions,
@@ -339,42 +328,30 @@ and startup measurements.
 
 The workloads cover the following training settings.
 
-- *Dense retrieval.* MPNet training on MS MARCO with multiple-negatives ranking
-  loss, compared against Sentence Transformers [cite:@reimers2019sentencebert],
-  tests large-batch contrastive learning with gradient caching. An additional
-  GPU control uses TorchInductor compilation.
-- *Semantic similarity.* MPNet Base and BERT Base training on STS Benchmark
-  with cosine-similarity regression, compared against Sentence Transformers,
-  tests the same learning task across two encoder architectures.
-- *Pair classification.* The same encoders learn from duplicate-question pairs
-  using a cosine contrastive objective, again compared against Sentence
-  Transformers.
-- *Cross-encoder training.* MiniLM-L6 learns to score query--passage pairs
-  jointly, compared against the Sentence Transformers cross-encoder
-  implementation. This complements the independently encoded retrieval workloads.
-- *Late-interaction retrieval.* GTE-ModernColBERT training, compared against
-  PyLate [cite:@chaffin2025pylate], tests token-level representations and their
-  pairwise scoring, using matched negative pools and mean-loss gradients.
-- *Outcome reward modeling.* Qwen3-0.6B learns preferences from UltraFeedback
-  with a Bradley--Terry objective, compared against a Torch/TRL-based reference
-  [cite:@vonwerra2020trl]. This exercises decoder-based scoring and gradient
-  accumulation.
-- *Process reward modeling.* The same model family learns step-level
-  Math-Shepherd labels, compared against a Torch/TRL-based reference. Valid
-  inputs contain at most 256 tokens; this is not a long-reasoning workload.
-- *Image--text alignment.* CLIP ViT-B/32 training on COCO, compared against
-  Sentence Transformers, introduces image processing and joint visual--textual
-  encoding.
-- *Audio--text alignment.* LoRA adaptation of LCO Omni 3B on AudioCaps, compared
-  against a Sentence Transformers integration, extends contrastive training
-  to audio inputs.
-- *Video--text alignment.* The same adaptation approach on MSR-VTT tests video
-  processing and encoding, using a Sentence Transformers integration as the
-  reference.
-- *Predictive video learning.* A ViT-B/16 V-JEPA 2.1 configuration
-  [cite:@murlabadia2026vjepa], compared against the official implementation,
-  exercises prediction in representation space and a moving-average target
-  encoder. The GPU workload uses batch one and 24 videos.
+- *Dense retrieval.* MPNet on MS MARCO with multiple-negatives ranking loss and
+  gradient caching, against Sentence Transformers [cite:@reimers2019sentencebert];
+  an additional GPU control uses TorchInductor compilation.
+- *Semantic similarity.* MPNet Base and BERT Base on STS Benchmark with
+  cosine-similarity regression, against Sentence Transformers.
+- *Pair classification.* The same encoders on duplicate-question pairs with a
+  cosine contrastive objective, against Sentence Transformers.
+- *Cross-encoder training.* MiniLM-L6 scoring query--passage pairs jointly,
+  against the Sentence Transformers cross-encoder.
+- *Late-interaction retrieval.* GTE-ModernColBERT with matched negative pools
+  and mean-loss gradients, against PyLate [cite:@chaffin2025pylate].
+- *Outcome reward modeling.* Qwen3-0.6B on UltraFeedback with a Bradley--Terry
+  objective and gradient accumulation, against a Torch/TRL reference
+  [cite:@vonwerra2020trl].
+- *Process reward modeling.* The same model on step-level Math-Shepherd labels
+  of at most 256 tokens, against a Torch/TRL reference.
+- *Image--text alignment.* CLIP ViT-B/32 on COCO, against Sentence Transformers.
+- *Audio--text alignment.* LoRA adaptation of LCO Omni 3B on AudioCaps, against
+  a Sentence Transformers integration.
+- *Video--text alignment.* The same adaptation on MSR-VTT, against a Sentence
+  Transformers integration.
+- *Predictive video learning.* ViT-B/16 V-JEPA 2.1 [cite:@murlabadia2026vjepa]
+  with a moving-average target encoder, against the official implementation;
+  the GPU workload uses batch one and 24 videos.
 
 *Limitations.* Some TPU contrastive recipes use device-local negative pools to match the
 reference integration, even though Representax supports global pools. These
@@ -393,31 +370,27 @@ counterparts favor Representax.
 
 #+INCLUDE: "tables/framework-throughput.org"
 
-The compiled dense control illustrates the importance of reference execution
-settings: Representax outperforms eager Sentence Transformers but runs slightly
-below its compiled configuration. At 0.964x the compiled reference's throughput,
-Representax approaches TorchInductor's GPU-specialized execution
-[cite:@ansel2024pytorch2] using standard JAX/XLA execution, without GPU kernels
+The compiled dense control shows the weight of reference execution settings:
+at 0.964x the TorchInductor reference's throughput [cite:@ansel2024pytorch2],
+Representax outperforms eager Sentence Transformers and approaches
+GPU-specialized compiled execution using standard JAX/XLA, without GPU kernels
 written specifically for this recipe. Overall, these experiments demonstrate
 competitive throughput across diverse training recipes, with substantial gains
-in many of the tested configurations. Appendix [[#sec:paired-methods]] presents
-absolute rates and paired loss trajectories, including residual differences in
-several TPU recipes. Appendix [[#sec:design]] examines padding,
-gradient replay, and compilation-cache reuse as contributors to execution cost.
+in many configurations. Appendix [[#sec:paired-methods]] presents absolute rates
+and paired loss trajectories, including residual differences in several TPU
+recipes; Appendix [[#sec:design]] examines padding, gradient replay, and
+compilation-cache reuse as contributors to execution cost.
 
 * End-to-End Representation Learning
 :PROPERTIES:
 :CUSTOM_ID: sec:learning
 :END:
 We evaluate whether canonical representation-learning recipes produce useful
-held-out improvements when trained end to end in Representax. The studies
-examine learning a transferable text retriever, improving image--text alignment,
-and adapting a multimodal model while retaining its existing capabilities.
-
-The studies comprise fifteen runs across three workload families: dense
-retrieval, CLIP image--text adaptation, and multimodal adaptation with three
-choices of trainable parameters. Each recipe runs across three seeds. We
-compare the initial model with the final scheduled checkpoint, without
+held-out improvements when trained end to end in Representax: learning a
+transferable text retriever, improving image--text alignment, and adapting a
+multimodal model while retaining its existing capabilities. The studies
+comprise fifteen runs across three workload families, each recipe across three
+seeds, comparing the initial model with the final scheduled checkpoint without
 selecting checkpoints by their evaluation scores. These are finite-budget
 learning experiments, not tests of asymptotic convergence. A fourth family,
 late-interaction retrieval, did not improve under the recipe we applied;
@@ -445,10 +418,9 @@ MS MARCO adaptation.
 
 Mean nDCG@10 rises from 0.0730 to 0.5794 on NanoMSMARCO, from 0.0170 to
 0.5404 on TREC DL, and from 0.0032 to 0.2922 on Natural Questions
-(Table \ref{tab:learning}). Initial and final evaluations use identical
-corpora and scoring settings. The gains therefore extend beyond the small
+(Table \ref{tab:learning}). The gains therefore extend beyond the small
 NanoMSMARCO panel to full-corpus retrieval and a separate query distribution.
-They demonstrate useful adaptation, not state-of-the-art quality. Held-out
+They demonstrate useful adaptation, not state-of-the-art quality, and held-out
 evaluation does not exclude upstream pretraining contamination.
 
 ** Image--Text Alignment
@@ -463,12 +435,11 @@ and no image is repeated within a training batch.
 Evaluation uses a held-out Flickr30k panel with 1,000 images and 5,000 captions
 [cite:@young2014flickr], ranking the full panel in both directions. Mean
 nDCG@10 improves from 0.7373 to 0.8148 for text-to-image retrieval and from
-0.7168 to 0.7665 for image-to-text retrieval (Table \ref{tab:learning}). Thus
-training on COCO improves alignment as measured on Flickr30k, rather than
-only reducing the loss on the training pairs. This is adaptation of a
-pretrained CLIP model, not a reproduction of CLIP pretraining; the evaluation
-is confined to this Flickr30k panel. Appendix [[#sec:learning-details]] gives
-the full training and evaluation settings for both studies.
+0.7168 to 0.7665 for image-to-text retrieval (Table \ref{tab:learning}).
+Training on COCO thus improves alignment on Flickr30k rather than only reducing
+training loss; this is adaptation of a pretrained model, not a reproduction of
+CLIP pretraining. Appendix [[#sec:learning-details]] gives the full settings for
+both studies.
 
 #+INCLUDE: "tables/learning.org"
 
@@ -477,14 +448,11 @@ The multimodal study asks how adaptation can improve several modalities while
 preserving an existing text-retrieval capability. Using Jina v5 Omni Nano
 [cite:@honicke2026jina], we compose a symmetric contrastive task with
 Matryoshka objectives and compare three ways to update the model:
-
-- *Connector-only adaptation* trains the modality connectors and selected
-  delimiter embeddings while keeping the text pathway frozen.
-- *LoRA-based adaptation* trains those parameters together with rank-eight
-  LoRA adapters in the text, vision, and audio towers.
-- *Full fine-tuning* updates all model parameters.
-
-Each recipe runs for 2,000 updates at batch 32, with three seeds per recipe.
+connector-only adaptation trains the modality connectors and selected
+delimiter embeddings with the text pathway frozen; LoRA-based adaptation adds
+rank-eight LoRA adapters in the text, vision, and audio towers; full
+fine-tuning updates all parameters. Each recipe runs for 2,000 updates at
+batch 32, with three seeds per recipe.
 Training draws image--text, audio--text, and video--text pairs from COCO,
 AudioCaps, and MSR-VTT, respectively
 [cite:@lin2014coco;@kim2019audiocaps;@xu2016msrvtt]. The LoRA and full
@@ -507,13 +475,12 @@ making their relationship to text retention explicit.
 
 *Limitations.* These are comparisons of complete adaptation recipes, not a
 causal ablation of parameter selection: learning rates differ, and only the
-LoRA and full fine-tuning recipes include text--text training. The text
-retention result uses the same 50-query NanoMSMARCO panel as the dense study.
-Evaluation is text-anchored rather than any-to-any, and these selected tasks
-do not constitute a complete multimodal benchmark suite. Within that scope,
-the results motivate methods that improve media retrieval without sacrificing
-text capabilities. Appendix [[#sec:learning-details]] records absolute scores,
-source mixtures, and the remaining recipe settings.
+LoRA and full fine-tuning recipes include text--text training. Text retention
+uses the same 50-query NanoMSMARCO panel as the dense study, evaluation is
+text-anchored rather than any-to-any, and these tasks are not a complete
+multimodal benchmark suite. Within that scope, the results motivate methods
+that improve media retrieval without sacrificing text capabilities; Appendix
+[[#sec:learning-details]] records absolute scores and the remaining settings.
 
 * Scaling and Sharding
 :PROPERTIES:
@@ -529,14 +496,13 @@ execution parameters described in Section [[#sec:system]].
 We train a controlled 505-million-parameter ModernBERT masked-language model
 [cite:@warner2024modernbert;@devlin2019bert] on 1, 2, 4, and 8 A100 SXM4 40-GB
 GPUs on a single node with replicated data parallelism. Each update processes 256
-sequences of 512 tokens, 131,072 tokens in total. A local microbatch of 16
-sequences with 16, 8, 4, and 2 accumulation rounds preserves that global batch,
-and token and masking hashes match within each seed across device counts.
-Three seeds each run 21 updates; the first update is excluded from warm rates.
-The model is randomly initialized and the text is WikiText-2
-[cite:@merity2016wikitext], repeated to fill the 21 updates. This is a
-pretraining-like workload for measuring execution, not a pretraining run: we
-do not train to convergence or evaluate the resulting model.
+sequences of 512 tokens (131,072 tokens); a local microbatch of 16 with 16, 8,
+4, and 2 accumulation rounds preserves that global batch, and token and masking
+hashes match within each seed across device counts. Three seeds each run 21
+updates, excluding the first from warm rates. The model is randomly initialized
+and trained on WikiText-2 text [cite:@merity2016wikitext] repeated to fill the
+run: a pretraining-like workload for measuring execution, not a pretraining run,
+so we neither train to convergence nor evaluate the resulting model.
 
 #+LATEX: \begin{minipage}{\linewidth}\label{discussion:scaling}
 Throughput rises from 32,015 to 219,975 tokens/s (Figure [[fig:scaling]]). Mean
@@ -547,8 +513,8 @@ finite and non-skipped, and the compiled executable footprint stays between
 across device counts, with a maximum cross-device loss spread of 0.0523.
 
 #+NAME: fig:scaling
-#+CAPTION: Fixed-work strong scaling on one A100 node. Small points show three seeds; diamonds show means. Speedup uses each seed's one-GPU rate; efficiency divides speedup by GPU count. Dashed lines mark ideal scaling. Warm timings include input preparation and placement, excluding compilation and cache loading.
-#+ATTR_LATEX: :width .56\linewidth :placement [H]
+#+CAPTION: Fixed-work strong scaling on one A100 node. Faint lines are the three seeds; diamonds are means. Speedup is relative to each seed's one-GPU rate, and each annotation gives speedup and parallel efficiency. Warm timings exclude compilation and cache loading.
+#+ATTR_LATEX: :width .5\linewidth :placement [H]
 [[file:figures/strong-scaling.pdf]]
 #+LATEX: \end{minipage}
 

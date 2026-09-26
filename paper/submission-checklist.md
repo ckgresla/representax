@@ -30,11 +30,9 @@ The statements start on a new page after all main-text floats have been flushed;
 do not move substantive results into the excluded statements to fit the limit.
 Keep the boundary immediately after the conclusion.
 
-The latest revision uses eleven main-text pages, so the strict nine-page guard
-currently fails. Design Analysis is now in the appendix, and the standalone
-capabilities/limitations section is removed; the conclusion is Section 7.
-The author has requested a complete scientific treatment in Section 5 before
-length reduction; do not treat the expanded working draft as submission-ready.
+As of the evening of 2026-09-25 the main text is nine pages and the guard
+passes. Design Analysis is in the appendix, the standalone
+capabilities/limitations section is removed, and the conclusion is Section 7.
 Prefer shortening or moving supporting
 detail to the appendix over shrinking fonts, margins or line spacing. The guard
 does not certify all formatting or anonymity: visually review each final PDF,
@@ -55,10 +53,12 @@ named arXiv version links the repository.
   In particular, Figure 1 must accompany Section 3.1, Core Abstractions, rather
   than floating onto the preceding page. Later cross-references need not repeat
   the figure. Verify both named and anonymous PDFs after the content settles.
-- [ ] Restore the nine-page budget after content review of the expanded Sections 4--5. Adjust figure
-  dimensions, source placement, and float constraints together;
-  preserve readable labels and official margins/type sizes. Recheck the page
-  budget and visually inspect for whitespace and orphaned headings.
+- [x] Restore the nine-page budget (2026-09-25): condensed Section 3.2, the
+  Section 4 workload bullets, the Section 5 intro and scope caveats, the
+  Section 5.3 recipes and limitations, Section 4.1's compiled-control
+  paragraph, the Section 6 setup, and the Figure 1, Figure 2, Table 1 and
+  Table 3 captions; Figure 2 at half linewidth. No font, margin or spacing
+  changes. Pages 1, 7 and 9 were visually inspected after the final build.
 - [x] Author-approved first-page logo in the named preprint only: a compact selected
   vector mark beside the author block, with one explanatory footnote, not a
   numbered research figure or a repeated footer. Canonical asset:

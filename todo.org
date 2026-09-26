@@ -2915,6 +2915,11 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      Public package publication is still part
      of release, not claimed complete by this local audit.
 **** TODO Typeset and review the final manuscript for submission
+     2026-09-25, evening: the anonymous PDF passes every mechanical check at
+     nine main-text pages (=make -C paper review=), all 59 paper tests pass,
+     and the author reviewed Sections 4--6, the figures, and the tables.
+     Remaining: the author's OpenReview upload and form attestations. The
+     submitted tree is tagged =iclr2027-submission=.
      Latest prose revision addresses all 17 annotated comments and subsequent
      requests for less repetition and stronger historical motivation. Full
      response: =paper/review-notes.md=. Keep this item open: author review and

@@ -7,6 +7,22 @@ and limitations, with detailed recipes and reproduction records in appendices.
 The initial writing pass launched no training. The subsequent padding correction
 reran five GPU TRL references; no core library/training code was changed.
 
+## Length Pass to Nine Pages (2026-09-25, evening)
+
+Author-approved cuts, none touching the approved introduction, related work,
+Section 3.1, or conclusion: Section 3.2 condensed to one paragraph (its
+protected hash re-pinned), the eleven Section 4 workload bullets shortened,
+the Section 5 introduction merged into one paragraph, duplicated scope
+caveats in 5.1 and 5.2 trimmed, the 5.3 recipe list inlined and its
+limitations tightened, the 4.1 compiled-control paragraph and the Section 6
+setup shortened, and the Figure 1, Figure 2, Table 1 and Table 3 captions
+cut. Figure 2 is set at half linewidth. No numbers changed.
+
+Validation: `make -C paper review` passes (nine main-text pages, figure
+adjacency, official style, identity scan); 59 CPU paper tests pass; no
+overfull boxes or undefined references. The anonymous PDF is the submission
+candidate; the named preprint retains the logo and repository link.
+
 ## Figures and Tables Reworked (2026-09-25, evening)
 
 Author-directed pass over every figure and table, nothing else changed:

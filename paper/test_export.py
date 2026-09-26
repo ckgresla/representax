@@ -71,6 +71,7 @@ class ExportTests(unittest.TestCase):
     def test_approved_related_work_and_framework_prose_are_unchanged(self):
         text = (self.root / "paper.org").read_text()
         # Approved checkpoint 647aae5; figure placement is not part of the prose.
+        # Section 3.2 was condensed to one paragraph in the 2026-09-25 length pass.
         related = re.search(r"(?m)^\* Related Work\n.*?(?=^\* )", text, re.S)[0]
         self.assertEqual(hashlib.sha256(related.encode()).hexdigest(),
                          "10422d897fb2e92774f9f8e824974263789ef4a5ac162a2091a35ad693010617")
@@ -81,7 +82,7 @@ class ExportTests(unittest.TestCase):
         )
         normalized = re.sub(r"\s+", " ", framework)
         self.assertEqual(hashlib.sha256(normalized.encode()).hexdigest(),
-                         "c568fc36cc4489e5c27deb21d75867f112e6f017ad1ad193b60404c21f7118f8")
+                         "543efdc76b818af8bc5610f843432c780733039b7aede17d5385798a67fb3566")
 
     def test_citations_and_figures_resolve_locally(self):
         output = self.root / "build/preprint"
