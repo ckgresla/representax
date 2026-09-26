@@ -7,6 +7,33 @@ and limitations, with detailed recipes and reproduction records in appendices.
 The initial writing pass launched no training. The subsequent padding correction
 reran five GPU TRL references; no core library/training code was changed.
 
+## Figures and Tables Reworked (2026-09-25, evening)
+
+Author-directed pass over every figure and table, nothing else changed:
+
+- Figure 1 is a new overview (`figure1.py`, written to `figures/architecture`):
+  a configuration split into scientific and execution parameters, the four
+  core abstractions, and the shared lifecycle. New caption. Codex's
+  architecture figure, the `overview` prototype, the unused
+  `cross-accelerator` files, the per-seed throughput ratio plot, and the
+  multimodal change plot are deleted, along with their renderer code, the
+  submission-check entries, and the tests that described them.
+- Table 1 is one row per workload with GPU and TPU columns side by side.
+- Table 2 and Table 8 show the sample SD as a superscript; Table 2 has a gain
+  column.
+- Table 3 (new, `omni-gains`) replaces Figure 2: change in nDCG@10 per recipe
+  and panel, mean with superscript SD. Section 5.3 and Appendix B.3 point to it.
+- Figure 2 (`strong-scaling`) is one panel with efficiency annotated on the
+  points and an ideal/measured legend.
+- Appendix Figure 7 (`omni-trajectories`, new) shows nDCG@10 at every
+  scheduled evaluation of the multimodal study, with a paragraph in B.3.
+- `make figures` renders both scripts; PNG previews are 300 dpi.
+
+Validation: 59 CPU paper tests pass; both PDFs rebuild without overfull boxes
+or undefined references; figure/discussion pairing and identity scans pass.
+Main text is ten pages; the nine-page guard still fails by design until the
+length pass. No upload or submission was performed.
+
 ## Section 5 Comments Landed and Section 6 Rewritten (2026-09-25, evening)
 
 The author's six PDF comments on Section 5 are applied:

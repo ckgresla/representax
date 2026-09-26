@@ -12,8 +12,8 @@ STYLE_HASHES = {
     "iclr2027_conference.bst": "2d67552db7ed38ccfccb5957b52f95656e25c249724761d3cf5f7922ad1844c5",
 }
 FIGURES = (
-    "architecture", "multimodal", "scaling", "framework-throughput", "learning", "design",
-    "loss-gpu", "loss-tpu",
+    "architecture", "scaling", "learning", "design",
+    "loss-gpu", "loss-tpu", "omni-trajectories",
 )
 
 

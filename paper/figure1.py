@@ -12,7 +12,7 @@ change lives entirely in the scientific lane.
 Shapes are rectangles with slightly rounded corners. Text is measured against
 its container; the script refuses to export overlapping or overflowing labels.
 
-    python3 figure1.py        # writes figures/overview.{pdf,png}
+    python3 figure1.py        # writes figures/architecture.{pdf,png}
 """
 
 
@@ -139,71 +139,98 @@ ABSTRACTIONS = (  # JobConfig field -> core abstraction (Section 3.1)
 LIFECYCLE = ("train", "evaluate", "checkpoint", "export")
 
 
+SCIENTIFIC = ("model", "objective", "data mixture", "trainable parameters",
+              "optimizer, batch, seed")
+EXECUTION = ("mesh and sharding", "microbatches", "precision, prefetch")
+
+
 def overview():
     W = 72
-    y_exe, h_exe = .4, 2.8  # execution lane
+    y_exe, h_exe = .4, 5.0  # execution lane
     lane_gap = 2.2
-    tile_h, tile_gap = 2.6, .55
+    tile_h, tile_gap = 2.3, .5
     y_sci = y_exe + h_exe + lane_gap  # scientific lane
     h_sci = 4 * tile_h + 3 * tile_gap
-    head_h = 4.4
+    head_h = 3.9
     top = y_sci + h_sci + head_h
     H = top + .4
     c = Canvas(W, H)
 
-    cw, mw, lw, gap, pad = 14.0, 27.3, 21.5, 4.6, .9
+    cw, mw, lw, gap, pad = 16.2, 29.4, 16.4, 5.0, 1.0
     mx = cw + gap  # middle column
     lx = mx + mw + gap  # lifecycle column
-    title_y, rule_y = top - 1.35, top - 2.4
+    title_y, rule_y = top - 1.3, top - 2.35
     y_sci_mid, y_exe_mid = y_sci + h_sci / 2, y_exe + h_exe / 2
+    cut = y_sci - lane_gap / 2  # boundary between the two kinds of parameter
     centres = [y_sci + (3 - i) * (tile_h + tile_gap) + tile_h / 2 for i in range(4)]
 
-    # Job configuration: scientific rows map onto the abstractions by colour.
-    c.box(0, y_exe, cw, top - y_exe, edge=RULE)
-    c.text(pad, title_y, "Job configuration", size=9.4, weight=600)
+    def frame(x, y, w, h):
+        """White container with a hairline edge; colour is reserved for the abstractions."""
+        c.box(x, y, w, h, edge=RULE, lw=.6)
+
+    def title(x, s):
+        c.text(x, title_y, s, size=10.2, weight=600)
+
+    def bus(x_from, x_bus, x_to, ys, y_out, into):
+        """Fan lines between several rows and one point on a vertical bus."""
+        for y in ys:
+            c.line([x_from, x_bus] if into else [x_bus, x_from], [y, y])
+        c.line([x_bus, x_bus], [min(ys), max(ys)])
+        return (x_bus, y_out), (x_to, y_out)
+
+    # Configuration: a few of the parameters of each kind.
+    frame(0, y_exe, cw, top - y_exe)
+    title(pad, "Configuration")
     c.line([pad, cw - pad], [rule_y, rule_y], RULE)
-    c.text(pad, top - 3.45, "Scientific", size=8.6, weight=600)
-    for (field, _, colour), y in zip(ABSTRACTIONS, centres):
-        c.within(c.text(pad + .6, y, field, size=8.6), pad, cw - pad)
-        c.arrow((cw + .6, y), (mx - .6, y), COLORS[colour])
-    cut = y_sci - lane_gap / 2
+    c.text(pad, top - 3.4, "Scientific", size=9.0, weight=600)
+    step = (centres[0] - centres[-1]) / (len(SCIENTIFIC) - 1)
+    for i, s in enumerate(SCIENTIFIC):
+        artist = c.text(pad + .7, centres[0] - step * i, s, size=9.0)
+        c.inside(c.within(artist, pad, cw - pad), cut, rule_y)
     c.line([pad, cw - pad], [cut, cut], RULE)
-    c.text(pad, y_exe_mid, "Execution", size=8.6, weight=600, color=GREY)
-    c.arrow((cw + .6, y_exe_mid), (mx - .6, y_exe_mid))
+    c.text(pad, cut - 1.05, "Execution", size=9.0, weight=600, color=GREY)
+    for i, s in enumerate(EXECUTION):
+        artist = c.text(pad + .7, cut - 2.45 - 1.35 * i, s, size=8.6, color=GREY)
+        c.inside(c.within(artist, pad, cw - pad), y_exe + .3, cut)
 
-    # Core abstractions, joined into one path.
-    c.text(mx, title_y, "Core abstractions", size=9.4, weight=600)
-    bus = mx + mw + 1.8
+    # Scientific parameters build the four abstractions; execution parameters
+    # select how they run. Both paths end in the same lifecycle.
+    a, b = bus(mx - .3, mx - 2.0, cw + .7, centres, y_sci_mid, into=False)
+    c.arrow(b, a)
+    title(mx, "Core abstractions")
     for (_, name, colour), y in zip(ABSTRACTIONS, centres):
-        c.box(mx, y - tile_h / 2, mw, tile_h, face=tint(COLORS[colour], .26))
-        c.within(c.text(mx + pad, y, name, size=9.0, weight=600,
-                        color=shade(COLORS[colour], .38)), mx + pad, mx + mw - pad)
-        c.line([mx + mw + .3, bus], [y, y])
-    c.line([bus, bus], [centres[0], centres[-1]])
-    c.arrow((bus, y_sci_mid), (lx - .6, y_sci_mid))
+        c.box(mx, y - tile_h / 2, mw, tile_h, face=tint(COLORS[colour], .2))
+        c.within(c.text(mx + pad, y, name, size=9.8, color=shade(COLORS[colour], .42)),
+                 mx + pad, mx + mw - pad)
+    a, b = bus(mx + mw + .3, mx + mw + 2.0, lx - .7, centres, y_sci_mid, into=True)
+    c.arrow(a, b)
 
-    # Execution strategies: a device mesh, and how work is chunked over it.
-    c.box(mx, y_exe, mw, h_exe, edge=RULE)
+    frame(mx, y_exe, mw, h_exe)
     for r in range(2):
         for k in range(4):
-            c.box(mx + pad + .62 * k, y_exe_mid - .62 + .62 * r, .5, .5, face=tint(GREY, .55))
-    c.within(c.text(mx + pad + 3.4, y_exe_mid, "sharding · gradient caching · prefetch",
-                    size=7.9, color=GREY), mx + pad + 3.4, mx + mw - pad)
-    c.arrow((mx + mw + .6, y_exe_mid), (lx - .6, y_exe_mid))
+            c.box(mx + pad + .6 * k, y_exe_mid - .6 + .6 * r, .46, .46, face=tint(GREY, .5))
+    for dy, s in ((.8, "device meshes · DDP and FSDP sharding"),
+                  (-.8, "gradient caching · accumulation · prefetch")):
+        c.within(c.text(mx + pad + 3.3, y_exe_mid + dy, s, size=8.6, color=GREY),
+                 mx + pad + 3.3, mx + mw - pad)
+    c.arrow((cw + .7, y_exe_mid), (mx - .7, y_exe_mid))
+    c.arrow((mx + mw + .7, y_exe_mid), (lx - .7, y_exe_mid))
 
     # Shared lifecycle: train, evaluate, checkpoint, repeat; export at the end.
-    c.box(lx, y_exe, lw, top - y_exe, face="#eef0f2")
-    c.text(lx + pad, title_y, "Shared lifecycle", size=9.4, weight=600)
+    frame(lx, y_exe, lw, top - y_exe)
+    title(lx + pad, "Shared lifecycle")
     c.line([lx + pad, lx + lw - pad], [rule_y, rule_y], RULE)
-    xc, xr = lx + 8.0, lx + 15.6  # chain centre; return path
-    ys = [top - 4.55 - 4.2 * i for i in range(4)]
+    xc, xr = lx + 5.6, lx + 12.9  # chain centre; return path
+    pitch = 3.7
+    first = rule_y - (rule_y - y_exe - pitch * (len(LIFECYCLE) - 1)) / 2
+    ys = [first - pitch * i for i in range(len(LIFECYCLE))]
     for s, y in zip(LIFECYCLE, ys):
-        c.text(xc, y, s, size=9.0, ha="center")
+        c.text(xc, y, s, size=9.6, ha="center")
     for y0, y1 in zip(ys, ys[1:]):
         c.arrow((xc, y0 - .95), (xc, y1 + .95))
-    c.line([xc + 4.3, xr, xr], [ys[2], ys[2], ys[0]])
-    c.arrow((xr, ys[0]), (xc + 2.6, ys[0]))
-    c.save("overview")
+    c.line([xc + 4.2, xr, xr], [ys[2], ys[2], ys[0]])
+    c.arrow((xr, ys[0]), (xc + 2.5, ys[0]))
+    c.save("architecture")
 
 
 if __name__ == "__main__":

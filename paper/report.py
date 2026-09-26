@@ -67,6 +67,11 @@ def pm(mean, sd, digits=4):
     return rf"${mean:.{digits}f} \pm {sd:.{digits}f}$"
 
 
+def pm_super(mean, sd, digits=4):
+    """Mean with the sample SD as a superscript, keeping score columns narrow."""
+    return rf"${mean:.{digits}f}^{{\pm {sd:.{digits}f}}}$"
+
+
 def startup_diagnostics(run):
     """Keep setup, native first-use events, and reference intervals distinct."""
     metrics = run["metrics"]
@@ -119,7 +124,8 @@ def startup_cells(native, reference):
 
 
 def table(name, caption, columns, headers, rows, *, tabcolsep=4, arraystretch=None,
-          placement="tbp"):
+          placement="tbp", preheader=None):
+    """Write one Org-embedded LaTeX table; `preheader` adds group headings above the columns."""
     body = "\n".join(" & ".join(row) + r" \\" for row in rows)
     text = (
         f"#+begin_export latex\n\\begin{{table}}[{placement}]\n\\centering\\small\n"
@@ -128,6 +134,7 @@ def table(name, caption, columns, headers, rows, *, tabcolsep=4, arraystretch=No
            if arraystretch is not None else "")
         + rf"\caption{{{caption}}}\label{{tab:{name}}}" + "\n"
         + rf"\begin{{tabular}}{{{columns}}}\toprule" + "\n"
+        + (preheader + "\n" if preheader else "")
         + " & ".join(headers) + r" \\ \midrule" + "\n"
         + body + "\n\\bottomrule\\end{tabular}\n\\end{table}\n#+end_export\n"
     )
@@ -155,37 +162,38 @@ def framework_overview(e):
         assert sorted(r["seed"] for r in selected) == sorted(PANEL_SEEDS)
         return stats.median(r["examples_per_second"] for r in selected)
 
+    # One row per workload; the GPU and TPU panels sit side by side.
     rows = []
-    for platform, heading in (
-        ("gpu-rtx4090", "Single RTX 4090; reference: PyTorch eager"),
-        ("tpu-v5e-16", "16-chip v5e slice; reference: PyTorch/XLA"),
-    ):
-        separator = r"\midrule" if rows else ""
-        rows.append([separator + rf"\multicolumn{{4}}{{l}}{{\textit{{{heading}}}}}"])
-        runs = e["panels"][platform]["runs"]
-        for recipe in LABELS:
+    for recipe in LABELS:
+        cells = [NAMES[recipe]]
+        for platform in ("gpu-rtx4090", "tpu-v5e-16"):
+            runs = e["panels"][platform]["runs"]
             native = median_rate(runs, recipe, "representax")
             reference = median_rate(runs, recipe, "reference")
-            rows.append([NAMES[recipe], *throughput_cells(
-                native, reference, matched=comparison_matched(e, platform, recipe)
-            )])
+            cells += throughput_cells(native, reference,
+                                      matched=comparison_matched(e, platform, recipe))
+        rows.append(cells)
     table(
         "framework-throughput",
         "Warm throughput: median examples/s across five seeds. Bold identifies "
         "the higher reported median within a matched pair, not significance. "
         "$R$ denotes Representax; ratios divide its median by the reference's. "
-        "GPU references use eager execution; the dense TorchInductor control "
-        r"is in Appendix \ref{sec:compiled-reference}. "
+        "GPU columns compare one RTX 4090 against PyTorch eager; the dense "
+        r"TorchInductor control is in Appendix \ref{sec:compiled-reference}. "
+        "TPU columns compare a 16-chip v5e slice against PyTorch/XLA. "
         "Ratios compare frameworks within a hardware panel, not GPU and TPU "
         "performance across different allocations and batches. Lettered protocol "
-        r"qualifications and per-seed variation appear in Appendix \ref{sec:paired-methods}.",
-        "lrrr",
-        ["Workload", r"\shortstack{Representax\\ex/s}",
-         r"\shortstack{Reference\\ex/s}", r"$R/\mathrm{Ref.}$"],
+        r"qualifications are defined in Appendix \ref{sec:paired-methods}.",
+        "lrrrrrr",
+        ["Workload", r"$R$ ex/s", "Ref. ex/s", r"$R/\mathrm{Ref.}$",
+         r"$R$ ex/s", "Ref. ex/s", r"$R/\mathrm{Ref.}$"],
         rows,
-        tabcolsep=10,
-        arraystretch=1.12,
+        tabcolsep=5,
+        arraystretch=1.08,
         placement="H",
+        preheader=(r"& \multicolumn{3}{c}{Single RTX 4090} "
+                   r"& \multicolumn{3}{c}{16-chip v5e slice} \\" "\n"
+                   r"\cmidrule(lr){2-4}\cmidrule(lr){5-7}"),
     )
 
 
@@ -277,8 +285,7 @@ def learning_tables(e):
         "Late interaction / NanoMSMARCO": ("Late interaction", "NanoMSMARCO"),
     }
     def learning_cells(initial, final, sd):
-        # Sample SD as a superscript keeps the column narrow; gain is final minus initial.
-        return [f"{initial:.4f}", rf"${final:.4f}^{{\pm {sd:.4f}}}$", f"{final - initial:+.4f}"]
+        return [f"{initial:.4f}", pm_super(final, sd), f"{final - initial:+.4f}"]
 
     rows = []
     for key, row in e["learning"].items():
@@ -295,8 +302,21 @@ def learning_tables(e):
         for strategy, label in zip(STRATEGIES, STRATEGY_NAMES):
             quality = e["omni"]["groups"][strategy]["quality"]
             values = [quality[f"valid/{d}/cosine_ndcg@10"][stage] for d in DATASETS]
-            rows.append([label + (" (initial)" if stage == "initial" else " (final)"), *[pm(v["mean"], v["sample_standard_deviation"]) if stage == "final" else f'{v["mean"]:.4f}' for v in values]])
-    table("omni", "Text-anchored multimodal adaptation: nDCG@10, mean and sample SD over three seeds. Each strategy is compared with its own initial model. Learning rates and source mixtures differ across strategies.", "lrrrr", ["Strategy", *DATASET_NAMES], rows)
+            rows.append([label + (" (initial)" if stage == "initial" else " (final)"), *[pm_super(v["mean"], v["sample_standard_deviation"]) if stage == "final" else f'{v["mean"]:.4f}' for v in values]])
+    rows = []
+    for strategy, label in zip(STRATEGIES, STRATEGY_NAMES):
+        cells = []
+        for dataset in DATASETS:
+            key = f"valid/{dataset}/cosine_ndcg@10"
+            deltas = []
+            for seed in SEEDS:
+                hist = e["omni"]["runs"][f"{strategy}/seed-{seed}"]["evaluation_history"]
+                deltas.append(hist[-1]["metrics"][key] - hist[0]["metrics"][key])
+            mean, sd = summary(deltas)
+            cells.append(rf"${mean:+.4f}^{{\pm {sd:.4f}}}$")
+        rows.append([label, *cells])
+    table("omni-gains", "Adaptation gains and text retention: change in nDCG@10 from each recipe's own initial checkpoint, mean over three seeds with the sample SD as a superscript. Source mixtures and learning rates differ across recipes. Connector-only training leaves the text pathway frozen. Absolute scores and full settings appear in Appendix \\ref{sec:learning-details}.", "lrrrr", ["Recipe", *DATASET_NAMES], rows, placement="H")
+    table("omni", "Text-anchored multimodal adaptation: nDCG@10, mean over three seeds with the sample SD as a superscript. Each strategy is compared with its own initial model. Learning rates and source mixtures differ across strategies.", "lrrrr", ["Strategy", *DATASET_NAMES], rows)
     rows = []
     for strategy, label in zip(STRATEGIES, STRATEGY_NAMES):
         q = e["omni"]["groups"][strategy]["quality"]
@@ -409,109 +429,54 @@ def figures(e):
 
     def save(fig, name):
         for ext in ("pdf", "png"):
-            fig.savefig(HERE / "figures" / f"{name}.{ext}", bbox_inches="tight", facecolor="white", dpi=180, metadata={"CreationDate": None} if ext == "pdf" else None)
+            fig.savefig(HERE / "figures" / f"{name}.{ext}", bbox_inches="tight", facecolor="white", dpi=300, metadata={"CreationDate": None} if ext == "pdf" else None)
         plt.close(fig)
 
-    fig, ax = plt.subplots(figsize=(7.2, 2.95))
-    ax.set(xlim=(0, 10), ylim=(0, 4.45))
-    ax.axis("off")
-    ax.text(.05, 4.18, "Scientific choices")
-    for x, title, lines, color in (
-        (.05, "Data", "Sources + mixtures\nProcessing", COLORS["mint"]),
-        (2.62, "Model", "Encoders + adapters\nConnectors", COLORS["sky"]),
-        (5.19, "Task", "Learning objective\nLoss modifiers", COLORS["periwinkle"]),
-        (7.76, "Update", "Optimizer + schedule\nTarget transitions", COLORS["apricot"]),
-    ):
-        ax.plot([x, x + 2.10], [3.84, 3.84], color=color, lw=2.5)
-        ax.text(x, 3.55, title, va="top")
-        ax.text(x, 2.99, lines, fontsize=9.5, va="top", linespacing=1.5)
-    for start in (2.15, 4.72, 7.29):
-        ax.annotate("", xy=(start + .40, 3.38), xytext=(start, 3.38),
-                    arrowprops={"arrowstyle": "->", "color": COLORS["slate"], "lw": .9})
-    ax.plot([.05, 9.86], [1.98, 1.98], color="#d7dbe0", lw=.8)
-    ax.text(.05, 1.57, "Shared execution")
-    ax.text(3.05, 1.57, "Chunking / precision / sharding / checkpoint + resume", fontsize=9.5)
-    ax.plot([.05, 9.86], [1.10, 1.10], color="#d7dbe0", lw=.8)
-    ax.text(.05, .66, "Evaluation", color=COLORS["rose"])
-    ax.text(3.05, .66, "Model + processor → corpus accumulation → metrics", fontsize=9.5)
-    save(fig, "architecture")
-
-    recipes = list(LABELS)
-    fig, axes = plt.subplots(1, 2, figsize=(7.2, 5.0), sharey=True, layout="constrained")
-    for ax, platform, title, color in zip(axes, ("gpu-rtx4090", "tpu-v5e-16"), ("Single RTX 4090", "16-chip v5e slice"), (COLORS["sky"], COLORS["mint"])):
-        panel = e["panels"][platform]
-        lookup = {r["recipe"]: r["representax_to_reference_ratio"] for r in panel["aggregates"]}
-        for i, recipe in enumerate(recipes):
-            if not comparison_matched(e, platform, recipe):
-                ax.text(.52, i, "Pairing under correction", va="center",
-                        fontsize=7, color=COLORS["slate"])
-                continue
-            v = paired_rates(panel, recipe)
-            ax.scatter(v, i+np.linspace(-.13, .13, len(v)), s=12, color=color, alpha=.45, edgecolors="none")
-            ax.scatter(lookup[recipe], i, marker="D", s=28, color=color, zorder=3)
-        ax.axvline(1, ls="--", lw=.9, color=COLORS["slate"])
-        ax.set(xscale="log", xlim=(.45, 16), title=title)
-        ax.set_xticks([.5, 1, 2, 4, 8, 16], ["0.5", "1", "2", "4", "8", "16"])
-        ax.grid(axis="x")
-        ax.tick_params(axis="y", length=0)
-        ax.spines["left"].set_visible(False)
-    axes[0].set_yticks(range(len(recipes)), [NAMES[r] for r in recipes])
-    axes[0].invert_yaxis()
-    # The compiled dense control uses the same native runs, not a new native trial.
-    compiled = {r["seed"]: r["examples_per_second"] for r in e["panels"]["gpu-rtx4090-torchinductor"]["runs"]}
-    native = {r["seed"]: r["examples_per_second"] for r in e["panels"]["gpu-rtx4090"]["runs"] if r["recipe"] == "dense-retrieval" and r["framework"] == "representax"}
-    ratio = stats.median(native.values()) / stats.median(compiled.values())
-    axes[0].scatter(ratio, -.36, marker="s", s=22, color=COLORS["rose"], zorder=4)
-    axes[0].annotate("Inductor", xy=(ratio, -.36), xytext=(1.65, -.36), va="center", fontsize=7.5, color=COLORS["rose"])
-    fig.supxlabel("Representax / reference examples per second (log scale)", fontsize=10.5)
-    save(fig, "framework-throughput")
-
-    fig, axes = plt.subplots(1, 4, figsize=(7.2, 2.45), sharey=True, layout="constrained")
     directions = ("Text → image", "Text → audio", "Text → video", "Text → text")
+    # The scheduled evaluations behind those endpoints: when gains and retention change.
+    from matplotlib.lines import Line2D
+    fig, axes = plt.subplots(1, 4, figsize=(7.2, 2.5), layout="constrained")
     for ax, dataset, label, direction in zip(axes, DATASETS, DATASET_NAMES, directions):
+        key = f"valid/{dataset}/cosine_ndcg@10"
         for i, strategy in enumerate(STRATEGIES):
-            values = []
+            color = (COLORS["sky"], COLORS["mint"], COLORS["rose"])[i]
+            curves = []
             for seed in SEEDS:
                 hist = e["omni"]["runs"][f"{strategy}/seed-{seed}"]["evaluation_history"]
-                key = f"valid/{dataset}/cosine_ndcg@10"
-                values.append(hist[-1]["metrics"][key] - hist[0]["metrics"][key])
-            mean, sd = summary(values)
-            color = (COLORS["sky"], COLORS["mint"], COLORS["rose"])[i]
-            ax.scatter(values, i + np.linspace(-.14, .14, len(values)),
-                       s=18, alpha=.55, color=color, edgecolors="none")
-            ax.errorbar(mean, i, xerr=sd, fmt="D", color=color, capsize=3, ms=4.5)
-        ax.axvline(0, lw=.9, color=COLORS["slate"], ls="--")
-        ax.set(title=f"{direction}\n{label}", ylim=(2.48, -.48), xlim=(-.1, .22))
-        ax.set_xticks([-.1, 0, .1, .2], ["−0.1", "0", "+0.1", "+0.2"])
-        ax.tick_params(axis="y", length=0)
-        ax.spines["left"].set_visible(False)
-        ax.grid(axis="x")
-    axes[0].set_yticks(range(3), ["Connectors", "+ LoRA", "Full tuning"])
-    fig.supxlabel("Change in nDCG@10 from each recipe's initial checkpoint", fontsize=10.5)
-    save(fig, "multimodal-adaptation")
-
-    fig, axes = plt.subplots(1, 2, figsize=(7.2, 2.7), layout="constrained")
-    counts = (1, 2, 4, 8)
-    for seed in SEEDS:
-        rows = sorted([r for r in e["scaling"]["rows"] if r["seed"] == seed], key=lambda r: r["gpus"])
-        axes[0].plot(counts, [r["speedup"] for r in rows], color=COLORS["sky"], alpha=.35, marker="o", ms=3)
-        axes[1].scatter(counts, [r["efficiency"]*100 for r in rows], color=COLORS["mint"], alpha=.45, s=20)
-    means = [stats.mean(r["speedup"] for r in e["scaling"]["rows"] if r["gpus"] == n) for n in counts]
-    axes[0].plot(counts, counts, color=COLORS["slate"], ls="--", lw=1)
-    axes[0].plot(counts, means, color=COLORS["sky"], marker="D", ms=4)
-    axes[0].set(ylabel="Speedup over one GPU", ylim=(0, 8.5), yticks=[0, 2, 4, 6, 8])
-    axes[0].text(4.7, 7.1, "Ideal", color=COLORS["slate"])
-    axes[0].annotate(f"{means[-1]:.2f}×", (8, means[-1]), xytext=(-2, -18),
-                     textcoords="offset points", ha="right", color=COLORS["sky"])
-    axes[1].plot(counts, [100*s/n for n, s in zip(counts, means)], color=COLORS["mint"], marker="D", ms=4)
-    axes[1].axhline(100, color=COLORS["slate"], ls="--", lw=1)
-    axes[1].set(ylabel="Parallel efficiency (%)", ylim=(0, 105), yticks=[0, 25, 50, 75, 100])
-    axes[1].annotate(f"{100 * means[-1] / 8:.1f}%", (8, 100 * means[-1] / 8),
-                     xytext=(-2, -18), textcoords="offset points", ha="right",
-                     color=COLORS["mint"])
-    for ax in axes:
-        ax.set(xticks=counts, xlabel="A100 SXM4 GPUs", xlim=(.6, 8.4))
+                steps = [h["iteration"] for h in hist]
+                curves.append([h["metrics"][key] for h in hist])
+                ax.plot(steps, curves[-1], color=color, alpha=.3, lw=.9)
+            ax.plot(steps, np.mean(curves, axis=0), color=color, marker="D", ms=3.5, lw=1.4)
+        ax.set(title=f"{direction}\n{label}", xticks=[0, 1000, 2000], xlim=(-80, 2080))
         ax.grid(axis="y")
+    axes[0].set_ylabel("nDCG@10")
+    fig.legend([Line2D([], [], color=COLORS[c], marker="D", ms=3.5, lw=1.4)
+                for c in ("sky", "mint", "rose")],
+               ["Connectors", "+ LoRA", "Full tuning"],
+               loc="outside upper center", ncol=3, frameon=False)
+    fig.supxlabel("Optimizer update", fontsize=10.5)
+    save(fig, "omni-trajectories")
+
+    # One panel: efficiency is speedup over device count, so it is annotated, not plotted.
+    fig, ax = plt.subplots(figsize=(3.9, 2.55), layout="constrained")
+    counts = (1, 2, 4, 8)
+    for i, seed in enumerate(SEEDS):
+        rows = sorted([r for r in e["scaling"]["rows"] if r["seed"] == seed], key=lambda r: r["gpus"])
+        ax.plot(counts, [r["speedup"] for r in rows], color=COLORS["sky"], alpha=.3, marker="o",
+                ms=3, lw=.9)
+    means = [stats.mean(r["speedup"] for r in e["scaling"]["rows"] if r["gpus"] == n) for n in counts]
+    ax.plot(counts, counts, color=COLORS["slate"], ls="--", lw=1, label="ideal")
+    ax.plot(counts, means, color=COLORS["sky"], marker="D", ms=4.5, label="measured")
+    legend = ax.legend(loc="upper left", fontsize=8.5, handlelength=2.4, frameon=True,
+                       framealpha=1, facecolor="white", edgecolor="#d7dbe0", borderpad=.6)
+    legend.get_frame().set_linewidth(.6)
+    for n, s in zip(counts[1:], means[1:]):
+        ax.annotate(f"{s:.2f}× · {100 * s / n:.1f}%", (n, s), xytext=(5, -3),
+                    textcoords="offset points", ha="left", va="top", fontsize=8.5,
+                    color=COLORS["sky"])
+    ax.set(ylabel="Speedup over one GPU", ylim=(0, 8.6), yticks=[0, 2, 4, 6, 8],
+           xticks=counts, xlabel="A100 SXM4 GPUs", xlim=(.6, 10.6))
+    ax.grid(axis="y")
     save(fig, "strong-scaling")
 
     fig, ax = plt.subplots(figsize=(7.2, 2.9), layout="constrained")
@@ -581,7 +546,7 @@ def main():
     design_table(load_design())
     figures(e)
     loss_figures(e)
-    print("Generated ten tables, eight figures, and per-run timing diagnostics.")
+    print("Generated eleven tables, six figures, and per-run timing diagnostics.")
 
 
 if __name__ == "__main__":

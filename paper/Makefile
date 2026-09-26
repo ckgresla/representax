@@ -8,6 +8,7 @@ UV ?= uv
 
 figures:
 	$(UV) run --no-project --python 3.13 --with-requirements requirements-render.txt report.py
+	$(UV) run --no-project --python 3.13 --with-requirements requirements-render.txt figure1.py
 
 tex:
 	$(EMACS) --batch -Q --script export.el preprint

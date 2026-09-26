@@ -1,10 +1,10 @@
 #+begin_export latex
-\begin{table}[tbp]
+\begin{table}[H]
 \centering\small
 \setlength{\tabcolsep}{4pt}
-\caption{Text-anchored multimodal adaptation: nDCG@10, mean over three seeds with the sample SD as a superscript. Each strategy is compared with its own initial model. Learning rates and source mixtures differ across strategies.}\label{tab:omni}
+\caption{Adaptation gains and text retention: change in nDCG@10 from each recipe's own initial checkpoint, mean over three seeds with the sample SD as a superscript. Source mixtures and learning rates differ across recipes. Connector-only training leaves the text pathway frozen. Absolute scores and full settings appear in Appendix \ref{sec:learning-details}.}\label{tab:omni-gains}
 \begin{tabular}{lrrrr}\toprule
-Strategy & Flickr30k & AudioCaps & MSR-VTT & NanoMSMARCO \\ \midrule
+Recipe & Flickr30k & AudioCaps & MSR-VTT & NanoMSMARCO \\ \midrule
 Connectors & $+0.1398^{\pm 0.0021}$ & $+0.0313^{\pm 0.0011}$ & $+0.1041^{\pm 0.0091}$ & $+0.0000^{\pm 0.0000}$ \\
 Connectors + LoRA & $+0.1743^{\pm 0.0044}$ & $+0.0427^{\pm 0.0010}$ & $+0.1241^{\pm 0.0014}$ & $-0.0387^{\pm 0.0043}$ \\
 Full fine-tuning & $+0.1264^{\pm 0.0063}$ & $+0.0650^{\pm 0.0027}$ & $+0.1002^{\pm 0.0034}$ & $-0.0515^{\pm 0.0061}$ \\

@@ -195,7 +195,7 @@ shared infrastructure connects these components into complete experiments
 (Figure [[fig:architecture]]).
 
 #+NAME: fig:architecture
-#+CAPTION: From a research idea to an experiment. Models, tasks, data, and evaluators connect to a shared training lifecycle. Scientific choices define the learning problem; execution choices determine how supported workloads run. Representation-aware tasks expose an optional boundary for modifiers and gradient caching. Evaluation reuses the model and processor but aggregates over the evaluation corpus.
+#+CAPTION: Representax at a glance. A typed job configuration is partitioned into scientific parameters, which define what is learned, and execution parameters, which set how the job runs. The scientific fields build the four core abstractions; execution parameters select sharding, gradient caching, and prefetching. Both enter the shared lifecycle of training, scheduled evaluation, checkpointing, and export.
 #+ATTR_LATEX: :width \linewidth :placement [H]
 [[file:figures/architecture.pdf]]
 #+LATEX: \end{minipage}
@@ -401,8 +401,8 @@ Representax approaches TorchInductor's GPU-specialized execution
 written specifically for this recipe. Overall, these experiments demonstrate
 competitive throughput across diverse training recipes, with substantial gains
 in many of the tested configurations. Appendix [[#sec:paired-methods]] presents
-absolute rates, seed-level variation, and paired loss trajectories, including
-residual differences in several TPU recipes. Appendix [[#sec:design]] examines padding,
+absolute rates and paired loss trajectories, including residual differences in
+several TPU recipes. Appendix [[#sec:design]] examines padding,
 gradient replay, and compilation-cache reuse as contributors to execution cost.
 
 * End-to-End Representation Learning
@@ -494,21 +494,16 @@ retention on NanoMSMARCO. Reporting these separately reveals whether media
 gains accompany a loss of text capability, rather than obscuring the tradeoff
 in a single aggregate score.
 
-#+LATEX: \begin{minipage}{\linewidth}\label{discussion:multimodal}
 All three recipes improve retrieval in every media panel and every seed
-(Figure [[fig:multimodal]]). Connectors plus LoRA achieve the highest mean image
-and video scores, 0.7466 and 0.4984 nDCG@10; full fine-tuning achieves the
-highest audio score, 0.5028. Connector-only adaptation preserves the frozen
+(Table \ref{tab:omni-gains}). Connectors plus LoRA achieve the highest mean
+image and video scores, 0.7466 and 0.4984 nDCG@10; full fine-tuning achieves
+the highest audio score, 0.5028. Connector-only adaptation preserves the frozen
 text pathway's score of 0.6509. Text retrieval instead falls to 0.6121 with
 LoRA and 0.5994 with full fine-tuning, despite including text--text pairs in
 training. The study therefore demonstrates joint media improvements while
 making their relationship to text retention explicit.
 
-#+NAME: fig:multimodal
-#+CAPTION: Adaptation gains and text retention. Points show each seed's change in nDCG@10 from its own initial checkpoint; diamonds and whiskers show means and sample SD. Source mixtures and learning rates differ across recipes. Connector-only training leaves the text pathway frozen. Absolute scores and full settings appear in Appendix \ref{sec:learning-details}.
-#+ATTR_LATEX: :width \linewidth :placement [H]
-[[file:figures/multimodal-adaptation.pdf]]
-#+LATEX: \end{minipage}
+#+INCLUDE: "tables/omni-gains.org"
 
 *Limitations.* These are comparisons of complete adaptation recipes, not a
 causal ablation of parameter selection: learning rates differ, and only the
@@ -553,7 +548,7 @@ across device counts, with a maximum cross-device loss spread of 0.0523.
 
 #+NAME: fig:scaling
 #+CAPTION: Fixed-work strong scaling on one A100 node. Small points show three seeds; diamonds show means. Speedup uses each seed's one-GPU rate; efficiency divides speedup by GPU count. Dashed lines mark ideal scaling. Warm timings include input preparation and placement, excluding compilation and cache loading.
-#+ATTR_LATEX: :width \linewidth :placement [H]
+#+ATTR_LATEX: :width .56\linewidth :placement [H]
 [[file:figures/strong-scaling.pdf]]
 #+LATEX: \end{minipage}
 
@@ -898,17 +893,6 @@ are preserved with the frozen evidence.
 #+INCLUDE: "tables/gpu-startup.org"
 #+INCLUDE: "tables/tpu-startup.org"
 
-#+LATEX: \begin{minipage}{\linewidth}\label{discussion:framework-throughput}
-Figure [[fig:framework-throughput]] complements the main throughput table with
-paired-seed variation. These are descriptive timing repetitions, not
-independent evidence of converged learning quality.
-
-#+NAME: fig:framework-throughput
-#+CAPTION: Per-seed framework throughput ratios, complementing Table \ref{tab:framework-throughput}. Diamonds are ratios of median per-seed rates; dots are paired-seed ratios, not confidence intervals. The red square is the dense GPU reference compiled with TorchInductor. Only validated paired protocols are shown. Other qualifications are unchanged from the main table; different GPU/TPU allocations and batches preclude an equal-work hardware comparison.
-#+ATTR_LATEX: :width \linewidth :placement [H]
-[[file:figures/framework-throughput.pdf]]
-#+LATEX: \end{minipage}
-
 ** Compiled GPU Reference
 :PROPERTIES:
 :CUSTOM_ID: sec:compiled-reference
@@ -919,8 +903,8 @@ compiled Sentence Transformers runs for MPNet dense retrieval at global
 batch 2,048 on one RTX 4090. Median throughput is 316.61 examples/s, against
 Representax's 305.35 and eager Sentence Transformers' 211.22. Thus the native
 rate is 0.964x the compiled reference, despite its 1.446x eager-relative rate.
-Table \ref{tab:gpu-rates} retains this control as the Dense / Inductor row;
-the per-seed ratio plot also marks it separately. No matched Inductor
+Table \ref{tab:gpu-rates} retains this control as the Dense / Inductor row.
+No matched Inductor
 measurements are available for the other recipes. The main table's bold
 values therefore identify winners against its stated references, not against
 every possible compiled configuration.
@@ -1026,8 +1010,9 @@ a general failure of late-interaction training.
 Image, audio, video, and text sources use COCO, AudioCaps, MSR-VTT, and
 MS MARCO, respectively [cite:@lin2014coco;@kim2019audiocaps;@xu2016msrvtt;@bajaj2016msmarco].
 Flickr30k supplies held-out image retrieval. Table \ref{tab:omni} reports
-each strategy's absolute scores before and after adaptation; the main figure
-uses changes relative to each run's own initial checkpoint.
+each strategy's absolute scores before and after adaptation; Table
+\ref{tab:omni-gains} in the main text reports changes relative to each run's
+own initial checkpoint.
 
 #+INCLUDE: "tables/omni.org"
 
@@ -1075,6 +1060,22 @@ These are selected retrieval tasks, not a complete MTEB evaluation
 [cite:@muennighoff2022mteb].
 
 #+INCLUDE: "tables/omni-recall.org"
+
+#+LATEX: \begin{minipage}{\linewidth}\label{discussion:omni-trajectories}
+Figure [[fig:omni-trajectories]] shows the scheduled evaluations at updates 0,
+500, 1,000, 1,500, and 2,000. Media retrieval improves at every checkpoint for
+the connector and LoRA recipes and is still rising, though more slowly, at the
+final one; full fine-tuning first dips on AudioCaps before reaching the highest
+audio score. The text-retention decline under LoRA and full fine-tuning is
+already present at update 500, is deepest at update 1,000, and recovers only
+partially afterwards. Connector-only training leaves the text pathway frozen,
+so its NanoMSMARCO score does not change.
+
+#+NAME: fig:omni-trajectories
+#+CAPTION: Held-out nDCG@10 at each scheduled evaluation of the multimodal study. Thin lines are seeds; markers and thick lines are means over three seeds. The text pathway is frozen under connector-only training, so its NanoMSMARCO curve is flat.
+#+ATTR_LATEX: :width \linewidth :placement [H]
+[[file:figures/omni-trajectories.pdf]]
+#+LATEX: \end{minipage}
 
 #+LATEX: \clearpage
 * Scaling Workload Details

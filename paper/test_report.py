@@ -30,7 +30,7 @@ class ReportTests(unittest.TestCase):
                 report.scaling_table(self.e)
                 report.design_table(self.design)
             generated = sorted((root / "tables").glob("*.org"))
-            self.assertEqual(len(generated), 10)
+            self.assertEqual(len(generated), 11)
             for file in generated:
                 self.assertEqual(file.read_bytes(), (HERE / "tables" / file.name).read_bytes())
             self.assertEqual((root / "analysis.json").read_bytes(), (HERE / "analysis.json").read_bytes())
@@ -54,27 +54,27 @@ class ReportTests(unittest.TestCase):
     def test_main_throughput_table_keeps_inductor_in_the_appendix(self):
         text = (HERE / "tables/framework-throughput.org").read_text()
         rows = [line.split(" & ") for line in text.splitlines()
-                if " & " in line and not line.startswith("Workload")]
-        self.assertEqual(len(rows), 26)
-        self.assertTrue(all(len(row) == 4 for row in rows))
+                if " & " in line and not line.startswith(("Workload", "&"))]
+        self.assertEqual(len(rows), 13)
+        self.assertTrue(all(len(row) == 7 for row in rows))
         self.assertNotIn("Ref.+Inductor", text)
         self.assertNotIn("316.61", text)
-        self.assertIn(r"\renewcommand{\arraystretch}{1.12}", text)
+        self.assertIn(r"\renewcommand{\arraystretch}{1.08}", text)
         self.assertIn("median examples/s across five seeds", text)
         self.assertIn("Ratios compare frameworks within a hardware panel", text)
         self.assertEqual(rows[0][:3],
                          ["Dense retrieval", r"\textbf{305.35}", "211.22"])
-        for platform_index, platform in enumerate(("gpu-rtx4090", "tpu-v5e-16")):
-            for recipe_index, recipe in enumerate(report.LABELS):
-                row = rows[platform_index * len(report.LABELS) + recipe_index]
+        # One row per workload: GPU cells, then TPU cells; the last cell ends the row.
+        for recipe_index, recipe in enumerate(report.LABELS):
+            row = [cell.replace(r" \\", "") for cell in rows[recipe_index]]
+            for platform_index, platform in enumerate(("gpu-rtx4090", "tpu-v5e-16")):
                 runs = self.e["panels"][platform]["runs"]
                 rates = [stats.median(r["examples_per_second"] for r in runs
                                       if r["recipe"] == recipe and r["framework"] == framework)
                          for framework in ("representax", "reference")]
                 expected = report.throughput_cells(
                     *rates, matched=report.comparison_matched(self.e, platform, recipe))
-                self.assertEqual(row[1:3], expected[:2])
-                self.assertEqual(row[3], expected[2] + r" \\")
+                self.assertEqual(row[1 + 3 * platform_index:4 + 3 * platform_index], expected)
         appendix = (HERE / "tables/gpu-rates.org").read_text()
         compiled = next(line for line in appendix.splitlines()
                         if line.startswith("Dense / Inductor"))
@@ -172,23 +172,6 @@ class ReportTests(unittest.TestCase):
             self.assertEqual(cold[key], cached[key], key)
         self.assertIn("a dash means unrecorded, not zero",
                       (HERE / "tables/design-diagnostics.org").read_text())
-
-    def test_multimodal_plot_range_includes_seeds_and_standard_deviations(self):
-        for strategy in report.STRATEGIES:
-            for dataset in report.DATASETS:
-                key = f"valid/{dataset}/cosine_ndcg@10"
-                values = []
-                for seed in report.SEEDS:
-                    h = self.e["omni"]["runs"][f"{strategy}/seed-{seed}"]["evaluation_history"]
-                    values.append(h[-1]["metrics"][key] - h[0]["metrics"][key])
-                mean, sd = report.summary(values)
-                self.assertTrue(all(-.1 < v < .22 for v in [*values, mean - sd, mean + sd]))
-
-    def test_framework_plot_does_not_clip_seed_observations(self):
-        for platform in ("gpu-rtx4090", "tpu-v5e-16"):
-            for recipe in report.LABELS:
-                values = report.paired_rates(self.e["panels"][platform], recipe)
-                self.assertTrue(all(.45 < x < 16 for x in values), (platform, recipe, values))
 
     def test_missing_startup_is_not_reported_as_zero(self):
         audit = json.loads((HERE / "analysis.json").read_text())

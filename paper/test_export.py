@@ -87,7 +87,7 @@ class ExportTests(unittest.TestCase):
         output = self.root / "build/preprint"
         tex = (output / "paper.tex").read_text()
         figures = re.findall(r"\\includegraphics(?:\[[^]]*\])?\{([^}]+)\}", tex)
-        self.assertEqual(len(figures), 8)
+        self.assertEqual(len(figures), 7)
         self.assertEqual(len(set(figures)), len(figures))
         for figure in figures:
             self.assertTrue((output / figure).is_file(), figure)
@@ -122,14 +122,12 @@ class ExportTests(unittest.TestCase):
         )
         self.assertFalse(stale.exists())
 
-    def test_main_comparison_is_a_table_and_seed_plot_is_in_appendix(self):
+    def test_main_comparison_is_a_table_and_controls_are_in_appendix(self):
         tex = (self.root / "build/preprint/paper.tex").read_text()
         table = tex.index(r"\label{tab:framework-throughput}")
         appendix = tex.index(r"\appendix")
-        figure = tex.index(r"\includegraphics[width=\linewidth]{figures/framework-throughput.pdf}")
         compiled = tex.index(r"\label{sec:compiled-reference}")
         self.assertLess(table, appendix)
-        self.assertGreater(figure, appendix)
         self.assertGreater(compiled, appendix)
         self.assertGreater(tex.index(r"\label{sec:design}"), appendix)
         self.assertGreater(tex.index(r"\label{tab:design-diagnostics}"), appendix)
