@@ -2836,12 +2836,15 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      trusted publishing, then approve the matching release tag explicitly.
      Verify published hashes, metadata and installation after release.
      =docs/releasing.md= owns the procedure; no tag or upload has been made.
-**** TODO Prepare a separate anonymous review code and evidence artifact
+**** CANCELED Prepare a separate anonymous review code and evidence artifact
+     2026-09-25: the author decided not to submit a code supplement with the
+     ICLR submission. The anonymous statement describes the repository without
+     linking it; the named arXiv version carries the link.
      Omit Git history, identities, identifying links and private paths from the
      review snapshot, preserving required third-party attribution. Keep the public
      release and original provenance unchanged. Audit the actual archive before
      uploading it; the manuscript build does not produce this supplement.
-*** NEXT Write the paper on the portable JAX representation-training system [6/8] [75%] :research:paper:
+*** NEXT Write the paper on the portable JAX representation-training system [7/8] [88%] :research:paper:
 **** DONE Freeze the selected evidence and verify numeric extraction
      =paper/build.py freeze= reads historical metric/summary hashes and recomputes
      rates from raw optimizer intervals. It verifies all 12 A100 cells, finite
@@ -2865,7 +2868,11 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      =paper/capabilities.md= separates implementation from executed combinations
      and records historical reference pins. Final provenance reconciliation is
      still part of the manuscript audit, not a claim that every combination ran.
-**** TODO Review the abstract and empirical claims together
+**** DONE Review the abstract and empirical claims together
+     2026-09-25: closed. The author reviewed Sections 4--6 against the frozen
+     evidence and approved them; the win counts, learning gains, and scaling
+     numbers in the text were rechecked against the tables. The abstract is
+     unchanged.
      2026-09-11: =paper/abstract-variants.md= offers builder-led, empirical and
      research-ambition alternatives. Prefer a confident, concrete toolkit-first
      voice. The author selected a blend of A and C, then approved the general

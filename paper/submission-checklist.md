@@ -45,7 +45,8 @@ Before upload, confirm title, approved abstract, author profile, keywords, prima
 area, reviewer exemption if applicable, AI-use categories, license, ethics and
 visibility acknowledgements. The author makes those attestations. The PDF and
 supplementary limits shown in the supplied form are 50 MB and 100 MB respectively.
-No anonymous code supplement has yet been assembled by this checklist.
+Decision (2026-09-25): no code supplement accompanies the ICLR submission; the
+named arXiv version links the repository.
 
 ### Final Layout Review
 
