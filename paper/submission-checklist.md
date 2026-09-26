@@ -8,6 +8,9 @@ checklist, not evidence that either submission has been made.
 - Abstract: September 18, 2026, 23:59 AoE (September 19, 04:59 PDT).
 - Full paper: September 25, 2026, 23:59 AoE (September 26, 04:59 PDT).
   Verify the OpenReview receipt before each deadline.
+  Submitted 2026-09-25 17:58 PDT: submission 26733, forum
+  `https://openreview.net/forum?id=BMX2iJpaaP`; OpenReview confirmed the
+  revision by email. Source tag `iclr2027-submission`.
   [Official dates](https://iclr.cc/Conferences/2027/Dates).
 - Initial main text: at most **9 pages**, using the official style. References,
   post-reference appendices, and reproducibility/ethics/AI statements are excluded.
