@@ -2965,7 +2965,7 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      Restored the original introduction and Section 4 at the author's request;
      obtain approval before making further manuscript prose changes.
      Author-requested named-title layout centers the full README wordmark at
-     text width, using its existing vector PDF rather than the standalone TAX
+     75% text width with a 20 pt gap above, using its existing vector PDF rather than the standalone TAX
      mark, with the author block below; the footnote text is unchanged. This adds one
      preprint page without altering the anonymous submitted PDF.
      All 58 paper tests pass; the source archive compiles independently and

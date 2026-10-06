@@ -29,9 +29,9 @@
 \patchcmd{\@maketitle}
   {\LARGE\sc \@title\par}
   {\LARGE\sc \@title\par
-   \vskip 8pt
+   \vskip 20pt
    \hbox to \textwidth{\hfil
-     \includegraphics[width=\textwidth]{figures/representax-wordmark.pdf}%
+     \includegraphics[width=0.75\textwidth]{figures/representax-wordmark.pdf}%
      \rlap{\thanks{The Representax logo depicts a sampled geometric form, drawing
        inspiration from JAX and JaxPruner.}}\hfil}}
   {}{\PackageError{representax}{Could not place the title mark}{Check the vendored style.}}

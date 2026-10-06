@@ -63,7 +63,8 @@ named arXiv version links the repository.
   Table 3 captions; Figure 2 at half linewidth. No font, margin or spacing
   changes. Pages 1, 7 and 9 were visually inspected after the final build.
 - [x] Author-approved first-page logo in the named preprint only: the selected
-  full vector wordmark centered at text width above the centered author block (2026-10-06),
+  full vector wordmark centered at 75% text width, with a 20 pt gap above it,
+  above the centered author block (2026-10-06),
   with one unchanged explanatory footnote, not a
   numbered research figure or a repeated footer. Canonical asset:
   `../docs/assets/representax/representax.pdf`, the PDF counterpart of the README's
@@ -105,7 +106,8 @@ initial/final absolute scores rather than duplicating Table 3's signed gains,
 with the approved caption and Appendix B.3 explanation of absolute changes.
 The author declined the proposed introduction and Section 4 edits; both retain
 their submitted wording. The named title layout now centers the unchanged full
-wordmark at text width above the author block, with the approved footnote unchanged. This
+wordmark at 75% text width with a 20 pt gap above it, above the author block,
+with the approved footnote unchanged. This
 layout adds a page; no manuscript prose was changed to accommodate it.
 Frozen evidence and main-table numbers are
 unchanged. This correction remains to be included in the next permitted ICLR
@@ -121,8 +123,8 @@ boxes or unresolved references remain; bibliography underfull-box notices remain
 SHA-256 checksums for the dated candidate (build timestamps can change new builds):
 
 ```text
-f4bcad66f6f2f6b41a1d18963fe108453555d94ae3fa75edb74a42e0a2d2d325  paper.pdf
-b29807db0ec574c0638454bd5085e6199e547a27fc5a95aa470d6e17a6a3c2ee  representax-arxiv.tar.gz
+81021db997e737e9237e9581c2e4eb548c659eb59b3339cf0fe9ac78d07e8b5f  paper.pdf
+e1c757256a0f862b184f83ebe7f9a0cc21393a53b0a2989fd74421b3315832bf  representax-arxiv.tar.gz
 f86b18347c46b55b247caf5b4a4707941e7a2eeda9243019994f8beea13d366c  iclr2027-submission.pdf
 ```
 
