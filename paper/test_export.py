@@ -99,15 +99,16 @@ class ExportTests(unittest.TestCase):
         self.assertIn(r"\bibliography{references}", tex)
 
     def test_selected_logo_is_packaged_only_in_preprint(self):
-        expected = (self.root / "assets/representax-mark.pdf").read_bytes()
+        expected = (self.root / "assets/representax-wordmark.pdf").read_bytes()
         output = self.root / "build/preprint"
-        self.assertEqual((output / "figures/representax-mark.pdf").read_bytes(), expected)
-        self.assertIn("figures/representax-mark.pdf", (output / "preamble.tex").read_text())
-        self.assertFalse((self.root / "build/review/figures/representax-mark.pdf").exists())
+        self.assertEqual((output / "figures/representax-wordmark.pdf").read_bytes(), expected)
+        self.assertIn("figures/representax-wordmark.pdf", (output / "preamble.tex").read_text())
+        self.assertFalse((self.root / "build/review/figures/representax-wordmark.pdf").exists())
+        self.assertFalse((output / "figures/representax-mark.pdf").exists())
 
     def test_review_export_removes_stale_logo(self):
-        logo = self.root / "build/review/figures/representax-mark.pdf"
-        shutil.copyfile(self.root / "assets/representax-mark.pdf", logo)
+        logo = self.root / "build/review/figures/representax-wordmark.pdf"
+        shutil.copyfile(self.root / "assets/representax-wordmark.pdf", logo)
         self.export("review")
         self.assertFalse(logo.exists())
 

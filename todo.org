@@ -2964,8 +2964,9 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      explanation of absolute changes, without "own" before "initial score."
      Restored the original introduction and Section 4 at the author's request;
      obtain approval before making further manuscript prose changes.
-     Author-requested named-title layout centers the unchanged logo at 70 mm
-     with the author block below; the footnote text is unchanged. This adds one
+     Author-requested named-title layout centers the full README wordmark at
+     text width, using its existing vector PDF rather than the standalone TAX
+     mark, with the author block below; the footnote text is unchanged. This adds one
      preprint page without altering the anonymous submitted PDF.
      All 58 paper tests pass; the source archive compiles independently and
      reproduces the preprint text. Figure adjacency and corrected-table layout

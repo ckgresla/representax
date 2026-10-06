@@ -63,11 +63,12 @@ named arXiv version links the repository.
   Table 3 captions; Figure 2 at half linewidth. No font, margin or spacing
   changes. Pages 1, 7 and 9 were visually inspected after the final build.
 - [x] Author-approved first-page logo in the named preprint only: the selected
-  vector mark centered at 70 mm wide above the centered author block (2026-10-06),
+  full vector wordmark centered at text width above the centered author block (2026-10-06),
   with one unchanged explanatory footnote, not a
   numbered research figure or a repeated footer. Canonical asset:
-  `../docs/assets/representax/representax-mark.pdf`; the paper-local copy is
-  `assets/representax-mark.pdf`. The named export and self-contained arXiv source
+  `../docs/assets/representax/representax.pdf`, the PDF counterpart of the README's
+  `representax.svg`; the paper-local copy is `assets/representax-wordmark.pdf`.
+  The named export and self-contained arXiv source
   archive include it. The anonymous submission omits the logo asset and its
   explanatory footnote, superseding the earlier approval for both variants.
   Known-identity scans still run on the anonymous variant;
@@ -103,8 +104,8 @@ Changes from the submitted manuscript: Table 9 now contains the promised
 initial/final absolute scores rather than duplicating Table 3's signed gains,
 with the approved caption and Appendix B.3 explanation of absolute changes.
 The author declined the proposed introduction and Section 4 edits; both retain
-their submitted wording. The named title layout now centers the unchanged logo
-at 70 mm above the author block, with the approved footnote unchanged. This
+their submitted wording. The named title layout now centers the unchanged full
+wordmark at text width above the author block, with the approved footnote unchanged. This
 layout adds a page; no manuscript prose was changed to accommodate it.
 Frozen evidence and main-table numbers are
 unchanged. This correction remains to be included in the next permitted ICLR
@@ -120,8 +121,8 @@ boxes or unresolved references remain; bibliography underfull-box notices remain
 SHA-256 checksums for the dated candidate (build timestamps can change new builds):
 
 ```text
-3cf2f83f38cf214de583db27edb23c68f99a0fe03732c7e5aad61bd64c4d6bb2  paper.pdf
-6bc3d02764a508e3f57f8b6092e613bdb4ef4b9942ad2a0c85fc6b04ee4c3486  representax-arxiv.tar.gz
+f4bcad66f6f2f6b41a1d18963fe108453555d94ae3fa75edb74a42e0a2d2d325  paper.pdf
+b29807db0ec574c0638454bd5085e6199e547a27fc5a95aa470d6e17a6a3c2ee  representax-arxiv.tar.gz
 f86b18347c46b55b247caf5b4a4707941e7a2eeda9243019994f8beea13d366c  iclr2027-submission.pdf
 ```
 

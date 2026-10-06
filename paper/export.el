@@ -31,8 +31,8 @@
       (delete-directory figures t))
     (make-directory figures t)
     (unless (equal mode "review")
-      (copy-file (expand-file-name "assets/representax-mark.pdf" root)
-                 (expand-file-name "representax-mark.pdf" figures) t)))
+      (copy-file (expand-file-name "assets/representax-wordmark.pdf" root)
+                 (expand-file-name "representax-wordmark.pdf" figures) t)))
   (dolist (file '("preamble.tex" "references.bib"
                   "vendor/iclr2027_conference.sty"
                   "vendor/iclr2027_conference.bst"))

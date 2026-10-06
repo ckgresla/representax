@@ -24,8 +24,10 @@ frozen experimental evidence:
   remain untouched. Prose changes require author approval before editing.
 
 The author subsequently requested a centered, larger logo with the author block
-below it. The unchanged selected vector file is now 70 mm wide, and the author
-block is centered beneath it. The explanatory footnote and all manuscript prose
+below it, then clarified that the intended asset is the full README wordmark,
+not the standalone TAX mark. The existing `docs/assets/representax/representax.pdf`
+is now included at text width, and the author block is centered beneath it.
+The logo geometry/colors are unchanged. The explanatory footnote and all manuscript prose
 remain unchanged by this layout-only revision; the anonymous title is unaffected.
 
 All 58 CPU paper tests pass. The named PDF builds to 33 pages (10 main text),
