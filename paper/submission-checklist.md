@@ -62,8 +62,9 @@ named arXiv version links the repository.
   paragraph, the Section 6 setup, and the Figure 1, Figure 2, Table 1 and
   Table 3 captions; Figure 2 at half linewidth. No font, margin or spacing
   changes. Pages 1, 7 and 9 were visually inspected after the final build.
-- [x] Author-approved first-page logo in the named preprint only: a compact selected
-  vector mark beside the author block, with one explanatory footnote, not a
+- [x] Author-approved first-page logo in the named preprint only: the selected
+  vector mark centered at 70 mm wide above the centered author block (2026-10-06),
+  with one unchanged explanatory footnote, not a
   numbered research figure or a repeated footer. Canonical asset:
   `../docs/assets/representax/representax-mark.pdf`; the paper-local copy is
   `assets/representax-mark.pdf`. The named export and self-contained arXiv source
@@ -77,7 +78,7 @@ named arXiv version links the repository.
 ### Preprint Candidate: 2026-10-06
 
 Status: locally verified and ready for the author's arXiv upload, **not submitted**.
-The named preprint has 9 main-text pages and 32 pages overall, with seven
+The named preprint has 10 main-text pages and 33 pages overall, with seven
 numbered figures and sixteen tables. The original ICLR submission remains
 unchanged at `iclr2027-submission`; its PDF has also been copied to
 `build/submitted/iclr2027-submission.pdf`. Do not replace that record with a
@@ -92,7 +93,7 @@ Metadata for the upload:
   This paper-license choice does not change the software or third-party licenses.
 - Abstract: `build/arxiv-2026-10-06/abstract.txt`, generated from the unchanged
   approved abstract.
-- Optional comments: `32 pages, 7 figures, 16 tables`.
+- Optional comments: `33 pages, 7 figures, 16 tables`.
 - Journal reference and DOI: leave empty; the work has not been accepted.
 - Source upload: `build/arxiv-2026-10-06/representax-arxiv.tar.gz`.
 - Local preview: `build/arxiv-2026-10-06/paper.pdf`.
@@ -102,7 +103,10 @@ Changes from the submitted manuscript: Table 9 now contains the promised
 initial/final absolute scores rather than duplicating Table 3's signed gains,
 with the approved caption and Appendix B.3 explanation of absolute changes.
 The author declined the proposed introduction and Section 4 edits; both retain
-their submitted wording. Frozen evidence and main-table numbers are
+their submitted wording. The named title layout now centers the unchanged logo
+at 70 mm above the author block, with the approved footnote unchanged. This
+layout adds a page; no manuscript prose was changed to accommodate it.
+Frozen evidence and main-table numbers are
 unchanged. This correction remains to be included in the next permitted ICLR
 revision, with an explicit explanation to the reviewers.
 
@@ -116,8 +120,8 @@ boxes or unresolved references remain; bibliography underfull-box notices remain
 SHA-256 checksums for the dated candidate (build timestamps can change new builds):
 
 ```text
-482af25881dbe6498f5fd6613b3611e299f4b4255ee133ad8fa29721d83ca05c  paper.pdf
-3da6fed9e9522aa56d9c1f78ef1cb8f6f971c86009eaaf33093a94ce988d6de3  representax-arxiv.tar.gz
+3cf2f83f38cf214de583db27edb23c68f99a0fe03732c7e5aad61bd64c4d6bb2  paper.pdf
+6bc3d02764a508e3f57f8b6092e613bdb4ef4b9942ad2a0c85fc6b04ee4c3486  representax-arxiv.tar.gz
 f86b18347c46b55b247caf5b4a4707941e7a2eeda9243019994f8beea13d366c  iclr2027-submission.pdf
 ```
 

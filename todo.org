@@ -2958,12 +2958,15 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      before upload. The draft and local figures do not themselves submit it.
 *** NEXT Release the Representax systems paper as an arXiv preprint :research:paper:
      2026-10-06: the dated named candidate is ready locally under
-     =paper/build/arxiv-2026-10-06/= (32 pages, 9 main text). Corrected Appendix
+     =paper/build/arxiv-2026-10-06/= (33 pages, 10 main text). Corrected Appendix
      Table 9 to show initial/final absolute scores; Table 3's signed changes and
      all frozen evidence are unchanged. Landed the approved caption and B.3
      explanation of absolute changes, without "own" before "initial score."
      Restored the original introduction and Section 4 at the author's request;
      obtain approval before making further manuscript prose changes.
+     Author-requested named-title layout centers the unchanged logo at 70 mm
+     with the author block below; the footnote text is unchanged. This adds one
+     preprint page without altering the anonymous submitted PDF.
      All 58 paper tests pass; the source archive compiles independently and
      reproduces the preprint text. Figure adjacency and corrected-table layout
      checked. Submitted anonymous PDF and =iclr2027-submission= tag preserved.

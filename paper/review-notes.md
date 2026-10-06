@@ -23,7 +23,12 @@ frozen experimental evidence:
   original protected hash. The abstract, Related Work, Section 3, and conclusion
   remain untouched. Prose changes require author approval before editing.
 
-All 58 CPU paper tests pass. The named PDF builds to 32 pages (9 main text),
+The author subsequently requested a centered, larger logo with the author block
+below it. The unchanged selected vector file is now 70 mm wide, and the author
+block is centered beneath it. The explanatory footnote and all manuscript prose
+remain unchanged by this layout-only revision; the anonymous title is unaffected.
+
+All 58 CPU paper tests pass. The named PDF builds to 33 pages (10 main text),
 with no overfull boxes or unresolved references. All figure/discussion pairs
 share a page. The source archive compiles outside the repository and reproduces
 the preprint's extracted text. Table 9, the named title/logo, and the final
