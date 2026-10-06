@@ -302,6 +302,7 @@ def learning_tables(e):
             quality = e["omni"]["groups"][strategy]["quality"]
             values = [quality[f"valid/{d}/cosine_ndcg@10"][stage] for d in DATASETS]
             rows.append([label + (" (initial)" if stage == "initial" else " (final)"), *[pm_super(v["mean"], v["sample_standard_deviation"]) if stage == "final" else f'{v["mean"]:.4f}' for v in values]])
+    table("omni", "Text-anchored multimodal adaptation: absolute nDCG@10 before and after training, mean over three seeds; final scores show the sample SD as a superscript. Each strategy is compared with its own initial model. Learning rates and source mixtures differ across strategies.", "lrrrr", ["Strategy", *DATASET_NAMES], rows)
     rows = []
     for strategy, label in zip(STRATEGIES, STRATEGY_NAMES):
         cells = []
@@ -315,7 +316,6 @@ def learning_tables(e):
             cells.append(rf"${mean:+.4f}^{{\pm {sd:.4f}}}$")
         rows.append([label, *cells])
     table("omni-gains", "Change in nDCG@10 from each recipe's own initial checkpoint: mean over three seeds, sample SD as a superscript. Source mixtures and learning rates differ across recipes; connector-only training leaves the text pathway frozen. Absolute scores are in Appendix \\ref{sec:learning-details}.", "lrrrr", ["Recipe", *DATASET_NAMES], rows, placement="H")
-    table("omni", "Text-anchored multimodal adaptation: nDCG@10, mean over three seeds with the sample SD as a superscript. Each strategy is compared with its own initial model. Learning rates and source mixtures differ across strategies.", "lrrrr", ["Strategy", *DATASET_NAMES], rows)
     rows = []
     for strategy, label in zip(STRATEGIES, STRATEGY_NAMES):
         q = e["omni"]["groups"][strategy]["quality"]

@@ -74,6 +74,62 @@ named arXiv version links the repository.
 
 ## arXiv and Sharing
 
+### Preprint Candidate: 2026-10-06
+
+Status: locally verified and ready for the author's arXiv upload, **not submitted**.
+The named preprint has 9 main-text pages and 32 pages overall, with seven
+numbered figures and sixteen tables. The original ICLR submission remains
+unchanged at `iclr2027-submission`; its PDF has also been copied to
+`build/submitted/iclr2027-submission.pdf`. Do not replace that record with a
+new review build. The named preprint is distinct from the anonymous submission.
+
+Metadata for the upload:
+
+- Title: Representax: Scalable Representation Learning in JAX
+- Author: Chris Kerwell Gresla; affiliation: Independent Researcher (reconfirmed).
+- Primary category: `cs.LG`; verify endorsement in the account before submission.
+- License: **CC BY 4.0**, explicitly selected by the author on 2026-10-06.
+  This paper-license choice does not change the software or third-party licenses.
+- Abstract: `build/arxiv-2026-10-06/abstract.txt`, generated from the unchanged
+  approved abstract.
+- Optional comments: `32 pages, 7 figures, 16 tables`.
+- Journal reference and DOI: leave empty; the work has not been accepted.
+- Source upload: `build/arxiv-2026-10-06/representax-arxiv.tar.gz`.
+- Local preview: `build/arxiv-2026-10-06/paper.pdf`.
+- Processor: PDFLaTeX; top-level file: `paper.tex`.
+
+Changes from the submitted manuscript: Table 9 now contains the promised
+initial/final absolute scores rather than duplicating Table 3's signed gains,
+with the approved caption and Appendix B.3 explanation of absolute changes.
+The author declined the proposed introduction and Section 4 edits; both retain
+their submitted wording. Frozen evidence and main-table numbers are
+unchanged. This correction remains to be included in the next permitted ICLR
+revision, with an explicit explanation to the reviewers.
+
+Validation: all 58 paper tests passed, including a new table check against raw
+per-seed evaluations. The upload archive rebuilt outside the repository using
+only its contents and the TeX toolchain; extracted PDF text exactly matched the
+local preprint. All seven figure/discussion page pairs pass. The title/logo,
+corrected table, and final main-text page were visually checked. No overfull
+boxes or unresolved references remain; bibliography underfull-box notices remain.
+
+SHA-256 checksums for the dated candidate (build timestamps can change new builds):
+
+```text
+482af25881dbe6498f5fd6613b3611e299f4b4255ee133ad8fa29721d83ca05c  paper.pdf
+3da6fed9e9522aa56d9c1f78ef1cb8f6f971c86009eaaf33093a94ce988d6de3  representax-arxiv.tar.gz
+f86b18347c46b55b247caf5b4a4707941e7a2eeda9243019994f8beea13d366c  iclr2027-submission.pdf
+```
+
+- [x] Land the author-approved table correction, caption, and Appendix B.3 wording.
+- [x] Verify the named PDF and self-contained source archive locally.
+- [x] Confirm author metadata and paper license.
+- [ ] Verify account/category endorsement and inspect arXiv's compiled preview.
+- [ ] Complete the author attestations and final Submit Article action.
+- [ ] Record the submission receipt, then the public identifier and URL.
+
+### Upload Procedure
+
 Use the named-author preprint, not the anonymous conference PDF. Upload the
 `make -C paper arxiv` source bundle: LaTeX, bibliography, required style files
 and referenced figures, without build debris. Inspect arXiv's compiled preview
@@ -83,7 +139,8 @@ account/endorsement requirements in the submission flow.
 [TeX requirements](https://info.arxiv.org/help/submit_tex.html).
 
 ICLR permits arXiv posting during review; the conference artifacts must still be
-anonymous. I found no publicity embargo in the checked author guidelines.
+anonymous. This policy was rechecked on 2026-10-06. OpenReview revisions reopen
+with the reviews on November 5; the preprint does not update that submission.
 [ICLR policy](https://iclr.cc/Conferences/2027/AuthorGuidelines).
 
 Recommendation, not a venue rule: circulate a reviewed draft to a few colleagues,

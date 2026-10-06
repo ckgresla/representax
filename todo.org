@@ -2957,6 +2957,24 @@ benchmark artifacts rather than duplicating the roadmap elsewhere.
      Verify current venue formatting, anonymity and submission requirements
      before upload. The draft and local figures do not themselves submit it.
 *** NEXT Release the Representax systems paper as an arXiv preprint :research:paper:
+     2026-10-06: the dated named candidate is ready locally under
+     =paper/build/arxiv-2026-10-06/= (32 pages, 9 main text). Corrected Appendix
+     Table 9 to show initial/final absolute scores; Table 3's signed changes and
+     all frozen evidence are unchanged. Landed the approved caption and B.3
+     explanation of absolute changes, without "own" before "initial score."
+     Restored the original introduction and Section 4 at the author's request;
+     obtain approval before making further manuscript prose changes.
+     All 58 paper tests pass; the source archive compiles independently and
+     reproduces the preprint text. Figure adjacency and corrected-table layout
+     checked. Submitted anonymous PDF and =iclr2027-submission= tag preserved.
+     Author/affiliation reconfirmed; CC BY 4.0 selected. arXiv preview, final
+     author submission, and receipt/public identifier remain pending. This is
+     preparation, not a completed public release. See the dated checklist for
+     upload metadata and artifact hashes.
+     After the preprint submission: preserve the complete development history
+     and experiment-linked revisions on a separate branch, prepare a reviewed
+     clean public =main=, then build and publish the next PyPI release. Do not
+     delete historical evidence or force-rewrite shared history as cleanup.
      After author review, verify the source bundle in arXiv's own compiler and
      confirm metadata, category, license and account/endorsement status. ICLR
      currently permits arXiv posting during review; keep its submission artifacts

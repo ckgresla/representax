@@ -100,6 +100,37 @@ class ReportTests(unittest.TestCase):
             if r["environment"]:
                 self.assertIn(r["environment"], self.methods["environments"])
 
+    def test_omni_absolute_table_preserves_initial_and_final_scores(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "tables").mkdir()
+            with patch.object(report, "HERE", root):
+                report.learning_tables(self.e)
+            text = (root / "tables/omni.org").read_text()
+        rows = [line.removesuffix(r" \\").split(" & ")
+                for line in text.splitlines()
+                if " & " in line and not line.startswith("Strategy")]
+        self.assertEqual(len(rows), 6)
+        for stage_index, stage in enumerate(("initial", "final")):
+            for strategy_index, (strategy, label) in enumerate(
+                    zip(report.STRATEGIES, report.STRATEGY_NAMES)):
+                row = rows[stage_index * 3 + strategy_index]
+                self.assertEqual(row[0], f"{label} ({stage})")
+                self.assertEqual(len(row), 5)
+                for dataset, cell in zip(report.DATASETS, row[1:]):
+                    key = f"valid/{dataset}/cosine_ndcg@10"
+                    index = 0 if stage == "initial" else -1
+                    values = [self.e["omni"]["runs"][f"{strategy}/seed-{seed}"]
+                              ["evaluation_history"][index]["metrics"][key]
+                              for seed in report.SEEDS]
+                    mean, sd = stats.mean(values), stats.stdev(values)
+                    self.assertGreaterEqual(mean, 0)
+                    self.assertLessEqual(mean, 1)
+                    expected = (f"{mean:.4f}" if stage == "initial"
+                                else report.pm_super(mean, sd))
+                    self.assertEqual(cell, expected)
+        self.assertNotIn("-0.0387", text)
+
     def test_omni_changes_use_each_arms_actual_initial_checkpoint(self):
         for strategy in report.STRATEGIES:
             for dataset in report.DATASETS:

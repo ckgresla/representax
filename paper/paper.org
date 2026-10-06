@@ -977,8 +977,8 @@ Image, audio, video, and text sources use COCO, AudioCaps, MSR-VTT, and
 MS MARCO, respectively [cite:@lin2014coco;@kim2019audiocaps;@xu2016msrvtt;@bajaj2016msmarco].
 Flickr30k supplies held-out image retrieval. Table \ref{tab:omni} reports
 each strategy's absolute scores before and after adaptation; Table
-\ref{tab:omni-gains} in the main text reports changes relative to each run's
-own initial checkpoint.
+\ref{tab:omni-gains} in the main text reports absolute changes, computed as
+the final score minus each run's initial score, not percentage changes.
 
 #+INCLUDE: "tables/omni.org"
 

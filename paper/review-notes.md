@@ -7,6 +7,34 @@ and limitations, with detailed recipes and reproduction records in appendices.
 The initial writing pass launched no training. The subsequent padding correction
 reran five GPU TRL references; no core library/training code was changed.
 
+## Preprint Corrections (2026-10-06)
+
+Landed the author's approved post-submission corrections without changing the
+frozen experimental evidence:
+
+- Restored Appendix Table 9's initial/final absolute nDCG scores. The generator
+  previously discarded those rows and reused Table 3's gains. A new regression
+  test checks all 24 cells against per-seed evaluation histories. Table 3 remains
+  unchanged; its signed gains are final minus initial, not relative percentages.
+- Retained the approved Table 9 caption and Appendix B.3 explanation of absolute
+  changes, with "own" removed from "each run's initial score."
+- The author declined the proposed introduction addition and Section 4
+  qualification. Both were restored verbatim, including the introduction's
+  original protected hash. The abstract, Related Work, Section 3, and conclusion
+  remain untouched. Prose changes require author approval before editing.
+
+All 58 CPU paper tests pass. The named PDF builds to 32 pages (9 main text),
+with no overfull boxes or unresolved references. All figure/discussion pairs
+share a page. The source archive compiles outside the repository and reproduces
+the preprint's extracted text. Table 9, the named title/logo, and the final
+main-text page were visually inspected. The unchanged submitted anonymous PDF
+is also preserved under `build/submitted/`; the submitted Git tag is untouched.
+
+The author selected CC BY 4.0 and reconfirmed the author/affiliation. The dated
+upload candidate, checksums, and metadata are in `submission-checklist.md`.
+No arXiv submission receipt has been obtained. PyPI publishing and Git history
+cleanup follow the paper release; neither has been performed in this pass.
+
 ## Length Pass to Nine Pages (2026-09-25, evening)
 
 Author-approved cuts, none touching the approved introduction, related work,
