@@ -1,0 +1,50 @@
+{
+  "allocator_peak_device_bytes": 5186512896,
+  "allocator_peak_reserved_device_bytes": 5626658816,
+  "backend": "torch",
+  "backend_version": "2.8.0+cu128",
+  "batch_size": 512,
+  "checkpoint": "/raid/.cache/huggingface/hub/models--ModernVBERT--modernvbert-embed/snapshots/da507113c3fdbc2e49d39c4b0148025c6bd008f9",
+  "checkpoint_revision": "da507113c3fdbc2e49d39c4b0148025c6bd008f9",
+  "chunk_size": 4,
+  "compile_plus_first_seconds": 26.616545844823122,
+  "device": "NVIDIA GeForce RTX 4090",
+  "examples_per_second": 20.146470322287776,
+  "framework": "sentence-transformers",
+  "framework_version": "5.4.1",
+  "gradient_global_norm": 2.332733392715454,
+  "losses": [
+    6.350592613220215,
+    6.350592613220215
+  ],
+  "measured_steps": 1,
+  "oom": false,
+  "precision_policy": {
+    "compute": "float32",
+    "cuda_matmul_allow_tf32": false,
+    "cudnn_allow_tf32": false,
+    "float32_matmul": "highest",
+    "objective": "float32",
+    "parameters": "float32"
+  },
+  "process_peak_device_bytes": 6115295232,
+  "python": "3.12.13",
+  "runtime": "sentence-transformers",
+  "schema_version": "representax-grad-cache-modernvbert-probe-v1",
+  "seed": 1729,
+  "sequence_length": 512,
+  "setup_seconds": 0.5927748158574104,
+  "status": "completed",
+  "steady_state_median_seconds": 25.41388103272766,
+  "steady_state_seconds": [
+    25.41388103272766
+  ],
+  "tokens_per_second": 20629.985610022683,
+  "transformers_version": "5.3.0",
+  "wall_seconds": 57.4828922348097,
+  "warmup_steps": 0,
+  "workload_fingerprints": {
+    "input_sha256": "fa7b490a3dcf24bb20175e29fa600f9c15cc1d183fb398a54d95aa049d9f41a7",
+    "scientific_spec_sha256": "807b88d79e52486041950eb94df77be36d1feca7f36e36d3c067a91519a887d3"
+  }
+}

@@ -1,0 +1,488 @@
+#+TITLE: Representax Roadmap
+#+STARTUP: overview
+#+TODO: TODO NEXT WAITING | DONE CANCELED
+#+OPTIONS: toc:nil num:nil
+
+This file is the canonical Representax roadmap and shared source of truth.
+Keep decisions and work items here; record evidence in commits, tests, and
+benchmark artifacts rather than duplicating the roadmap elsewhere.
+
+* DONE Establish =representax= as a standalone Git repository :foundation:
+* DONE Adopt the MIT license and public-project policies :foundation:
+* DONE Use permissive Python and dependency ranges with optional extras :foundation:
+* DONE Keep accelerator-specific JAX and PyTorch out of the base install :foundation:
+* DONE Document pip-managed CUDA and =LD_LIBRARY_PATH= conflicts :docs:release:
+* DONE Exclude private history, experiments, Studio, and compiled assets :foundation:
+* DONE Make native Equinox models the supported execution path :architecture:
+* DONE Define a model-neutral task protocol for future task families :architecture:
+* DONE Define one route-aware =encode= API with bound-route convenience :api:
+* DONE Implement direct, symmetric, graded, and Matryoshka MNR :retrieval:
+* DONE Implement a generic compiled Equinox and Optax update step :runtime:
+* DONE Separate scientific configuration from execution choices :planning:
+* DONE Define unit, runtime, parity, distributed, and performance test lanes :testing:
+* DONE Use pytest with out-of-tree tests mirrored by model, task, and subsystem :testing:
+* DONE Select environment-sensitive test lanes with orthogonal pytest markers :testing:
+* DONE Require every checkpoint-backed model to register numerical and systems gates :testing:models:
+* DONE Isolate upstream Torch references in the optional =parity= extra :testing:
+* DONE Define lazy artifact recipes and sampling policies for Grain :data:
+* DONE Make Python and Hydra-Zen recipes Git-trackable :data:
+* DONE Treat one dataset as the one-source form of a sampling policy :data:
+* DONE Borrow Levanter's mixture semantics without depending on its LM stack :data:
+
+* DONE Review and land the first clean public commit :release:
+* DONE Land the verified ModernVBERT port as the second public commit :models:release:
+  Scope: native text, vision, connector, checkpoint adapters, mirrored tests,
+  and public interoperability documentation. Do not add another subsystem.
+  Done when the public diff is reviewed; lint, fast, runtime, pinned parity,
+  and matched performance gates pass; and one =models: ...= commit is created.
+* DONE Port the ModernVBERT text tower and bidirectional HF weight mapping :models:hf:
+* DONE Add pinned ModernVBERT text forward and input-gradient parity :models:testing:
+* DONE Add matched ModernVBERT Transformers speed and peak-memory gates :models:testing:performance:
+* DONE Complete ModernVBERT with its native vision tower and connector :models:multimodal:
+* DONE Add upstream vision, fused, multicrop, and pixel-gradient parity for ModernVBERT :models:testing:
+* DONE Add Grain resolvers for Hugging Face and local artifacts :data:
+  Resolve revision-pinned upstream records lazily into Grain and apply the
+  recipe's importable mapper directly. Do not materialize an intermediate copy
+  or expand this slice to S3, media decoding, bucketing, or packing.
+* DONE Complete the end-to-end single-device training loop inspired by Lasso :runtime:data:logging:
+  Audit Lasso's trainer, logging, checkpoint, config, and data boundaries, then
+  connect a lazy Grain iterator to the generic compiled Equinox/Optax step.
+  Preserve deterministic per-iteration RNG, metrics on every update, separate
+  console cadence, first-execution versus steady-state timing, structured local
+  JSONL artifacts, failure events, and unconditional iterator/logger cleanup.
+  Keep model registries, Lasso/Wafer schemas, sharding, GradCache, validation,
+  and checkpoint/resume outside this slice. Done when a real Grain recipe drives
+  multiple compiled updates end to end, the public API and import convention are
+  documented, fast and runtime tests cover success and failure lifecycles, and
+  the resulting run artifacts are inspectable without an external service.
+* DONE Add non-blocking Orbax checkpointing and exact resume :runtime:
+  Keep training asynchronous with at most one in-flight checkpoint, explicit
+  backpressure only when the writer falls behind, and atomic publication of
+  complete checkpoints. Restore model, optimizer, accepted optimizer step,
+  absolute iteration, RNG, Grain iterator state, and logging cursor so the first
+  resumed update and subsequent records are numerically identical to an
+  uninterrupted run. Done when success, failure, incomplete-checkpoint,
+  retention, and exact-resume tests pass without hiding checkpoint latency in
+  steady-state step measurements. Runtime acceptance uses eight batch-16
+  updates over continuous paired views with independent nuisance features and
+  requires the learned retrieval loss to fall by more than half.
+* DONE Validate configuration, data-compatible resume, and async reporting :runtime:config:data:logging:
+  Use frozen Pydantic models as the serializable Python and Hydra-Zen boundary;
+  keep those objects outside compiled JAX programs and let builders consume
+  them.  Resume must fingerprint the pinned recipe, mapper/resolver implementations, batch
+  collation and batching contract, and Grain version.  Dispatch one ordered,
+  bounded reporter stream with W&B-ready =train/=, =valid/=, and =perf/= metric
+  namespaces; local JSONL remains the durable source of truth.  Done when Hydra
+  CLI overrides validate, changed preprocessing rejects an old cursor, normal
+  reporting adds no per-step device barrier, checkpoint cursors fsync queued
+  records, documentation matches the implementation, and fast/runtime tests pass.
+  Validated with a real Hydra-Zen CLI override, 61 fast tests, 10 GPU runtime
+  tests on GPUs 0 and 1, the two-GPU distributed contract, and all three
+  distributed cases over a four-device virtual CPU topology.
+* DONE Organize job configuration by domain and annotate parameter roles :config:tasks:runtime:
+  Make =JobConfig= own first-class model, task, loss, optimization, data,
+  training, logging, and checkpointing configs.  Unify execution values beneath
+  =TrainingConfig= and mark individual values or nested sets as =Scientific[T]=
+  or =Execution[T]= rather than maintaining parallel object trees.  Keep task
+  and loss registries immutable; capability-gate optional
+  =training.grad_cache=.  Serialize portable =jax.make_mesh= shapes and names
+  that unpack directly into JAX while keeping topology-bound devices at runtime.
+  State explicitly that a mesh alone enables no parallelism: batch, parameter,
+  optimizer, and output partition specs remain the arbitrary-sharding milestone.
+  Done when role projections and resume fingerprints are tested, configs
+  round-trip through Pydantic and Hydra-Zen, builders produce task and loss
+  execution objects, mesh configs unpack directly into JAX, and all relevant
+  test lanes and package checks pass.  These annotations are the future
+  Profilax search boundary.
+  Accepted with =69= fast tests, =10= GPU runtime tests on GPUs 0 and 1, the
+  two-device distributed lane, all three four-device virtual topology tests, a
+  real Hydra-Zen CLI override, checked wheel and sdist artifacts, and a
+  one-device CPU training smoke from the installed wheel.  A concrete 2x2 JAX
+  probe also verifies that =P("fsdp", None)= shards batch rows over =fsdp= and
+  replicates them over =tensor=; the mesh config itself assigns no sharding.
+* TODO Adopt =jaxtyping= at stable numerical boundaries :typing:models:tasks:
+  Declare it directly and annotate model forwards, encoder/task protocols,
+  retrieval relations, scalar losses, PRNG keys, and compiled-step boundaries
+  with symbolic axes.  Do not annotate host configuration and orchestration for
+  decoration's sake, and do not enable a production-wide runtime import hook.
+  Preserve explicit domain validation and add focused trace-time checks only
+  where they improve errors without changing compiled performance.
+* DONE Implement exact native-JAX GradCache as an execution plan for MNR :retrieval:runtime:
+  Preserve =MNRTask= and one shared row-level MNR primitive as the sole
+  scientific definition.
+  GradCache changes only the differentiation schedule: encode fixed-shape chunks
+  while retaining the full logical negative population, differentiate the same
+  MNR loss with respect to the representations, replay one encoder chunk at a
+  time with its cached cotangent, and perform one ordinary optimizer update.
+
+  Start with a small native-JAX transform: =lax.scan= a
+  =jax.checkpoint(..., policy=nothing_saveable)= encoder body and let JAX's
+  transpose synthesize the reverse replay. Keep query and document chunk sizes
+  in =training.grad_cache=, pad only the execution batch with validity masks,
+  and derive explicit per-role and per-chunk PRNG keys so stochastic forwards
+  replay exactly. Do not add a cached task, a second MNR formula, Python
+  backward hooks, or a second optimizer path.
+
+  Treat Pallas as a later representation-kernel optimization, not as the
+  GradCache orchestrator: an encoder replay must remain ordinary Equinox/JAX.
+  Profile the representation-loss stage first, then consider a tiled Pallas
+  custom VJP for normalized similarity, log-sum-exp, and embedding cotangents
+  only if it is numerically equivalent and beats XLA. Keep a native-JAX tiled
+  fallback for unsupported accelerators.
+
+  Correctness gates compare direct and cached loss, representation cotangents,
+  parameter gradients, clipping, optimizer state, and updated parameters across
+  asymmetric and symmetric MNR, graded positives, Matryoshka dimensions,
+  padding, partial chunks, tied routes, and stochastic dropout. A systems gate
+  must show that peak activation memory follows encoder chunk size rather than
+  logical batch size.
+
+  Use Sentence Transformers' current =CachedMultipleNegativesRankingLoss= as a
+  pinned cross-framework reference and target to beat on the same ModernVBERT
+  weights, inputs, pooling, scale, precision, optimizer, and logical negative
+  population. Report compilation separately from warmup and steady-state time;
+  report OOM boundaries, throughput, and allocator/process peak memory. Relative
+  performance produces an explicit warning rather than a flaky correctness
+  failure, but this item is complete only when Representax fits every matched
+  batch the reference fits and is faster and tighter at steady state. Extend the
+  same semantics to global negatives across devices and hosts only afterward.
+** DONE Land the exact single-device native-JAX execution :runtime:correctness:
+   The rematerialized scan, one canonical MNR objective, one optimizer path,
+   explicit stochastic replay keys, partial-chunk padding, Dense update parity,
+   and compiled ModernVBERT integration are covered by fast and runtime tests.
+** DONE Add the pinned ModernVBERT target-to-beat benchmark :performance:reference:
+   The isolated FP32 sequence-512 matrix, raw JSON, fingerprints, replay commands,
+   and analysis live in
+   =benchmarks/results/grad-cache-modernvbert-20260813/=.  At chunk four,
+   Representax is 19.4% to 36.9% faster by throughput from batch 8 through 1,024
+   and both cached runtimes fit every tested batch.  This historical matrix
+   exposed the fixed-memory and cold-compile gaps that the later scanned,
+   chunk-two acceptance matrix closes.
+** DONE Add a native-JAX tiled representation-loss implementation :runtime:memory:
+   Direct diagnostics and cached training share one canonical row formula.  A
+   rematerialized scan bounds live score rows and is the numerical oracle and
+   unsupported-accelerator fallback for any future custom kernel.
+** DONE Close the remaining allocator and compilation gaps against the pinned reference :performance:
+   The canonical transaction is now one ordinary Equinox/Optax update followed
+   by =optax.tree.where= over a named proposed =TrainState=.  The controlled
+   final sequence-512, chunk-two matrix in
+   =benchmarks/results/grad-cache-final-20260813/= matches loss to =4.77e-7=
+   absolute and gradient norm to =7.64e-5= relative through batch 1,024.
+   Representax fits every declared reference point, is 16.1% to 26.7% faster,
+   and uses 1.27% to 1.36% less process-visible device memory.  Its allocator
+   peak stays within 1.03% of the reference and grows only 14.6 MiB across the
+   matrix.  A second fresh process using the populated persistent compilation
+   cache reduces compile plus first execution from 39.086 to 3.621 seconds,
+   beating the reference's 4.352-second first step.  Keep state donation
+   explicit at the generic callable boundary; the linear loop may combine it
+   with Orbax V1 async saves after their blocking device-to-host snapshot
+   returns.
+** DONE Validate exact GradCache across single-host device and process topologies :distributed:
+*** DONE Verify exact replicated data parallel GradCache on two and four GPUs
+    Keep model and optimizer placement separate from GradCache semantics through
+    a named =DataParallel= sharding plan.  Shard query and document records over
+    the =data= mesh axis, gather only compact representations and relation
+    metadata for the global negative pool, replay encoder chunks locally, and
+    synchronize replicated parameter gradients once before the Optax update.
+
+    Acceptance requires the same ModernVBERT checkpoint, global batch, MNR
+    relation, precision, and optimizer update to agree on one, two, and four
+    GPUs.  Compare loss, task metrics, gradient norm, optimizer state, and
+    updated parameters; include a canary whose decisive negative lives on a
+    different device.  Record compile time, steady-state step time, and peak
+    memory separately for each topology on GPUs 0, 1, 2, and 3.
+
+    Accepted on 2026-08-14 with JAX 0.10.1 and four RTX 4090s.  The pinned
+    ModernVBERT checkpoint used global batch 16, sequence length 512, chunk
+    size 2, FP32 highest precision, and one AdamW update.  Both world sizes
+    match the one-device cached update to =4.77e-7= loss absolute, exactly match
+    the reported gradient norm, remain within =1.09e-6= maximum parameter
+    absolute, and keep optimizer-state relative L2 at about =1.02e-6=.  A
+    symmetric Matryoshka test separately proves the complete optimizer update
+    and a cross-device hard-negative canary on both topologies.  See
+    =benchmarks/results/distributed-grad-cache-modernvbert-20260814/=.
+*** DONE Accept process-local data and global negatives across JAX processes
+    Construct globally sharded batches with
+    =jax.make_array_from_process_local_data= so each process supplies only its
+    local query/document records and validity vectors.  A process-local
+    retrieval relation owns local query rows against the complete global
+    document axis, preserving arbitrary cross-process positives as well as
+    negatives without replicating token payloads.
+
+    Acceptance uses two JAX processes with two GPUs each on GPUs 0, 1, 2, and
+    3.  The same ModernVBERT checkpoint, global batch, sequence length,
+    precision, MNR relation, and optimizer update must match a one-process
+    global oracle on both processes.  This validates the process boundary and
+    collective semantics on available hardware, but is not evidence about a
+    physical inter-host network.
+
+    Accepted on 2026-08-14 with two JAX processes, two RTX 4090s per process,
+    and one physical host.  The process-local ModernVBERT batch includes a query
+    whose sole positive document belongs to the other process.  Both workers
+    produce the same distributed result.  Against their one-device global
+    oracle, loss differs by =2.38e-7= absolute, gradient norm by =1.07e-5=
+    relative, updated parameters by =1.77e-6= relative L2, and Adam state by
+    =9.43e-4= relative L2 at =0.99999956= cosine.  Median steady-state time is
+    =0.630= seconds for global batch 16 at sequence length 512.  See
+    =benchmarks/results/multiprocess-grad-cache-modernvbert-20260814/=.
+* NEXT Publish =representax= 0.0.1 and reserve the package name :release:
+  The public GitHub repository is reserved at
+  =github.com/ckgresla/representax=.  PyPI's official project endpoint returned
+  =404= on 2026-08-14, so the distribution name is available but not reserved.
+  PyPI reservation requires the first legitimate upload; complete the local
+  package, provenance, and release checks below before publishing rather than
+  uploading a placeholder.
+* TODO Publish a minimal CPU-first installation and compatibility matrix :release:
+** DONE Build bounded wheel and source-distribution artifacts
+   The universal wheel contains only =representax=, package metadata, the MIT
+   license, and =THIRD_PARTY.md=.  The sdist retains source, tests, docs,
+   examples, and benchmark programs while excluding raw result bundles, CI
+   internals, and this roadmap.  Both rebuild successfully through isolated
+   Hatch environments.
+** DONE Install and execute the wheel in a fresh CPU-only environment
+   Fresh Python 3.11, 3.12, and 3.13 environments installed the built =0.0.1=
+   wheel outside the source tree and completed the same compiled
+   Dense/MNR/Optax update on CPU.  The resolved JAX versions were 0.10.2,
+   0.11.0, and 0.11.0 respectively.  See =docs/compatibility.md=.
+** DONE Accept the public CPU compatibility workflow
+   Run fast tests on Python 3.11, 3.12, and 3.13; run the generic runtime tree
+   once; exercise two- and four-device sharding through virtual CPU devices;
+   validate wheel/sdist metadata; and smoke-test the installed wheel outside
+   the source checkout.  Accepted on 2026-08-14 in GitHub Actions run
+   =31819008237=: all seven lint, Python 3.11/3.12/3.13, generic runtime,
+   virtual distributed, and release-artifact jobs passed with Node 24 actions.
+** DONE Configure the protected GitHub OIDC release workflow
+   The dedicated =release.yml= builds and validates one artifact set, verifies
+   that a pushed =v*= tag exactly matches project metadata, smoke-tests the
+   installed wheel on CPU, and passes the same artifacts to PyPI with only
+   =id-token: write=. After PyPI succeeds, it creates the corresponding GitHub
+   Release and attaches that exact wheel and source distribution. GitHub
+   Packages is deliberately unused. The =pypi= environment accepts only =v*=
+   tags and requires approval from =ckgresla=. Release-ready commit =e0ebc76=
+   passed all seven public lint, Python, runtime, virtual-distributed, and
+   artifact jobs in GitHub Actions run =31822635802=; the first tagged release
+   is the acceptance test for the tag-driven revision.
+** NEXT Publish through the registered pending PyPI publisher
+   The pending publisher is registered in the PyPI account for
+   =ckgresla@gmail.com= against owner/repository =ckgresla/representax=,
+   workflow =release.yml=, and environment =pypi=. The accepted release scope is
+   Alpha metadata, mandatory Grain and safetensors, optional =hf= ecosystem
+   dependencies, explicit =cuda12=/=cuda13= extras, and repository-only parity
+   groups. Rebuild and accept the exact artifacts, publish, then read back the
+   project metadata before marking the name reserved.
+   The dependency-boundary release candidate passed strict Twine metadata,
+   =58= fast tests, =8= runtime tests, =3= virtual four-device distributed
+   tests, and fresh CPU, CUDA 13, and =hf= installs on 2026-08-14. CPU and GPU
+   produced the same compiled-update loss; both installed Grain and safetensors,
+   the =hf= environment installed Transformers 5.3.0 without PyTorch, and the
+   published wheel metadata exposes no parity extras.
+** DONE Accept clean CPU and NVIDIA GPU installs from the exact release wheel
+   The base wheel must resolve and execute a compiled update on CPU without
+   accelerator packages. The =cuda13= extra must resolve JAX's pip-managed CUDA
+   runtime and execute the same update on an RTX 4090. Keep =cuda12= available
+   for older drivers; defer TPU until suitable hardware is available.
+   Accepted on 2026-08-14 from the rebuilt =0.0.1= wheel in fresh Python
+   3.13.14 environments. Both paths resolved JAX 0.11.0 and produced the same
+   compiled-update loss. The base environment contained no CUDA/NVIDIA package;
+   the =cuda13= environment used GPU 0, driver 580.159.03, and JAX's pip-managed
+   CUDA 13 runtime.
+* DONE Audit source provenance and third-party licenses before release :release:
+  The standalone history contains only commits authored by Chris Kerwell Gresla
+  and no private monorepo history. The wheel contains only the public package,
+  MIT license, and third-party notice; the sdist excludes benchmark result
+  bundles, CI internals, and this roadmap. No checkpoints, datasets, private
+  paths, or vendored dependency/model source are present. The mechanically
+  generated Transformers 5.3.0 identifier catalog is attributed under Apache
+  2.0 in =THIRD_PARTY.md=.
+* TODO Define the stable public API and deprecation policy :release:api:
+* DONE Freeze every Transformers 5.3.0 architecture definition for v0 :models:hf:
+  Mechanically snapshot every config model type and task-neutral =AutoModel=
+  mapping into a Torch-free catalog. Keep =catalogued=, =native=, and =verified=
+  as distinct states: a catalog row is not a model-support claim. Verify the
+  complete snapshot against the exact optional Transformers environment and
+  regenerate it only when deliberately advancing the reference version.
+  Accepted with 475 configuration model types and 441 task-neutral =AutoModel=
+  registrations. A fresh installed-wheel environment matched every model type,
+  module, config class, and base-model class against Transformers 5.3.0.
+* DONE Document what qualifies an architecture as supported :models:testing:
+* TODO Require each architecture port only once per model family :models:
+* TODO Build reusable native transformer and modality components :models:
+* DONE Stack homogeneous transformer layers and execute model depth with =scan= :models:runtime:performance:
+  ModernVBERT text parameters are depth-major arrays, with the 21 real
+  post-layer-zero attention norms kept separately so the trainable tree exactly
+  matches the upstream checkpoint.  One rematerialized =lax.scan= preserves the
+  full/sliding attention pattern and first-layer norm exception.  Pinned forward
+  and input-gradient parity passes.  At sequence 512, direct batch 10 now
+  compiles plus executes first use in 29.18 seconds at a 4.536 GiB allocator
+  peak; the unscanned program had not compiled after several minutes and XLA
+  planned 20.17 GiB.  Evidence lives in
+  =benchmarks/results/modernvbert-scan-20260813/=.
+* TODO Evaluate Haliax for named axes, model composition, and sharding ergonomics :models:distributed:research:
+* TODO Load Hugging Face configs, safetensors, tokenizers, and processors :models:hf:
+* TODO Export trained models back to Hugging Face-compatible artifacts :models:hf:
+* TODO Test tokenizer and processor parity with upstream Transformers :models:testing:
+* TODO Test layer-level and full-forward FP32 parity :models:testing:
+* TODO Test BF16 parity with explicit numerical tolerances :models:testing:
+* TODO Test parameter gradients and objective gradients against upstream :models:testing:
+* TODO Test one optimizer update against the upstream reference :models:testing:
+* TODO Test safetensor export and upstream reload :models:testing:
+* DONE Require numerically equivalent model ports to beat matched upstream throughput :models:testing:performance:
+* DONE Measure matched upstream allocator and process peak memory with explicit warnings :models:testing:performance:
+* DONE Run upstream and native performance probes in isolated fresh processes :models:testing:performance:
+* TODO Reduce and amortize ModernVBERT compilation cold-start cost :models:testing:performance:
+* TODO Reduce ModernVBERT multimodal-forward allocator and process peak memory :models:testing:performance:
+* TODO Revisit a maintained fused-attention kernel after profiling standard JAX :models:testing:performance:pallas:
+* TODO Keep small golden tensors in ordinary CI :models:testing:
+* TODO Run live upstream parity on a scheduled compatibility lane :models:testing:
+* TODO Run accelerator-specific parity for fused kernels separately :models:testing:
+* WAITING Evaluate TorchAX only as an optional compatibility backend :models:research:
+* TODO Port a legally clean text-image encoder such as SigLIP2 :models:multimodal:
+* TODO Audit Jina and LCO licensing before considering native ports :models:release:
+* TODO Select native audio and video architecture families :models:multimodal:
+
+* TODO Add the host-side =embed= API for preprocessing and batching :api:
+* TODO Keep compiled =encode= arrays-in and arrays-out :api:
+* TODO Support reusable pooling, normalization, projection, and routing modules :api:
+* TODO Add evaluator protocols and standard representation metrics :api:eval:
+* TODO Reach Sentence Transformers functionality parity without copying its API :api:parity:
+* TODO Support =encode_query= and =encode_document= behavior through typed routes :api:retrieval:
+* TODO Add Hugging Face Hub loading, local loading, and model export :api:hf:
+* TODO Add multi-dataset functionality through source sampling policies :api:data:
+* TODO Add LoRA and parameter-selection recipes :api:training:
+
+* TODO Implement triplet losses :tasks:metric_learning:
+* TODO Implement cosine-similarity losses :tasks:metric_learning:
+* TODO Implement CoSENT losses :tasks:metric_learning:
+* TODO Implement classification tasks and losses :tasks:classification:
+* TODO Implement representation distillation tasks and losses :tasks:distillation:
+* TODO Implement pairwise reward modeling :tasks:reward_modeling:
+* TODO Implement listwise reward modeling :tasks:reward_modeling:
+* TODO Implement pointwise and process reward modeling :tasks:reward_modeling:
+* TODO Implement JEPA-style self-supervised learning :tasks:jepa:
+* TODO Ship reward modeling and JEPA before the first research release :tasks:release:
+
+* DONE Resolve Hugging Face datasets without proprietary intermediate copies :data:hf:
+* DONE Resolve local JSONL, Parquet, Arrow, and dataset directories :data:local:
+* TODO Resolve local WebDataset artifacts :data:local:
+* TODO Resolve S3 and object-store artifacts first-class :data:s3:
+* DONE Let users map upstream records directly into canonical task examples :data:
+* TODO Flesh out post-resolver data execution slices :data:planning:
+  Define implementation contracts and acceptance gates for S3 and object
+  stores, image/audio/video decoding and streaming, length- and modality-aware
+  bucketing, scientifically valid packing, and deterministic distributed
+  iterator resume. Keep JEST as the separate online selection method below.
+* TODO Fingerprint artifact revisions, mapping code, recipes, and Git state :data:reproducibility:
+* TODO Persist sampling policies instead of materialized mixture datasets :data:reproducibility:
+* TODO Support static and scheduled mixture weights :data:sampling:
+* TODO Implement objective-general online joint batch selection from [[https://arxiv.org/abs/2406.17711][JEST]] :data:sampling:runtime:
+  Select a training sub-batch from a larger super-batch using interactions
+  exposed by the task objective, rather than scoring examples independently.
+  Support easy-reference and learner-minus-reference learnability criteria,
+  deterministic sequential chunk sampling without replacement, and arbitrary
+  task-provided score matrices. Match the paper's reference algorithm exactly
+  before adding cached reference scores, approximate scoring, asynchronous
+  selection, distributed selection, or modality-specific accelerations.
+* TODO Support deterministic shuffling, sharding, and iterator resume :data:runtime:
+* TODO Add length and modality-aware bucketing :data:performance:
+* TODO Add sequence and multimodal packing where scientifically valid :data:performance:
+  Packing concatenates variable-length examples into fixed physical tensors to
+  reduce padding.  Define segment IDs, reset positions, block cross-example
+  attention, and preserve task loss/example boundaries before exposing a config;
+  register compatibility explicitly for each data, model, and task family.
+* TODO Stream text examples from source through the model forward :data:text:
+* TODO Stream image examples from source through the model forward :data:image:
+* TODO Decode and stream audio efficiently through the model forward :data:audio:
+* TODO Decode, sample, and stream video efficiently through the model forward :data:video:
+* TODO Train mixed text, image, audio, video, and fused batches efficiently :data:multimodal:
+* TODO Avoid uncontrolled recompilation across modality and shape buckets :data:multimodal:
+
+* WAITING Validate fully distributed multi-host training and arbitrary sharding :distributed:
+  This milestone requires at least two physical accelerator hosts with a
+  routable coordinator and is intentionally deferred until those resources are
+  available.  Single-host replicated data parallelism and exact GradCache are
+  already accepted and remain the local numerical oracle.
+** TODO Implement named arbitrary sharding configurations
+   Keep =DataParallel= as the replicated-state standard plan.  Add fully
+   sharded data parallel (FSDP) and hybrid data/model sharding plans without
+   coupling task semantics to one mesh shape.  Users must be able to supply a
+   compatible named mesh and partition rules rather than selecting from only a
+   closed topology registry.  Follow the JAX Training Cookbook's named-mesh and
+   =jax.P= contracts, initialize parameter and optimizer shards directly in
+   their destination layouts, and inspect the expected AllReduce, AllGather,
+   and ReduceScatter collectives in compiled traces.
+** TODO Validate model and optimizer-state sharding across hosts
+   Compare complete updates against the replicated oracle, measure collective
+   and resharding costs, and verify that parameter, optimizer, and activation
+   placement match the declared plan.
+** TODO Validate exact GradCache and global negatives across physical hosts
+   Re-run the accepted process-local ModernVBERT contract with positives and
+   negatives crossing the host boundary.  Preserve local encoder replay and
+   exactly one final parameter-gradient synchronization.
+** TODO Validate multi-host checkpoint, restore, and failure behavior
+   Restore into the same and different topologies, publish checkpoints without
+   host races, and fail clearly on coordinator, worker, or storage loss.
+** TODO Record multi-host scaling and transport evidence
+   Record topology, interconnect, compile time, steady-state throughput, peak
+   memory, communication cost, and failure behavior before making a
+   fully-distributed support claim.
+* TODO Make precision policy explicit at parameter, compute, activation, and loss boundaries :runtime:precision:
+* DONE Support activation rematerialization as a measured execution choice :runtime:memory:
+  Expose =none=, =selective=, and =full= as topology-dependent policies without
+  changing model parameters or scientific semantics.  =selective= uses JAX's
+  transformer-oriented =dots_with_no_batch_dims_saveable= policy; do not expose
+  unstable custom policy callables as public configuration.
+
+  Complete this slice only when all policies preserve forward and gradient
+  parity, the pinned Transformers oracle still passes, and isolated sequence-512
+  ModernVBERT runs report compile-plus-first time, steady-state throughput,
+  allocator peak, and process peak.  Choose the default from measured evidence,
+  document the tradeoff, and keep any performance shortfall as a warning rather
+  than a numerical failure.
+
+  =full= remains the measured default.  At direct batch 8 and sequence 512,
+  =selective= is 5.9% faster but raises allocator peak from 4.259 to 8.129 GiB
+  and process peak from 8.402 to 16.402 GiB; it OOMs at batch 32, where =full=
+  completes at 7.590 GiB allocator peak.  =none= completes batch 4 at 14.757 GiB
+  and OOMs at batch 8.  Native value/parameter-gradient equivalence, all-policy
+  pinned Transformers forward/input-gradient parity, 53 fast tests, and 9
+  runtime tests pass.  Evidence lives in
+  =benchmarks/results/modernvbert-rematerialization-20260813/=.
+* DONE Verify buffer donation with Orbax V1 asynchronous checkpoint/resume :runtime:performance:
+* TODO Overlap device placement with Grain input prefetching :runtime:performance:
+  Build device-ready iterators with non-blocking =jax.device_put= on one host and
+  =jax.make_array_from_process_local_data= for process-local distributed input,
+  then verify from traces that loading and transfer do not create step bubbles.
+* TODO Cache compiled static-shape signatures deliberately :runtime:performance:
+* TODO Benchmark JAX =Ref= state against functional Equinox/Optax donation :runtime:performance:research:
+  Keep the canonical functional update unless measured memory or throughput
+  evidence shows that mutable =Ref= state from the JAX Training Cookbook is a
+  monotonic improvement without weakening checkpoint or model ergonomics.
+* TODO Evaluate Pallas for performance-critical fused kernels :runtime:performance:research:
+* TODO Add optional experiment logging without coupling the training core :runtime:logging:
+
+* TODO Create =profilax= as a focused JAX profiling and planning project :profilax:
+* TODO Profile arbitrary compiled JAX programs through a small adapter :profilax:
+* TODO Inventory devices, topology, memory, and compiler versions :profilax:
+* TODO Search only =Execution[T]= mesh, batch, GradCache, prefetch, donation, and activation-rematerialization paths :profilax:
+* TODO Measure compilation separately from warmup and steady-state execution :profilax:
+* TODO Reject plans that alter the =Scientific[T]= projection or fingerprint :profilax:
+* TODO Reject plans that violate numerical tolerances :profilax:
+* TODO Report when the experiment probably needs more accelerators :profilax:
+* TODO Select Pareto-optimal plans for throughput, memory, and compile cost :profilax:
+* TODO Cache plans by model, task, shapes, hardware, and JAX/XLA versions :profilax:
+* TODO Integrate Profilax through Representax's =ExecutionPlanner= protocol :profilax:integration:
+
+* TODO Define measurable monotonic-improvement gates over existing trainers :research:
+* TODO Benchmark quality, throughput, peak memory, and model coverage :research:benchmark:
+* TODO Benchmark compile time separately from steady-state step time :research:benchmark:
+* TODO Benchmark direct MNR and GradCache at equal scientific semantics :research:benchmark:
+* TODO Benchmark text retrieval against Sentence Transformers :research:benchmark:
+* TODO Benchmark multimodal retrieval including audio and video :research:benchmark:
+* TODO Benchmark reward modeling and JEPA workloads :research:benchmark:
+* TODO Measure single-device, multi-device, and multi-host scaling :research:benchmark:
+* TODO Measure GPU and TPU behavior where hardware is available :research:benchmark:
+* TODO Publish reproducible configs, manifests, tests, and benchmark artifacts :research:reproducibility:
+* TODO Write the first paper on the state-of-the-art training system :research:paper:
+* TODO Release the systems paper as an arXiv preprint :research:paper:
+* TODO Use the completed trainer to train a state-of-the-art representation model :research:model:
+* TODO Write the subsequent model paper from that training program :research:paper:

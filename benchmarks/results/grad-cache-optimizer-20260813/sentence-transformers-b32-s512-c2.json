@@ -1,0 +1,68 @@
+{
+  "allocator_peak_device_bytes": 4063021568,
+  "allocator_peak_reserved_device_bytes": 4301258752,
+  "backend": "torch",
+  "backend_version": "2.8.0+cu128",
+  "batch_size": 32,
+  "checkpoint": "/raid/.cache/huggingface/hub/models--ModernVBERT--modernvbert-embed/snapshots/da507113c3fdbc2e49d39c4b0148025c6bd008f9",
+  "checkpoint_revision": "da507113c3fdbc2e49d39c4b0148025c6bd008f9",
+  "chunk_size": 2,
+  "compile_plus_first_seconds": 4.352303013205528,
+  "device": "NVIDIA GeForce RTX 4090",
+  "examples_per_second": 15.438489118892257,
+  "framework": "sentence-transformers",
+  "framework_version": "5.4.1",
+  "gradient_global_norm": 1.9075433015823364,
+  "jax_compilation_cache_dir": "/raid/.cache/jax",
+  "jax_enable_compilation_cache": null,
+  "losses": [
+    3.4791557788848877,
+    3.4791557788848877,
+    3.4791557788848877,
+    3.4791557788848877,
+    3.4791557788848877,
+    3.4791557788848877,
+    3.4791557788848877
+  ],
+  "measured_steps": 5,
+  "oom": false,
+  "precision_policy": {
+    "compute": "float32",
+    "cuda_matmul_allow_tf32": false,
+    "cudnn_allow_tf32": false,
+    "float32_matmul": "highest",
+    "objective": "float32",
+    "parameters": "float32"
+  },
+  "process_peak_device_bytes": 4789895168,
+  "python": "3.12.13",
+  "rematerialization": "upstream-managed",
+  "resident_bytes": {
+    "batch": 524288,
+    "gradients": 596179968,
+    "model_parameters": 1008009216,
+    "optimizer_state": 1192360472
+  },
+  "runtime": "sentence-transformers",
+  "schema_version": "representax-grad-cache-modernvbert-probe-v1",
+  "seed": 1729,
+  "sequence_length": 512,
+  "setup_seconds": 0.6503498489037156,
+  "status": "completed",
+  "steady_state_median_seconds": 2.0727416882291436,
+  "steady_state_seconds": [
+    2.140845090150833,
+    2.103693002834916,
+    2.0727416882291436,
+    2.0385736552998424,
+    2.0604380322620273
+  ],
+  "tokens_per_second": 15809.01285774567,
+  "transformers_version": "5.3.0",
+  "wall_seconds": 23.444625941105187,
+  "warmup_steps": 1,
+  "workload_fingerprints": {
+    "input_sha256": "817bb5c7c72e1f94795a55ed2e5f617483185b9d7c18200e4a805cd0942d9caf",
+    "scientific_spec_sha256": "5de3b7a545a37c700ce450b64f03f3213c734e15da94c5e43cc704914fb235f8"
+  }
+}

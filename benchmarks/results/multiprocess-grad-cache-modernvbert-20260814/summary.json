@@ -1,0 +1,50 @@
+{
+  "devices_per_process": 2,
+  "differences": [
+    {
+      "gradient_norm_relative": 1.0691407885170846e-05,
+      "loss_absolute": 2.384185791015625e-07,
+      "model": {
+        "cosine_similarity": 0.9999999999979556,
+        "error_l2": 0.002291453578346576,
+        "maximum_absolute": 1.9963830709457397e-05,
+        "reference_l2": 1293.0259269082787,
+        "relative_l2": 1.7721636748813012e-06
+      },
+      "optimizer_state": {
+        "cosine_similarity": 0.9999995571944394,
+        "error_l2": 0.0002880046155945553,
+        "maximum_absolute": 2.9377639293670654e-05,
+        "reference_l2": 0.30551038707765144,
+        "relative_l2": 0.000942699913902938
+      }
+    },
+    {
+      "gradient_norm_relative": 1.0691407885170846e-05,
+      "loss_absolute": 2.384185791015625e-07,
+      "model": {
+        "cosine_similarity": 0.9999999999979556,
+        "error_l2": 0.002291453578346576,
+        "maximum_absolute": 1.9963830709457397e-05,
+        "reference_l2": 1293.0259269082787,
+        "relative_l2": 1.7721636748813012e-06
+      },
+      "optimizer_state": {
+        "cosine_similarity": 0.9999995571944406,
+        "error_l2": 0.00028800461559484237,
+        "maximum_absolute": 2.9377639293670654e-05,
+        "reference_l2": 0.3055103870776512,
+        "relative_l2": 0.0009426999139038784
+      }
+    }
+  ],
+  "physical_hosts": 1,
+  "process_artifacts": [
+    "process-0.json",
+    "process-1.json"
+  ],
+  "process_count": 2,
+  "schema_version": "representax-multiprocess-grad-cache-modernvbert-v1",
+  "status": "accepted",
+  "world_size": 4
+}

@@ -1,0 +1,67 @@
+#+title: Distributed GradCache ModernVBERT acceptance — 2026-08-14
+
+* Decision
+
+Replicated-data-parallel GradCache is numerically accepted on two and four RTX
+4090 GPUs.  Both executions use the complete global negative pool and match the
+same one-device cached ModernVBERT update.
+
+| world | local batch | loss abs diff | grad norm rel diff | model max abs | optimizer rel L2 | compile + first | median step | examples/s |
+|-------+-------------+---------------+--------------------+---------------+------------------+-----------------+-------------+------------|
+|     2 |           8 |      4.77e-7 |                  0 |       1.09e-6 |          1.01e-6 |        29.103 s |     0.600 s |      26.66 |
+|     4 |           4 |      4.77e-7 |                  0 |       1.09e-6 |          1.02e-6 |        29.059 s |     0.627 s |      25.52 |
+
+The fixed global batch of 16 is a correctness workload, not a scaling claim.
+At only four records per rank, the four-GPU program is communication- and
+launch-bound and is therefore slightly slower than the two-GPU program.
+
+* Scientific contract
+
+- checkpoint: =ModernVBERT/modernvbert-embed= revision
+  =da507113c3fdbc2e49d39c4b0148025c6bd008f9=;
+- global batch 16, sequence length 512, query/document chunk size 2;
+- diagonal positives with every off-diagonal document retained as a negative;
+- cosine MNR at scale 20;
+- FP32 parameters, compute, objective, and highest float32 matmul precision;
+- AdamW learning rate =1e-5= with zero weight decay; and
+- JAX 0.10.1, Equinox 0.13.8, Optax 0.2.8, Python 3.13.14.
+
+A separate symmetric Matryoshka pytest fixture includes invalid capacity rows,
+weighted positives, gradient clipping, nonzero AdamW state, and a hard negative
+owned by a different device.  It compares every array in metrics, model, and
+optimizer state for both world sizes.
+
+* Memory interpretation
+
+The distributed allocator peak on GPUs other than GPU 0 is 7,960,743,168 bytes
+(7.41 GiB).  GPU 0 reports about 10.75 GiB because the one-device oracle and
+distributed replica intentionally coexist there for immediate whole-tree
+comparison.  These artifacts establish fit and correctness; an isolated
+scaling study should run the distributed arm without the resident oracle before
+using GPU 0's peak as a pure training-memory measurement.
+
+* Reproduction
+
+Run each topology in a fresh process with the persistent compilation cache
+disabled:
+
+#+begin_src sh
+CUDA_VISIBLE_DEVICES=0,1 XLA_PYTHON_CLIENT_PREALLOCATE=false \
+JAX_ENABLE_COMPILATION_CACHE=false JAX_DEFAULT_MATMUL_PRECISION=highest \
+conda run --no-capture-output -n representax \
+python benchmarks/distributed_grad_cache_modernvbert.py \
+  --checkpoint "$CHECKPOINT" --world-size 2 \
+  --global-batch-size 16 --sequence-length 512 --chunk-size 2 \
+  --output benchmarks/results/distributed-grad-cache-modernvbert-20260814/world2.json
+
+CUDA_VISIBLE_DEVICES=0,1,2,3 XLA_PYTHON_CLIENT_PREALLOCATE=false \
+JAX_ENABLE_COMPILATION_CACHE=false JAX_DEFAULT_MATMUL_PRECISION=highest \
+conda run --no-capture-output -n representax \
+python benchmarks/distributed_grad_cache_modernvbert.py \
+  --checkpoint "$CHECKPOINT" --world-size 4 \
+  --global-batch-size 16 --sequence-length 512 --chunk-size 2 \
+  --output benchmarks/results/distributed-grad-cache-modernvbert-20260814/world4.json
+#+end_src
+
+Machine-readable results: [[file:world2.json][world2.json]] and
+[[file:world4.json][world4.json]].

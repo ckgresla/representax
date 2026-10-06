@@ -1,0 +1,36 @@
+{
+  "schema_version": "representax-grad-cache-modernvbert-summary-v1",
+  "checkpoint_revision": "da507113c3fdbc2e49d39c4b0148025c6bd008f9",
+  "sequence_length": 512,
+  "precision": "float32-highest-no-tf32",
+  "device": "NVIDIA GeForce RTX 4090",
+  "matched_chunk_size": 4,
+  "capacity_lower_bounds": {
+    "direct": 8,
+    "grad-cache": 1024,
+    "sentence-transformers": 1024
+  },
+  "points": [
+    {"runtime": "direct", "batch": 1, "chunk": 1, "step_seconds": 0.0596258095, "examples_per_second": 16.7712608, "allocator_gib": 3.7728541, "process_gib": 4.4257813, "oom": false},
+    {"runtime": "direct", "batch": 2, "chunk": 1, "step_seconds": 0.0873363907, "examples_per_second": 22.8999617, "allocator_gib": 5.7728620, "process_gib": 6.4277344, "oom": false},
+    {"runtime": "direct", "batch": 4, "chunk": 4, "step_seconds": 0.1399082295, "examples_per_second": 28.5901695, "allocator_gib": 9.3833330, "process_gib": 10.4277344, "oom": false},
+    {"runtime": "direct", "batch": 8, "chunk": 4, "step_seconds": 0.2492349357, "examples_per_second": 32.0982288, "allocator_gib": 16.6934869, "process_gib": 18.4277344, "oom": false},
+    {"runtime": "grad-cache", "batch": 8, "chunk": 4, "step_seconds": 0.3120260215, "examples_per_second": 25.6388873, "allocator_gib": 6.7755270, "process_gib": 10.4472656, "oom": false},
+    {"runtime": "sentence-transformers", "batch": 8, "chunk": 4, "step_seconds": 0.3727119467, "examples_per_second": 21.4642972, "allocator_gib": 4.8187642, "process_gib": 5.6953125, "oom": false},
+    {"runtime": "grad-cache", "batch": 32, "chunk": 4, "step_seconds": 1.1573818438, "examples_per_second": 27.6486107, "allocator_gib": 6.7758479, "process_gib": 10.4472656, "oom": false},
+    {"runtime": "sentence-transformers", "batch": 32, "chunk": 4, "step_seconds": 1.5005783923, "examples_per_second": 21.3251105, "allocator_gib": 4.8192677, "process_gib": 5.6972656, "oom": false},
+    {"runtime": "grad-cache", "batch": 128, "chunk": 4, "step_seconds": 4.5692738900, "examples_per_second": 28.0132036, "allocator_gib": 6.7771442, "process_gib": 10.4492188, "oom": false},
+    {"runtime": "sentence-transformers", "batch": 128, "chunk": 4, "step_seconds": 5.9040260692, "examples_per_second": 21.6801211, "allocator_gib": 4.8212819, "process_gib": 5.6972656, "oom": false},
+    {"runtime": "grad-cache", "batch": 512, "chunk": 4, "step_seconds": 18.5623852275, "examples_per_second": 27.5826621, "allocator_gib": 6.7824998, "process_gib": 10.4492188, "oom": false},
+    {"runtime": "sentence-transformers", "batch": 512, "chunk": 4, "step_seconds": 25.4138810327, "examples_per_second": 20.1464703, "allocator_gib": 4.8303165, "process_gib": 5.6953125, "oom": false},
+    {"runtime": "grad-cache", "batch": 1024, "chunk": 4, "step_seconds": 39.8643236896, "examples_per_second": 25.6871284, "allocator_gib": 6.7900696, "process_gib": 10.4492188, "oom": false},
+    {"runtime": "sentence-transformers", "batch": 1024, "chunk": 4, "step_seconds": 48.6584815746, "examples_per_second": 21.0446353, "allocator_gib": 4.8347130, "process_gib": 5.7304688, "oom": false}
+  ],
+  "chunk_sweep_batch_32": [
+    {"runtime": "grad-cache", "chunk": 2, "step_seconds": 1.2999479715, "allocator_gib": 4.8314929, "process_gib": 6.4492188},
+    {"runtime": "grad-cache", "chunk": 4, "step_seconds": 1.1573818438, "allocator_gib": 6.7758479, "process_gib": 10.4472656},
+    {"runtime": "grad-cache", "chunk": 8, "step_seconds": 1.1733744345, "allocator_gib": 10.6676574, "process_gib": 18.4531250},
+    {"runtime": "sentence-transformers", "chunk": 2, "step_seconds": 2.0860533663, "allocator_gib": 3.7839837, "process_gib": 4.4609375},
+    {"runtime": "sentence-transformers", "chunk": 4, "step_seconds": 1.5005783923, "allocator_gib": 4.8192677, "process_gib": 5.6972656}
+  ]
+}

@@ -1,0 +1,59 @@
+{
+  "allocator_peak_device_bytes": 4120176128,
+  "backend": "jax",
+  "backend_version": "0.10.1",
+  "batch_size": 1024,
+  "checkpoint": "/raid/.cache/huggingface/hub/models--ModernVBERT--modernvbert-embed/snapshots/da507113c3fdbc2e49d39c4b0148025c6bd008f9",
+  "checkpoint_revision": "da507113c3fdbc2e49d39c4b0148025c6bd008f9",
+  "chunk_size": 2,
+  "compile_plus_first_seconds": 92.68191088363528,
+  "device": "cuda:0",
+  "examples_per_second": 18.09979016609791,
+  "framework": "representax",
+  "framework_version": "0.0.1",
+  "gradient_global_norm": 3.0127973556518555,
+  "jax_compilation_cache_dir": "/raid/.cache/jax",
+  "jax_enable_compilation_cache": "false",
+  "losses": [
+    7.087891101837158,
+    7.087891101837158,
+    7.087891101837158,
+    7.087891101837158
+  ],
+  "measured_steps": 2,
+  "oom": false,
+  "precision_policy": {
+    "compute": "float32",
+    "float32_matmul": "highest",
+    "objective": "float32",
+    "parameters": "float32",
+    "xla_python_client_preallocate": "false"
+  },
+  "process_peak_device_bytes": 4729077760,
+  "python": "3.13.14",
+  "rematerialization": "full",
+  "resident_bytes": {
+    "batch": 9439232,
+    "model_parameters": 596179990,
+    "optimizer_state": 1192359940,
+    "training_state": 1788539934
+  },
+  "runtime": "grad-cache",
+  "schema_version": "representax-grad-cache-modernvbert-probe-v1",
+  "seed": 1729,
+  "sequence_length": 512,
+  "setup_seconds": 3.6218454372137785,
+  "status": "completed",
+  "steady_state_median_seconds": 56.57524151401594,
+  "steady_state_seconds": [
+    56.583125981502235,
+    56.56735704652965
+  ],
+  "tokens_per_second": 18534.18513008426,
+  "wall_seconds": 267.709986849688,
+  "warmup_steps": 1,
+  "workload_fingerprints": {
+    "input_sha256": "96e2f7b484ce92e6cd2130628b00b0cc356ea5bfe8da51e5d1694ebf6d5b021c",
+    "scientific_spec_sha256": "25fbaa6158eb865405b55c57ecc0200c04838d0b004068a3cd429c85407d021b"
+  }
+}

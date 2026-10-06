@@ -1,0 +1,55 @@
+{
+  "checkpoint": "ModernVBERT/modernvbert-embed",
+  "checkpoint_revision": "da507113c3fdbc2e49d39c4b0148025c6bd008f9",
+  "chunk_size": 2,
+  "devices": [
+    "cuda:0",
+    "cuda:1",
+    "cuda:2",
+    "cuda:3"
+  ],
+  "differences": {
+    "gradient_norm_relative": 0.0,
+    "loss_absolute": 4.76837158203125e-07,
+    "model": {
+      "maximum_absolute": 1.087784767150879e-06,
+      "relative_l2": 4.573865695047673e-09
+    },
+    "optimizer_state": {
+      "maximum_absolute": 7.264316082000732e-08,
+      "relative_l2": 1.0196730164126367e-06
+    }
+  },
+  "distributed": {
+    "allocator_peak_bytes_by_device": {
+      "cuda:0": 11538219520,
+      "cuda:1": 7960718592,
+      "cuda:2": 7960718592,
+      "cuda:3": 7960718592
+    },
+    "compile_plus_first_seconds": 29.05943132005632,
+    "examples_per_second": 25.515992903030472,
+    "gradient_global_norm": 2.9486405849456787,
+    "loss": 2.7950291633605957,
+    "steady_state_median_seconds": 0.6270577069371939,
+    "steady_state_seconds": [
+      0.6256697699427605,
+      0.6284456439316273
+    ]
+  },
+  "framework_version": "0.0.1",
+  "global_batch_size": 16,
+  "jax_version": "0.10.1",
+  "local_batch_size": 4,
+  "precision": "float32-highest-no-tf32",
+  "python": "3.13.14",
+  "reference": {
+    "compile_plus_first_seconds": 37.025455720722675,
+    "gradient_global_norm": 2.9486405849456787,
+    "loss": 2.7950286865234375
+  },
+  "schema_version": "representax-distributed-grad-cache-modernvbert-v1",
+  "sequence_length": 512,
+  "status": "accepted",
+  "world_size": 4
+}

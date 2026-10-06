@@ -1,0 +1,73 @@
+#+TITLE: Two-process ModernVBERT GradCache acceptance
+#+DATE: 2026-08-14
+
+* Result
+
+Accepted process-local exact GradCache across two JAX processes and four RTX
+4090s on one physical host.  Each process owns two GPUs and supplies eight query
+and eight document token rows for global batch 16.  Query zero's sole positive
+is global document eight, which is supplied by the other process.  Both workers
+produce the same four-device result and independently compare it with a
+full-global-batch one-device oracle.
+
+| Measurement | Process 0 | Process 1 |
+|-------------+-----------+-----------|
+| Loss absolute difference | 2.3842e-7 | 2.3842e-7 |
+| Gradient-norm relative difference | 1.0691e-5 | 1.0691e-5 |
+| Updated-model relative L2 | 1.7722e-6 | 1.7722e-6 |
+| Updated-model maximum absolute | 1.9964e-5 | 1.9964e-5 |
+| Optimizer-state relative L2 | 9.4270e-4 | 9.4270e-4 |
+| Optimizer-state cosine | 0.99999956 | 0.99999956 |
+| Steady-state median seconds | 0.630294 | 0.630518 |
+| Global examples per second | 25.385 | 25.376 |
+
+The larger optimizer-state delta than the one-process device comparison comes
+from reassociation of FP32 gradient reductions across the process boundary.
+The loss, gradient norm, updated-parameter relative error, and optimizer-state
+cosine jointly gate acceptance; both processes agree on the distributed result.
+
+This run proves process-local global-array construction, a cross-process
+positive and global negatives, replicated state/key construction, encoder
+replay, collectives, and the complete Optax update.  It does not prove physical
+inter-host transport, checkpoint publication across hosts, or host-failure
+behavior.  Those remain a separate roadmap item.
+
+* Workload
+
+- checkpoint: =ModernVBERT/modernvbert-embed= revision
+  =da507113c3fdbc2e49d39c4b0148025c6bd008f9=
+- JAX: 0.10.1
+- Python: 3.13.14
+- precision: FP32, highest matmul precision, no TF32
+- global batch: 16
+- sequence length: 512
+- query/document/representation chunk size: 2
+- objective: MNR at scale 20
+- optimizer: AdamW, learning rate =1e-5=, zero weight decay
+- topology: one host, two JAX processes, two GPUs per process
+- timing: one warmup update and two measured updates
+- compilation cache: ambient; compile-plus-first values are not cold-start
+  claims
+
+* Reproduction
+
+#+begin_src bash
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+XLA_PYTHON_CLIENT_PREALLOCATE=true \
+XLA_PYTHON_CLIENT_MEM_FRACTION=0.90 \
+XLA_FLAGS='--xla_gpu_enable_latency_hiding_scheduler=true --xla_gpu_memory_limit_slop_factor=90' \
+JAX_DEFAULT_MATMUL_PRECISION=highest \
+conda run --no-capture-output -n representax \
+python benchmarks/launch_multiprocess_grad_cache_modernvbert.py \
+  --checkpoint /raid/.cache/huggingface/hub/models--ModernVBERT--modernvbert-embed/snapshots/da507113c3fdbc2e49d39c4b0148025c6bd008f9 \
+  --output-directory benchmarks/results/multiprocess-grad-cache-modernvbert-20260814 \
+  --global-batch-size 16 \
+  --sequence-length 512 \
+  --chunk-size 2 \
+  --warmup-steps 1 \
+  --measured-steps 2
+#+end_src
+
+The parent launcher chooses a free loopback coordinator port and launches both
+workers concurrently.  Raw process measurements are in =process-0.json= and
+=process-1.json=; =summary.json= records the joint acceptance.
