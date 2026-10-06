@@ -1,0 +1,80 @@
+#+title: Paper video-text retrieval preflight
+
+* Contract
+
+This bounded readiness check tests one architecture in two implementations:
+=LCO-Embedding/LCO-Embedding-Omni-3B-2605= at revision
+=5f6b5329da5141367da30e06a9826d1322d6c9b2= in Representax and Sentence
+Transformers 5.6.1. Both ran sequentially on physical GPU 0, an RTX 4090.
+
+The deterministic data view contains eight training videos and eight video
+queries with 32 caption documents. Every video has exactly 16 decoded 224px
+frames. Training data is pinned to =VLM2Vec/MSR-VTT= revision
+=947b139d0c591235a3f311e45a31a88461bad0d2=; evaluation is pinned to
+=mteb/MSR-VTT= revision =4661603cee25c1fd370e5478a2953203cf37155b=.
+Both implementations use seed 7, batch 2, four updates, BF16 compute, text LoRA
+rank 4, cached MNR with microbatch 1, and the checkpoint's default system
+prompt. This is a small preflight, not a paper result.
+
+* Result
+
+| Measure | Representax | Sentence Transformers |
+|---------+--------------+-----------------------|
+| Warm examples/s | 2.8605 | 1.4569 |
+| Median warm step | 0.6992 s | 1.3626 s |
+| Compile + first step | 4.3130 s, 4.4234 s | n/a, eager |
+| Initial Recall@1 | 1.000 | 1.000 |
+| Final Recall@1 | 1.000 | 1.000 |
+| Final loss | 0.046366 | 0.048762 |
+| Midpoint resume | passed | passed |
+| Export/reload max difference | 0.0 | 0.0 |
+
+Representax reached =1.9634x= the warmed reference throughput. Initial
+cross-framework embedding parity on the complete held-out slice had mean
+cosine 0.99909 for video queries and 0.99985 for caption documents; all eight
+top-1 retrieval results were identical.
+
+* Findings
+
+- Multimodal processor output had flattened vision tensors across sample rows.
+  Vision tensors and insertion indices are now row-major, and direct versus
+  GradCache updates are covered for a two-video batch.
+- The native processor concatenated Sentence Transformers' default prompt into
+  the user text. The checkpoint contract requires a structured system message;
+  the corrected token IDs now match the reference.
+- The reference trainer does not implicitly apply its model's default prompt,
+  so the runner passes that prompt explicitly for both training columns.
+- Storing frame arrays inside an Arrow Dataset caused recursive scalar
+  conversion and multi-minute trainer startup. The runner stores paths and
+  loads the already-decoded arrays in a batch transform. Automatic model-card
+  statistics are disabled because they would rescan every frame.
+
+Both implementations completed initial/final evaluation, four finite updates,
+midpoint checkpoint/resume, final checkpoint, export, and inference reload.
+There are no dataset access or decoding blockers. The small sample and two
+warmed Representax steps are sufficient for readiness only; the paper run must
+use the frozen full workload.
+
+* Artifacts
+
+- Accepted run: =/home/ckg/representax-artifacts/paper-video-text-preflight-20260831-gpu0/run-v10/=
+- Deterministic data: =/raid/representax/paper-video-text-preflight-20260831-gpu0/data-v2/=
+- Representax native and Hugging Face export:
+  =/home/ckg/representax-artifacts/paper-video-text-preflight-20260831-gpu0/run-v10/representax/final-model/=
+- Sentence Transformers export:
+  =/home/ckg/representax-artifacts/paper-video-text-preflight-20260831-gpu0/run-v10/sentence-transformers/final-model/=
+
+The accepted run is on the root filesystem because shared =/raid= was full
+during export. The immutable model cache and prepared data remain on =/raid=.
+
+* Reproduction
+
+#+begin_src shell
+CUDA_VISIBLE_DEVICES=0 PYTHONPATH=src \
+  /raid/representax/paper-campaign-v1/env/bin/python \
+  -m experiments.paper.video_text pair \
+  --checkpoint /raid/.cache/huggingface/hub/models--LCO-Embedding--LCO-Embedding-Omni-3B-2605/snapshots/5f6b5329da5141367da30e06a9826d1322d6c9b2 \
+  --data-directory /raid/representax/paper-video-text-preflight-20260831-gpu0/data-v2 \
+  --output /home/ckg/representax-artifacts/paper-video-text-preflight-reproduction \
+  --steps 4 --seed 7 --batch-size 2 --gpu 0
+#+end_src

@@ -1,0 +1,57 @@
+#+title: Representax 25-model compatibility table
+
+* Acceptance contract
+
+Every row below passed the same executable lifecycle in
+=experiments/paper/compatibility.py=: pinned Hugging Face checkpoint and processor
+loading, forward execution, two finite nonzero parameter updates, resumable
+checkpoint restore, configured evaluation, native inference export, and fresh
+inference reload. A =result.json= is written only after all gates pass.
+
+The table is derived from =benchmarks/configs/paper-compatibility-v1.json=. Full
+40-character revisions remain in that manifest; the table shows unambiguous
+12-character prefixes for readability. The panel contains 6 text-only and 19
+multimodal checkpoints. Modality coverage is text 25, image 19, video 6, and
+audio 3.
+
+* Verified checkpoints
+
+| Hugging Face checkpoint | Native family | Modalities | Revision | Evidence |
+|-------------------------+---------------+------------+----------+----------|
+| =Qwen/Qwen3-VL-Embedding-2B= | =qwen3-vl= | text, image, video | =9f2f7e710d6d= | =v3= |
+| =Qwen/Qwen3-VL-Reranker-2B= | =qwen3-vl= | text, image, video | =4bd860ac4f15= | =v5= |
+| =eagerworks/eager-embed-v1= | =qwen3-vl= | text, image, video | =51dfdee0d1d1= | =v4= |
+| =LCO-Embedding/LCO-Embedding-Omni-3B-2605= | =qwen2-5-omni= | text, image, audio, video | =5f6b5329da51= | =v4= |
+| =nvidia/omni-embed-nemotron-3b= | =qwen2-5-omni= | text, image | =865db1bb57e3= | =v4= |
+| =BAAI/BGE-VL-base= | =clip= | text, image | =cc4c733ed997= | =v3= |
+| =sentence-transformers/clip-ViT-B-32= | =clip= | text, image | =327ab6726d33= | =v3= |
+| =sentence-transformers/clip-ViT-B-32-multilingual-v1= | =distilbert= | text | =58edf8cada9e= | =v3= |
+| =BAAI/BGE-VL-Screenshot= | =qwen2-vl= | text, image | =2b0f1cd3e4ac= | =v3= |
+| =nomic-ai/nomic-embed-multimodal-3b= | =qwen2-vl= | text, image | =29259db79bc6= | =v6= |
+| =nomic-ai/nomic-embed-multimodal-7b= | =qwen2-vl= | text, image | =234bc2738e2d= | =v7= |
+| =jinaai/jina-reranker-m0= | =qwen2-vl= | text, image | =94bfe0aeb2d4= | =v3= |
+| =BAAI/BGE-VL-MLLM-S1= | =llava-next= | text, image | =455ac20c1118= | =v4= |
+| =BAAI/BGE-VL-MLLM-S2= | =llava-next= | text, image | =20137e245f27= | =v4= |
+| =BAAI/BGE-VL-v1.5-zs= | =llava-next= | text, image | =a7ca46102a1a= | =v4= |
+| =BAAI/BGE-VL-v1.5-mmeb= | =llava-next= | text, image | =59f60b95765b= | =v4= |
+| =royokong/e5-v= | =llava-next= | text, image | =684c4c91ebab= | =v4= |
+| =nvidia/llama-nemotron-embed-vl-1b-v2= | =nemotron-vl= | text, image | =582e3bf72aee= | =v3= |
+| =nvidia/llama-nemotron-rerank-vl-1b-v2= | =nemotron-vl= | text, image | =9e95da054312= | =v3= |
+| =BidirLM/BidirLM-Omni-2.5B-Embedding= | =bidirlm-omni= | text, image, audio | =447a6e31be61= | =v4= |
+| =Qwen/Qwen3-Reranker-0.6B= | =qwen-reranker= | text | =e61197ed4502= | =v4= |
+| =mixedbread-ai/mxbai-rerank-base-v2= | =qwen-reranker= | text | =3ea9d4dffa7d= | =v4= |
+| =ContextualAI/ctxl-rerank-v2-instruct-multilingual-1b= | =qwen-reranker= | text | =8fd1edf6a985= | =v4= |
+| =sentence-transformers/all-MiniLM-L6-v2= | =bert= | text | =1110a243fdf4= | =v4= |
+| =sentence-transformers/all-mpnet-base-v2= | =mpnet= | text | =e8c3b32edf54= | =v4= |
+
+* Durable evidence
+
+- =v3=: =/raid/representax/paper-compatibility-v1-20260828-v3/=
+- =v4=: =/raid/representax/paper-compatibility-discovery-remaining-20260828-v4/=
+- =v5=: =/raid/representax/paper-compatibility-fixes-20260828-v5/=
+- =v6=: =/raid/representax/paper-compatibility-nomic-20260828-v6/=
+- =v7=: =/raid/representax/paper-compatibility-nomic7-20260828-v7/=
+
+The evidence directory named in each row contains that checkpoint's
+=result.json= and canonical =run/= artifact. Failed discovery attempts are not
+part of this table; repaired rows point only to their passing evidence.

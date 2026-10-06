@@ -1,0 +1,98 @@
+#+title: Audio-text retrieval paper preflight - 2026-08-29
+
+* Scope
+
+This is the bounded readiness run for the frozen audio-text retrieval workload.
+It uses =LCO-Embedding/LCO-Embedding-Omni-3B-2605@5f6b5329=, 32 ten-second
+AudioCaps training pairs, and an AudioCaps text-retrieval panel with 16 audio
+queries, 128 text documents, and five relevant captions per query. Both
+implementations use cached MNR with scale 20, exact BF16 base weights, rank-4
+LoRA on the text tower, cache microbatch 1, global candidate batch 8, four
+updates, and seed 7.
+
+Large artifacts are under:
+
+- =/raid/representax/data/audio-text-audiocaps-preflight-v1/=
+- =/raid/representax/paper-audio-text-preflight-b8-20260829/=
+- =/raid/representax/paper-audio-text-native-1gpu-b8-20260829/=
+- =/raid/representax/data/audio-text-audiocaps-scaling-v1/=
+- =/raid/representax/paper-audio-text-scaling-20260831/=
+
+The first path contains immutable normalized audio and hashes. The second is
+the complete two-GPU Representax and one-GPU Sentence Transformers lifecycle.
+The third is the equal-hardware one-GPU Representax timing and resume probe.
+The final two paths contain the 64-audio scaling panel and matched one/two-GPU
+DDP runs.
+
+* Result
+
+| measurement | Representax | Sentence Transformers 5.6.1 |
+|-------------+-------------+-----------------------------|
+| GPUs | 1 RTX 4090 | 1 RTX 4090 |
+| warmed examples/s | 1.995596 | 1.013917 |
+| relative throughput | 1.968x | 1.000x |
+| first compile and step | 17.9038 s | n/a |
+| final loss | 2.938112 | 3.534957 |
+| initial Recall@10 | 0.9125 | 0.9125 |
+| final Recall@10 | 0.9125 | 0.9125 |
+| initial nDCG@10 | 0.872942 | 0.855263 |
+| final nDCG@10 | 0.872688 | 0.854613 |
+
+The one-GPU Representax result excludes compilation and uses the two warmed
+steps on either side of the forced midpoint restart. The reference rate is its
+complete four-update trainer interval, including its checkpoint callbacks. This
+is readiness evidence, not a paper estimate; the full campaign must collect a
+longer continuous trajectory.
+
+The original two-GPU FSDP run reached only 0.485099 examples/s because it kept
+global batch 8 and used the second GPU for model/state capacity. It is not a
+data-parallel scaling measurement.
+
+* DDP scaling
+
+The accepted weak-scaling probe preserves local batch 32 and doubles global
+batch 32 to 64:
+
+| measurement | 1 GPU | 2 GPUs |
+|-------------+-------+--------|
+| local batch/GPU | 32 | 32 |
+| global batch | 32 | 64 |
+| warmed examples/s | 2.733419 | 5.241328 |
+| throughput ratio | 1.000x | 1.917x |
+| scaling efficiency | 100.0% | 95.9% |
+| median warm step | 11.7070 s | 12.2106 s |
+| final Recall@10 | 0.9125 | 0.9125 |
+
+Each rate is the median over the two warmed updates separated by a forced
+midpoint checkpoint/resume. Compilation is excluded. The runs use the same
+checkpoint, seed, per-device batch, GradCache microbatch, and data/evaluation
+contract. The two-GPU result clears the 90% weak-scaling acceptance threshold.
+
+Representax stopped after update 2 and restored model, optimizer, RNG, and data
+state. The complete lifecycle run produced an exact native reload and a verified
+merged Hugging Face export. Sentence Transformers also reloaded its midpoint,
+final checkpoint, and export exactly.
+
+* Corrections
+
+The preflight found and fixed several issues before the paper campaign:
+
+- audio inputs and multimodal position IDs are now row-major and compatible
+  with exact GradCache;
+- the LCO default prompt is applied consistently;
+- ordinary BF16 LoRA is a first-class training adapter, avoiding the unfair
+  comparison of Representax QLoRA against reference LoRA;
+- native bundle reload preserves the serialized LoRA adapter type;
+- resume restores through a CPU template, avoiding a second full model on GPU;
+- callable fingerprints cover the collator itself rather than its entire module;
+- completed checkpoints can recover an interrupted export; and
+- the reference Arrow dataset returns NumPy audio arrays to the multimodal
+  processor;
+- DDP now scales the global batch over a real =data= axis instead of reusing
+  FSDP capacity sharding; and
+- the audio tower applies attention independently to batched chunks instead of
+  flattening all chunks into one block-masked sequence. The old formulation was
+  numerically correct but introduced unnecessary quadratic work and
+  cross-device communication.
+
+The compact machine-readable result is =summary.json=.

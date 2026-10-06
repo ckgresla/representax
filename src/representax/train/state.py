@@ -5,8 +5,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 import equinox as eqx
-import jax
 import optax
+from jaxtyping import Array, Bool, Float, Int
 
 
 class TrainState(eqx.Module):
@@ -14,19 +14,19 @@ class TrainState(eqx.Module):
 
     model: eqx.Module
     optimizer_state: optax.OptState
-    step: jax.Array
+    step: Int[Array, ""]
 
 
 class StepMetrics(eqx.Module):
     """Numerical facts retained from one compiled optimizer update."""
 
-    loss: jax.Array
-    task: Mapping[str, jax.Array]
-    gradient_global_norm: jax.Array
-    clipped_gradient_global_norm: jax.Array
-    update_global_norm: jax.Array
-    numeric_finite: jax.Array
-    skipped_update: jax.Array
+    loss: Float[Array, ""]
+    task: Mapping[str, Array]
+    gradient_global_norm: Float[Array, ""]
+    clipped_gradient_global_norm: Float[Array, ""]
+    update_global_norm: Float[Array, ""]
+    numeric_finite: Bool[Array, ""]
+    skipped_update: Bool[Array, ""]
 
 
 class StepResult(eqx.Module):

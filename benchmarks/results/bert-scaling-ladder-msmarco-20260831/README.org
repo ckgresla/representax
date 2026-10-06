@@ -1,0 +1,36 @@
+#+title: Controlled BERT scaling ladder bounded acceptance
+
+* Scope
+This is bounded execution evidence, not a retrieval-quality claim. All accepted
+rows use the same real MS MARCO query-positive training slice, bounded
+NanoMSMARCO evaluation, NQ confirmation, optimizer, data order, sequence length,
+batch size, update count, and precision recipe.
+
+The frozen precision recipe is FP32 model/master parameters with BF16 compute.
+Training, configured MS MARCO evaluation, and native export/reload evaluation all
+use =PrecisionConfig.bfloat16_mixed()=.
+
+* Result
+The 30M, 110M, 500M, and 1B rows each pass exact parameter-count validation,
+three finite non-skipped MNR updates through =representax.train.run_job=,
+checkpoint/resume, configured start/end retrieval evaluation, native export,
+exact parameter-digest reload, zero same-topology export/reload metric error, and
+NQ confirmation. Timings and observed HBM are in =summary.json=.
+
+Native parity compares the live final model and native reload on the same GPU-2
+inference topology. The configured sharded evaluator is independently reproduced
+on the live model. At 1B, BF16 execution changes one aggregate metric by
+0.0029912923 between the two-device configured topology and the one-device parity
+topology; live-versus-reload error on the parity topology remains exactly zero.
+
+The 4B model was not allocated. The 1B two-device training peak projects to
+19,760,597,796 bytes per device on four GPUs, below the 21,893,637,734-byte
+admission limit. Its status is =admitted_pending_four_gpu_canary= and the required
+next action is one compiled update on physical GPUs 2, 3, 4, and 5 after GPUs 4/5
+are released.
+
+* Provenance
+Full evidence: =/home/ckg/representax-artifacts/bert-scaling-ladder-msmarco-20260831-v3=
+
+The prior STS-B allocation/checkpointing run and the mixed-recipe v2 MS MARCO
+campaign are rejected predecessor evidence. Neither contributes an accepted row.

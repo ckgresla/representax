@@ -1,0 +1,1043 @@
+"""Git-trackable data distributions over immutable upstream artifacts."""
+
+from __future__ import annotations
+
+import hashlib
+import importlib
+import inspect
+import json
+import math
+import sys
+import time
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, field, replace
+from functools import partial
+from pathlib import Path
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Any, Literal, Self
+from urllib.parse import urlparse
+
+import grain
+import jax
+import numpy as np
+from pydantic import SerializerFunctionWrapHandler, model_serializer, model_validator
+
+from representax._config import FrozenConfig
+from representax.core import Modality
+
+from .resolvers import BUILTIN_RESOLVERS, ArtifactResolver
+
+if TYPE_CHECKING:
+    from .resolvers import ArtifactReader
+
+Mapper = str | Callable[[Any], Any]
+
+
+def identity(record: Any) -> Any:
+    """Preserve an artifact record while retaining a stable mapper identity."""
+
+    return record
+
+
+@dataclass(frozen=True, slots=True)
+class Artifact:
+    """One raw input leaf in a mapped training sample.
+
+    An artifact is either inline data or one immutable lazy URI reference.
+    One source row may map to several artifacts, and task-specific sample
+    dataclasses compose them naturally::
+
+        RetrievalSample(
+            query={"text": Artifact.text("find this")},
+            document=Artifact.ref(
+                Modality.IMAGE,
+                uri="s3://images/00042.jpg",
+                etag="<immutable-object-etag>",
+                metadata={"height": 768, "width": 1024},
+            ),
+        )
+
+    The model-associated processor interprets the resulting artifact tree and
+    emits its native fixed-shape array batch before the compiled step.
+    """
+
+    modality: Modality
+    data: Any | None = None
+    uri: str | None = None
+    revision: str | None = None
+    etag: str | None = None
+    archive_member: str | None = None
+    byte_range: tuple[int, int] | None = None
+    checksum: str | None = None
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "modality", Modality(self.modality))
+        inline = self.data is not None
+        referenced = self.uri is not None
+        if inline == referenced:
+            raise ValueError("an artifact must contain inline data or one reference")
+        if referenced and not self.uri:
+            raise ValueError("referenced artifacts require a non-empty uri")
+        if inline and any(
+            value is not None
+            for value in (
+                self.revision,
+                self.etag,
+                self.archive_member,
+                self.byte_range,
+            )
+        ):
+            raise ValueError("inline artifacts cannot declare reference selectors")
+        for name in ("revision", "etag", "archive_member", "checksum"):
+            value = getattr(self, name)
+            if value is not None and not value:
+                raise ValueError(f"artifact {name} must be non-empty or None")
+        if self.byte_range is not None:
+            start, stop = self.byte_range
+            if start < 0 or stop <= start:
+                raise ValueError(
+                    "artifact byte_range must be a non-empty [start, stop) span"
+                )
+        if self.checksum is not None:
+            algorithm, separator, digest = self.checksum.partition(":")
+            if (
+                algorithm != "sha256"
+                or separator != ":"
+                or len(digest) != 64
+                or any(
+                    character not in "0123456789abcdefABCDEF" for character in digest
+                )
+            ):
+                raise ValueError("artifact checksum must use sha256:<64 hex digits>")
+            object.__setattr__(self, "checksum", f"sha256:{digest.lower()}")
+        object.__setattr__(self, "metadata", MappingProxyType(dict(self.metadata)))
+
+    @classmethod
+    def inline(
+        cls,
+        modality: Modality | str,
+        data: Any,
+        *,
+        metadata: Mapping[str, Any] | None = None,
+    ) -> Artifact:
+        """Construct an artifact whose raw value is already in the source row."""
+
+        return cls(
+            modality=Modality(modality),
+            data=data,
+            metadata={} if metadata is None else metadata,
+        )
+
+    @classmethod
+    def text(cls, value: str) -> Artifact:
+        """Construct one inline text artifact."""
+
+        if not isinstance(value, str):
+            raise TypeError("text artifacts require a string")
+        return cls.inline(Modality.TEXT, value)
+
+    @classmethod
+    def ref(
+        cls,
+        modality: Modality | str,
+        *,
+        uri: str,
+        revision: str | None = None,
+        etag: str | None = None,
+        archive_member: str | None = None,
+        byte_range: tuple[int, int] | None = None,
+        checksum: str | None = None,
+        metadata: Mapping[str, Any] | None = None,
+    ) -> Artifact:
+        """Construct one lazy, immutable reference to raw artifact bytes.
+
+        ``byte_range`` uses Python slice semantics: its start is inclusive and
+        its stop is exclusive. ``checksum`` describes the bytes returned after
+        archive-member and byte-range selection.
+        """
+
+        return cls(
+            modality=Modality(modality),
+            uri=uri,
+            revision=revision,
+            etag=etag,
+            archive_member=archive_member,
+            byte_range=byte_range,
+            checksum=checksum,
+            metadata={} if metadata is None else metadata,
+        )
+
+    def read_bytes(
+        self,
+        *,
+        readers: Mapping[str, ArtifactReader] | None = None,
+    ) -> bytes:
+        """Resolve this artifact through the shared lazy byte boundary."""
+
+        from .resolvers import read_artifact
+
+        return read_artifact(self, readers=readers)
+
+    def with_byte_range(
+        self,
+        start: int,
+        stop: int,
+        *,
+        checksum: str | None = None,
+    ) -> Artifact:
+        """Derive a lazy selection without reading the underlying object.
+
+        The original checksum cannot describe a newly selected span, so it is
+        cleared unless the caller supplies the selected payload's checksum.
+        """
+
+        if self.uri is None:
+            raise TypeError("byte-range selection requires a referenced artifact")
+        return replace(
+            self,
+            byte_range=(start, stop),
+            checksum=checksum,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class BatchTelemetry:
+    """Host preprocessing evidence attached to one consumed batch."""
+
+    data_wait_seconds: float
+    preprocess_seconds: float | None
+    host_batch_bytes: int
+    training_tokens: int | None
+    training_token_capacity: int | None
+    packed_physical_rows: int | None
+    packed_logical_sequences: int | None
+    prefetch_ready_batches: int | None
+    prefetch_capacity: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class _BatchEnvelope:
+    payload: Any
+    preprocess_seconds: float | None
+    host_batch_bytes: int
+    training_tokens: int | None
+    training_token_capacity: int | None
+    packed_physical_rows: int | None
+    packed_logical_sequences: int | None
+
+
+def _prefetch_state(iterator: Any) -> tuple[int | None, int | None]:
+    """Read Grain's current ready-buffer telemetry without owning its queue."""
+
+    buffer = getattr(iterator, "_buffer", None)
+    capacity = getattr(iterator, "_target_prefetch_buffer_size", None)
+    if buffer is None or not isinstance(capacity, int):
+        return None, None
+    lock = getattr(iterator, "_lock", None)
+
+    def ready_count() -> int:
+        queue_size = getattr(buffer, "qsize", None)
+        if queue_size is not None:
+            return int(queue_size())
+        ready = 0
+        for item in buffer:
+            if not bool(getattr(item, "done", lambda: True)()):
+                break
+            ready += 1
+        return ready
+
+    if lock is None:
+        return ready_count(), capacity
+    with lock:
+        return ready_count(), capacity
+
+
+class DataIterator:
+    """Transparent Grain iterator with per-batch host telemetry."""
+
+    def __init__(self, iterator: Any) -> None:
+        self._iterator = iterator
+        self.last_telemetry: BatchTelemetry | None = None
+
+    def __iter__(self) -> DataIterator:
+        return self
+
+    def __next__(self) -> Any:
+        ready, capacity = _prefetch_state(self._iterator)
+        started = time.perf_counter()
+        envelope = next(self._iterator)
+        waited = time.perf_counter() - started
+        if not isinstance(envelope, _BatchEnvelope):
+            raise TypeError("instrumented Grain pipeline emitted an unwrapped batch")
+        self.last_telemetry = BatchTelemetry(
+            data_wait_seconds=waited,
+            preprocess_seconds=envelope.preprocess_seconds,
+            host_batch_bytes=envelope.host_batch_bytes,
+            training_tokens=envelope.training_tokens,
+            training_token_capacity=envelope.training_token_capacity,
+            packed_physical_rows=envelope.packed_physical_rows,
+            packed_logical_sequences=envelope.packed_logical_sequences,
+            prefetch_ready_batches=ready,
+            prefetch_capacity=capacity,
+        )
+        return envelope.payload
+
+    def get_state(self) -> Mapping[str, Any]:
+        return self._iterator.get_state()
+
+    def set_state(self, state: Mapping[str, Any]) -> None:
+        self._iterator.set_state(state)
+        self.last_telemetry = None
+
+    def close(self) -> None:
+        close = getattr(self._iterator, "close", None)
+        if close is not None:
+            close()
+
+
+@dataclass(frozen=True)
+class DataLoader:
+    """Thin iterable metadata wrapper around a native Grain ``IterDataset``.
+
+    Configured sources resolve into Grain and source transformations remain
+    native Grain operations. This wrapper carries the batch-size and
+    reproducibility contracts the trainer needs for checkpoint resume.
+    """
+
+    dataset: grain.IterDataset[Any]
+    global_batch_size: int | None
+    data_contract: Mapping[str, Any]
+
+    def __iter__(self) -> DataIterator:
+        return DataIterator(iter(self.dataset))
+
+    @property
+    def data_fingerprint(self) -> str:
+        return _json_fingerprint(self.data_contract)
+
+
+def _host_batch_measurements(
+    batch: Any,
+    *,
+    measure_training_tokens: bool,
+) -> tuple[int, int | None, int | None, int | None, int | None]:
+    """Measure host bytes and text tokens while validating host placement."""
+
+    total = 0
+    tokens = 0
+    token_capacity = 0
+    packed_physical_rows = 0
+    packed_logical_sequences = 0
+    found_attention_mask = False
+    found_segment_ids = False
+    seen: set[int] = set()
+    leaves_with_paths, _ = jax.tree.flatten_with_path(
+        batch,
+        is_leaf=lambda value: value is None,
+    )
+    for path, leaf in leaves_with_paths:
+        if leaf is None:
+            continue
+        if isinstance(leaf, jax.Array):
+            devices = leaf.devices()
+            if any(device.platform != "cpu" for device in devices):
+                placements = sorted(
+                    f"{device.platform}:{device.id}" for device in devices
+                )
+                raise TypeError(
+                    "Grain preprocessing emitted a device-resident JAX array on "
+                    f"{placements}; emit NumPy host arrays and let place_batch own "
+                    "accelerator placement"
+                )
+        identity = id(leaf)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        if isinstance(leaf, (bytes, bytearray, memoryview)):
+            total += len(leaf)
+            continue
+        nbytes = getattr(leaf, "nbytes", None)
+        if nbytes is not None:
+            total += int(nbytes)
+        else:
+            total += sys.getsizeof(leaf)
+        if (
+            measure_training_tokens
+            and path
+            and getattr(path[-1], "name", None) == "attention_mask"
+            and getattr(leaf, "ndim", None) == 2
+        ):
+            found_attention_mask = True
+            mask = np.asarray(leaf)
+            tokens += int(mask.sum())
+            token_capacity += int(mask.size)
+        if (
+            measure_training_tokens
+            and path
+            and getattr(path[-1], "name", None) == "segment_ids"
+            and getattr(leaf, "ndim", None) == 2
+        ):
+            found_segment_ids = True
+            segments = np.asarray(leaf)
+            packed_physical_rows += int(segments.shape[0])
+            packed_logical_sequences += int(np.unique(segments[segments >= 0]).size)
+    if not found_attention_mask:
+        return total, None, None, None, None
+    return (
+        total,
+        tokens,
+        token_capacity,
+        packed_physical_rows if found_segment_ids else None,
+        packed_logical_sequences if found_segment_ids else None,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class _BatchMonitor:
+    maximum_bytes: int | None
+    measure_training_tokens: bool = False
+
+    def __call__(
+        self,
+        batch: Any,
+        *,
+        preprocess_seconds: float | None = None,
+    ) -> _BatchEnvelope:
+        size, tokens, token_capacity, physical_rows, logical_sequences = (
+            _host_batch_measurements(
+                batch,
+                measure_training_tokens=self.measure_training_tokens,
+            )
+        )
+        if self.maximum_bytes is not None and size > self.maximum_bytes:
+            raise MemoryError(
+                f"model-ready host batch uses {size} bytes; configured per-slot "
+                f"limit is {self.maximum_bytes} bytes"
+            )
+        return _BatchEnvelope(
+            payload=batch,
+            preprocess_seconds=preprocess_seconds,
+            host_batch_bytes=size,
+            training_tokens=tokens,
+            training_token_capacity=token_capacity,
+            packed_physical_rows=physical_rows,
+            packed_logical_sequences=logical_sequences,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class _TimedBatchFn:
+    batch_fn: Callable[[Sequence[Any]], Any]
+    monitor: _BatchMonitor
+
+    def __call__(self, values: Sequence[Any]) -> _BatchEnvelope:
+        started = time.perf_counter()
+        with jax.default_device(jax.local_devices(backend="cpu")[0]):
+            batch = self.batch_fn(values)
+        duration = time.perf_counter() - started
+        return self.monitor(batch, preprocess_seconds=duration)
+
+
+def _json_fingerprint(value: Any) -> str:
+    encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+def _binding_contract(value: Any) -> Any:
+    data_contract = getattr(value, "data_contract", None)
+    if callable(data_contract):
+        return {
+            "callable": f"{type(value).__module__}.{type(value).__qualname__}",
+            "data_contract": _binding_contract(data_contract()),
+        }
+    if isinstance(value, Mapping):
+        return {str(name): _binding_contract(item) for name, item in value.items()}
+    if isinstance(value, (tuple, list)):
+        return [_binding_contract(item) for item in value]
+    if isinstance(value, Path):
+        return str(value)
+    return value
+
+
+def _partial_bindings(mapper: partial) -> dict[str, Any]:
+    return _binding_contract(
+        {
+            "args": mapper.args,
+            "keywords": mapper.keywords or {},
+        }
+    )
+
+
+def _mapper_id(mapper: Mapper) -> str:
+    if isinstance(mapper, str):
+        if not mapper:
+            raise ValueError("mapper import path must be non-empty")
+        return mapper
+    callable_value = mapper.func if isinstance(mapper, partial) else mapper
+    if not inspect.isfunction(callable_value) and not inspect.isclass(callable_value):
+        callable_value = type(callable_value)
+    module = getattr(callable_value, "__module__", "")
+    qualname = getattr(callable_value, "__qualname__", "")
+    if (
+        not module
+        or module == "__main__"
+        or not qualname
+        or "<lambda>" in qualname
+        or "<locals>" in qualname
+    ):
+        raise ValueError("data mappers must be named importable callables")
+    identity = f"{module}.{qualname}"
+    if isinstance(mapper, partial):
+        identity += ":partial:" + _json_fingerprint(_partial_bindings(mapper))
+    return identity
+
+
+def _implementation_contract(function: Callable[..., Any]) -> dict[str, str]:
+    """Identify callable code strongly enough to reject changed preprocessing."""
+
+    callable_value = function.func if isinstance(function, partial) else function
+    if not inspect.isfunction(callable_value) and not inspect.isclass(callable_value):
+        callable_value = type(callable_value)
+    module = getattr(callable_value, "__module__", "")
+    qualname = getattr(callable_value, "__qualname__", "")
+    if not module or not qualname:
+        raise ValueError("data callables must expose a stable module and qualname")
+    try:
+        implementation = inspect.getsource(callable_value).encode()
+        digest_kind = "callable_source_sha256"
+    except (OSError, TypeError):
+        source_path = inspect.getsourcefile(callable_value)
+        if source_path is None:
+            raise ValueError(
+                f"cannot fingerprint data callable {module}.{qualname}"
+            ) from None
+        implementation = Path(source_path).read_bytes()
+        digest_kind = "module_file_sha256"
+    contract = {
+        "callable": f"{module}.{qualname}",
+        digest_kind: hashlib.sha256(implementation).hexdigest(),
+    }
+    if isinstance(function, partial):
+        contract["bindings_sha256"] = _json_fingerprint(_partial_bindings(function))
+    state = getattr(function, "data_contract", None)
+    if callable(state):
+        contract["state_sha256"] = _json_fingerprint(state())
+    return contract
+
+
+def _data_implementations(
+    distribution: DataDistributionConfig,
+    *,
+    batch_fn: Callable[[Sequence[Any]], Any] | None,
+    resolvers: Mapping[str, ArtifactResolver] | None,
+    mappers: Mapping[str, Callable[[Any], Any]] | None,
+) -> dict[str, Any]:
+    resolver_registry = dict(BUILTIN_RESOLVERS)
+    if resolvers is not None:
+        resolver_registry.update(resolvers)
+    mapper_registry = {} if mappers is None else dict(mappers)
+    resolver_contracts = {}
+    mapper_contracts = {}
+    for source_config in distribution.sources:
+        try:
+            resolver = resolver_registry[source_config.scheme]
+        except KeyError as error:
+            raise ValueError(
+                f"no resolver registered for source scheme {source_config.scheme!r}"
+            ) from error
+        resolver_contracts[source_config.scheme] = _implementation_contract(resolver)
+        mapper = mapper_registry.get(source_config.mapper)
+        if mapper is None:
+            mapper = load_mapper(source_config.mapper)
+        mapper_contracts[source_config.mapper] = _implementation_contract(mapper)
+    return {
+        "resolvers": resolver_contracts,
+        "mappers": mapper_contracts,
+        "batch_mapper": _batch_implementation(batch_fn),
+    }
+
+
+def _batch_implementation(
+    batch_fn: Callable[[Sequence[Any]], Any] | None,
+) -> Mapping[str, Any] | None:
+    if batch_fn is None:
+        return None
+    return {
+        "declared": _mapper_id(batch_fn),
+        "implementation": _implementation_contract(batch_fn),
+    }
+
+
+def load_mapper(path: str) -> Callable[[Any], Any]:
+    """Import a data mapper from its stable dotted path."""
+
+    parts = path.split(".")
+    module = None
+    boundary = 0
+    for boundary in range(len(parts), 0, -1):
+        try:
+            module = importlib.import_module(".".join(parts[:boundary]))
+        except ModuleNotFoundError as error:
+            missing = error.name or ""
+            candidate = ".".join(parts[:boundary])
+            if missing != candidate and not candidate.startswith(f"{missing}."):
+                raise
+        else:
+            break
+    if module is None:
+        raise ImportError(f"could not import mapper {path!r}")
+    value: Any = module
+    try:
+        for attribute in parts[boundary:]:
+            value = getattr(value, attribute)
+    except AttributeError as error:
+        raise ImportError(f"could not import mapper {path!r}") from error
+    if not callable(value):
+        raise TypeError(f"data mapper {path!r} is not callable")
+    return value
+
+
+class DataSourceConfig(FrozenConfig):
+    """One immutable dataset source resolved directly into Grain records."""
+
+    uri: str
+    mapper: str
+    revision: str | None = None
+    split: str | None = None
+    subset: str | None = None
+    name: str | None = None
+
+    @model_validator(mode="after")
+    def validate_source(self) -> Self:
+        if not self.uri:
+            raise ValueError("source uri must be non-empty")
+        _mapper_id(self.mapper)
+        return self
+
+    @property
+    def scheme(self) -> str:
+        return urlparse(self.uri).scheme or "file"
+
+    @property
+    def mapper_id(self) -> str:
+        return self.mapper
+
+
+class DataDistributionConfig(FrozenConfig):
+    """A deterministic sampling policy over one or more data sources.
+
+    The one-dataset case is a distribution with one source and implicit weight
+    one. Mixtures and single sources are not separate concepts, so there is no
+    second recipe abstraction. ``sampling_unit='example'`` preserves Grain's
+    example mixing; ``'batch'`` draws one source per source-local batch in
+    :func:`build_data_loader`. ``shuffle`` controls only source record order.
+    """
+
+    sources: tuple[DataSourceConfig, ...]
+    weights: tuple[float, ...]
+    seed: int = 0
+    shuffle: bool = True
+    sampling_unit: Literal["example", "batch"] = "example"
+
+    @model_serializer(mode="wrap")
+    def serialize_distribution(self, handler: SerializerFunctionWrapHandler) -> Any:
+        """Keep legacy config and checkpoint fingerprints for example mixing."""
+
+        value = handler(self)
+        if self.sampling_unit == "example":
+            value.pop("sampling_unit", None)
+        return value
+
+    @model_validator(mode="before")
+    @classmethod
+    def default_weights(cls, value: object) -> object:
+        """Make the ordinary one/equal-source distribution concise in config."""
+
+        if isinstance(value, Mapping) and "weights" not in value:
+            sources = value.get("sources")
+            if isinstance(sources, Sequence):
+                return {**value, "weights": [1.0] * len(sources)}
+        return value
+
+    @model_validator(mode="after")
+    def validate_mixture(self) -> Self:
+        if not self.sources:
+            raise ValueError("a distribution must contain at least one source")
+        if len(self.sources) != len(self.weights):
+            raise ValueError("weights must match sources")
+        if any(not math.isfinite(weight) or weight <= 0 for weight in self.weights):
+            raise ValueError("sampling weights must be finite and positive")
+        if self.seed < 0:
+            raise ValueError("seed must be non-negative")
+        names = [source.name for source in self.sources if source.name is not None]
+        if len(names) != len(set(names)):
+            raise ValueError("named sources must be unique")
+        return self
+
+    @property
+    def normalized_weights(self) -> tuple[float, ...]:
+        total = sum(self.weights)
+        return tuple(weight / total for weight in self.weights)
+
+    def fingerprint(self) -> str:
+        """Hash distribution semantics without hashing the referenced contents."""
+
+        return _json_fingerprint(self.model_dump(mode="json"))
+
+
+def source(
+    uri: str,
+    *,
+    map: Mapper,
+    revision: str | None = None,
+    split: str | None = None,
+    subset: str | None = None,
+    name: str | None = None,
+) -> DataSourceConfig:
+    """Declare one upstream data source without reading or copying it."""
+
+    return DataSourceConfig(
+        uri=uri,
+        mapper=_mapper_id(map),
+        revision=revision,
+        split=split,
+        subset=subset,
+        name=name,
+    )
+
+
+def mix(
+    *sources: DataSourceConfig | Mapping[str, Any],
+    weights: Sequence[float] | None = None,
+    seed: int = 0,
+    shuffle: bool = True,
+    sampling_unit: Literal["example", "batch"] = "example",
+) -> DataDistributionConfig:
+    """Declare a sampling policy; one source is the ordinary dataset case."""
+
+    resolved_sources = tuple(
+        item
+        if isinstance(item, DataSourceConfig)
+        else DataSourceConfig.model_validate(item)
+        for item in sources
+    )
+    resolved_weights = (
+        tuple(1.0 for _ in resolved_sources) if weights is None else tuple(weights)
+    )
+    return DataDistributionConfig(
+        sources=resolved_sources,
+        weights=resolved_weights,
+        seed=seed,
+        shuffle=shuffle,
+        sampling_unit=sampling_unit,
+    )
+
+
+def build_dataset(
+    distribution: DataDistributionConfig,
+    *,
+    resolvers: Mapping[str, ArtifactResolver] | None = None,
+    mappers: Mapping[str, Callable[[Any], Any]] | None = None,
+) -> grain.MapDataset[Any]:
+    """Resolve a configured distribution as a lazy native Grain MapDataset.
+
+    Representax resolves ``hf://`` and local sources by default. Additional
+    schemes can be registered without changing distribution or task semantics.
+    """
+
+    if distribution.sampling_unit == "batch":
+        raise ValueError(
+            "sampling_unit='batch' requires build_data_loader and batch_size"
+        )
+    datasets = _source_datasets(distribution, resolvers=resolvers, mappers=mappers)
+    if len(datasets) == 1:
+        return datasets[0]
+    return grain.MapDataset.mix(datasets, weights=distribution.normalized_weights)
+
+
+def _source_datasets(
+    distribution: DataDistributionConfig,
+    *,
+    resolvers: Mapping[str, ArtifactResolver] | None,
+    mappers: Mapping[str, Callable[[Any], Any]] | None,
+) -> list[grain.MapDataset[Any]]:
+    resolver_registry = dict(BUILTIN_RESOLVERS)
+    if resolvers is not None:
+        resolver_registry.update(resolvers)
+    mapper_registry = {} if mappers is None else dict(mappers)
+    datasets = []
+    for index, source_config in enumerate(distribution.sources):
+        try:
+            resolver = resolver_registry[source_config.scheme]
+        except KeyError as error:
+            raise ValueError(
+                f"no resolver registered for source scheme {source_config.scheme!r}"
+            ) from error
+        raw_source = resolver(source_config)
+        mapper = mapper_registry.get(source_config.mapper)
+        if mapper is None:
+            mapper = load_mapper(source_config.mapper)
+        dataset = grain.MapDataset.source(raw_source).seed(distribution.seed + index)
+        dataset = dataset.map(mapper)
+        if distribution.shuffle:
+            dataset = dataset.shuffle()
+        datasets.append(dataset)
+    return datasets
+
+
+class _RandomBatchIterDataset(grain.IterDataset[Any]):
+    """Lazy weighted selection over already batched, optionally repeated sources."""
+
+    def __init__(
+        self,
+        datasets: Sequence[grain.MapDataset[Any]],
+        distribution: DataDistributionConfig,
+    ) -> None:
+        super().__init__(datasets)
+        self._datasets = tuple(datasets)
+        self._weights = distribution.normalized_weights
+        self._seed = distribution.seed
+
+    def __iter__(self) -> grain.DatasetIterator[Any]:
+        return _RandomBatchIterator(self._datasets, self._weights, self._seed)
+
+
+class _RandomBatchIterator(grain.DatasetIterator[Any]):
+    def __init__(
+        self,
+        datasets: Sequence[grain.MapDataset[Any]],
+        weights: Sequence[float],
+        seed: int,
+    ) -> None:
+        super().__init__()
+        self._datasets = datasets
+        self._weights = weights
+        self._rng = np.random.Generator(np.random.PCG64(seed))
+        self._counts = [0] * len(datasets)
+        self._exhausted = False
+        self._is_closed = False
+
+    def __next__(self) -> Any:
+        if self._is_closed:
+            raise ValueError("cannot advance a closed batch sampling iterator")
+        if self._exhausted:
+            raise StopIteration
+        previous_rng = self._rng.bit_generator.state
+        source_index = int(self._rng.choice(len(self._datasets), p=self._weights))
+        dataset = self._datasets[source_index]
+        index = self._counts[source_index]
+        if index >= len(dataset):
+            self._exhausted = True
+            raise StopIteration
+        try:
+            batch = dataset[index]
+        except Exception:
+            self._rng.bit_generator.state = previous_rng
+            raise
+        self._counts[source_index] += 1
+        return batch
+
+    def get_state(self) -> dict[str, Any]:
+        return {
+            # PCG64's 128-bit integers become unsupported object leaves in Orbax.
+            "rng": json.dumps(self._rng.bit_generator.state),
+            "source_counts": list(self._counts),
+            "exhausted": self._exhausted,
+        }
+
+    def set_state(self, state: dict[str, Any]) -> None:
+        counts = list(state["source_counts"])
+        if len(counts) != len(self._datasets) or any(
+            not isinstance(count, int) or count < 0 for count in counts
+        ):
+            raise ValueError("invalid batch sampling source cursors")
+        self._rng.bit_generator.state = json.loads(state["rng"])
+        self._counts = counts
+        self._exhausted = state["exhausted"]
+
+    def close(self) -> None:
+        self._is_closed = True
+        super().close()
+
+
+def build_data_loader(
+    distribution: (
+        DataDistributionConfig | grain.MapDataset[Any] | grain.IterDataset[Any]
+    ),
+    *,
+    batch_size: int,
+    batch_fn: Callable[[Sequence[Any]], Any] | None = None,
+    drop_remainder: bool = True,
+    num_threads: int = 16,
+    prefetch_buffer_size: int = 2,
+    host_memory_budget_bytes: int | None = None,
+    measure_training_tokens: bool = False,
+    resolvers: Mapping[str, ArtifactResolver] | None = None,
+    mappers: Mapping[str, Callable[[Any], Any]] | None = None,
+    data_contract: Mapping[str, Any] | None = None,
+    repeat: bool = False,
+) -> DataLoader:
+    """Build a native Grain pipeline yielding static, model-ready batches.
+
+    ``distribution`` is normally a serializable :class:`DataDistributionConfig`.
+    Advanced Python callers may instead supply an existing Grain ``MapDataset``
+    or ``IterDataset``. Direct datasets remain Grain objects rather than being
+    copied into a Representax dataset class, but must provide ``data_contract``
+    so checkpoint resume can identify their semantics.
+
+    With ``sampling_unit='batch'``, weights are probabilities for one seeded
+    random source draw per batch (even when ``shuffle=False``). Each source is
+    batched separately; ``drop_remainder`` applies per source. Without repeat,
+    iteration stops when the selected source is exhausted, like Grain mixing.
+    With repeat, each source repeats its batches independently and the caller
+    owns the step limit. Sources unable to produce a batch are rejected.
+    Batch sampling uses one background producer when ``num_threads > 0`` and
+    one shared prefetch queue, keeping memory independent of the source count.
+    Its memory budget reserves ``prefetch_buffer_size + 2`` model-ready slots
+    when prefetching: the queue, one in-flight batch, and the consumed batch.
+    """
+
+    if batch_size <= 0:
+        raise ValueError("batch_size must be positive")
+    if num_threads < 0:
+        raise ValueError("num_threads must be non-negative")
+    if prefetch_buffer_size < 0:
+        raise ValueError("prefetch_buffer_size must be non-negative")
+    if host_memory_budget_bytes is not None and host_memory_budget_bytes <= 0:
+        raise ValueError("host_memory_budget_bytes must be positive or None")
+    batch_sampling = (
+        isinstance(distribution, DataDistributionConfig)
+        and distribution.sampling_unit == "batch"
+    )
+
+    def monitor_for(*, prefetched: bool) -> _BatchMonitor:
+        slots = (
+            prefetch_buffer_size + (2 if batch_sampling else 1)
+            if prefetched and num_threads > 0 and prefetch_buffer_size > 0
+            else 1
+        )
+        maximum = (
+            None
+            if host_memory_budget_bytes is None
+            else host_memory_budget_bytes // slots
+        )
+        if maximum == 0:
+            raise ValueError(
+                "host_memory_budget_bytes is smaller than the configured "
+                f"{slots} model-ready batch slots"
+            )
+        return _BatchMonitor(maximum, measure_training_tokens)
+
+    def batch_dataset(dataset: Any, *, prefetched: bool) -> Any:
+        monitor = monitor_for(prefetched=prefetched)
+        if batch_fn is None:
+            return dataset.batch(
+                batch_size,
+                drop_remainder=drop_remainder,
+            ).map(monitor)
+        return dataset.batch(
+            batch_size,
+            drop_remainder=drop_remainder,
+            batch_fn=_TimedBatchFn(batch_fn, monitor),
+        )
+
+    if isinstance(distribution, DataDistributionConfig):
+        if batch_sampling:
+            from grain.experimental import ThreadPrefetchIterDataset
+
+            datasets = []
+            for index, source_dataset in enumerate(
+                _source_datasets(distribution, resolvers=resolvers, mappers=mappers)
+            ):
+                dataset = batch_dataset(source_dataset, prefetched=True)
+                if not len(dataset):
+                    raise ValueError(
+                        f"batch sampling source {index} cannot produce a batch "
+                        "with the configured batch_size and drop_remainder"
+                    )
+                datasets.append(dataset.repeat() if repeat else dataset)
+            # Wrap even with no prefetch so execution settings share cursor format.
+            iterator = ThreadPrefetchIterDataset(
+                _RandomBatchIterDataset(datasets, distribution),
+                prefetch_buffer_size=prefetch_buffer_size if num_threads > 0 else 0,
+            )
+        else:
+            dataset = batch_dataset(
+                build_dataset(
+                    distribution,
+                    resolvers=resolvers,
+                    mappers=mappers,
+                ),
+                prefetched=True,
+            )
+            if repeat:
+                dataset = dataset.repeat()
+            iterator = dataset.to_iter_dataset(
+                grain.ReadOptions(
+                    num_threads=num_threads,
+                    prefetch_buffer_size=prefetch_buffer_size,
+                )
+            )
+        source_contract: Mapping[str, Any] = {
+            "kind": "configured-distribution",
+            "distribution": distribution.model_dump(mode="json"),
+            "distribution_fingerprint": distribution.fingerprint(),
+            "implementations": _data_implementations(
+                distribution,
+                batch_fn=batch_fn,
+                resolvers=resolvers,
+                mappers=mappers,
+            ),
+        }
+    elif isinstance(distribution, grain.MapDataset):
+        if data_contract is None:
+            raise ValueError("direct Grain datasets require data_contract")
+        dataset = batch_dataset(
+            distribution,
+            prefetched=True,
+        )
+        if repeat:
+            dataset = dataset.repeat()
+        iterator = dataset.to_iter_dataset(
+            grain.ReadOptions(
+                num_threads=num_threads,
+                prefetch_buffer_size=prefetch_buffer_size,
+            )
+        )
+        source_contract = {
+            "kind": "grain-map-dataset",
+            **dict(data_contract),
+            "batch_mapper": _batch_implementation(batch_fn),
+        }
+    elif isinstance(distribution, grain.IterDataset):
+        if data_contract is None:
+            raise ValueError("direct Grain datasets require data_contract")
+        if repeat:
+            raise ValueError("repeat requires a Grain MapDataset")
+        iterator = batch_dataset(
+            distribution,
+            prefetched=False,
+        )
+        source_contract = {
+            "kind": "grain-iter-dataset",
+            **dict(data_contract),
+            "batch_mapper": _batch_implementation(batch_fn),
+        }
+    else:
+        raise TypeError(
+            "distribution must be DataDistributionConfig or a Grain dataset"
+        )
+    return DataLoader(
+        dataset=iterator,
+        global_batch_size=batch_size if drop_remainder else None,
+        data_contract={
+            "schema_version": "representax-data-loader-v3",
+            "loader": "grain",
+            "grain_version": grain.__version__,
+            "source": source_contract,
+            "batch_size": batch_size,
+            "drop_remainder": drop_remainder,
+            "repeat": repeat,
+        },
+    )

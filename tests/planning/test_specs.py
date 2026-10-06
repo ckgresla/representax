@@ -1,5 +1,7 @@
 """Domain configuration and parameter-role tests."""
 
+from typing import Any, cast
+
 import jax
 import pytest
 from pydantic import ValidationError
@@ -7,6 +9,10 @@ from pydantic import ValidationError
 from representax.config import (
     BatchConfig,
     ComponentConfig,
+    CustomShardingConfig,
+    DataConfig,
+    DDPConfig,
+    FSDPConfig,
     GradCacheConfig,
     JobConfig,
     LoggingConfig,
@@ -14,31 +20,40 @@ from representax.config import (
     ModelConfig,
     OptimizationConfig,
     ParameterRole,
+    PartitionRuleConfig,
+    PrecisionConfig,
+    QuantizedLoRAConfig,
     TrainingConfig,
 )
 from representax.data import mix, source
 from representax.tasks import build_task
+from representax.tasks.modifiers import (
+    AdaptiveLayerModifierConfig,
+    MatryoshkaModifierConfig,
+    MatryoshkaTask,
+)
+from representax.tasks.pairwise import CosineRegressionConfig, PairwiseConfig
 from representax.tasks.retrieval import MNRConfig, MNRTask, RetrievalConfig
 from representax.train import GradCache, build_loss_execution, scientific_fingerprint
 
 
-def _training(**overrides):
-    values = {
+def _training(**overrides: Any) -> TrainingConfig:
+    values: dict[str, Any] = {
         "global_batch_size": 64,
         "max_steps": 100,
         "seed": 7,
         "mesh": MeshConfig(axis_shapes=(4,), axis_names=("data",)),
         "batch": BatchConfig(
-            micro_batch_size=4,
-            gradient_accumulation_steps=4,
+            micro_batch_size=64,
+            gradient_accumulation_steps=1,
         ),
     }
     values.update(overrides)
     return TrainingConfig(**values)
 
 
-def _job(**overrides):
-    values = {
+def _job(**overrides: Any) -> JobConfig:
+    values: dict[str, Any] = {
         "name": "test-job",
         "model": ModelConfig(target="tests.models.ToyEncoder"),
         "task": RetrievalConfig(),
@@ -56,6 +71,25 @@ def _job(**overrides):
     return JobConfig(**values)
 
 
+def test_data_wait_heartbeat_precedes_fatal_deadline():
+    distribution = mix(source("file:///tmp/data.jsonl", map="tests.data.identity"))
+
+    assert (
+        DataConfig(
+            distribution=distribution,
+            data_wait_heartbeat_seconds=5.0,
+            data_wait_timeout_seconds=30.0,
+        ).host_memory_budget_bytes
+        is None
+    )
+    with pytest.raises(ValidationError, match="must be below"):
+        DataConfig(
+            distribution=distribution,
+            data_wait_heartbeat_seconds=30.0,
+            data_wait_timeout_seconds=30.0,
+        )
+
+
 @pytest.mark.parametrize("policy", ["none", "selective", "full"])
 def test_training_config_accepts_activation_rematerialization_policies(policy):
     training = _training(activation_rematerialization=policy)
@@ -71,12 +105,68 @@ def test_training_config_rejects_unknown_activation_rematerialization_policy():
         _training(activation_rematerialization="automatic")
 
 
-def test_mesh_config_names_logical_axes_without_assigning_sharding_semantics():
+def test_mixed_precision_config_round_trips_as_execution_policy():
+    job = _job(training=_training(precision=PrecisionConfig.bfloat16_mixed()))
+
+    restored = JobConfig.model_validate_json(job.model_dump_json())
+    execution = cast(dict[str, Any], restored.parameters(ParameterRole.EXECUTION))
+
+    assert restored.training.precision == PrecisionConfig(
+        compute_dtype="bfloat16",
+        activation_dtype="bfloat16",
+    )
+    assert execution["training"]["precision"] == {
+        "parameter_dtype": "float32",
+        "compute_dtype": "bfloat16",
+        "activation_dtype": "bfloat16",
+        "matrix_dtype": None,
+        "accumulation_dtype": "float32",
+        "loss_dtype": "float32",
+    }
+
+
+def test_float8_policy_keeps_non_matrix_compute_and_communication_in_bfloat16():
+    precision = PrecisionConfig.float8_mixed()
+
+    assert precision.compute_dtype == "bfloat16"
+    assert precision.activation_dtype == "bfloat16"
+    assert precision.resolved_matrix_dtype == "float8_e4m3fn"
+    assert precision.communication_dtype == "bfloat16"
+
+
+def test_quantized_lora_config_round_trips_as_scientific_model_recipe():
+    adapter = QuantizedLoRAConfig(
+        rank=8,
+        alpha=16.0,
+        target_pattern=r"layers.*(attention|mlp)",
+    )
+    job = _job(training=_training(adapter=adapter))
+
+    restored = JobConfig.model_validate_json(job.model_dump_json())
+    scientific = cast(dict[str, Any], restored.parameters(ParameterRole.SCIENTIFIC))
+
+    assert restored.training.adapter == adapter
+    assert scientific["training"]["adapter"] == {
+        "bits": 4,
+        "rank": 8,
+        "alpha": 16.0,
+        "target_pattern": r"layers.*(attention|mlp)",
+        "initialization_scale": None,
+    }
+
+
+def test_quantized_lora_config_rejects_invalid_target_pattern():
+    with pytest.raises(ValidationError, match="invalid adapter target_pattern"):
+        QuantizedLoRAConfig(rank=8, alpha=16.0, target_pattern="[")
+
+
+def test_mesh_config_preserves_logical_axis_names_for_sharding():
     training = _training(
         mesh=MeshConfig(
             axis_shapes=(4, 2),
             axis_names=("fsdp", "tensor"),
         ),
+        sharding=DDPConfig(axis="fsdp"),
     )
 
     assert training.mesh.device_count == 8
@@ -101,6 +191,83 @@ def test_mesh_config_unpacks_directly_into_jax_make_mesh(monkeypatch):
     assert calls == [((128, 4), ("fsdp", "tensor"))]
 
 
+def test_named_and_custom_sharding_configs_round_trip():
+    ddp = _job(training=_training(sharding=DDPConfig(axis="data")))
+    fsdp = _job(
+        training=_training(
+            sharding=FSDPConfig(
+                data_axis="data",
+                minimum_parameter_elements=1024,
+            )
+        )
+    )
+    custom = _job(
+        training=_training(
+            mesh=MeshConfig(
+                axis_shapes=(2, 2),
+                axis_names=("data", "model"),
+            ),
+            sharding=CustomShardingConfig(
+                data_axis="data",
+                parameter_axes=("model",),
+                parameter_rules=(
+                    PartitionRuleConfig(
+                        pattern=r"\.layers\..*\.weight$",
+                        axes=("model", None),
+                    ),
+                ),
+            ),
+        )
+    )
+
+    restored_ddp = JobConfig.model_validate_json(ddp.model_dump_json())
+    restored_fsdp = JobConfig.model_validate_json(fsdp.model_dump_json())
+    restored_custom = JobConfig.model_validate_json(custom.model_dump_json())
+
+    assert isinstance(restored_ddp.training.sharding, DDPConfig)
+    assert isinstance(restored_fsdp.training.sharding, FSDPConfig)
+    assert restored_fsdp.training.sharding.resolved_parameter_axis == "data"
+    assert isinstance(restored_custom.training.sharding, CustomShardingConfig)
+    assert restored_custom.training.sharding.parameter_rules[0].axes == (
+        "model",
+        None,
+    )
+
+
+def test_fsdp_can_shard_parameters_without_a_data_axis():
+    training = _training(
+        mesh=MeshConfig(axis_shapes=(2,), axis_names=("model",)),
+        sharding=FSDPConfig(data_axis=None, parameter_axis="model"),
+    )
+
+    assert isinstance(training.sharding, FSDPConfig)
+    assert training.sharding.data_axis is None
+    assert training.sharding.resolved_parameter_axis == "model"
+
+
+def test_custom_sharding_rejects_invalid_rules():
+    with pytest.raises(ValidationError, match="regular expression"):
+        PartitionRuleConfig(pattern="[", axes=("model",))
+    with pytest.raises(ValidationError, match="cannot reuse"):
+        PartitionRuleConfig(
+            pattern="weight",
+            axes=("model", ("tensor", "model")),
+        )
+    with pytest.raises(ValidationError, match="at least one parameter rule"):
+        CustomShardingConfig(parameter_axes=("model",), parameter_rules=())
+    with pytest.raises(ValidationError, match="absent from parameter_axes"):
+        _training(
+            sharding=CustomShardingConfig(
+                parameter_axes=("data",),
+                parameter_rules=(
+                    PartitionRuleConfig(pattern="weight", axes=("model",)),
+                ),
+            )
+        )
+    with pytest.raises(ValidationError, match="absent from the mesh"):
+        _training(sharding=FSDPConfig(parameter_axis="model"))
+
+
 def test_job_round_trips_registered_configs_and_is_frozen():
     job = _job(loss=MNRConfig(scale=9.0, symmetric=True))
 
@@ -110,7 +277,7 @@ def test_job_round_trips_registered_configs_and_is_frozen():
     assert isinstance(restored.task, RetrievalConfig)
     assert isinstance(restored.loss, MNRConfig)
     with pytest.raises(ValidationError, match="frozen"):
-        restored.training.seed = 9
+        restored.training.seed = 9  # ty: ignore[invalid-assignment]
 
 
 def test_parameter_roles_project_domain_config_without_parallel_trees():
@@ -127,6 +294,7 @@ def test_parameter_roles_project_domain_config_without_parallel_trees():
     assert set(scientific) == {
         "data",
         "loss",
+        "loss_modifiers",
         "model",
         "optimization",
         "task",
@@ -136,13 +304,20 @@ def test_parameter_roles_project_domain_config_without_parallel_trees():
         "global_batch_size": 64,
         "max_steps": 100,
         "seed": 7,
+        "adapter": None,
+        "trainable_pattern": None,
+        "trainable_embedding_rows": {},
     }
-    assert set(execution) == {"training"}
-    assert execution["training"]["grad_cache"] == {
+    assert set(execution) == {"data", "training"}
+    training_execution = execution["training"]
+    assert isinstance(training_execution, dict)
+    assert training_execution["grad_cache"] == {
+        "implementation": "rematerialized",
         "micro_batch_size": 8,
         "query_micro_batch_size": None,
         "document_micro_batch_size": None,
         "loss_row_chunk_size": None,
+        "score_micro_batch_size": None,
     }
     assert "logging" not in scientific
     assert "logging" not in execution
@@ -155,19 +330,18 @@ def test_scientific_fingerprint_ignores_execution_only_changes():
             mesh=MeshConfig(axis_shapes=(8,), axis_names=("data",)),
             batch=BatchConfig(
                 micro_batch_size=2,
-                gradient_accumulation_steps=4,
+                gradient_accumulation_steps=1,
             ),
             grad_cache=GradCacheConfig(micro_batch_size=2),
             activation_rematerialization="selective",
-            prefetch_depth=8,
         )
     )
     changed_science = _job(
         training=_training(
             global_batch_size=128,
             batch=BatchConfig(
-                micro_batch_size=8,
-                gradient_accumulation_steps=4,
+                micro_batch_size=128,
+                gradient_accumulation_steps=1,
             ),
         )
     )
@@ -176,17 +350,41 @@ def test_scientific_fingerprint_ignores_execution_only_changes():
     assert scientific_fingerprint(changed_science) != scientific_fingerprint(baseline)
 
 
+def test_gradient_accumulation_is_capability_gated_by_loss_semantics():
+    with pytest.raises(ValidationError, match="does not decompose exactly"):
+        _job(
+            training=_training(
+                batch=BatchConfig(
+                    micro_batch_size=16,
+                    gradient_accumulation_steps=4,
+                )
+            )
+        )
+
+    job = _job(
+        task=PairwiseConfig(),
+        loss=CosineRegressionConfig(),
+        training=_training(
+            batch=BatchConfig(
+                micro_batch_size=16,
+                gradient_accumulation_steps=4,
+            )
+        ),
+    )
+
+    assert job.training.batch.gradient_accumulation_steps == 4
+
+
 def test_structured_task_loss_and_grad_cache_build_runtime_objects():
     loss = MNRConfig(
         scale=7.0,
         symmetric=True,
-        dimensions=(2, 4),
-        dimension_weights=(1.0, 2.0),
         negative_scope="global",
     )
     task = build_task(RetrievalConfig(), loss)
     loss_execution = build_loss_execution(
         GradCacheConfig(
+            implementation="custom_vjp",
             micro_batch_size=4,
             document_micro_batch_size=8,
             loss_row_chunk_size=2,
@@ -195,8 +393,56 @@ def test_structured_task_loss_and_grad_cache_build_runtime_objects():
 
     assert isinstance(task, MNRTask)
     assert task.scale == 7.0
-    assert task.dimensions == (2, 4)
+    assert task.symmetric
+    assert task.negative_scope == "global"
     assert isinstance(loss_execution, GradCache)
     assert loss_execution.query_chunk_size == 4
     assert loss_execution.resolved_document_chunk_size == 8
     assert loss_execution.resolved_loss_row_chunk_size == 2
+    assert loss_execution.implementation == "custom_vjp"
+
+
+def test_loss_modifiers_round_trip_and_build_as_scientific_job_config():
+    modifier = MatryoshkaModifierConfig(
+        dimensions=(4, 2),
+        weights=(1.0, 0.5),
+    )
+    job = _job(loss_modifiers=(modifier,))
+
+    restored = JobConfig.model_validate_json(job.model_dump_json())
+    task = build_task(
+        restored.task,
+        restored.loss,
+        modifiers=restored.loss_modifiers,
+    )
+
+    assert restored.loss_modifiers == (modifier,)
+    assert isinstance(task, MatryoshkaTask)
+    assert task.dimensions == (4, 2)
+    assert job.parameters(ParameterRole.SCIENTIFIC)["loss_modifiers"] == [
+        {
+            "kind": "matryoshka",
+            "dimensions": [4, 2],
+            "weights": [1.0, 0.5],
+            "dimensions_per_step": -1,
+        }
+    ]
+
+
+def test_matryoshka_supports_grad_cache_but_adaptive_layers_do_not():
+    job = _job(
+        loss_modifiers=(MatryoshkaModifierConfig(dimensions=(4, 2)),),
+        training=_training(grad_cache=GradCacheConfig(micro_batch_size=2)),
+    )
+    task = build_task(job.task, job.loss, modifiers=job.loss_modifiers)
+    execution = build_loss_execution(job.training.grad_cache)
+
+    execution.validate(task)
+    with pytest.raises(
+        ValidationError,
+        match="loss modifier 'adaptive_layer' does not support training strategy",
+    ):
+        _job(
+            loss_modifiers=(AdaptiveLayerModifierConfig(),),
+            training=_training(grad_cache=GradCacheConfig(micro_batch_size=2)),
+        )

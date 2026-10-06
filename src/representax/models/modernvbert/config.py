@@ -100,14 +100,34 @@ class ModernVBERTTextConfig(FrozenConfig):
                 return float(text[legacy_name])
             raise KeyError(f"missing RoPE theta for {kind}")
 
-        layer_types = tuple(str(item) for item in text["layer_types"])
+        def attention_type(item: Any) -> AttentionType:
+            resolved = str(item)
+            if resolved not in ("full_attention", "sliding_attention"):
+                raise ValueError(
+                    f"unsupported ModernVBERT attention type: {resolved!r}"
+                )
+            return resolved
+
+        raw_layer_types = text.get("layer_types")
+        if raw_layer_types is None:
+            # Standard Transformers ModernBERT checkpoints encode the same
+            # schedule as a global-attention cadence rather than an explicit
+            # per-layer list.
+            cadence = int(text["global_attn_every_n_layers"])
+            if cadence <= 0:
+                raise ValueError("global_attn_every_n_layers must be positive")
+            raw_layer_types = tuple(
+                "full_attention" if index % cadence == 0 else "sliding_attention"
+                for index in range(int(text["num_hidden_layers"]))
+            )
+        layer_types = tuple(attention_type(item) for item in raw_layer_types)
         return cls(
             vocab_size=int(text["vocab_size"]),
             hidden_size=int(text["hidden_size"]),
             intermediate_size=int(text["intermediate_size"]),
             num_hidden_layers=int(text["num_hidden_layers"]),
             num_attention_heads=int(text["num_attention_heads"]),
-            layer_types=layer_types,  # type: ignore[arg-type]
+            layer_types=layer_types,
             local_attention=int(text["local_attention"]),
             full_attention_rope_theta=theta("full_attention", "global_rope_theta"),
             sliding_attention_rope_theta=theta("sliding_attention", "local_rope_theta"),

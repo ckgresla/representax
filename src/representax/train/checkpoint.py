@@ -10,10 +10,11 @@ import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 import jax
 import numpy as np
+from jaxtyping import PRNGKeyArray
 from orbax.checkpoint import v1 as ocp
 
 from representax.config import CheckpointConfig, JobConfig, ParameterRole
@@ -25,11 +26,13 @@ EventCallback = Callable[..., None]
 
 CHECKPOINT_SCHEMA = "representax-orbax-checkpoint-v1"
 LATEST_SCHEMA = "representax-checkpoint-latest-v1"
+BEST_SCHEMA = "representax-checkpoint-best-v1"
 PROGRESS_SCHEMA = "representax-training-progress-v1"
 ORBAX_MARKER = "_CHECKPOINT_METADATA"
 COMPLETE_MARKER = "REPRESENTAX_COMPLETE"
 CHECKPOINT_MANIFEST = "checkpoint.json"
 LATEST_POINTER = "latest"
+BEST_POINTER = "best"
 REQUIRED_CHECKPOINTABLES = frozenset(
     {"model", "optimizer", "optimizer_step", "rng", "progress"}
 )
@@ -56,6 +59,8 @@ class OrbaxCheckpointer(Protocol):
         step: int | None = None,
         abstract_checkpointables: dict[str, Any] | None = None,
     ) -> dict[str, Any]: ...
+
+    def checkpointables_metadata(self, step: int | None = None) -> Any: ...
 
     def close(self) -> None: ...
 
@@ -97,7 +102,7 @@ class RestoredTrainingState:
 
     state: TrainState
     iteration: int
-    rng: jax.Array
+    rng: PRNGKeyArray
     data_state: Mapping[str, Any]
     logging_cursor: Mapping[str, int]
     record: CheckpointRecord
@@ -143,30 +148,11 @@ def scientific_fingerprint(job: JobConfig) -> str:
     return _fingerprint(job.parameters(ParameterRole.SCIENTIFIC))
 
 
-def tree_structure_fingerprint(tree: PyTree) -> str:
-    """Fingerprint paths, shapes, dtypes, and static PyTree structure."""
-
-    leaves, structure = jax.tree.flatten(tree)
-    return _fingerprint(
-        {
-            "structure": str(structure),
-            "leaves": [
-                {
-                    "type": type(leaf).__qualname__,
-                    "shape": tuple(getattr(leaf, "shape", ())),
-                    "dtype": str(getattr(leaf, "dtype", "")),
-                }
-                for leaf in leaves
-            ],
-        }
-    )
-
-
 def training_checkpointables(
     *,
     state: TrainState,
     iteration: int,
-    rng: jax.Array,
+    rng: PRNGKeyArray,
     data_state: Mapping[str, Any],
     logging_cursor: Mapping[str, int],
 ) -> dict[str, Any]:
@@ -225,6 +211,31 @@ def abstract_pytree(tree: PyTree) -> PyTree:
         return value
 
     return jax.tree.map(abstract_leaf, tree)
+
+
+def _array_structure(tree: PyTree) -> dict[tuple[str | int, ...], tuple[Any, str]]:
+    """Describe array paths from either a live tree or Orbax metadata."""
+
+    def path_component(component: Any) -> str | int:
+        if hasattr(component, "key"):
+            return str(component.key)
+        if hasattr(component, "name"):
+            return str(component.name)
+        if hasattr(component, "idx"):
+            return int(component.idx)
+        return str(component)
+
+    structure = {}
+    for path, leaf in jax.tree_util.tree_flatten_with_path(tree)[0]:
+        shape = getattr(leaf, "shape", None)
+        dtype = getattr(leaf, "dtype", None)
+        if shape is None or dtype is None:
+            continue
+        structure[tuple(path_component(item) for item in path)] = (
+            tuple(shape),
+            str(dtype),
+        )
+    return structure
 
 
 def _atomic_write_text(path: Path, text: str) -> None:
@@ -318,7 +329,9 @@ def validate_complete_checkpoint(
         and fingerprint_data != expected_data_fingerprint
     ):
         raise IncompleteCheckpointError(
-            f"checkpoint data contract differs: {directory}"
+            "checkpoint data contract differs: "
+            f"saved={fingerprint_data}, expected={expected_data_fingerprint}, "
+            f"directory={directory}"
         )
     iteration = manifest.get("iteration")
     if not isinstance(iteration, int) or iteration < 0:
@@ -349,6 +362,9 @@ class CheckpointManager:
         scientific_fingerprint: str,
         data_fingerprint: str,
         keep: int = 3,
+        best_metric: str | None = None,
+        best_mode: str = "min",
+        keep_best: int = 1,
         asynchronous: bool = True,
         event: EventCallback | None = None,
         checkpointer: OrbaxCheckpointer | None = None,
@@ -356,6 +372,10 @@ class CheckpointManager:
     ) -> None:
         if keep <= 0:
             raise ValueError("checkpoint retention must be positive")
+        if best_mode not in {"min", "max"}:
+            raise ValueError("best_mode must be 'min' or 'max'")
+        if keep_best <= 0:
+            raise ValueError("best checkpoint retention must be positive")
         if not scientific_fingerprint:
             raise ValueError("scientific_fingerprint must be non-empty")
         if not data_fingerprint:
@@ -366,14 +386,34 @@ class CheckpointManager:
         self.scientific_fingerprint = scientific_fingerprint
         self.data_fingerprint = data_fingerprint
         self.keep = keep
+        self.best_metric = best_metric
+        self.best_mode = best_mode
+        self.keep_best = keep_best
         self.asynchronous = asynchronous
         self._event = event
         self.process_index = (
             jax.process_index() if process_index is None else process_index
         )
+        preservation_policy: Any = ocp.training.preservation_policies.LatestN(keep)
+        if best_metric is not None:
+            preservation_policy = (
+                ocp.training.preservation_policies.AnyPreservationPolicy(
+                    (
+                        preservation_policy,
+                        ocp.training.preservation_policies.BestN(
+                            get_metric_fn=lambda metrics: float(metrics[best_metric]),
+                            reverse=best_mode == "min",
+                            n=keep_best,
+                            keep_checkpoints_without_metrics=False,
+                        ),
+                    )
+                )
+            )
         self._checkpointer = checkpointer or ocp.training.Checkpointer(
-            self.checkpoint_root,
-            preservation_policy=ocp.training.preservation_policies.LatestN(keep),
+            str(self.checkpoint_root),
+            # Orbax v1 re-exports policies through a module path that ty does
+            # not yet connect to the public PreservationPolicy protocol.
+            preservation_policy=cast(Any, preservation_policy),
             cleanup_tmp_directories=False,
         )
         self._pending: _PendingSave | None = None
@@ -394,6 +434,7 @@ class CheckpointManager:
         *,
         iteration: int,
         checkpointables: Mapping[str, Any],
+        metrics: Mapping[str, Any] | None,
     ) -> dict[str, Any]:
         return {
             "schema_version": CHECKPOINT_SCHEMA,
@@ -401,10 +442,7 @@ class CheckpointManager:
             "scientific_fingerprint": self.scientific_fingerprint,
             "data_fingerprint": self.data_fingerprint,
             "checkpointables": sorted(checkpointables),
-            "structure_fingerprints": {
-                name: tree_structure_fingerprint(value)
-                for name, value in sorted(checkpointables.items())
-            },
+            "metrics": None if metrics is None else _json_value(metrics),
         }
 
     def save(
@@ -436,6 +474,7 @@ class CheckpointManager:
         manifest = self._checkpoint_manifest(
             iteration=iteration,
             checkpointables=checkpointables,
+            metrics=metrics,
         )
         self._emit("checkpoint_snapshot_started", iteration=iteration)
         snapshot_started = time.perf_counter()
@@ -538,6 +577,7 @@ class CheckpointManager:
                         ],
                     },
                 )
+                self._update_best_pointer(pending)
                 _fsync_directory(self.checkpoint_root)
                 self._emit(
                     "checkpoint_saved",
@@ -555,6 +595,37 @@ class CheckpointManager:
                 error_type=type(error).__name__,
                 error=str(error),
             )
+
+    def _update_best_pointer(self, pending: _PendingSave) -> None:
+        if self.best_metric is None:
+            return
+        metrics = pending.manifest.get("metrics")
+        if not isinstance(metrics, Mapping) or self.best_metric not in metrics:
+            return
+        value = float(metrics[self.best_metric])
+        pointer = self.checkpoint_root / BEST_POINTER
+        if pointer.is_file():
+            current = json.loads(pointer.read_text())
+            current_value = float(current["metric_value"])
+            is_better = (
+                value < current_value
+                if self.best_mode == "min"
+                else value > current_value
+            )
+            if not is_better:
+                return
+        _atomic_write_json(
+            pointer,
+            {
+                "schema_version": BEST_SCHEMA,
+                "iteration": pending.iteration,
+                "path": pending.path.name,
+                "checkpoint_fingerprint": pending.manifest["checkpoint_fingerprint"],
+                "metric": self.best_metric,
+                "metric_mode": self.best_mode,
+                "metric_value": value,
+            },
+        )
 
     def wait(self, *, backpressure: bool = False) -> None:
         """Wait for the outstanding publication and surface its failure."""
@@ -605,6 +676,39 @@ class CheckpointManager:
             raise IncompleteCheckpointError(f"latest pointer differs: {pointer}")
         return record
 
+    def best(self) -> CheckpointRecord:
+        """Resolve the complete checkpoint selected by the primary metric."""
+
+        self.wait()
+        if self.best_metric is None:
+            raise ValueError("checkpoint manager has no best metric")
+        pointer = self.checkpoint_root / BEST_POINTER
+        if not pointer.is_file():
+            raise FileNotFoundError(f"no best checkpoint pointer: {pointer}")
+        document = json.loads(pointer.read_text())
+        if (
+            document.get("schema_version") != BEST_SCHEMA
+            or document.get("metric") != self.best_metric
+            or document.get("metric_mode") != self.best_mode
+        ):
+            raise IncompleteCheckpointError(f"invalid best pointer: {pointer}")
+        path_component = document.get("path")
+        if (
+            not isinstance(path_component, str)
+            or Path(path_component).name != path_component
+        ):
+            raise IncompleteCheckpointError(f"invalid best path: {pointer}")
+        record = validate_complete_checkpoint(
+            self.checkpoint_root / path_component,
+            expected_scientific_fingerprint=self.scientific_fingerprint,
+            expected_data_fingerprint=self.data_fingerprint,
+        )
+        if record.iteration != document.get(
+            "iteration"
+        ) or record.checkpoint_fingerprint != document.get("checkpoint_fingerprint"):
+            raise IncompleteCheckpointError(f"best pointer differs: {pointer}")
+        return record
+
     def record(self, iteration: int | None = None) -> CheckpointRecord:
         """Resolve and validate one complete checkpoint without restoring."""
 
@@ -634,15 +738,13 @@ class CheckpointManager:
                 "restore keys must be a non-empty checkpoint subset; "
                 f"requested={sorted(requested)}, available={sorted(available)}"
             )
-        recorded_structures = record.manifest.get("structure_fingerprints")
-        if not isinstance(recorded_structures, Mapping):
-            raise IncompleteCheckpointError(
-                f"checkpoint structure fingerprints are missing: {record.path}"
-            )
+        stored = self._checkpointer.checkpointables_metadata(record.iteration).metadata
         for name, value in checkpointables_like.items():
-            if name == "progress":
+            if name in {"progress", "rng"}:
                 continue
-            if recorded_structures.get(name) != tree_structure_fingerprint(value):
+            if name not in stored or _array_structure(stored[name]) != _array_structure(
+                value
+            ):
                 raise IncompleteCheckpointError(
                     f"restore template structure differs for {name}: {record.path}"
                 )

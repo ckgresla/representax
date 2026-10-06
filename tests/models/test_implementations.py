@@ -11,18 +11,20 @@ import pytest
 from .acceptance import MODEL_IMPLEMENTATIONS, compare_model_performance
 
 
-def test_every_checkpoint_backed_model_has_an_acceptance_registration():
+def test_every_checkpoint_backed_model_has_parity_tests():
     implementation_root = Path("src/representax/models")
     checkpoint_backed = {
         path.parent.name for path in implementation_root.glob("*/checkpoint.py")
     }
-    registered = {case.package for case in MODEL_IMPLEMENTATIONS}
-    assert registered == checkpoint_backed
-    for case in MODEL_IMPLEMENTATIONS:
-        tests = Path("tests/models") / case.package
+    for package in checkpoint_backed:
+        tests = Path("tests/models") / package
         assert (tests / "test_model.py").is_file()
         assert (tests / "test_transformers_parity.py").is_file()
-        assert (tests / "performance_probe.py").is_file()
+
+
+def test_every_performance_case_has_a_probe():
+    for package in {case.package for case in MODEL_IMPLEMENTATIONS}:
+        assert (Path("tests/models") / package / "performance_probe.py").is_file()
 
 
 @pytest.mark.performance

@@ -1,0 +1,79 @@
+#+title: Native Qwen2-VL family acceptance — 2026-08-22
+
+* Result
+
+Representax now owns one native Equinox implementation for both =qwen2_vl= and
+=qwen2_5_vl=. It accepts the linked BGE-VL-Screenshot, Nomic multimodal 3B/7B,
+and Jina reranker-m0 artifacts without importing PyTorch or Sentence
+Transformers in the training runtime.
+
+| acceptance gate | evidence |
+|-----------------+----------|
+| tiny same-tensor oracle | Qwen2-VL and Qwen2.5-VL FP32 forward, pixel gradient, every parameter gradient, three-step AdamW update, and HF export/reload pass against Transformers 5.6 |
+| BGE-VL-Screenshot | exact processor arrays, native/upstream representation parity, real inference, and three INT4-base/FP32-LoRA updates |
+| Nomic multimodal 3B | exact processor arrays, native/Sentence Transformers parity, real inference, imported-LoRA continuation, and three packed-base updates |
+| Nomic multimodal 7B | exact processor arrays, native/Sentence Transformers parity, full FP32 two-GPU FSDP inference, and three single-GPU packed-base updates |
+| Jina reranker-m0 | exact pair formatting and media arrays, native/Sentence Transformers score parity, real inference, and three adapter updates |
+
+The tiny numerical gates use =4e-5= maximum absolute/relative tolerance for the
+forward and pixel cotangent, =7e-5= for parameter cotangents, and =5e-6=
+absolute tolerance for updated parameters. Fresh Transformers reload is within
+=1e-6= of the original upstream output. The real BF16 checkpoints use cosine
+and relative-error gates appropriate to their low-precision upstream programs;
+these are parity gates, not downstream-quality claims.
+
+* Three-update training evidence
+
+Every physical probe uses the ordinary Representax =build_train_step= path,
+Optax AdamW, finite-gradient acceptance, nonzero accepted updates, and a
+post-update inference check.
+
+| checkpoint | trainable state | losses |
+|------------+-----------------+--------|
+| BGE-VL-Screenshot | newly initialized FP32 LoRA-4 over packed INT4 text projections | =0.0351704 -> 0.0273916 -> 0.0162359= |
+| Nomic multimodal 3B | imported FP32 adapter over packed INT4 base | =0.1188827 -> 0.0107742 -> 0.00217215= |
+| Nomic multimodal 7B | imported FP32 adapter over packed INT4 base | =0.3311346 -> 0.0259654 -> 0.00017002= |
+| Jina reranker-m0 | newly initialized FP32 LoRA-4 over packed INT4 text projections | =0.1014811 -> 0.0462346 -> 0.00859455= |
+
+Loss decrease is only a deterministic optimizer-path sanity check. It is not a
+claim about generalization or model quality.
+
+* Systems correction required by the 7B gate
+
+The first Nomic 7B attempt exposed two generic staging errors rather than a
+model-specific limitation.
+
+1. Scanned transformer projections were stacked in checkpoint-native
+   =[depth, output, input]= layout. XLA hoisted a complete stack transpose,
+   including a 3.54 GiB projection. Layer stacks now store the equivalent
+   compute-native =[depth, input, output]= layout and convert back only at the
+   checkpoint boundary.
+2. Passing one full host array to =jax.device_put(..., NamedSharding)= caused
+   JAX's internal =_multi_slice= executable to stage all local shards on GPU 0.
+   =place_model()= now slices host-resident parameters by
+   =addressable_devices_indices_map=, transfers one slice per device, and
+   assembles the global array with
+   =jax.make_array_from_single_device_arrays=.
+
+With those fixes, full FP32 Nomic 7B inference passes on two RTX 4090 GPUs under
+the canonical 90% JAX preallocation pool. A diagnostic 98% pool left
+insufficient headroom for NCCL and is intentionally not the accepted setup.
+
+* Reproduction contract
+
+- upstream runtime: Sentence Transformers 5.6.1, Transformers 5.6.0,
+  =colpali-engine= 0.3.18, PEFT 0.19.1;
+- accelerator isolation: GPUs 4 and 5 only;
+- JAX allocator: =XLA_PYTHON_CLIENT_PREALLOCATE=true= and
+  =XLA_PYTHON_CLIENT_MEM_FRACTION=0.90=;
+- numerical policy: highest JAX matmul precision for parity;
+- oracle and JAX accelerator processes are isolated; and
+- source revisions are recorded in the model-family manifest.
+
+Raw upstream arrays and diagnostic optimized HLO remain at
+=/raid/representax/acceptance/qwen2-vl/=. The tracked tests are the executable
+acceptance specification:
+
+- =tests/models/qwen2_vl/test_transformers_parity.py=;
+- =tests/models/qwen2_vl/test_real_artifacts.py=; and
+- =tests/models/qwen2_vl/test_gpu_acceptance.py=.

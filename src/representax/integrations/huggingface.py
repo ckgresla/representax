@@ -9,7 +9,8 @@ project or to PyTorch.
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol, TypeVar, runtime_checkable
 
@@ -17,6 +18,15 @@ import jax
 import jax.numpy as jnp
 
 ModelT = TypeVar("ModelT")
+
+
+@dataclass(frozen=True, slots=True)
+class ResolvedHuggingFaceCheckpoint:
+    """A local checkpoint directory with its immutable external identity."""
+
+    path: Path
+    model_id: str
+    revision: str
 
 
 @runtime_checkable
@@ -32,6 +42,55 @@ class HuggingFaceCheckpointAdapter(Protocol[ModelT]):
     ) -> ModelT: ...
 
     def state_dict(self, model: ModelT) -> Mapping[str, jax.Array]: ...
+
+
+def resolve_hf_checkpoint(
+    model_name_or_path: str | Path,
+    *,
+    revision: str | None = None,
+    cache_directory: str | Path | None = None,
+    local_files_only: bool = False,
+    token: bool | str | None = None,
+    allow_patterns: Sequence[str] | None = None,
+) -> ResolvedHuggingFaceCheckpoint:
+    """Resolve a local path or Hub model to one immutable local snapshot."""
+
+    candidate = Path(model_name_or_path).expanduser()
+    if candidate.is_dir():
+        return ResolvedHuggingFaceCheckpoint(
+            path=candidate.resolve(),
+            model_id=candidate.name,
+            revision=revision or "local",
+        )
+    try:
+        from huggingface_hub import snapshot_download
+    except ImportError as error:
+        raise ImportError(
+            "Hugging Face Hub loading requires `pip install representax[hf]`"
+        ) from error
+
+    model_id = str(model_name_or_path)
+    path = Path(
+        snapshot_download(
+            repo_id=model_id,
+            revision=revision,
+            cache_dir=None if cache_directory is None else str(cache_directory),
+            local_files_only=local_files_only,
+            token=token,
+            allow_patterns=None if allow_patterns is None else list(allow_patterns),
+        )
+    ).resolve()
+    resolved_revision = path.name
+    if not (
+        len(resolved_revision) == 40
+        and all(character in "0123456789abcdef" for character in resolved_revision)
+    ):
+        resolved_revision = revision or "resolved"
+    return ResolvedHuggingFaceCheckpoint(
+        path=path,
+        model_id=model_id,
+        revision=resolved_revision,
+    )
 
 
 def load_hf_config(checkpoint: str | Path) -> dict[str, Any]:
@@ -78,12 +137,14 @@ def load_safetensor_subset(
     names: set[str] | frozenset[str],
     *,
     dtype: jnp.dtype = jnp.float32,
+    device: jax.Device | None = None,
 ) -> dict[str, jax.Array]:
     """Read only selected tensors from a local single- or multi-shard model.
 
-    ``safetensors`` remains an optional dependency.  Returned values are JAX
-    arrays, so loading under an established device context places parameters
-    directly on the intended backend.
+    ``safetensors`` remains an optional dependency. Checkpoints are materialized
+    on CPU by default so parsing, dtype conversion, and model-specific layout
+    changes never consume accelerator memory. Runtime placement is an explicit
+    later boundary. ``device`` exists for controlled low-level use only.
     """
 
     try:
@@ -98,6 +159,7 @@ def load_safetensor_subset(
         return {}
     checkpoint_path = Path(checkpoint)
     result: dict[str, jax.Array] = {}
+    target = jax.local_devices(backend="cpu")[0] if device is None else device
     for shard, shard_names in _safetensor_shards(checkpoint_path, requested).items():
         if not shard.is_file():
             raise FileNotFoundError(f"safetensor shard not found: {shard}")
@@ -107,6 +169,34 @@ def load_safetensor_subset(
             if missing:
                 rendered = ", ".join(sorted(missing))
                 raise KeyError(f"{shard.name} is missing tensors: {rendered}")
-            for name in shard_names:
-                result[name] = jnp.asarray(handle.get_tensor(name), dtype=dtype)
+            with jax.default_device(target):
+                for name in shard_names:
+                    result[name] = jnp.asarray(handle.get_tensor(name), dtype=dtype)
     return result
+
+
+def safetensor_names(checkpoint: str | Path) -> frozenset[str]:
+    """Return tensor names from a local single- or multi-shard checkpoint."""
+
+    checkpoint_path = Path(checkpoint)
+    index_path = checkpoint_path / "model.safetensors.index.json"
+    if index_path.is_file():
+        value = json.loads(index_path.read_text(encoding="utf-8"))
+        weight_map = value.get("weight_map")
+        if not isinstance(weight_map, Mapping):
+            raise ValueError("checkpoint index must contain a weight_map object")
+        return frozenset(str(name) for name in weight_map)
+
+    path = checkpoint_path / "model.safetensors"
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"no model.safetensors or model.safetensors.index.json in {checkpoint}"
+        )
+    try:
+        from safetensors import safe_open
+    except ImportError as error:  # pragma: no cover - broken installation
+        raise ImportError(
+            "safetensors is required for checkpoint loading; reinstall representax"
+        ) from error
+    with safe_open(path, framework="np") as handle:
+        return frozenset(handle.keys())

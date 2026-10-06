@@ -1,0 +1,111 @@
+{
+  "acceptance_scope": "readiness-only deterministic disjoint subsets of real ImageNet-1K train",
+  "files": {
+    "evaluation.jsonl": "sha256:f8abcb9e1fb87010f9d54c08aa6208a9231d9acb244fa4f0d715ce7425de4c76",
+    "train.jsonl": "sha256:6c1fd18bdf2d05fa96790172ee044be0db8157445984c34af760d071d3ec1766"
+  },
+  "imagenet": {
+    "access": "available",
+    "bounded_classes": 10,
+    "class_index": "/raid/datasets/imagenet/imagenet_class_index.json",
+    "class_index_sha256": "sha256:a1e7a966a1f601d39e4b43e119b3e7dd4a2ad3ea08cf69847cbaf021013767bc",
+    "classes_in_source": 1000,
+    "official_validation": {
+      "accepted_for_quality": false,
+      "blocker": "official ILSVRC2012 validation labeling provenance is not materialized with the devkit ground-truth contract",
+      "devkit_paths_observed": [],
+      "ground_truth_files_observed": [],
+      "policy": "ignore val paths and use disjoint train subsets for readiness only",
+      "validation_class_directories_observed": 1000,
+      "validation_directory_observed": true
+    },
+    "quality_claim_allowed": false,
+    "root": "/raid/datasets/imagenet",
+    "selected_classes": [
+      {
+        "label": 0,
+        "name": "tench",
+        "synset": "n01440764"
+      },
+      {
+        "label": 1,
+        "name": "goldfish",
+        "synset": "n01443537"
+      },
+      {
+        "label": 2,
+        "name": "great_white_shark",
+        "synset": "n01484850"
+      },
+      {
+        "label": 3,
+        "name": "tiger_shark",
+        "synset": "n01491361"
+      },
+      {
+        "label": 4,
+        "name": "hammerhead",
+        "synset": "n01494475"
+      },
+      {
+        "label": 5,
+        "name": "electric_ray",
+        "synset": "n01496331"
+      },
+      {
+        "label": 6,
+        "name": "stingray",
+        "synset": "n01498041"
+      },
+      {
+        "label": 7,
+        "name": "cock",
+        "synset": "n01514668"
+      },
+      {
+        "label": 8,
+        "name": "hen",
+        "synset": "n01514859"
+      },
+      {
+        "label": 9,
+        "name": "ostrich",
+        "synset": "n01518878"
+      }
+    ],
+    "source": "local extracted ILSVRC2012 train classes"
+  },
+  "reference_contract": {
+    "backbone": "timm/vit_base_patch16_224",
+    "depth": 12,
+    "drop_path_rate": 0.1,
+    "evaluation_representation": "concatenated CLS from final two blocks followed by LayerNorm",
+    "global_views": 2,
+    "heads": 12,
+    "hidden_size": 768,
+    "image_size": 224,
+    "local_image_size": 98,
+    "local_views": 6,
+    "mlp_ratio": 4.0,
+    "official_commit": "c293d291ca87cd4fddee9d3fffe4e914c7272052",
+    "patch_size": 16,
+    "projector": "training-only MLP",
+    "regularization_weight": 0.02,
+    "sigreg_knots": 17,
+    "sigreg_max_frequency": 3.0,
+    "sigreg_slices": 1024,
+    "stable_pretraining_commit": "9aa93f8b6153eebb73f57d4853ccf8a13d848310"
+  },
+  "rows": {
+    "evaluation": 70,
+    "evaluation_splits": {
+      "0": 30,
+      "1": 20,
+      "2": 20
+    },
+    "training": 70,
+    "unique_source_images": 70
+  },
+  "schema_version": "representax-lejepa-imagenet1k-inputs-v1",
+  "status": "accepted"
+}

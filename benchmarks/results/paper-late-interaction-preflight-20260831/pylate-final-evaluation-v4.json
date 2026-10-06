@@ -1,0 +1,250 @@
+{
+  "measurement": {
+    "document_encoding": {
+      "batch_size": 256,
+      "batch_timings": [
+        {
+          "encoder_seconds": 0.399640629068017,
+          "examples": 256,
+          "host_seconds": 0.019046276807785034,
+          "placement_seconds": 0.0004150010645389557,
+          "preprocess_seconds": 0.13815067522227764,
+          "sequence_length": 256
+        },
+        {
+          "encoder_seconds": 0.3578302841633558,
+          "examples": 256,
+          "host_seconds": 0.015317263081669807,
+          "placement_seconds": 0.00041632167994976044,
+          "preprocess_seconds": 0.12193834967911243,
+          "sequence_length": 256
+        },
+        {
+          "encoder_seconds": 0.355948468670249,
+          "examples": 256,
+          "host_seconds": 0.014351500198245049,
+          "placement_seconds": 0.0004173014312982559,
+          "preprocess_seconds": 0.11175071634352207,
+          "sequence_length": 256
+        },
+        {
+          "encoder_seconds": 0.3558752592653036,
+          "examples": 256,
+          "host_seconds": 0.01298651285469532,
+          "placement_seconds": 0.0004049912095069885,
+          "preprocess_seconds": 0.10894619859755039,
+          "sequence_length": 256
+        },
+        {
+          "encoder_seconds": 0.35579963587224483,
+          "examples": 256,
+          "host_seconds": 0.012432212010025978,
+          "placement_seconds": 0.00039551034569740295,
+          "preprocess_seconds": 0.09984159655869007,
+          "sequence_length": 256
+        },
+        {
+          "encoder_seconds": 0.3562584202736616,
+          "examples": 256,
+          "host_seconds": 0.011373907327651978,
+          "placement_seconds": 0.00041624903678894043,
+          "preprocess_seconds": 0.09781031869351864,
+          "sequence_length": 256
+        },
+        {
+          "encoder_seconds": 0.3577582035213709,
+          "examples": 256,
+          "host_seconds": 0.01064394786953926,
+          "placement_seconds": 0.0004114639014005661,
+          "preprocess_seconds": 0.09752345643937588,
+          "sequence_length": 256
+        },
+        {
+          "encoder_seconds": 0.3566386289894581,
+          "examples": 256,
+          "host_seconds": 0.01042354665696621,
+          "placement_seconds": 0.000430133193731308,
+          "preprocess_seconds": 0.0922892726957798,
+          "sequence_length": 256
+        },
+        {
+          "encoder_seconds": 0.35769471153616905,
+          "examples": 256,
+          "host_seconds": 0.010266214609146118,
+          "placement_seconds": 0.00041718222200870514,
+          "preprocess_seconds": 0.09078353270888329,
+          "sequence_length": 256
+        },
+        {
+          "encoder_seconds": 0.3571509085595608,
+          "examples": 256,
+          "host_seconds": 0.010413574054837227,
+          "placement_seconds": 0.0004238113760948181,
+          "preprocess_seconds": 0.08975704200565815,
+          "sequence_length": 256
+        },
+        {
+          "encoder_seconds": 0.35619540698826313,
+          "examples": 256,
+          "host_seconds": 0.009409761056303978,
+          "placement_seconds": 0.0004214625805616379,
+          "preprocess_seconds": 0.09128233604133129,
+          "sequence_length": 256
+        },
+        {
+          "encoder_seconds": 0.35676010698080063,
+          "examples": 256,
+          "host_seconds": 0.010238604620099068,
+          "placement_seconds": 0.00042761117219924927,
+          "preprocess_seconds": 0.08872050605714321,
+          "sequence_length": 256
+        },
+        {
+          "encoder_seconds": 0.35607381351292133,
+          "examples": 256,
+          "host_seconds": 0.009070910513401031,
+          "placement_seconds": 0.0004247725009918213,
+          "preprocess_seconds": 0.086799880489707,
+          "sequence_length": 256
+        },
+        {
+          "encoder_seconds": 0.35741533897817135,
+          "examples": 256,
+          "host_seconds": 0.00992664135992527,
+          "placement_seconds": 0.0004198327660560608,
+          "preprocess_seconds": 0.08599982783198357,
+          "sequence_length": 256
+        },
+        {
+          "encoder_seconds": 0.3569016885012388,
+          "examples": 256,
+          "host_seconds": 0.009215623140335083,
+          "placement_seconds": 0.00041352398693561554,
+          "preprocess_seconds": 0.08428511209785938,
+          "sequence_length": 256
+        },
+        {
+          "encoder_seconds": 0.3567098043859005,
+          "examples": 256,
+          "host_seconds": 0.00854073092341423,
+          "placement_seconds": 0.00042431987822055817,
+          "preprocess_seconds": 0.08387546986341476,
+          "sequence_length": 256
+        },
+        {
+          "encoder_seconds": 0.356395011767745,
+          "examples": 256,
+          "host_seconds": 0.008252916857600212,
+          "placement_seconds": 0.000432480126619339,
+          "preprocess_seconds": 0.083620710298419,
+          "sequence_length": 256
+        },
+        {
+          "encoder_seconds": 0.3579171095043421,
+          "examples": 256,
+          "host_seconds": 0.008074147626757622,
+          "placement_seconds": 0.00041783973574638367,
+          "preprocess_seconds": 0.07942778803408146,
+          "sequence_length": 256
+        },
+        {
+          "encoder_seconds": 0.35665955394506454,
+          "examples": 256,
+          "host_seconds": 0.006938794627785683,
+          "placement_seconds": 0.0003821384161710739,
+          "preprocess_seconds": 0.07964503578841686,
+          "sequence_length": 256
+        },
+        {
+          "encoder_seconds": 0.35674796253442764,
+          "examples": 179,
+          "host_seconds": 0.0035510119050741196,
+          "placement_seconds": 0.00042559951543807983,
+          "preprocess_seconds": 0.06735425628721714,
+          "sequence_length": 256
+        }
+      ],
+      "batches": 20,
+      "compilation_and_first_batch_seconds": 0.0,
+      "compilation_and_first_batch_seconds_by_length": {},
+      "compiled_sequence_lengths": [
+        256
+      ],
+      "examples_per_second_after_first_batch": 706.1794429738418,
+      "first_eager_batch_seconds": 0.399640629068017,
+      "phase_totals_seconds": {
+        "encoder_seconds": 7.178370947018266,
+        "host_seconds": 0.21047409810125828,
+        "placement_seconds": 0.00833754613995552,
+        "preprocess_seconds": 1.879802081733942
+      },
+      "total_encoding_seconds": 9.276984672993422,
+      "warm_batches": 19,
+      "warm_encoder_examples_per_second": 706.1794429738418,
+      "warm_encoder_seconds": 6.778730317950249,
+      "warm_end_to_end_examples_per_second": 548.9847566571167,
+      "warm_end_to_end_seconds": 8.719732090830803,
+      "warm_examples": 4787
+    },
+    "index": null,
+    "metrics": {
+      "valid/nanobeir-msmarco/maxsim_accuracy@1": 0.54,
+      "valid/nanobeir-msmarco/maxsim_accuracy@10": 0.92,
+      "valid/nanobeir-msmarco/maxsim_accuracy@5": 0.74,
+      "valid/nanobeir-msmarco/maxsim_map@100": 0.6499213564213564,
+      "valid/nanobeir-msmarco/maxsim_mrr@10": 0.6447857142857143,
+      "valid/nanobeir-msmarco/maxsim_ndcg@10": 0.7090050565601254,
+      "valid/nanobeir-msmarco/maxsim_precision@1": 0.54,
+      "valid/nanobeir-msmarco/maxsim_precision@10": 0.092,
+      "valid/nanobeir-msmarco/maxsim_precision@5": 0.14800000000000008,
+      "valid/nanobeir-msmarco/maxsim_recall@1": 0.54,
+      "valid/nanobeir-msmarco/maxsim_recall@10": 0.92,
+      "valid/nanobeir-msmarco/maxsim_recall@5": 0.74
+    },
+    "query_encoding": {
+      "batch_size": 256,
+      "batch_timings": [
+        {
+          "encoder_seconds": 0.520096292719245,
+          "examples": 50,
+          "host_seconds": 0.001128891482949257,
+          "placement_seconds": 0.0002777501940727234,
+          "preprocess_seconds": 0.009990394115447998,
+          "sequence_length": 32
+        }
+      ],
+      "batches": 1,
+      "compilation_and_first_batch_seconds": 0.0,
+      "compilation_and_first_batch_seconds_by_length": {},
+      "compiled_sequence_lengths": [
+        32
+      ],
+      "examples_per_second_after_first_batch": 0.0,
+      "first_eager_batch_seconds": 0.520096292719245,
+      "phase_totals_seconds": {
+        "encoder_seconds": 0.520096292719245,
+        "host_seconds": 0.001128891482949257,
+        "placement_seconds": 0.0002777501940727234,
+        "preprocess_seconds": 0.009990394115447998
+      },
+      "total_encoding_seconds": 0.5314933285117149,
+      "warm_batches": 0,
+      "warm_encoder_examples_per_second": 0.0,
+      "warm_encoder_seconds": 0,
+      "warm_end_to_end_examples_per_second": 0.0,
+      "warm_end_to_end_seconds": 0,
+      "warm_examples": 0
+    },
+    "scoring": {
+      "backend": "pylate-torch-exact-maxsim",
+      "compilation_and_first_tile_seconds": 0.0,
+      "first_eager_tile_seconds": 0.036105113103985786,
+      "warm_query_document_comparisons": 251510.0,
+      "warm_query_document_comparisons_per_second": 656882.0220736375,
+      "warm_score_seconds": 0.38288458436727524
+    }
+  },
+  "schema_version": "representax-late-interaction-remeasurement-v1",
+  "source_inference_bundle": "/raid/representax/paper-campaign-v1/preflight/late-interaction/seed-7-v3/pylate/final-model",
+  "source_report": "/raid/representax/paper-campaign-v1/preflight/late-interaction/seed-7-v3/pylate.json"
+}

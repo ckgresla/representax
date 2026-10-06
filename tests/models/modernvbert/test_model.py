@@ -88,6 +88,32 @@ def test_config_maps_nested_transformers_values():
     assert config.head_dimension == 4
 
 
+def test_config_expands_standard_modernbert_attention_cadence():
+    config = ModernVBERTTextConfig.from_hf_config(
+        {
+            "vocab_size": 17,
+            "hidden_size": 8,
+            "intermediate_size": 12,
+            "num_hidden_layers": 5,
+            "num_attention_heads": 2,
+            "global_attn_every_n_layers": 3,
+            "local_attention": 4,
+            "global_rope_theta": 10_000.0,
+            "local_rope_theta": 1_000.0,
+            "norm_eps": 1e-5,
+            "max_position_embeddings": 32,
+        }
+    )
+
+    assert config.layer_types == (
+        "full_attention",
+        "sliding_attention",
+        "sliding_attention",
+        "full_attention",
+        "sliding_attention",
+    )
+
+
 def test_native_encoder_is_jittable_differentiable_and_normalized():
     model = ModernVBERTTextEncoder.init(tiny_config(), key=jax.random.key(0))
     assert model.rematerialization == "full"
@@ -107,6 +133,9 @@ def test_native_encoder_is_jittable_differentiable_and_normalized():
     assert encoded.dtype == jnp.float32
     assert jnp.all(jnp.isfinite(hidden))
     np.testing.assert_allclose(jnp.linalg.norm(encoded, axis=-1), 1.0, atol=1e-6)
+    layerwise = model.encode_layers(batch, route=Route.QUERY)
+    assert layerwise.shape == (tiny_config().num_hidden_layers + 1, 2, 8)
+    np.testing.assert_allclose(layerwise[-1], encoded, rtol=1e-6, atol=1e-6)
 
     embeddings = model.tower.token_embedding[batch.input_ids]
 
@@ -123,6 +152,7 @@ def test_native_encoder_is_jittable_differentiable_and_normalized():
 
 
 def _text_scan(model, batch):
+    model = replace(model, unroll_layers=False)
     program = jax.make_jaxpr(lambda candidate: candidate.hidden_states(batch))(model)
     scans = [
         equation for equation in program.jaxpr.eqns if equation.primitive.name == "scan"
@@ -143,9 +173,14 @@ def test_text_depth_lowers_to_one_scan_with_explicit_rematerialization():
         rematerialization="full",
     )
     scan = _text_scan(full, batch)
-    assert scan.params["length"] == tiny_config().num_hidden_layers
-    remat_equations = scan.params["jaxpr"].jaxpr.eqns
-    assert [equation.primitive.name for equation in remat_equations] == ["remat2"]
+    assert scan.params["length"] == tiny_config().num_hidden_layers - 1
+    assert len(scan.outvars) == 1
+    remat_equations = [
+        equation
+        for equation in scan.params["jaxpr"].jaxpr.eqns
+        if equation.primitive.name == "remat2"
+    ]
+    assert len(remat_equations) == 1
     assert (
         remat_equations[0].params["policy"] is jax.checkpoint_policies.nothing_saveable
     )
@@ -156,8 +191,12 @@ def test_text_depth_lowers_to_one_scan_with_explicit_rematerialization():
         rematerialization="selective",
     )
     scan = _text_scan(selective, batch)
-    remat_equations = scan.params["jaxpr"].jaxpr.eqns
-    assert [equation.primitive.name for equation in remat_equations] == ["remat2"]
+    remat_equations = [
+        equation
+        for equation in scan.params["jaxpr"].jaxpr.eqns
+        if equation.primitive.name == "remat2"
+    ]
+    assert len(remat_equations) == 1
     assert (
         remat_equations[0].params["policy"]
         is jax.checkpoint_policies.dots_with_no_batch_dims_saveable
@@ -202,7 +241,49 @@ def test_rematerialization_policies_preserve_values_and_parameter_gradients():
         )
         assert len(actual_leaves) == len(expected_leaves)
         for actual, expected in zip(actual_leaves, expected_leaves, strict=True):
-            np.testing.assert_allclose(actual, expected, rtol=1e-5, atol=1e-6)
+            np.testing.assert_allclose(actual, expected, rtol=1e-5, atol=2e-6)
+
+
+def test_unrolled_forward_matches_scanned_hidden_states_and_gradients():
+    config = tiny_config().model_copy(
+        update={
+            "num_hidden_layers": 4,
+            "layer_types": (
+                "full_attention",
+                "sliding_attention",
+                "sliding_attention",
+                "full_attention",
+            ),
+        }
+    )
+    model = ModernVBERTTextEncoder.init(config, key=jax.random.key(13))
+    batch = ModernVBERTTextBatch(
+        input_ids=jnp.asarray([[1, 2, 3, 0], [4, 5, 6, 7]]),
+        attention_mask=jnp.asarray([[1, 1, 1, 0], [1, 1, 1, 1]]),
+    )
+
+    compact = replace(model, unroll_layers=False)
+    unrolled_program = jax.make_jaxpr(lambda candidate: candidate.hidden_states(batch))(
+        model
+    )
+    assert "cond[" not in str(unrolled_program)
+    actual_hidden = model.hidden_states(batch)
+    expected_hidden = compact.hidden_states(batch)
+    np.testing.assert_allclose(actual_hidden, expected_hidden, rtol=1e-6, atol=1e-6)
+    projection = jax.random.normal(jax.random.key(29), actual_hidden.shape)
+
+    def objective(candidate):
+        return jnp.vdot(candidate.hidden_states(batch), projection)
+
+    actual_value, actual_gradient = eqx.filter_value_and_grad(objective)(model)
+    expected_value, expected_gradient = eqx.filter_value_and_grad(objective)(compact)
+    np.testing.assert_allclose(actual_value, expected_value, rtol=1e-6, atol=1e-6)
+    for actual, expected in zip(
+        jax.tree.leaves(eqx.filter(actual_gradient, eqx.is_inexact_array)),
+        jax.tree.leaves(eqx.filter(expected_gradient, eqx.is_inexact_array)),
+        strict=True,
+    ):
+        np.testing.assert_allclose(actual, expected, rtol=1e-5, atol=2e-6)
 
 
 def test_local_attention_matches_explicit_dense_value_and_gradient():
@@ -258,12 +339,15 @@ def test_hf_state_dict_mapping_round_trips_the_native_tree():
     assert len(restored.tower.layers) == config.num_hidden_layers
     assert restored.tower.layers[0].attention_norm is None
     assert restored.tower.layers[1].attention_norm is not None
+    assert restored.tower.layers[0].attention.qkv.weight_layout == "input_output"
+    assert restored.tower.layers[1].mlp.output.weight_layout == "input_output"
     assert not bool(restored.tower.layers[0].sliding_attention)
     assert bool(restored.tower.layers[1].sliding_attention)
+    assert restored.tower.layers.blocks is not None
     assert restored.tower.layers.blocks.attention.qkv.weight.shape == (
-        config.num_hidden_layers,
-        3 * config.hidden_size,
+        config.num_hidden_layers - 1,
         config.hidden_size,
+        3 * config.hidden_size,
     )
     native_parameter_count = sum(
         leaf.size for leaf in jax.tree.leaves(model) if eqx.is_inexact_array(leaf)

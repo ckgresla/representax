@@ -1,0 +1,101 @@
+#+title: W&B task and evaluator acceptance — 2026-08-25
+#+options: toc:2 num:nil
+
+* Result
+
+Every built-in Representax task and evaluator completed through the real W&B
+reporter against the user's authenticated =ckgresla/representax= project. The
+bounded campaign finished in 1,221.8 seconds (20 minutes 21.8 seconds), below
+the 30-minute budget.
+
+| gate | accepted result |
+|------+-----------------|
+| task registry | 24 of 24 task kinds, 30 accepted optimizer updates each |
+| evaluator inventory | 11 of 11 evaluators, all metrics finite |
+| distributed training | 30 updates with 2-device DDP and 30 with 4-device FSDP |
+| distributed evaluation | classification metrics on 2-device DDP and 4-device FSDP meshes |
+| total accepted updates | 780 |
+| W&B state | all 39 accepted runs =finished= with =representax/status=completed= |
+
+This table preserves the historical campaign exactly. A subsequent evaluator
+audit removed the provisional translation evaluator, renamed embedding
+similarity to similarity, and made NanoBEIR a pinned source recipe over generic
+information retrieval. It also separated reward evaluation from reranking:
+pairwise reward now reports preference and margin metrics rather than IR
+metrics. The historical W&B rows and =manifest.json= remain immutable evidence
+of what the original campaign ran; the current executable inventory contains
+ten evaluators and no translation evaluator.
+
+The audit also removed =runtime/iteration= and =runtime/optimizer_step= from
+evaluation rows. New runs use W&B's native step coordinate, emit
+=train/optimizer_step= only for training, put evaluation timing under =perf/=,
+and record JAX world/device/mesh facts as static run configuration.
+
+The public project is [[https://wandb.ai/ckgresla/representax][ckgresla/representax]]. The
+accepted runs share group =acceptance-20260825-093931=. Representative runs:
+
+- [[https://wandb.ai/ckgresla/representax/runs/acceptance-20260825-093931-retrieval][direct retrieval/MNR]];
+- [[https://wandb.ai/ckgresla/representax/runs/acceptance-20260825-093931-late_interaction][late interaction]];
+- [[https://wandb.ai/ckgresla/representax/runs/acceptance-20260825-093931-jepa][LeJEPA]];
+- [[https://wandb.ai/ckgresla/representax/runs/acceptance-20260825-093931-pointwise_scoring-ddp-2-device][2-device DDP training]];
+- [[https://wandb.ai/ckgresla/representax/runs/acceptance-20260825-093931-pointwise_scoring-fsdp-4-device][4-device FSDP training]]; and
+- [[https://wandb.ai/ckgresla/representax/runs/acceptance-20260825-093931-eval-information_retrieval_nanobeir][NanoBEIR information retrieval evaluation]].
+
+* Contract
+
+This is a backend acceptance campaign, not a model-quality or throughput
+benchmark. Each task uses a small deterministic fixed-shape synthetic batch and
+a compatible native Equinox model. A run is accepted only when every compiled
+update is finite and unskipped, the optimizer step reaches 30, and at least one
+model parameter changes. Task runs emit =train/loss=,
+=train/skipped_update=, =train/gradient_norm=, and =perf/step_seconds=.
+Evaluator runs execute the ordinary =EvaluationRunner= and emit their native
+=valid/...= metric namespaces.
+
+The two distributed training probes intentionally use a decomposable pointwise
+objective so the same global JAX program validates both named sharding plans.
+The 2- and 4-device evaluation probes shard an eight-example classification
+batch over the data mesh and perform the ordinary exact host reduction.
+
+* Diagnostic findings
+
+The campaign found and fixed one production issue: =EncoderPair.from_encoder()=
+placed the same device buffers into both branches. State donation then attempted
+to donate an aliased buffer twice. Each branch now receives its own array leaves,
+and a GPU regression test proves a donated contrastive-tension update succeeds.
+
+An exploratory direct symmetric-MNR run over a data mesh correctly did /not/
+become part of the accepted distributed matrix. Sharding both sides of its
+pairwise relation attempted to form =P("data", "data")=. Exact distributed
+retrieval already belongs to the GradCache global-negative path, which gathers
+compact representations while retaining sharded token payloads. The acceptance
+campaign therefore does not misrepresent ordinary decomposable DDP/FSDP as a
+drop-in lowering for direct global-negative MNR.
+
+* Reproduction
+
+The executable matrix is =benchmarks/wandb_acceptance.py=. It asserts exact
+coverage against the live task registry, never prints the W&B API key, and
+writes large local W&B state under =/raid/representax=. Example:
+
+#+begin_src sh
+export WANDB_API_KEY=...  # existing W&B credential
+GROUP=acceptance-$(date +%Y%m%d-%H%M%S)
+ROOT=/raid/representax/wandb-acceptance/$GROUP
+
+python benchmarks/wandb_acceptance.py \\
+  --mode tasks --steps 30 --group "$GROUP" \\
+  --run-root "$ROOT/runs" --output "$ROOT/tasks.json"
+#+end_src
+
+=manifest.json= is the compact machine-readable acceptance record. It retains
+every accepted run name, duration, result, and W&B URL; raw W&B state remains
+outside Git under =/raid=.
+
+* Repository gates
+
+The final tree passes Ruff format and lint, ty, the focused acceptance/donation
+suite (=5 passed=), and the complete default fast lane (=377 passed, 1 skipped,
+201 deselected= in 6 minutes 16.95 seconds). The live W&B API readback found all
+39 accepted run identities with remote state =finished= and
+=representax/status=completed=.

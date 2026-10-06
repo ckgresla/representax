@@ -1,0 +1,88 @@
+#+title: ModernVBERT low-bit acceptance — 2026-08-20
+
+* Result
+
+Representax now has two deliberately different low-bit paths:
+
+1. experimental native FP8 matrix compute over an otherwise BF16 mixed program;
+2. packed INT4 frozen base weights with FP32 LoRA adapters and BF16 compute.
+
+BF16 remains the recommended full-training policy.  FP8 lowering is genuine on
+RTX 4090 but does not yet beat BF16 for the complete model.  Quantized LoRA is
+accepted as a capacity-oriented adapter-training recipe; its short systems runs
+do not establish downstream quality.
+
+| state | strategy | compile (s) | median step (s) | examples/s | peak live JAX/device |
+|-------+----------+-------------+-----------------+------------+----------------------|
+| full BF16 | DDP | 30.085 | 0.223 | 35.91 | 3.872 GiB |
+| full FP8 matrices | DDP | 25.984 | 0.229 | 34.89 | — |
+| INT4 base + LoRA-8 | DDP | 24.874 | 0.204 | 39.15 | 0.507 GiB |
+| full BF16 | FSDP | 26.121 | 0.806 | 9.93 | 2.052 GiB |
+| full FP8 matrices | FSDP | 24.308 | 1.250 | 6.40 | — |
+| INT4 base + LoRA-8 | FSDP | 23.982 | 0.264 | 30.30 | 0.410 GiB |
+
+Relative to full BF16 training, INT4 base plus LoRA-8 improves DDP throughput
+by =1.09x= while reducing peak live JAX memory by =86.9%=.  Under FSDP it is
+=3.05x= faster and uses =80.0%= less live memory.  This is not matched full-model
+optimization: only 1,689,600 LoRA parameters are trained.  It demonstrates the
+capacity and execution properties of the adapter path, not a quality advantage.
+
+* Matched systems contract
+
+- source checkpoint: =ModernVBERT/modernvbert-embed= snapshot
+  =da507113c3fdbc2e49d39c4b0148025c6bd008f9=
+- hardware: two NVIDIA GeForce RTX 4090 GPUs, compute capability 8.9
+- global batch: 8 query/document pairs
+- sequence length: 512
+- exact GradCache representation microbatch: 2
+- optimizer: AdamW, learning rate =1e-5=
+- activation rematerialization: full
+- buffer donation: enabled
+- seed: 1729
+- timing: one retained warmup update followed by three synchronized measured
+  updates; tables report the median measured step
+- allocator: =XLA_PYTHON_CLIENT_PREALLOCATE=false=
+- adapter: signed symmetric per-output-row INT4, rank 8, alpha 16
+
+The adapter model contains 55,148,544 bytes of packed base weights and 270,336
+bytes of BF16 scale bit patterns.  Both are integer leaves, so they receive no
+gradients or Optax state.  DDP replicates them; FSDP shards them and materializes
+their compact form at projection use before BF16 dequantization.
+
+* FP8 compiled-program evidence
+
+An isolated 4096 x 4096 x 4096 GEMM takes 0.720 ms in FP8 versus 0.983 ms in
+BF16, a =1.37x= kernel improvement.  Optimized GPU HLO contains native
+=__cublas$lt$matmul$f8= custom calls using =ANY_F8_ANY_F8_F32=.  A complete
+DDP training executable contains 38 native FP8 GEMMs and preserves the same six
+AllGathers, seven AllReduces, and two AllToAlls as BF16.
+
+The complete DDP job is nevertheless =2.9%= slower than BF16 because dynamic
+per-use scaling offsets the GEMM gain.  Under FSDP, the partitioner moves weight
+=amax= before parameter gathers; the resulting scale program has 36 AllReduces,
+28 more than BF16, and is correspondingly slower.  FP8 is therefore an
+experimental correctness/lowering capability.  Persistent delayed scales with
+coalesced updates are required before another performance claim is attempted.
+
+* Numerical and distribution acceptance
+
+- FP8 CPU emulation verifies finite FP32 master parameters, gradients, Optax
+  state, and loss around the low-bit matrix boundary.
+- A GPU-only test inspects optimized HLO for native E4M3 forward and E5M2
+  backward GEMMs and rejects emulated lowering.
+- Quantized LoRA tests preserve packed/base leaves exactly across an optimizer
+  update and native serialization.
+- DDP and FSDP over two and four virtual devices match ten unsharded optimizer
+  updates within reduction-order tolerance.
+- Hugging Face export merges the trained update into an ordinary FP32 model and
+  requires exact reload through the native checkpoint adapter.
+
+* Raw evidence
+
+Raw JSON and optimized GPU HLO are retained at
+=/raid/representax/benchmarks/low-bit-20260820/=.  JSON SHA-256 hashes:
+
+- =ddp-fp8.json=: =d39b296d7ffefab3446b49eb83864ab2dd7d7d08976c5e62917217eb04fe87eb=
+- =fsdp-fp8.json=: =d584bd4bea104eb2b202e5e2aa0e8068d27b46bfb22268388fe8f59096ed4ed9=
+- =ddp-int4-lora8-bf16-v2.json=: =6f20aa4ab550854be87d3a47cdc863f511ae6a3cfa5d6b74c59303a6824fd8f4=
+- =fsdp-int4-lora8-bf16.json=: =ead3844a444fdbd6082353dceba1a819f5f12afc544c0a897006fc6086133fbc=

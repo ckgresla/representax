@@ -1,29 +1,60 @@
-<h1 align="center">Representax</h1>
+# Representax: representation learning in JAX
+
+<p align="center">
+  <br />
+  <img src="docs/assets/representax/representax.svg" alt="Representax" width="760" />
+  <br /><br />
+</p>
+
+## Introduction
 
 Representax is a native JAX and Equinox system for efficient, task-general
-representation learning. Retrieval is the first working task; classification,
-reward modeling, distillation, and self-supervised objectives are planned on
-the same core boundary.
+representation learning. Retrieval is the first mature task; classification,
+distillation, regularization, and denoising use the same core boundary, with
+reward modeling and self-supervised objectives next.
 
 The project is alpha. The current slice provides:
 
 - an Equinox-native encoder protocol with typed routes;
-- a native ModernVBERT text-image encoder with bidirectional Hugging Face
-  weight maps for every tensor used by its forward pass;
-- direct multiple-negatives ranking, including symmetric and Matryoshka modes;
-- an end-to-end Grain-to-compiled-step trainer with asynchronous reporting;
-- lazy Grain recipes with built-in Hugging Face and local artifact resolvers;
+- native BERT, MPNet, ModernVBERT text-image, pinned Jina v5 Omni Small text,
+  Qwen3-VL text-image-video embedding/reranking, and Qwen2.5-Omni
+  text-image-audio-video embedding models with direct Hugging Face safetensor
+  loading and numerical acceptance;
+- a Torch-free dense Sentence Transformers module loader and fixed-shape host
+  embedding API;
+- direct and cached multiple-negatives ranking, including symmetric and
+  Matryoshka modes;
+- task-native labeled-pair cosine regression, contrastive and online mining,
+  CoSENT, and AnglE objectives;
+- explicit triplet learning plus all, hard, hard soft-margin, and semi-hard
+  within-batch mining;
+- native scientific and execution contracts for all 29 Sentence Transformers
+  5.6.1 dense loss classes, including Matryoshka/adaptive-layer modifiers,
+  direct/cached GIST, contrastive tension, classification, orthogonal
+  regularization, denoising, and bounded mega-batch mining;
+- a Grain-to-compiled-step training loop with asynchronous reporting, exact
+  checkpoint resume, configured validation, best-model selection, and atomic
+  inference export;
+- a typed evaluator protocol with deterministic, corpus-level embedding
+  similarity metrics matching Sentence Transformers 5.6.1;
+- lazy Grain distributions with built-in Hugging Face and local source resolvers;
 - validated domain configs with annotated scientific and execution parameters; and
+- explicit FP32 and BF16-mixed policies with FP32 master/Optax state;
+- experimental native FP8 linear compute and packed INT4 LoRA training; and
 - explicit unit, runtime, parity, distributed, and performance test lanes.
 
 ## Principles
 
+The original development history, paper, and research experiment launchers are
+preserved on the [`alpha` branch](https://github.com/ckgresla/representax/tree/alpha).
+`main` contains the maintained library, tests, examples, and documentation.
+
 1. Native Equinox models are the supported execution path.
 2. Upstream implementations are optional development-time parity oracles.
 3. Scientific intent is separate from topology-dependent execution choices.
-4. Data recipes point at immutable artifacts and map them lazily into task
+4. Data distributions point at immutable sources and map them lazily into task
    examples; they do not require proprietary materialized datasets.
-5. Text, image, audio, video, and fused inputs must be supported without
+5. Text, image, audio, video, and their compositions must be supported without
    changing the training abstractions.
 
 ## Install
@@ -43,14 +74,17 @@ repository-only dependency groups rather than published package extras:
 
 ```bash
 python -m pip install -e ".[config,hf]"
+python -m pip install -e ".[config,hf,test,performance]" --group static
 python -m pip install -e ".[test]" --group parity
 python -m pip install -e ".[test]" --group parity-modernvbert
+python -m pip install -e ".[test]" --group parity-llava-next-legacy
 python -m pip install -e ".[test,performance]" --group parity-modernvbert
 ```
 
-The v0 Hugging Face reference is pinned to Transformers 5.3.0. Its complete
-architecture catalog is distinct from native support: ModernVBERT is currently
-the only architecture carrying the verified native-support claim.
+Representax implements Hugging Face checkpoint adapters as native Equinox
+models. The model packages and their tests are the source of truth for support;
+there is no separately maintained support registry. Repository-only parity uses
+pinned upstream Transformers and Sentence Transformers environments.
 
 See the [compatibility matrix](https://github.com/ckgresla/representax/blob/main/docs/compatibility.md) for the locally accepted
 Python/JAX combinations and the distinction between CPU CI and accelerator
@@ -95,6 +129,56 @@ installations intentionally use a system toolkit. This advice applies to the
 pip-managed extras documented above and follows JAX's
 [NVIDIA installation guidance](https://docs.jax.dev/en/latest/installation.html#pip-installation-nvidia-gpu-cuda-installed-via-pip-easier).
 
+### CUDA 12 and CUDA 13 packages can overwrite one another
+
+Keep the Torch parity runtime separate from the ordinary Representax runtime.
+Both CUDA generations install files into the same `site-packages/nvidia`
+namespace, so installing Torch's CUDA 13 packages into a JAX CUDA 12 environment
+can leave a mixed cuDNN installation.
+
+Did you see this?
+
+```text
+RuntimeError: CUDNN_BACKEND_TENSOR_DESCRIPTOR cudnnFinalize failed:
+CUDNN_STATUS_SUBLIBRARY_VERSION_MISMATCH
+```
+
+First inspect the environment rather than changing model code:
+
+```bash
+python -m pip freeze | rg '^nvidia-(cublas|cudnn)-cu(12|13)'
+```
+
+If both generations are present, recreate the dedicated training environment
+with exactly one of `representax[cuda12]` or `representax[cuda13]`. Install the
+repository-only Sentence Transformers/Torch parity group in a separate
+environment. Reinstalling only one cuDNN wheel may appear to repair the current
+process, but another package operation can overwrite the shared files again.
+
+### A near-capacity sharded job can fragment the default GPU pool
+
+First verify from the resolved `ShardingPlan` that the persistent model and
+optimizer shards really fit on every device. Did you then see this from a
+compiled step?
+
+```text
+RESOURCE_EXHAUSTED: Out of memory while trying to allocate 8.23GiB.
+[executable_name='jit_mapped_train_step_body']
+```
+
+JAXlib's CUDA-async allocator can make a physically feasible, near-capacity
+layout executable when the default BFC pool cannot provide one contiguous live
+workspace. Select it before importing JAX:
+
+```bash
+XLA_PYTHON_CLIENT_ALLOCATOR=cuda_async python train.py
+```
+
+`TF_GPU_ALLOCATOR=cuda_malloc_async` is a TensorFlow control and does not select
+the allocator in JAX. Treat CUDA async as a measured execution choice rather
+than a blanket default: an impossible at-rest layout will still OOM, and memory
+and throughput should be re-profiled for the actual job.
+
 ## Encoding
 
 The compiled primitive has one route-aware operation:
@@ -112,8 +196,153 @@ encode_documents = rpx.bind(model, route=rpx.Route.DOCUMENT)
 document_embeddings = encode_documents(batch)
 ```
 
-Host-side tokenization, media decoding, and batching will be exposed through a
-higher-level `embed` API as production model integrations land.
+For standard dense Sentence Transformers artifacts, the host API resolves the
+static serialized module chain without importing PyTorch, tokenizes on the
+host, and executes fixed-shape native batches:
+
+```python
+from representax.integrations import load_sentence_transformer
+
+model = load_sentence_transformer(
+    "sentence-transformers/all-mpnet-base-v2",
+    revision="e8c3b32edf5434bc2275fc9bab85f82640a19130",
+)
+embeddings = model.embed(
+    ["A small bee.", "A large flower."],
+    batch_size=2,
+)
+similarities = model.similarity(embeddings, embeddings)
+```
+
+Install `representax[hf]` for Hub transport and tokenization. The native model
+runtime itself requires neither Torch nor Sentence Transformers. The pinned
+`all-MiniLM-L6-v2` and `all-mpnet-base-v2` acceptance cases verify the complete
+text-to-normalized-embedding path against Sentence Transformers 5.6.1.
+
+Jina v5 Omni Small has a separate, pinned text-only factory for training and
+inference without placing its unused vision or audio towers:
+
+```python
+from representax.integrations import load_jina_v5_small_text_encoder
+
+encoder = load_jina_v5_small_text_encoder(
+    revision="12949877f0092093f366c6450340011320152a05",
+)
+```
+
+Its optional checkpoint is not bundled and is separately licensed under CC
+BY-NC 4.0. See [`THIRD_PARTY.md`](THIRD_PARTY.md) before using those weights.
+
+## Pairwise representation learning
+
+Labeled pair objectives use one modality-neutral batch and keep semantic routes
+on the task rather than inside the loss:
+
+```python
+import jax.numpy as jnp
+from representax.tasks import build_task
+from representax.tasks.pairwise import CoSENTConfig, PairwiseConfig, pairwise_batch
+
+task = build_task(PairwiseConfig(), CoSENTConfig(scale=20.0))
+batch = pairwise_batch(
+    left=left_model_inputs,
+    right=right_model_inputs,
+    labels=jnp.asarray([1.0, 0.7, 0.0]),
+)
+```
+
+The same task boundary supports text, image, audio, video, or composed
+model-native payloads. See the
+[Sentence Transformers capability ledger](docs/sentence-transformers-capabilities.md)
+for exact native and remaining coverage.
+
+## Triplet representation learning
+
+Supplied triplets and class-labeled mining batches are distinct data contracts.
+Both keep semantic routes on the task configuration and share native distance
+primitives:
+
+```python
+import jax.numpy as jnp
+from representax.tasks import build_task
+from representax.tasks.triplet import (
+    BatchTripletLossConfig,
+    LabeledExamplesConfig,
+    labeled_examples_batch,
+)
+
+task = build_task(
+    LabeledExamplesConfig(),
+    BatchTripletLossConfig(mining="semi_hard", margin=0.5),
+)
+batch = labeled_examples_batch(
+    examples=model_inputs,
+    labels=jnp.asarray([0, 0, 1, 1]),
+)
+```
+
+Explicit triplets support cosine, Euclidean, and Manhattan distance. In-batch
+mining supports cosine, Euclidean, and squared Euclidean distance, explicit
+padding validity, and fixed-shape JIT compilation.
+
+## Representation distillation
+
+Teacher artifacts remain ordinary fixed-shape batch data rather than live
+models hidden in a loss. Representax supports embedding matching, score-margin
+regression, and distribution distillation through registered tasks:
+
+```python
+from representax.tasks import build_task
+from representax.tasks.distillation import (
+    DistributionDistillationConfig,
+    DistributionKLLossConfig,
+    distribution_distillation_batch,
+)
+
+task = build_task(
+    DistributionDistillationConfig(),
+    DistributionKLLossConfig(temperature=2.0),
+)
+batch = distribution_distillation_batch(
+    query=query_model_inputs,
+    candidates=(positive_model_inputs, negative_model_inputs),
+    teacher_scores=teacher_scores,
+)
+```
+
+Embedding targets may be broadcast across input columns or supplied per
+column, with MSE, L2, or cosine matching. Learned student-to-teacher projections
+belong in the model composition so optimizer-visible state is never concealed
+inside a task.
+
+## Loss composition and bounded execution
+
+Loss modifiers are scientific job configuration, while GradCache and
+mega-batch mining are execution configuration. For example, the same MNR
+objective can be trained at several prefix dimensions with direct execution or
+bounded encoder replay:
+
+```python
+from representax.tasks import build_task
+from representax.tasks.modifiers import MatryoshkaModifierConfig
+from representax.tasks.retrieval import MNRConfig, RetrievalConfig
+
+task = build_task(
+    RetrievalConfig(),
+    MNRConfig(scale=20.0),
+    modifiers=(
+        MatryoshkaModifierConfig(
+            dimensions=(768, 512, 256, 128, 64),
+        ),
+    ),
+)
+```
+
+The pinned capability ledger records the exact class mapping and evidence.
+Forty paired checks cover the inventory plus 39 same-tensor value-and-gradient
+cases. A separate GPU lane measures compiled objective forward and
+backward performance without turning uncontrolled timing noise into a
+correctness failure.
 
 ## ModernVBERT
 
@@ -144,15 +373,15 @@ pinned Transformers environment verifies vision features, fused
 representations, and pixel gradients. Host-side Idefics3-compatible processing
 remains the next API slice.
 
-## Versioned data recipes
+## Versioned data distributions
 
-Recipes are ordinary Python values that can be composed in Hydra-Zen config
-files and reviewed in Git:
+Distributions are ordinary Python values that can be composed in Hydra-Zen
+config files and reviewed in Git:
 
 ```python
 from representax import data
 
-recipe = data.mix(
+distribution = data.mix(
     data.source(
         "hf://organization/dataset",
         revision="immutable-revision",
@@ -166,16 +395,19 @@ recipe = data.mix(
     weights=(0.7, 0.3),
     seed=17,
 )
-dataset = data.build_grain_dataset(recipe)
+dataset = data.build_dataset(distribution)
 ```
 
-The recipe records artifact identity, mapping code identity, and sampling
-policy. A training iterator additionally fingerprints the resolved mapper and
+The distribution records source identity, mapping code identity, and sampling
+policy. A data loader additionally fingerprints the resolved mapper and
 resolver implementations, batch mapper, batching contract, and Grain version.
 Grain performs lazy mapping, deterministic mixing, shuffling, and checkpointable
 iteration. A single source is the one-element form of the same sampling policy.
 Built-in resolvers support revision-pinned Hugging Face splits and local JSONL,
-Parquet, Arrow, or dataset directories. See
+Parquet, Arrow, or dataset directories. Existing Grain datasets can enter the
+lower-level loader directly. Task-specific samples compose atomic `Artifact`
+leaves; model-specific preprocessing travels beside the Equinox model in a
+`ModelBundle`, so a configured job constructs the model and processor once. See
 [the data contract](https://github.com/ckgresla/representax/blob/main/docs/data.md)
 for cache and extension behavior.
 
@@ -184,24 +416,33 @@ for cache and extension behavior.
 Application code imports concrete operations from their owning modules:
 
 ```python
-import optax
-
 from representax.config import (
     BatchConfig,
     CheckpointConfig,
     ComponentConfig,
+    DataConfig,
+    EvaluationConfig,
+    ExportConfig,
     JobConfig,
     LoggingConfig,
     ModelConfig,
     OptimizationConfig,
+    PrecisionConfig,
     TrainingConfig,
 )
-from representax.data import build_grain_iterator
-from representax.tasks import build_task
+from representax.data import mix, source
 from representax.tasks.retrieval import MNRConfig, RetrievalConfig
-from representax.train import build_train_step, make_train_state, run_training
+from representax.train import run_job
 
-optimizer = optax.adamw(learning_rate=1e-3)
+train_data = DataConfig(
+    distribution=mix(source("train.jsonl", map="my_project.to_retrieval_record")),
+    collate=ComponentConfig(target="my_project.collate_retrieval"),
+)
+valid_data = DataConfig(
+    distribution=mix(source("valid.jsonl", map="my_project.to_retrieval_record")),
+    collate=ComponentConfig(target="my_project.collate_retrieval"),
+)
+
 job = JobConfig(
     name="example",
     model=ModelConfig(target="my_project.Model"),
@@ -213,47 +454,127 @@ job = JobConfig(
             parameters={"learning_rate": 1e-3},
         ),
     ),
-    data=recipe,
+    data=train_data,
     training=TrainingConfig(
         global_batch_size=32,
         max_steps=10_000,
         seed=17,
         batch=BatchConfig(micro_batch_size=32),
+        precision=PrecisionConfig.bfloat16_mixed(),
     ),
     logging=LoggingConfig(console_every=100),
     checkpointing=CheckpointConfig(every=1_000, keep=3),
+    evaluation=EvaluationConfig(
+        data=valid_data,
+        batch_size=32,
+        every_steps=1_000,
+        primary_metric="valid/loss",
+    ),
+    export=ExportConfig(selection="best"),
 )
-task = build_task(job.task, job.loss)
-state = make_train_state(model, optimizer)
-batches = build_grain_iterator(job.data, batch_size=32, batch_fn=collate)
-result = run_training(
-    state=state,
-    step=build_train_step(task, optimizer),
-    batches=batches,
-    job=job,
-    run_directory="runs/example",
+result = run_job(job, "runs/example")
+```
+
+`run_job` is the canonical configured boundary: it builds the Equinox model,
+task and loss modifiers, Optax schedule/state, Grain sources, compiled execution
+strategy, evaluator cache, Orbax lifecycle, and selected inference artifact.
+It is the only public end-to-end training entrypoint. Focused numerical tests
+and microbenchmarks may use lower-level primitives from their owning modules.
+
+W&B is an optional reporter rather than a training dependency. Install
+`representax[wandb]`, then configure the existing logging boundary:
+
+```python
+from representax.config import LoggingConfig, WandbConfig
+
+logging = LoggingConfig(wandb=WandbConfig(project="representax"))
+```
+
+JSONL remains the local source of truth and the W&B client runs on the bounded
+reporter worker.
+
+Mixed precision keeps parameters, checkpoints, Optax state, gradients, and
+objectives in FP32 while using transient BF16 parameter views and activations.
+The same policy applies to in-training validation and composes with direct,
+GradCache, DDP, FSDP, and custom-sharded execution. See the
+[precision contract](docs/precision.md).
+
+Packed four-bit base weights can instead train low-rank adapters while keeping
+only the adapters in FP32 optimizer state:
+
+```python
+from representax.config import PrecisionConfig, QuantizedLoRAConfig, TrainingConfig
+
+training = TrainingConfig(
+    # ordinary batch, mesh, and lifecycle fields omitted
+    adapter=QuantizedLoRAConfig(rank=8, alpha=16.0),
+    precision=PrecisionConfig.bfloat16_mixed(),
 )
 ```
 
-The loop records W&B-ready metric names such as `train/loss`, `valid/loss`, and
-`perf/...` in `metrics.jsonl`, lifecycle events in `events.jsonl`, and final
+This is weight-quantized adapter training with BF16 matrix compute, not a claim
+of native INT4 training arithmetic. See the measured
+[low-bit adapter contract](docs/adapters.md). Native FP8 matrix compute is also
+available as an experimental policy; BF16 remains the recommended default.
+
+Named DDP and FSDP are configuration presets, not separate trainers. Explicit
+partition rules resolve through the same internal plan:
+
+```python
+from representax.config import FSDPConfig, MeshConfig
+
+training = TrainingConfig(
+    global_batch_size=32,
+    max_steps=10_000,
+    seed=17,
+    mesh=MeshConfig(axis_shapes=(2,), axis_names=("data",)),
+    sharding=FSDPConfig(
+        data_axis="data",
+    ),
+    batch=BatchConfig(micro_batch_size=16),
+)
+```
+
+Named DDP, FSDP, and custom partition rules are global JAX programs using the
+same compiled step. The plan declares batch, parameter, Optax-state, and result
+shardings. Shared model primitives annotate exact parameter-use and activation
+layouts, while JAX derives the required communication and its autodiff
+transpose. FSDP is therefore architecture-agnostic: there is no separate
+trainer, per-model materializer, custom VJP, or manual gradient synchronization.
+The acceptance profile records exact 2/4-device trajectories and a physical
+1.9795B-parameter capacity run on two 24 GB GPUs. See
+[`fsdp-annotations-20260820`](benchmarks/results/fsdp-annotations-20260820/README.org).
+
+Array-facing APIs use `jaxtyping` to state dtype and symbolic shape contracts
+directly on model forwards, tasks, losses, and compiled-step keys. Representax
+does not install a runtime type-checking hook; explicit domain validation remains
+responsible for semantic requirements that shapes and dtypes cannot express.
+
+The loop records canonical metric names such as `train/loss`, `valid/loss`,
+standalone `eval/loss`, and `perf/...` in `metrics.jsonl`, lifecycle events in
+`events.jsonl`, and final
 status in `run.json`. A bounded reporter worker performs the device-to-host
-metric transfer and fans the same ordered rows out to optional consumers without
-placing a synchronization barrier in every training iteration. Checkpoints are
+metric transfer and fans the same ordered rows out to optional consumers,
+including W&B, without placing a synchronization barrier in every training
+iteration. Checkpoints are
 written by Orbax with at most one asynchronous save in flight. Recreate the same
-recipe, model/state template, task/optimizer program, and batch source and pass
+distribution, model/state template, task/optimizer program, and batch source and pass
 `resume=True` to continue from the latest complete checkpoint. See
 [the training contract](https://github.com/ckgresla/representax/blob/main/docs/training.md).
 
 ## Tests
 
 ```bash
+python scripts/check.py
 pytest
 pytest -m runtime
 pytest -m parity
 pytest -m distributed
 pytest -m performance
 ```
+
+The first command is the fast static gate: Ruff formatting and linting followed
+by ty type checking. It does not import JAX or compile model programs.
 
 Tests live outside the package and mirror its model, task, data, and runtime
 structure. Pytest markers select orthogonal runtime, parity, distributed, and
@@ -263,6 +584,9 @@ Performance acceptance is evaluated against a matched upstream implementation
 on pinned hardware. Compile time, steady-state work, and peak device memory are
 measured separately; see
 [the test contract](https://github.com/ckgresla/representax/blob/main/docs/testing.md).
+The broader Sentence Transformers dense-system audit and the definition of a
+true dataset-on-disk to final-model benchmark are in
+[the dense-system audit](https://github.com/ckgresla/representax/blob/main/docs/dense-system-audit.md).
 
 ## Roadmap
 

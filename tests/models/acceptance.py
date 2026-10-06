@@ -14,7 +14,7 @@ import warnings
 from contextlib import suppress
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
@@ -54,6 +54,8 @@ class ModelPerformanceCase:
     measurement_iterations: int = 20
     minimum_speedup: float = 1.0
     maximum_memory_ratio: float | None = 1.0
+    maximum_compilation_seconds: float | None = None
+    probe_timeout_seconds: float = 300.0
     output_tolerance: NumericalTolerance = NumericalTolerance(
         absolute=5e-6,
         relative=5e-5,
@@ -62,6 +64,67 @@ class ModelPerformanceCase:
 
 
 MODEL_IMPLEMENTATIONS = (
+    ModelPerformanceCase(
+        name="bert-base-forward-fp32",
+        package="bert",
+        probe_module="tests.models.bert.performance_probe",
+        checkpoint_environment="REPRESENTAX_BERT_CHECKPOINT",
+        upstream_python_environment="REPRESENTAX_BERT_TRANSFORMERS_PYTHON",
+        batch_size=16,
+        sequence_length=128,
+        maximum_memory_ratio=None,
+    ),
+    ModelPerformanceCase(
+        name="all-minilm-l6-v2-dense-forward-fp32",
+        package="bert",
+        probe_module="tests.models.sentence_transformers.performance_probe",
+        checkpoint_environment="REPRESENTAX_MINILM_CHECKPOINT",
+        upstream_python_environment="REPRESENTAX_SENTENCE_TRANSFORMERS_PYTHON",
+        batch_size=16,
+        sequence_length=128,
+        maximum_memory_ratio=None,
+        maximum_compilation_seconds=60.0,
+        probe_timeout_seconds=120.0,
+        output_tolerance=NumericalTolerance(
+            absolute=2e-6,
+            relative=2e-6,
+            cosine=0.999999,
+        ),
+    ),
+    ModelPerformanceCase(
+        name="all-mpnet-base-v2-dense-forward-fp32",
+        package="mpnet",
+        probe_module="tests.models.mpnet.performance_probe",
+        checkpoint_environment="REPRESENTAX_MPNET_CHECKPOINT",
+        upstream_python_environment="REPRESENTAX_SENTENCE_TRANSFORMERS_PYTHON",
+        batch_size=16,
+        sequence_length=128,
+        maximum_memory_ratio=None,
+        maximum_compilation_seconds=60.0,
+        probe_timeout_seconds=180.0,
+        output_tolerance=NumericalTolerance(
+            absolute=3e-6,
+            relative=3e-6,
+            cosine=0.999999,
+        ),
+    ),
+    ModelPerformanceCase(
+        name="bge-vl-base-text-forward-fp32",
+        package="clip",
+        probe_module="tests.models.clip.performance_probe",
+        checkpoint_environment="REPRESENTAX_BGE_VL_CHECKPOINT",
+        upstream_python_environment="REPRESENTAX_SENTENCE_TRANSFORMERS_PYTHON",
+        batch_size=16,
+        sequence_length=77,
+        maximum_memory_ratio=None,
+        maximum_compilation_seconds=60.0,
+        probe_timeout_seconds=180.0,
+        output_tolerance=NumericalTolerance(
+            absolute=8e-4,
+            relative=2e-3,
+            cosine=0.99999,
+        ),
+    ),
     ModelPerformanceCase(
         name="modernvbert-text-forward-fp32",
         package="modernvbert",
@@ -244,7 +307,16 @@ def _run_probe(
         text=True,
     )
     monitor = _ProcessMemoryMonitor(process)
-    stdout, stderr = process.communicate()
+    try:
+        stdout, stderr = process.communicate(timeout=case.probe_timeout_seconds)
+    except subprocess.TimeoutExpired as error:
+        process.kill()
+        stdout, stderr = process.communicate()
+        raise AssertionError(
+            f"{runtime} probe exceeded {case.probe_timeout_seconds:.1f}s; "
+            "the compile or execution workload is not acceptably bounded\n"
+            f"stdout:\n{stdout}\nstderr:\n{stderr}"
+        ) from error
     external_peak = monitor.close()
     if process.returncode:
         raise AssertionError(
@@ -268,7 +340,7 @@ def _make_inputs(case: ModelPerformanceCase, checkpoint: Path, path: Path) -> No
         dtype=np.int32,
     )
     attention_mask = np.ones_like(input_ids, dtype=np.int32)
-    arrays = {
+    arrays: dict[str, np.ndarray] = {
         "input_ids": input_ids,
         "attention_mask": attention_mask,
     }
@@ -298,7 +370,8 @@ def _make_inputs(case: ModelPerformanceCase, checkpoint: Path, path: Path) -> No
             (case.batch_size, case.image_count, image_size, image_size),
             dtype=np.int32,
         )
-    np.savez(path, **arrays)
+    # NumPy's current ``savez`` typing models arbitrary named arrays as booleans.
+    np.savez(path, **cast(Any, arrays))
 
 
 def _memory_values(reports: dict[str, dict[str, Any]]) -> tuple[int, int, str]:
@@ -411,6 +484,14 @@ def compare_model_performance(
     for message in memory_warnings:
         warnings.warn(message, RuntimeWarning, stacklevel=2)
     assert speedup > case.minimum_speedup, result
+    if case.maximum_compilation_seconds is not None:
+        compilation_seconds = float(
+            reports["representax"].get(
+                "compilation_seconds",
+                reports["representax"]["compile_or_first_execution_seconds"],
+            )
+        )
+        assert compilation_seconds <= case.maximum_compilation_seconds, result
     if case.maximum_memory_ratio is not None:
         assert memory_ratio <= case.maximum_memory_ratio, result
     return result

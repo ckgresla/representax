@@ -5,7 +5,13 @@ import jax
 import jax.numpy as jnp
 import pytest
 
-from representax.core import EncoderMetadata, Modality, Route, bind, encode
+from representax.core import (
+    EncoderMetadata,
+    Modality,
+    Route,
+    bind,
+    encode,
+)
 from representax.models import DenseEncoder
 
 
@@ -41,3 +47,13 @@ def test_encoder_rejects_unsupported_route():
 
     with pytest.raises(ValueError, match="does not support route"):
         encode(model, jnp.ones((1, 4)), route=Route.DOCUMENT)
+
+
+def test_modality_is_extensible_but_fusion_is_composition():
+    depth = Modality("depth_map")
+
+    assert str(depth) == "depth_map"
+    assert depth.value == "depth_map"
+    assert not hasattr(Modality, "FUSED")
+    with pytest.raises(ValueError, match="lowercase identifiers"):
+        Modality("Depth Map")

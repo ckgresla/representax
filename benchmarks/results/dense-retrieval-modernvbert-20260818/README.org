@@ -1,0 +1,51 @@
+#+title: Matched ModernVBERT dense-retrieval training — 2026-08-18
+
+* Contract
+
+- Model: =ModernVBERT/modernvbert-embed= revision
+  =da507113c3fdbc2e49d39c4b0148025c6bd008f9=.
+- Training data, NanoMSMARCO validation, tokenizer assets, checkpoint, pooling,
+  FP32 precision, length 128, cosine MNR, AdamW, clipping, ordered examples, and
+  100-update count are matched against Sentence Transformers 5.6.1.
+- Both systems apply the checkpoint's structured-message chat template before
+  fixed-shape padding. Representax receives only model-ready tensors at its
+  compiled train-step boundary.
+- Initial retrieval metrics agree within an explicit =1e-4= absolute metric
+  gate. The observed maximum is =6.1712e-5= in MAP@100; every other initial
+  metric matches exactly.
+
+* Three-run cached result
+
+The batch-128/chunk-8 execution was repeated with seeds 17, 42, and 73.
+
+| measure | Representax / speedup | Sentence Transformers | 95% interval |
+|---------+-----------------------+-----------------------+--------------|
+| sustained examples/s | 78.38 | 60.92 | native =[77.62, 79.15]= |
+| sustained speedup | 1.287x | 1.000x | =[1.273, 1.301]= |
+| compilation crossover | 75.6 updates | not applicable | =[71.2, 80.1]= |
+
+The individual sustained speedups are =1.285x=, =1.293x=, and =1.282x=.
+Every 100-update job is also faster after including compilation.
+
+* Preprocessing finding
+
+Sentence Transformers recognizes this bare Hugging Face artifact as a
+structured =message= model and transforms text to
+=<|begin_of_text|>User: ...<end_of_utterance>=. Bare AutoTokenizer calls produce
+different IDs and a scientifically unmatched job. Representax now uses the
+checkpoint's own chat template at the host preprocessing boundary, producing
+the same fixed token IDs and attention masks before either model forward.
+
+* Quality boundary
+
+The checkpoint has dropout disabled, so changing the configured seed does not
+create three independent scientific training trajectories. Treat these as
+systems replications. Representax's mean training loss is =3.8163--3.8168=
+versus =3.8147= upstream, while its final nDCG@10 is lower by =0.0112= on
+average. This could be an accumulated optimizer/update difference or a shifted
+short-horizon learning curve; it is not accepted as quality equivalence yet.
+
+The next gate records matched losses and held-out metrics at fixed update
+checkpoints and verifies one-step parameter-update parity. Exact input paths,
+hashes, values, and intervals are in =three-seed-aggregate.json=; raw reports
+live under =/raid/representax/benchmarks/dense-retrieval-modernvbert-*=.

@@ -2,11 +2,59 @@
 
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Mapping, Sequence
+from typing import TYPE_CHECKING, Any
 
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+import numpy as np
+from jax.sharding import NamedSharding
+from jaxtyping import Array, ArrayLike, Bool, Float
+
+from representax.core import Route
+from representax.tasks._batch import asarray, ones, payload_row_count
+
+if TYPE_CHECKING:
+    from representax.models.processing import Processor
+
+
+class RetrievalCollator:
+    """Build aligned pairs; the processor owns payload validation and modalities."""
+
+    def __init__(
+        self,
+        *,
+        processor: Processor,
+        query_field: str = "query",
+        document_field: str = "positive",
+    ) -> None:
+        self.processor = processor
+        self.query_field = query_field
+        self.document_field = document_field
+
+    def data_contract(self) -> Mapping[str, Any]:
+        return {
+            "schema_version": "representax-retrieval-collator-v1",
+            "processor": self.processor.data_contract(),
+            "query_field": self.query_field,
+            "document_field": self.document_field,
+        }
+
+    def __call__(self, examples: Sequence[Mapping[str, Any]]) -> RetrievalBatch:
+        try:
+            queries = tuple(example[self.query_field] for example in examples)
+            documents = tuple(example[self.document_field] for example in examples)
+        except KeyError as error:
+            raise KeyError(
+                f"retrieval record is missing field {error.args[0]!r}"
+            ) from error
+        size = len(examples)
+        return retrieval_batch(
+            query=self.processor(queries, route=Route.QUERY),
+            document=self.processor(documents, route=Route.DOCUMENT),
+            positive_mask=np.eye(size, dtype=np.bool_),
+        )
 
 
 class RetrievalBatch(eqx.Module):
@@ -14,10 +62,10 @@ class RetrievalBatch(eqx.Module):
 
     query: Any
     document: Any
-    positive_mask: jax.Array
-    positive_weights: jax.Array | None
-    query_valid: jax.Array
-    document_valid: jax.Array
+    positive_mask: Bool[Array, "query document"]
+    positive_weights: Float[Array, "query document"] | None
+    query_valid: Bool[Array, " query"]
+    document_valid: Bool[Array, " document"]
 
     def __post_init__(self) -> None:
         query_count, document_count = self.positive_mask.shape
@@ -36,14 +84,10 @@ class RetrievalBatch(eqx.Module):
             raise TypeError("query_valid must be boolean")
         if self.document_valid.dtype != jnp.bool_:
             raise TypeError("document_valid must be boolean")
-        query_leaves = [x for x in jax.tree.leaves(self.query) if eqx.is_array(x)]
-        document_leaves = [x for x in jax.tree.leaves(self.document) if eqx.is_array(x)]
-        if not query_leaves or not document_leaves:
-            raise ValueError("query and document payloads must contain arrays")
-        if any(x.ndim == 0 or x.shape[0] != query_count for x in query_leaves):
-            raise ValueError("query payloads must be row-major")
-        if any(x.ndim == 0 or x.shape[0] != document_count for x in document_leaves):
-            raise ValueError("document payloads must be row-major")
+        if payload_row_count(self.query, name="query") != query_count:
+            raise ValueError("query payload must match the query dimension")
+        if payload_row_count(self.document, name="document") != document_count:
+            raise ValueError("document payload must match the document dimension")
 
 
 class ProcessLocalRetrievalBatch(eqx.Module):
@@ -51,10 +95,10 @@ class ProcessLocalRetrievalBatch(eqx.Module):
 
     query: Any
     document: Any
-    positive_mask: jax.Array
-    positive_weights: jax.Array | None
-    query_valid: jax.Array
-    document_valid: jax.Array
+    positive_mask: Bool[Array, "local_query global_document"]
+    positive_weights: Float[Array, "local_query global_document"] | None
+    query_valid: Bool[Array, " local_query"]
+    document_valid: Bool[Array, " local_document"]
 
     def __post_init__(self) -> None:
         if self.positive_mask.ndim != 2 or self.positive_mask.dtype != jnp.bool_:
@@ -95,28 +139,28 @@ def retrieval_batch(
     *,
     query: Any,
     document: Any,
-    positive_mask: jax.Array,
-    positive_weights: jax.Array | None = None,
-    query_valid: jax.Array | None = None,
-    document_valid: jax.Array | None = None,
+    positive_mask: Bool[ArrayLike, "query document"],
+    positive_weights: Float[ArrayLike, "query document"] | None = None,
+    query_valid: Bool[ArrayLike, " query"] | None = None,
+    document_valid: Bool[ArrayLike, " document"] | None = None,
 ) -> RetrievalBatch:
     """Build a fixed-shape retrieval batch with sensible validity defaults."""
 
-    positive_mask = jnp.asarray(positive_mask, dtype=jnp.bool_)
+    positive_mask = asarray(positive_mask, dtype=jnp.bool_)
     query_count, document_count = positive_mask.shape
     if query_valid is None:
-        query_valid = jnp.ones((query_count,), dtype=jnp.bool_)
+        query_valid = ones((query_count,), dtype=jnp.bool_, like=positive_mask)
     if document_valid is None:
-        document_valid = jnp.ones((document_count,), dtype=jnp.bool_)
+        document_valid = ones((document_count,), dtype=jnp.bool_, like=positive_mask)
     return RetrievalBatch(
         query=query,
         document=document,
         positive_mask=positive_mask,
         positive_weights=(
-            None if positive_weights is None else jnp.asarray(positive_weights)
+            None if positive_weights is None else asarray(positive_weights)
         ),
-        query_valid=jnp.asarray(query_valid, dtype=jnp.bool_),
-        document_valid=jnp.asarray(document_valid, dtype=jnp.bool_),
+        query_valid=asarray(query_valid, dtype=jnp.bool_),
+        document_valid=asarray(document_valid, dtype=jnp.bool_),
     )
 
 
@@ -124,14 +168,14 @@ def process_local_retrieval_batch(
     *,
     query: Any,
     document: Any,
-    positive_mask: jax.Array,
-    positive_weights: jax.Array | None = None,
-    query_valid: jax.Array | None = None,
-    document_valid: jax.Array | None = None,
+    positive_mask: Bool[ArrayLike, "local_query global_document"],
+    positive_weights: Float[ArrayLike, "local_query global_document"] | None = None,
+    query_valid: Bool[ArrayLike, " local_query"] | None = None,
+    document_valid: Bool[ArrayLike, " local_document"] | None = None,
 ) -> ProcessLocalRetrievalBatch:
     """Build process-local rows that retain the global document relation axis."""
 
-    positive_mask = jnp.asarray(positive_mask, dtype=jnp.bool_)
+    positive_mask = asarray(positive_mask, dtype=jnp.bool_)
     local_query_count = positive_mask.shape[0]
     document_leaves = [
         value for value in jax.tree.leaves(document) if eqx.is_array(value)
@@ -140,16 +184,92 @@ def process_local_retrieval_batch(
         raise ValueError("document payloads must contain arrays")
     local_document_count = document_leaves[0].shape[0]
     if query_valid is None:
-        query_valid = jnp.ones((local_query_count,), dtype=jnp.bool_)
+        query_valid = ones((local_query_count,), dtype=jnp.bool_, like=positive_mask)
     if document_valid is None:
-        document_valid = jnp.ones((local_document_count,), dtype=jnp.bool_)
+        document_valid = ones(
+            (local_document_count,),
+            dtype=jnp.bool_,
+            like=positive_mask,
+        )
     return ProcessLocalRetrievalBatch(
         query=query,
         document=document,
         positive_mask=positive_mask,
         positive_weights=(
-            None if positive_weights is None else jnp.asarray(positive_weights)
+            None if positive_weights is None else asarray(positive_weights)
         ),
-        query_valid=jnp.asarray(query_valid, dtype=jnp.bool_),
-        document_valid=jnp.asarray(document_valid, dtype=jnp.bool_),
+        query_valid=asarray(query_valid, dtype=jnp.bool_),
+        document_valid=asarray(document_valid, dtype=jnp.bool_),
     )
+
+
+def _process_concatenated_column_order(
+    indices: Mapping[Any, tuple[slice, ...]],
+    global_size: int,
+) -> np.ndarray:
+    starts_by_process: dict[int, set[tuple[int, int]]] = {}
+    for device, index in indices.items():
+        document_slice = index[0]
+        start = 0 if document_slice.start is None else document_slice.start
+        stop = global_size if document_slice.stop is None else document_slice.stop
+        starts_by_process.setdefault(device.process_index, set()).add((start, stop))
+    order = np.empty(global_size, dtype=np.int32)
+    source = 0
+    for process_index in sorted(starts_by_process):
+        for start, stop in sorted(starts_by_process[process_index]):
+            size = stop - start
+            order[start:stop] = np.arange(source, source + size, dtype=np.int32)
+            source += size
+    if source != global_size:
+        raise ValueError("process-local document shards do not cover all columns")
+    return order
+
+
+def place_process_local_retrieval_batch(
+    batch: ProcessLocalRetrievalBatch,
+    sharding: NamedSharding,
+) -> RetrievalBatch:
+    """Assemble process-local retrieval rows with a leading-axis sharding."""
+
+    global_document_count = batch.positive_mask.shape[1]
+    column_order = _process_concatenated_column_order(
+        sharding.devices_indices_map((global_document_count,)),
+        global_document_count,
+    )
+
+    def align_columns(value: Any) -> Any:
+        return value[:, column_order]
+
+    def global_rows(tree: Any) -> Any:
+        return jax.tree.map(
+            lambda value: (
+                jax.make_array_from_process_local_data(sharding, value)
+                if eqx.is_array(value)
+                else value
+            ),
+            tree,
+            is_leaf=lambda value: value is None,
+        )
+
+    return RetrievalBatch(
+        query=global_rows(batch.query),
+        document=global_rows(batch.document),
+        positive_mask=global_rows(align_columns(batch.positive_mask)),
+        positive_weights=(
+            None
+            if batch.positive_weights is None
+            else global_rows(align_columns(batch.positive_weights))
+        ),
+        query_valid=global_rows(batch.query_valid),
+        document_valid=global_rows(batch.document_valid),
+    )
+
+
+__all__ = [
+    "ProcessLocalRetrievalBatch",
+    "RetrievalBatch",
+    "RetrievalCollator",
+    "place_process_local_retrieval_batch",
+    "process_local_retrieval_batch",
+    "retrieval_batch",
+]

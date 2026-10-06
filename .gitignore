@@ -11,6 +11,8 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .venv/
+.venv-*/
+experiments/.references/
 *.log
 build/
 dist/

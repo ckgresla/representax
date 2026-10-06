@@ -7,89 +7,61 @@ execution path.
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from collections.abc import Iterator
+from functools import partial
+from typing import Any, overload
 
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+from jaxtyping import Array, Bool, Float, Int, PRNGKeyArray
 
 from representax.core import EncoderMetadata, Modality, Route
+from representax.models.components import (
+    AttentionImplementation,
+    LayerNorm,
+    Linear,
+    dot_product_attention,
+    embedding_lookup,
+    l2_normalize,
+    mean_pool,
+    rematerialize,
+)
 from representax.planning import RematerializationPolicy
+from representax.precision import active_compute_dtype
 
 from .config import ModernVBERTTextConfig
-
-AttentionImplementation = Literal["xla", "cudnn"]
-
-
-def _rematerialize_layer(function: Any, policy: RematerializationPolicy) -> Any:
-    """Apply one stable public rematerialization choice to a scanned layer."""
-
-    if policy == "none":
-        return function
-    if policy == "selective":
-        checkpoint_policy = jax.checkpoint_policies.dots_with_no_batch_dims_saveable
-    elif policy == "full":
-        checkpoint_policy = jax.checkpoint_policies.nothing_saveable
-    else:
-        raise ValueError("rematerialization must be 'none', 'selective', or 'full'")
-    return jax.checkpoint(
-        function,
-        policy=checkpoint_policy,
-        prevent_cse=False,
-    )
-
-
-@jax.custom_vjp
-def _embedding_lookup(table: jax.Array, indices: jax.Array) -> jax.Array:
-    """Gather embeddings while completing each table-gradient scatter."""
-
-    return table[indices]
-
-
-def _embedding_lookup_forward(
-    table: jax.Array,
-    indices: jax.Array,
-) -> tuple[jax.Array, tuple[jax.Array, jax.Array]]:
-    return table[indices], (table, indices)
-
-
-def _embedding_lookup_backward(
-    residual: tuple[jax.Array, jax.Array],
-    cotangent: jax.Array,
-) -> tuple[jax.Array, None]:
-    table, indices = residual
-    gradient = jnp.zeros_like(table).at[indices].add(cotangent)
-    return jax.lax.optimization_barrier(gradient), None
-
-
-_embedding_lookup.defvjp(_embedding_lookup_forward, _embedding_lookup_backward)
 
 
 class ModernVBERTTextBatch(eqx.Module):
     """Token IDs or input embeddings plus their valid-token mask."""
 
-    attention_mask: jax.Array
-    input_ids: jax.Array | None = None
-    inputs_embeds: jax.Array | None = None
-    position_ids: jax.Array | None = None
+    attention_mask: Bool[Array, "batch sequence"] | Int[Array, "batch sequence"]
+    input_ids: Int[Array, "batch sequence"] | None = None
+    inputs_embeds: Float[Array, "batch sequence hidden"] | None = None
+    position_ids: Int[Array, "#batch sequence"] | None = None
 
     def __post_init__(self) -> None:
-        if (self.input_ids is None) == (self.inputs_embeds is None):
+        input_ids = self.input_ids
+        inputs_embeds = self.inputs_embeds
+        if (input_ids is None) == (inputs_embeds is None):
             raise ValueError("specify exactly one of input_ids or inputs_embeds")
         if self.attention_mask.ndim != 2:
             raise ValueError("attention_mask must have shape [batch, sequence]")
-        if self.input_ids is not None:
-            if self.input_ids.ndim != 2:
+        if input_ids is not None:
+            if input_ids.ndim != 2:
                 raise ValueError("input_ids must have shape [batch, sequence]")
-            if not jnp.issubdtype(self.input_ids.dtype, jnp.integer):
+            if not jnp.issubdtype(input_ids.dtype, jnp.integer):
                 raise TypeError("input_ids must have an integer dtype")
-        elif self.inputs_embeds.ndim != 3:
-            raise ValueError("inputs_embeds must have shape [batch, sequence, hidden]")
-        token_shape = (
-            self.input_ids.shape
-            if self.input_ids is not None
-            else self.inputs_embeds.shape[:2]
-        )
+            token_shape = input_ids.shape
+        else:
+            if inputs_embeds is None:  # pragma: no cover - guarded above
+                raise AssertionError("inputs_embeds must be present")
+            if inputs_embeds.ndim != 3:
+                raise ValueError(
+                    "inputs_embeds must have shape [batch, sequence, hidden]"
+                )
+            token_shape = inputs_embeds.shape[:2]
         if token_shape != self.attention_mask.shape:
             raise ValueError("token inputs and attention_mask must align")
         if self.position_ids is not None:
@@ -108,73 +80,14 @@ class ModernVBERTTextBatch(eqx.Module):
                 raise TypeError("position_ids must have an integer dtype")
 
 
-class Linear(eqx.Module):
-    """Batched linear projection with Hugging Face weight orientation."""
-
-    weight: jax.Array
-    bias: jax.Array | None = None
-
-    @classmethod
-    def init(
-        cls,
-        input_size: int,
-        output_size: int,
-        *,
-        key: jax.Array,
-        scale: float,
-        dtype: jnp.dtype,
-        bias: bool = False,
-    ) -> Linear:
-        weight = scale * jax.random.normal(key, (output_size, input_size), dtype=dtype)
-        return cls(
-            weight=weight,
-            bias=jnp.zeros((output_size,), dtype=dtype) if bias else None,
-        )
-
-    def __call__(self, value: jax.Array) -> jax.Array:
-        output = value @ self.weight.T
-        return output if self.bias is None else output + self.bias
-
-
-class LayerNorm(eqx.Module):
-    """ModernBERT LayerNorm with FP32 statistics."""
-
-    weight: jax.Array
-    bias: jax.Array | None
-    epsilon: float = eqx.field(static=True)
-
-    @classmethod
-    def init(
-        cls,
-        size: int,
-        *,
-        epsilon: float,
-        dtype: jnp.dtype,
-        bias: bool = False,
-    ) -> LayerNorm:
-        return cls(
-            weight=jnp.ones((size,), dtype=dtype),
-            bias=jnp.zeros((size,), dtype=dtype) if bias else None,
-            epsilon=epsilon,
-        )
-
-    def __call__(self, value: jax.Array) -> jax.Array:
-        source_dtype = value.dtype
-        value = value.astype(jnp.float32)
-        mean = jnp.mean(value, axis=-1, keepdims=True)
-        variance = jnp.mean(jnp.square(value - mean), axis=-1, keepdims=True)
-        output = (value - mean) * jax.lax.rsqrt(variance + self.epsilon)
-        output = output * self.weight.astype(jnp.float32)
-        if self.bias is not None:
-            output = output + self.bias.astype(jnp.float32)
-        return output.astype(source_dtype)
-
-
 def _rotary_frequencies(
     head_dimension: int,
     theta: float,
-    position_ids: jax.Array,
-) -> tuple[jax.Array, jax.Array]:
+    position_ids: Int[Array, "#batch sequence"],
+) -> tuple[
+    Float[Array, "#batch sequence head"],
+    Float[Array, "#batch sequence head"],
+]:
     inverse_frequency = 1.0 / (
         theta ** (jnp.arange(0, head_dimension, 2, dtype=jnp.float32) / head_dimension)
     )
@@ -183,38 +96,58 @@ def _rotary_frequencies(
     return jnp.cos(embedding), jnp.sin(embedding)
 
 
-def _rotate_half(value: jax.Array) -> jax.Array:
+def _position_embeddings(
+    config: ModernVBERTTextConfig,
+    position_ids: Int[Array, "#batch sequence"],
+) -> tuple[Any, Any]:
+    full = _rotary_frequencies(
+        config.head_dimension,
+        config.full_attention_rope_theta,
+        position_ids,
+    )
+    if config.full_attention_rope_theta == config.sliding_attention_rope_theta:
+        return full, full
+    return full, _rotary_frequencies(
+        config.head_dimension,
+        config.sliding_attention_rope_theta,
+        position_ids,
+    )
+
+
+def _rotate_half(
+    value: Float[Array, "*batch head"],
+) -> Float[Array, "*batch head"]:
     first, second = jnp.split(value, 2, axis=-1)
     return jnp.concatenate((-second, first), axis=-1)
 
 
 def _apply_rope(
-    value: jax.Array,
-    cosine: jax.Array,
-    sine: jax.Array,
-) -> jax.Array:
+    value: Float[Array, "batch sequence heads head"],
+    cosine: Float[Array, "#batch sequence 1 head"],
+    sine: Float[Array, "#batch sequence 1 head"],
+) -> Float[Array, "batch sequence heads head"]:
     value32 = value.astype(jnp.float32)
     rotated = value32 * cosine + _rotate_half(value32) * sine
     return rotated.astype(value.dtype)
 
 
 def _scaled_dot_product_attention(
-    query: jax.Array,
-    key: jax.Array,
-    value: jax.Array,
-    attention_mask: jax.Array,
+    query: Float[Array, "batch target_sequence heads head"],
+    key: Float[Array, "batch source_sequence heads head"],
+    value: Float[Array, "batch source_sequence heads head"],
+    attention_mask: Bool[Array, "batch source_sequence"],
     *,
     local_radius: int | None,
     implementation: AttentionImplementation,
-) -> jax.Array:
+) -> Float[Array, "batch target_sequence heads head"]:
     """Run exact full or symmetric local attention through JAX's primitive."""
 
     local_window = None if local_radius is None else (local_radius, local_radius)
-    return jax.nn.dot_product_attention(
+    return dot_product_attention(
         query,
         key,
         value,
-        mask=attention_mask[:, None, None, :].astype(bool),
+        attention_mask=attention_mask[:, None, None, :].astype(bool),
         local_window_size=local_window,
         implementation=implementation,
     )
@@ -229,7 +162,7 @@ class FusedSelfAttention(eqx.Module):
         cls,
         config: ModernVBERTTextConfig,
         *,
-        key: jax.Array,
+        key: PRNGKeyArray,
         dtype: jnp.dtype,
     ) -> FusedSelfAttention:
         qkv_key, output_key = jax.random.split(key)
@@ -252,14 +185,15 @@ class FusedSelfAttention(eqx.Module):
 
     def __call__(
         self,
-        hidden: jax.Array,
+        hidden: Float[Array, "batch sequence hidden"],
         *,
         config: ModernVBERTTextConfig,
-        attention_mask: jax.Array,
-        position_ids: jax.Array,
-        sliding_attention: jax.Array,
+        attention_mask: Bool[Array, "batch sequence"],
+        position_ids: Int[Array, "#batch sequence"],
+        sliding_attention: bool | Bool[Array, ""],
         implementation: AttentionImplementation,
-    ) -> jax.Array:
+        position_embeddings: tuple[Any, Any] | None = None,
+    ) -> Float[Array, "batch sequence hidden"]:
         batch, sequence, _ = hidden.shape
         qkv = self.qkv(hidden).reshape(
             batch,
@@ -270,18 +204,22 @@ class FusedSelfAttention(eqx.Module):
         )
         query, key, value = (qkv[:, :, index] for index in range(3))
 
+        if position_embeddings is None:
+            position_embeddings = _position_embeddings(config, position_ids)
+        full_position_embeddings, sliding_position_embeddings = position_embeddings
+
         def attend(
-            operands: tuple[jax.Array, jax.Array, jax.Array],
+            operands: tuple[
+                Float[Array, "batch sequence heads head"],
+                Float[Array, "batch sequence heads head"],
+                Float[Array, "batch sequence heads head"],
+            ],
             *,
-            theta: float,
+            rotary: tuple[Any, Any],
             local_radius: int | None,
-        ) -> jax.Array:
+        ) -> Float[Array, "batch sequence heads head"]:
             branch_query, branch_key, branch_value = operands
-            cosine, sine = _rotary_frequencies(
-                config.head_dimension,
-                theta,
-                position_ids,
-            )
+            cosine, sine = rotary
             cosine = cosine[:, :, None, :]
             sine = sine[:, :, None, :]
             branch_query = _apply_rope(branch_query, cosine, sine)
@@ -296,20 +234,33 @@ class FusedSelfAttention(eqx.Module):
             )
 
         operands = (query, key, value)
-        attended = jax.lax.cond(
-            sliding_attention,
-            lambda values: attend(
-                values,
-                theta=config.sliding_attention_rope_theta,
-                local_radius=config.local_attention // 2,
-            ),
-            lambda values: attend(
-                values,
-                theta=config.full_attention_rope_theta,
-                local_radius=None,
-            ),
-            operands,
-        )
+        local_radius = config.local_attention // 2
+        if isinstance(sliding_attention, bool):
+            rotary = (
+                sliding_position_embeddings
+                if sliding_attention
+                else full_position_embeddings
+            )
+            attended = attend(
+                operands,
+                rotary=rotary,
+                local_radius=local_radius if sliding_attention else None,
+            )
+        else:
+            attended = jax.lax.cond(
+                sliding_attention,
+                lambda values: attend(
+                    values,
+                    rotary=sliding_position_embeddings,
+                    local_radius=local_radius,
+                ),
+                lambda values: attend(
+                    values,
+                    rotary=full_position_embeddings,
+                    local_radius=None,
+                ),
+                operands,
+            )
         return self.output(attended.reshape(batch, sequence, config.hidden_size))
 
 
@@ -322,7 +273,7 @@ class GatedMLP(eqx.Module):
         cls,
         config: ModernVBERTTextConfig,
         *,
-        key: jax.Array,
+        key: PRNGKeyArray,
         dtype: jnp.dtype,
     ) -> GatedMLP:
         input_key, output_key = jax.random.split(key)
@@ -343,7 +294,10 @@ class GatedMLP(eqx.Module):
             ),
         )
 
-    def __call__(self, hidden: jax.Array) -> jax.Array:
+    def __call__(
+        self,
+        hidden: Float[Array, "batch sequence hidden"],
+    ) -> Float[Array, "batch sequence hidden"]:
         value, gate = jnp.split(self.input(hidden), 2, axis=-1)
         return self.output(jax.nn.gelu(value, approximate=False) * gate)
 
@@ -353,7 +307,7 @@ class ModernVBERTTextBlock(eqx.Module):
     attention_norm: LayerNorm | None
     mlp_norm: LayerNorm
     mlp: GatedMLP
-    sliding_attention: jax.Array
+    sliding_attention: Bool[Array, ""]
 
     @classmethod
     def init(
@@ -361,7 +315,7 @@ class ModernVBERTTextBlock(eqx.Module):
         config: ModernVBERTTextConfig,
         index: int,
         *,
-        key: jax.Array,
+        key: PRNGKeyArray,
         dtype: jnp.dtype,
     ) -> ModernVBERTTextBlock:
         attention_key, mlp_key = jax.random.split(key)
@@ -394,13 +348,13 @@ class ModernVBERTTextBlock(eqx.Module):
 
     def __call__(
         self,
-        hidden: jax.Array,
+        hidden: Float[Array, "batch sequence hidden"],
         *,
         config: ModernVBERTTextConfig,
-        attention_mask: jax.Array,
-        position_ids: jax.Array,
+        attention_mask: Bool[Array, "batch sequence"],
+        position_ids: Int[Array, "#batch sequence"],
         implementation: AttentionImplementation,
-    ) -> jax.Array:
+    ) -> Float[Array, "batch sequence hidden"]:
         attention_input = (
             hidden if self.attention_norm is None else self.attention_norm(hidden)
         )
@@ -421,12 +375,13 @@ class _ModernVBERTTextScanBlock(eqx.Module):
     attention: FusedSelfAttention
     mlp_norm: LayerNorm
     mlp: GatedMLP
-    sliding_attention: jax.Array
+    sliding_attention: Bool[Array, ""]
 
 
 class ModernVBERTTextLayerStack(eqx.Module):
     """A depth-major PyTree of homogeneous ModernVBERT text blocks."""
 
+    first_block: _ModernVBERTTextScanBlock | None
     blocks: _ModernVBERTTextScanBlock | None
     attention_norms: LayerNorm | None
     depth: int = eqx.field(static=True)
@@ -437,11 +392,26 @@ class ModernVBERTTextLayerStack(eqx.Module):
         blocks: tuple[ModernVBERTTextBlock, ...],
     ) -> ModernVBERTTextLayerStack:
         if not blocks:
-            return cls(blocks=None, attention_norms=None, depth=0)
+            return cls(
+                first_block=None,
+                blocks=None,
+                attention_norms=None,
+                depth=0,
+            )
         if blocks[0].attention_norm is not None:
             raise ValueError("ModernVBERT layer zero must omit attention_norm")
         if any(block.attention_norm is None for block in blocks[1:]):
             raise ValueError("ModernVBERT layers after zero require attention_norm")
+        compute_blocks = tuple(
+            jax.tree.map(
+                lambda value: (
+                    value.input_major() if isinstance(value, Linear) else value
+                ),
+                block,
+                is_leaf=lambda value: isinstance(value, Linear),
+            )
+            for block in blocks
+        )
         scan_blocks = tuple(
             _ModernVBERTTextScanBlock(
                 attention=block.attention,
@@ -449,16 +419,23 @@ class ModernVBERTTextLayerStack(eqx.Module):
                 mlp=block.mlp,
                 sliding_attention=block.sliding_attention,
             )
-            for block in blocks
+            for block in compute_blocks
         )
-        stacked = jax.tree.map(lambda *leaves: jnp.stack(leaves), *scan_blocks)
-        norms = tuple(block.attention_norm for block in blocks[1:])
+        first_block = scan_blocks[0]
+        remaining_blocks = scan_blocks[1:]
+        stacked = (
+            None
+            if not remaining_blocks
+            else jax.tree.map(lambda *leaves: jnp.stack(leaves), *remaining_blocks)
+        )
+        norms = tuple(block.attention_norm for block in compute_blocks[1:])
         stacked_norms = (
             None
             if not norms
             else jax.tree.map(lambda *leaves: jnp.stack(leaves), *norms)
         )
         return cls(
+            first_block=first_block,
             blocks=stacked,
             attention_norms=stacked_norms,
             depth=len(blocks),
@@ -466,6 +443,12 @@ class ModernVBERTTextLayerStack(eqx.Module):
 
     def __len__(self) -> int:
         return self.depth
+
+    @overload
+    def __getitem__(self, index: int) -> ModernVBERTTextBlock: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> tuple[ModernVBERTTextBlock, ...]: ...
 
     def __getitem__(
         self,
@@ -476,14 +459,20 @@ class ModernVBERTTextLayerStack(eqx.Module):
             return tuple(self[position] for position in positions)
         if not 0 <= index < self.depth:
             raise IndexError(index)
-        if self.blocks is None:
+        if self.first_block is None:
             raise IndexError(index)
-        block = jax.tree.map(lambda leaf: leaf[index], self.blocks)
-        attention_norm = (
-            None
-            if index == 0
-            else jax.tree.map(lambda leaf: leaf[index - 1], self.attention_norms)
-        )
+        if index == 0:
+            block = self.first_block
+            attention_norm = None
+        else:
+            if (  # pragma: no cover - invalid tree
+                self.blocks is None or self.attention_norms is None
+            ):
+                raise AssertionError("post-zero layers require attention norms")
+            block = jax.tree.map(lambda leaf: leaf[index - 1], self.blocks)
+            attention_norm = jax.tree.map(
+                lambda leaf: leaf[index - 1], self.attention_norms
+            )
         return ModernVBERTTextBlock(
             attention=block.attention,
             attention_norm=attention_norm,
@@ -492,25 +481,31 @@ class ModernVBERTTextLayerStack(eqx.Module):
             sliding_attention=block.sliding_attention,
         )
 
+    def __iter__(self) -> Iterator[ModernVBERTTextBlock]:
+        return (self[index] for index in range(self.depth))
+
 
 class ModernVBERTTextTower(eqx.Module):
-    token_embedding: jax.Array
+    token_embedding: Float[Array, "vocabulary hidden"]
     embedding_norm: LayerNorm
     layers: ModernVBERTTextLayerStack
     final_norm: LayerNorm
     config: ModernVBERTTextConfig = eqx.field(static=True)
 
-    def token_embeddings(self, input_ids: jax.Array) -> jax.Array:
-        """Gather token embeddings with a complete table-gradient scatter."""
+    def token_embeddings(
+        self,
+        input_ids: Int[Array, "batch sequence"],
+    ) -> Float[Array, "batch sequence hidden"]:
+        """Gather token embeddings with repeated-token gradient accumulation."""
 
-        return _embedding_lookup(self.token_embedding, input_ids)
+        return embedding_lookup(self.token_embedding, input_ids)
 
     @classmethod
     def init(
         cls,
         config: ModernVBERTTextConfig,
         *,
-        key: jax.Array,
+        key: PRNGKeyArray,
         dtype: jnp.dtype = jnp.float32,
     ) -> ModernVBERTTextTower:
         keys = jax.random.split(key, config.num_hidden_layers + 1)
@@ -549,15 +544,103 @@ class ModernVBERTTextTower(eqx.Module):
         compute_dtype: jnp.dtype,
         attention_implementation: AttentionImplementation,
         rematerialization: RematerializationPolicy,
-    ) -> jax.Array:
-        hidden = (
-            self.token_embeddings(batch.input_ids)
-            if batch.input_ids is not None
-            else batch.inputs_embeds
+        unroll_layers: bool = True,
+    ) -> Float[Array, "batch sequence hidden"]:
+        hidden, attention_mask, position_ids = self._execution_inputs(
+            batch,
+            compute_dtype=compute_dtype,
         )
+        position_embeddings = _position_embeddings(self.config, position_ids)
+        if self.layers.first_block is None:
+            return self.final_norm(hidden)
+        first_sliding_attention = self.config.layer_types[0] == "sliding_attention"
+
+        def apply_first_layer(
+            carry: Float[Array, "batch sequence hidden"],
+            layer: _ModernVBERTTextScanBlock,
+        ) -> Float[Array, "batch sequence hidden"]:
+            return self._apply_block(
+                carry,
+                layer,
+                carry,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                position_embeddings=position_embeddings,
+                attention_implementation=attention_implementation,
+                sliding_attention=first_sliding_attention,
+            )
+
+        hidden = rematerialize(
+            apply_first_layer,
+            rematerialization,
+        )(hidden, self.layers.first_block)
+        if self.layers.blocks is not None:
+            if self.layers.attention_norms is None:  # pragma: no cover
+                raise AssertionError("post-zero layers require attention norms")
+
+            def apply_layer(
+                carry: Float[Array, "batch sequence hidden"],
+                values: tuple[_ModernVBERTTextScanBlock, LayerNorm],
+                *,
+                sliding_attention: bool | None = None,
+            ) -> tuple[Float[Array, "batch sequence hidden"], None]:
+                layer, attention_norm = values
+                output = self._apply_block(
+                    carry,
+                    layer,
+                    attention_norm(carry),
+                    attention_mask=attention_mask,
+                    position_ids=position_ids,
+                    position_embeddings=position_embeddings,
+                    attention_implementation=attention_implementation,
+                    sliding_attention=sliding_attention,
+                )
+                return output, None
+
+            if unroll_layers:
+                for offset in range(self.layers.depth - 1):
+                    layer = jax.tree.map(
+                        lambda leaf, index=offset: leaf[index],
+                        self.layers.blocks,
+                    )
+                    attention_norm = jax.tree.map(
+                        lambda leaf, index=offset: leaf[index],
+                        self.layers.attention_norms,
+                    )
+                    sliding_attention = (
+                        self.config.layer_types[offset + 1] == "sliding_attention"
+                    )
+                    hidden, _ = rematerialize(
+                        partial(apply_layer, sliding_attention=sliding_attention),
+                        rematerialization,
+                    )(hidden, (layer, attention_norm))
+            else:
+                hidden, _ = jax.lax.scan(
+                    rematerialize(apply_layer, rematerialization),
+                    hidden,
+                    (self.layers.blocks, self.layers.attention_norms),
+                )
+        return self.final_norm(hidden)
+
+    def _execution_inputs(
+        self,
+        batch: ModernVBERTTextBatch,
+        *,
+        compute_dtype: jnp.dtype,
+    ) -> tuple[
+        Float[Array, "batch sequence hidden"],
+        Bool[Array, "batch sequence"],
+        Int[Array, "#batch sequence"],
+    ]:
+        if batch.input_ids is not None:
+            hidden = self.token_embeddings(batch.input_ids)
+        elif batch.inputs_embeds is not None:
+            hidden = batch.inputs_embeds
+        else:  # pragma: no cover - rejected by ModernVBERTTextBatch
+            raise AssertionError("token inputs must be present")
         hidden = hidden.astype(compute_dtype)
         attention_mask = batch.attention_mask.astype(bool)
-        batch_size, sequence, _ = hidden.shape
+        _, sequence, _ = hidden.shape
         if hidden.shape[-1] != self.config.hidden_size:
             raise ValueError(
                 "input embedding dimension does not match ModernVBERT hidden_size"
@@ -565,71 +648,118 @@ class ModernVBERTTextTower(eqx.Module):
         if sequence > self.config.max_position_embeddings:
             raise ValueError("input sequence exceeds max_position_embeddings")
         if batch.position_ids is None:
-            position_ids = jnp.broadcast_to(
-                jnp.arange(sequence)[None, :], (batch_size, sequence)
-            )
-        elif batch.position_ids.shape[0] == 1 and batch_size != 1:
-            position_ids = jnp.broadcast_to(batch.position_ids, (batch_size, sequence))
+            position_ids = jnp.arange(sequence)[None, :]
         else:
             position_ids = batch.position_ids
-        hidden = self.embedding_norm(hidden)
-        if self.layers.blocks is not None:
+        return self.embedding_norm(hidden), attention_mask, position_ids
 
-            def apply_layer(
-                carry: jax.Array,
-                values: tuple[jax.Array, _ModernVBERTTextScanBlock],
-            ) -> tuple[jax.Array, None]:
-                index, layer = values
-                if self.layers.attention_norms is None:
-                    attention_input = carry
-                else:
-                    norm_index = jnp.maximum(index - 1, 0)
-                    attention_norm = jax.tree.map(
-                        lambda leaf: jax.lax.dynamic_index_in_dim(
-                            leaf,
-                            norm_index,
-                            keepdims=False,
-                        ),
-                        self.layers.attention_norms,
-                    )
-                    attention_input = jax.lax.cond(
-                        index == 0,
-                        lambda value: value,
-                        lambda value: attention_norm(value),
-                        carry,
-                    )
-                output = carry + layer.attention(
-                    attention_input,
-                    config=self.config,
+    def _apply_block(
+        self,
+        carry: Float[Array, "batch sequence hidden"],
+        layer: _ModernVBERTTextScanBlock,
+        attention_input: Float[Array, "batch sequence hidden"],
+        *,
+        attention_mask: Bool[Array, "batch sequence"],
+        position_ids: Int[Array, "#batch sequence"],
+        position_embeddings: tuple[Any, Any],
+        attention_implementation: AttentionImplementation,
+        sliding_attention: bool | None = None,
+    ) -> Float[Array, "batch sequence hidden"]:
+        output = carry + layer.attention(
+            attention_input,
+            config=self.config,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            sliding_attention=(
+                layer.sliding_attention
+                if sliding_attention is None
+                else sliding_attention
+            ),
+            implementation=attention_implementation,
+            position_embeddings=position_embeddings,
+        )
+        return output + layer.mlp(layer.mlp_norm(output))
+
+    def all_hidden_states(
+        self,
+        batch: ModernVBERTTextBatch,
+        *,
+        compute_dtype: jnp.dtype,
+        attention_implementation: AttentionImplementation,
+        rematerialization: RematerializationPolicy,
+        unroll_layers: bool = True,
+    ) -> Float[Array, "layer batch sequence hidden"]:
+        """Return embedding output followed by every encoder-layer output."""
+
+        hidden, attention_mask, position_ids = self._execution_inputs(
+            batch,
+            compute_dtype=compute_dtype,
+        )
+        position_embeddings = _position_embeddings(self.config, position_ids)
+        initial_hidden = hidden
+        if self.layers.first_block is not None:
+
+            def apply_first_layer(
+                carry: Float[Array, "batch sequence hidden"],
+                layer: _ModernVBERTTextScanBlock,
+            ) -> Float[Array, "batch sequence hidden"]:
+                return self._apply_block(
+                    carry,
+                    layer,
+                    carry,
                     attention_mask=attention_mask,
                     position_ids=position_ids,
-                    sliding_attention=layer.sliding_attention,
-                    implementation=attention_implementation,
+                    position_embeddings=position_embeddings,
+                    attention_implementation=attention_implementation,
                 )
-                output = output + layer.mlp(layer.mlp_norm(output))
-                return output, None
 
-            executed_layer = _rematerialize_layer(apply_layer, rematerialization)
-            hidden, _ = jax.lax.scan(
-                executed_layer,
-                hidden,
-                (jnp.arange(self.layers.depth), self.layers.blocks),
+            first_output = rematerialize(
+                apply_first_layer,
+                rematerialization,
+            )(hidden, self.layers.first_block)
+
+            def apply_layer(
+                carry: Float[Array, "batch sequence hidden"],
+                values: tuple[_ModernVBERTTextScanBlock, LayerNorm],
+            ) -> tuple[
+                Float[Array, "batch sequence hidden"],
+                Float[Array, "batch sequence hidden"],
+            ]:
+                layer, attention_norm = values
+                output = self._apply_block(
+                    carry,
+                    layer,
+                    attention_norm(carry),
+                    attention_mask=attention_mask,
+                    position_ids=position_ids,
+                    position_embeddings=position_embeddings,
+                    attention_implementation=attention_implementation,
+                )
+                return output, output
+
+            if self.layers.blocks is None:
+                layer_outputs = first_output[None, ...]
+            else:
+                if self.layers.attention_norms is None:  # pragma: no cover
+                    raise AssertionError("post-zero layers require attention norms")
+                executed_layer = rematerialize(apply_layer, rematerialization)
+                _, remaining_outputs = jax.lax.scan(
+                    executed_layer,
+                    first_output,
+                    (self.layers.blocks, self.layers.attention_norms),
+                    unroll=self.layers.depth - 1 if unroll_layers else 1,
+                )
+                layer_outputs = jnp.concatenate(
+                    (first_output[None, ...], remaining_outputs),
+                    axis=0,
+                )
+            final_output = self.final_norm(layer_outputs[-1])
+            layer_outputs = jnp.concatenate(
+                (layer_outputs[:-1], final_output[None, ...]),
+                axis=0,
             )
-        return self.final_norm(hidden)
-
-
-def _mean_pool(hidden: jax.Array, attention_mask: jax.Array) -> jax.Array:
-    hidden = hidden.astype(jnp.float32)
-    mask = attention_mask.astype(bool)[..., None]
-    total = jnp.sum(jnp.where(mask, hidden, 0.0), axis=1)
-    count = jnp.maximum(jnp.sum(mask, axis=1), 1)
-    return total / count
-
-
-def _l2_normalize(value: jax.Array) -> jax.Array:
-    value = value.astype(jnp.float32)
-    norm = jnp.linalg.norm(value, axis=-1, keepdims=True)
-    return value / jnp.maximum(norm, jnp.asarray(1e-12, value.dtype))
+            return jnp.concatenate((initial_hidden[None, ...], layer_outputs), axis=0)
+        return self.final_norm(initial_hidden)[None, ...]
 
 
 class ModernVBERTTextEncoder(eqx.Module):
@@ -640,13 +770,14 @@ class ModernVBERTTextEncoder(eqx.Module):
     compute_dtype: Any = eqx.field(static=True)
     attention_implementation: AttentionImplementation = eqx.field(static=True)
     rematerialization: RematerializationPolicy = eqx.field(static=True)
+    unroll_layers: bool = eqx.field(static=True, default=True)
 
     @classmethod
     def init(
         cls,
         config: ModernVBERTTextConfig,
         *,
-        key: jax.Array,
+        key: PRNGKeyArray,
         parameter_dtype: jnp.dtype = jnp.float32,
         compute_dtype: jnp.dtype = jnp.float32,
         attention_implementation: AttentionImplementation = "xla",
@@ -668,14 +799,56 @@ class ModernVBERTTextEncoder(eqx.Module):
             rematerialization=rematerialization,
         )
 
-    def hidden_states(self, inputs: ModernVBERTTextBatch) -> jax.Array:
+    @staticmethod
+    def make_batch(
+        *,
+        input_ids: Int[Array, "batch sequence"],
+        attention_mask: Bool[Array, "batch sequence"] | Int[Array, "batch sequence"],
+        token_type_ids: Int[Array, "batch sequence"] | None = None,
+    ) -> ModernVBERTTextBatch:
+        """Build this backbone's token-input contract at the host boundary."""
+
+        if token_type_ids is not None:
+            raise TypeError("ModernVBERT does not accept token_type_ids")
+        return ModernVBERTTextBatch(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+        )
+
+    def hidden_states(
+        self,
+        inputs: ModernVBERTTextBatch,
+        *,
+        key: PRNGKeyArray | None = None,
+    ) -> Float[Array, "batch sequence hidden"]:
+        del key
         if not isinstance(inputs, ModernVBERTTextBatch):
             raise TypeError("ModernVBERT text inputs must be ModernVBERTTextBatch")
         return self.tower(
             inputs,
-            compute_dtype=self.compute_dtype,
+            compute_dtype=active_compute_dtype(self.compute_dtype),
             attention_implementation=self.attention_implementation,
             rematerialization=self.rematerialization,
+            unroll_layers=self.unroll_layers,
+        )
+
+    def hidden_states_by_layer(
+        self,
+        inputs: ModernVBERTTextBatch,
+        *,
+        key: PRNGKeyArray | None = None,
+    ) -> Float[Array, "layer batch sequence hidden"]:
+        """Expose the embedding output and every text layer for modifiers."""
+
+        del key
+        if not isinstance(inputs, ModernVBERTTextBatch):
+            raise TypeError("ModernVBERT text inputs must be ModernVBERTTextBatch")
+        return self.tower.all_hidden_states(
+            inputs,
+            compute_dtype=active_compute_dtype(self.compute_dtype),
+            attention_implementation=self.attention_implementation,
+            rematerialization=self.rematerialization,
+            unroll_layers=self.unroll_layers,
         )
 
     def encode(
@@ -683,8 +856,22 @@ class ModernVBERTTextEncoder(eqx.Module):
         inputs: ModernVBERTTextBatch,
         *,
         route: Route,
-        key: jax.Array | None = None,
-    ) -> jax.Array:
+        key: PRNGKeyArray | None = None,
+    ) -> Float[Array, "batch representation"]:
         del route, key
         hidden = self.hidden_states(inputs)
-        return _l2_normalize(_mean_pool(hidden, inputs.attention_mask))
+        return l2_normalize(mean_pool(hidden, inputs.attention_mask))
+
+    def encode_layers(
+        self,
+        inputs: ModernVBERTTextBatch,
+        *,
+        route: Route,
+        key: PRNGKeyArray | None = None,
+    ) -> Float[Array, "layer batch representation"]:
+        """Pool normalized representations for every text-layer depth."""
+
+        del route, key
+        hidden = self.hidden_states_by_layer(inputs)
+        pooled = jax.vmap(lambda value: mean_pool(value, inputs.attention_mask))(hidden)
+        return l2_normalize(pooled)

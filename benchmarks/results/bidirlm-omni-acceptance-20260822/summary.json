@@ -1,0 +1,25 @@
+{
+  "checkpoint": "BidirLM/BidirLM-Omni-2.5B-Embedding",
+  "revision": "447a6e31be61b84443144afda21374339ce408e6",
+  "parameters": 2445009536,
+  "source_tensor_count": 1022,
+  "native_executed_tensor_count": 1016,
+  "precision": "bfloat16",
+  "output_parity": {
+    "text": {"max_absolute": 0.1416492462, "relative_l2": 0.0138731226, "cosine": 0.9999085069},
+    "image": {"max_absolute": 0.1921421289, "relative_l2": 0.0171211250, "cosine": 0.9998536706},
+    "video": {"max_absolute": 0.1493082047, "relative_l2": 0.0210055057, "cosine": 0.9997796416},
+    "audio": {"max_absolute": 0.1537590027, "relative_l2": 0.0180703737, "cosine": 0.9998374581},
+    "composed": {"max_absolute": 0.2116129398, "relative_l2": 0.0152675062, "cosine": 0.9998834729}
+  },
+  "training": {
+    "steps": 3,
+    "losses": [0.3364407122, 0.3150467575, 0.2751512229],
+    "update_global_norms": [0.1511625946, 0.1811607033, 0.1802789867]
+  },
+  "export": {
+    "model_safetensors_bytes": 4890136904,
+    "fresh_sentence_transformers_reload_array_equal": true,
+    "max_absolute": 0.0
+  }
+}

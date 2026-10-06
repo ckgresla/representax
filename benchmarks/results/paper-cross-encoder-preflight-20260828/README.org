@@ -1,0 +1,54 @@
+#+title: Paper cross-encoder reranking preflight
+
+* Contract
+
+The corrected preflight ran the pinned
+=cross-encoder/ms-marco-MiniLM-L6-v2= revision
+=233902d25c440f23af6f7d6e94d2946bac0bee0a= against Sentence Transformers
+5.6.1. Both used the same 1,024 balanced MS MARCO pointwise examples, eight
+optimizer updates, seed 7, global batch 128 as eight 16-row microbatches, BF16
+compute with FP32 master weights, AdamW, and the same warmup/cosine schedule.
+
+Evaluation reranked 32 judged passages for each of eight deterministic TREC DL
+2019 queries. The short panel establishes workload readiness and lifecycle
+coverage; it does not select the full paper run length or support a final
+throughput claim.
+
+* Results
+
+| measurement | Representax | Sentence Transformers |
+|-------------+--------------+-----------------------|
+| mean training loss | 2.88905 | 2.91608 |
+| initial TREC DL nDCG@10 | 0.607210 | 0.607210 |
+| final TREC DL nDCG@10 | 0.605410 | 0.606599 |
+| reported training throughput | 515.45 examples/s | 240.74 examples/s |
+
+Representax's warm, post-compilation step throughput is 2.141x the reference's
+short-run end-to-end training throughput. The denominators differ: the
+Representax number removes each compiled first step, while the reference number
+includes trainer logging and checkpoint writes. Preserve both measurements,
+but use a longer matched timing run before making a paper-level systems claim.
+
+Representax stopped at update 4, resumed in a fresh process, completed update
+8, evaluated, exported its native inference bundle and Hugging Face artifact,
+and reloaded both. Sentence Transformers saved updates 4 and 8, exported, and
+reloaded with exact parameter equality. Sentence Transformers also loaded the
+Representax Hugging Face export successfully.
+
+* Reference correction
+
+The first paired artifact at =seed-7-v1= is invalid for training comparisons.
+Hugging Face Datasets exposed the JSON columns as =document, label, query=, and
+=CrossEncoderTrainer= interpreted non-label columns positionally. It therefore
+trained on reversed document/query pairs even though explicit evaluation pairs
+were correct. The runner now selects =query, document, label= in that order,
+with a regression test. The corrected loss trajectories align and the initial
+evaluation is exactly equal.
+
+* Artifacts
+
+The canonical large artifact is
+=/raid/representax/paper-campaign-v1/preflight/cross-encoder/seed-7-v2/=. Its
+=summary.json= SHA-256 is
+=e186929fcab8e615144a57917bc0e3eca808323640bd40b4cbb131db74ce2d44=.
+Prepared deterministic data is in the sibling =data-v1/= directory.

@@ -4,6 +4,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
+from representax.models.mpnet import MPNetBatch
 from representax.tasks.retrieval import MNRTask, mnr_loss_terms, retrieval_batch
 
 
@@ -113,3 +114,19 @@ def test_tiled_mnr_matches_full_values_and_representation_gradients():
     np.testing.assert_allclose(tiled_value, full_value, rtol=2e-6, atol=2e-7)
     for tiled, full in zip(tiled_gradients, full_gradients, strict=True):
         np.testing.assert_allclose(tiled, full, rtol=3e-5, atol=3e-6)
+
+
+def test_retrieval_batch_accepts_packed_payload_logical_counts():
+    packed = MPNetBatch(
+        input_ids=jnp.asarray([[0, 4, 2, 0, 5, 2, 1]]),
+        attention_mask=jnp.asarray([[1, 1, 1, 1, 1, 1, 0]]),
+        position_ids=jnp.asarray([[2, 3, 4, 2, 3, 4, 1]]),
+        segment_ids=jnp.asarray([[0, 0, 0, 1, 1, 1, -1]]),
+        logical_batch_size=2,
+    )
+    batch = retrieval_batch(
+        query=packed,
+        document=packed,
+        positive_mask=np.eye(2, dtype=np.bool_),
+    )
+    assert batch.positive_mask.shape == (2, 2)

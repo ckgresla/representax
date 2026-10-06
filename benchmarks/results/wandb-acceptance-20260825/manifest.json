@@ -1,0 +1,515 @@
+{
+  "contract": {
+    "campaign_wall_seconds": 1221.7997164726257,
+    "distributed_evaluation_runs": 2,
+    "distributed_training_runs": 2,
+    "evaluator_kinds": 11,
+    "optimizer_updates": 780,
+    "steps_per_training_run": 30,
+    "synthetic_fixed_shape": true,
+    "task_kinds": 24
+  },
+  "date": "2026-08-25",
+  "environment": {
+    "accelerator": "NVIDIA GeForce RTX 4090",
+    "equinox": "0.13.8",
+    "grain": "0.2.18",
+    "jax": "0.10.1",
+    "optax": "0.2.8",
+    "orbax_checkpoint": "0.12.1",
+    "wandb": "0.28.2"
+  },
+  "runs": [
+    {
+      "duration_seconds": 2.1444752477109432,
+      "final_loss": 0.39763012528419495,
+      "initial_loss": 0.40984195470809937,
+      "kind": "task",
+      "name": "contrastive_tension_examples",
+      "status": "completed",
+      "steps": 30,
+      "url": "https://wandb.ai/ckgresla/representax/runs/acceptance-20260825-093931-contrastive_tension_examples"
+    },
+    {
+      "duration_seconds": 2.1894372310489416,
+      "final_loss": 6.786594390869141,
+      "initial_loss": 6.867670059204102,
+      "kind": "task",
+      "name": "contrastive_tension_pairs",
+      "status": "completed",
+      "steps": 30,
+      "url": "https://wandb.ai/ckgresla/representax/runs/acceptance-20260825-093931-contrastive_tension_pairs"
+    },
+    {
+      "duration_seconds": 2.064597999677062,
+      "final_loss": 2.0835065841674805,
+      "initial_loss": 2.083808422088623,
+      "kind": "task",
+      "name": "cross_in_batch_ranking",
+      "status": "completed",
+      "steps": 30,
+      "url": "https://wandb.ai/ckgresla/representax/runs/acceptance-20260825-093931-cross_in_batch_ranking"
+    },
+    {
+      "duration_seconds": 2.1131094079464674,
+      "final_loss": 2.2211220264434814,
+      "initial_loss": 2.236016273498535,
+      "kind": "task",
+      "name": "denoising_reconstruction",
+      "status": "completed",
+      "steps": 30,
+      "url": "https://wandb.ai/ckgresla/representax/runs/acceptance-20260825-093931-denoising_reconstruction"
+    },
+    {
+      "duration_seconds": 1.9413154013454914,
+      "final_loss": 0.30667024850845337,
+      "initial_loss": 0.31898754835128784,
+      "kind": "task",
+      "name": "distribution_distillation",
+      "status": "completed",
+      "steps": 30,
+      "url": "https://wandb.ai/ckgresla/representax/runs/acceptance-20260825-093931-distribution_distillation"
+    },
+    {
+      "duration_seconds": 3.2195046208798885,
+      "final_loss": 1.1349658966064453,
+      "initial_loss": 1.1409013271331787,
+      "kind": "task",
+      "name": "embedding_distillation",
+      "status": "completed",
+      "steps": 30,
+      "url": "https://wandb.ai/ckgresla/representax/runs/acceptance-20260825-093931-embedding_distillation"
+    },
+    {
+      "duration_seconds": 0.21739984303712845,
+      "kind": "evaluator",
+      "metrics": {
+        "valid/classification/accuracy": 0.5,
+        "valid/classification/accuracy_best": 1.0,
+        "valid/classification/average_precision": 1.0,
+        "valid/classification/f1_best": 1.0,
+        "valid/classification/f1_macro": 0.3333333333333333,
+        "valid/classification/precision_macro": 0.25,
+        "valid/classification/recall_macro": 0.5
+      },
+      "name": "eval-classification",
+      "status": "completed",
+      "steps": 0,
+      "url": "https://wandb.ai/ckgresla/representax/runs/acceptance-20260825-093931-eval-classification"
+    },
+    {
+      "duration_seconds": 0.9392888881266117,
+      "kind": "evaluator",
+      "metrics": {
+        "valid/classification/accuracy": 0.5,
+        "valid/classification/accuracy_best": 1.0,
+        "valid/classification/average_precision": 1.0,
+        "valid/classification/f1_best": 1.0,
+        "valid/classification/f1_macro": 0.3333333333333333,
+        "valid/classification/precision_macro": 0.25,
+        "valid/classification/recall_macro": 0.5
+      },
+      "name": "eval-classification-ddp-2-device",
+      "status": "completed",
+      "steps": 0,
+      "url": "https://wandb.ai/ckgresla/representax/runs/acceptance-20260825-093931-eval-classification-ddp-2-device"
+    },
+    {
+      "duration_seconds": 1.3788015842437744,
+      "kind": "evaluator",
+      "metrics": {
+        "valid/classification/accuracy": 0.5,
+        "valid/classification/accuracy_best": 1.0,
+        "valid/classification/average_precision": 1.0,
+        "valid/classification/f1_best": 1.0,
+        "valid/classification/f1_macro": 0.3333333333333333,
+        "valid/classification/precision_macro": 0.25,
+        "valid/classification/recall_macro": 0.5
+      },
+      "name": "eval-classification-fsdp-4-device",
+      "status": "completed",
+      "steps": 0,
+      "url": "https://wandb.ai/ckgresla/representax/runs/acceptance-20260825-093931-eval-classification-fsdp-4-device"
+    },
+    {
+      "duration_seconds": 0.23047010600566864,
+      "kind": "evaluator",
+      "metrics": {
+        "valid/similarity/pearson_cosine": 1.0,
+        "valid/similarity/pearson_dot": 1.0,
+        "valid/similarity/pearson_euclidean": 1.0,
+        "valid/similarity/pearson_manhattan": 1.0,
+        "valid/similarity/pearson_max": 1.0,
+        "valid/similarity/spearman_cosine": 0.9999999999999998,
+        "valid/similarity/spearman_dot": 0.9999999999999998,
+        "valid/similarity/spearman_euclidean": 0.9999999999999998,
+        "valid/similarity/spearman_manhattan": 0.9999999999999998,
+        "valid/similarity/spearman_max": 0.9999999999999998
+      },
+      "name": "eval-embedding_similarity",
+      "status": "completed",
+      "steps": 0,
+      "url": "https://wandb.ai/ckgresla/representax/runs/acceptance-20260825-093931-eval-embedding_similarity"
+    },
+    {
+      "duration_seconds": 0.18294525519013405,
+      "kind": "evaluator",
+      "metrics": {
+        "valid/nanobeir/cosine_accuracy@1": 1.0,
+        "valid/nanobeir/cosine_accuracy@10": 1.0,
+        "valid/nanobeir/cosine_accuracy@3": 1.0,
+        "valid/nanobeir/cosine_accuracy@5": 1.0,
+        "valid/nanobeir/cosine_map@100": 1.0,
+        "valid/nanobeir/cosine_mrr@10": 1.0,
+        "valid/nanobeir/cosine_ndcg@10": 1.0,
+        "valid/nanobeir/cosine_precision@1": 1.0,
+        "valid/nanobeir/cosine_precision@10": 0.1,
+        "valid/nanobeir/cosine_precision@3": 0.3333333333333333,
+        "valid/nanobeir/cosine_precision@5": 0.2,
+        "valid/nanobeir/cosine_recall@1": 1.0,
+        "valid/nanobeir/cosine_recall@10": 1.0,
+        "valid/nanobeir/cosine_recall@3": 1.0,
+        "valid/nanobeir/cosine_recall@5": 1.0
+      },
+      "name": "eval-information_retrieval_nanobeir",
+      "status": "completed",
+      "steps": 0,
+      "url": "https://wandb.ai/ckgresla/representax/runs/acceptance-20260825-093931-eval-information_retrieval_nanobeir"
+    },
+    {
+      "duration_seconds": 0.09597146697342396,
+      "kind": "evaluator",
+      "metrics": {
+        "valid/jepa/covariance_off_diagonal_rms": 0.10960154980421066,
+        "valid/jepa/effective_rank": 1.6539878845214844,
+        "valid/jepa/feature_std_mean": 0.3832894563674927,
+        "valid/jepa/feature_std_min": 0.37749171257019043,
+        "valid/jepa/invariance": 0.002500000322858765
+      },
+      "name": "eval-jepa",
+      "status": "completed",
+      "steps": 0,
+      "url": "https://wandb.ai/ckgresla/representax/runs/acceptance-20260825-093931-eval-jepa"
+    },
+    {
+      "duration_seconds": 0.18950282968580723,
+      "kind": "evaluator",
+      "metrics": {
+        "valid/loss": 0.26053404808044434
+      },
+      "name": "eval-loss",
+      "status": "completed",
+      "steps": 0,
+      "url": "https://wandb.ai/ckgresla/representax/runs/acceptance-20260825-093931-eval-loss"
+    },
+    {
+      "duration_seconds": 0.0681867953389883,
+      "kind": "evaluator",
+      "metrics": {
+        "valid/mse/mae": 0.5,
+        "valid/mse/mse": 0.5,
+        "valid/mse/pearson": 0.9999999999999998,
+        "valid/mse/rmse": 0.7071067811865476,
+        "valid/mse/spearman": 0.9999999999999998
+      },
+      "name": "eval-mse",
+      "status": "completed",
+      "steps": 0,
+      "url": "https://wandb.ai/ckgresla/representax/runs/acceptance-20260825-093931-eval-mse"
+    },
+    {
+      "duration_seconds": 0.09178540110588074,
+      "kind": "evaluator",
+      "metrics": {
+        "valid/paraphrase/average_precision": 1.0,
+        "valid/paraphrase/best_f1": 1.0,
+        "valid/paraphrase/best_threshold": 0.9999489188194275,
+        "valid/paraphrase/mined_pairs": 3.0,
+        "valid/paraphrase/recall": 1.0
+      },
+      "name": "eval-paraphrase_mining",
+      "status": "completed",
+      "steps": 0,
+      "url": "https://wandb.ai/ckgresla/representax/runs/acceptance-20260825-093931-eval-paraphrase_mining"
+    },
+    {
+      "duration_seconds": 0.19160988554358482,
+      "kind": "evaluator",
+      "metrics": {
+        "valid/reranking/map@1": 1.0,
+        "valid/reranking/map@3": 1.0,
+        "valid/reranking/mrr@1": 1.0,
+        "valid/reranking/mrr@3": 1.0,
+        "valid/reranking/ndcg@1": 1.0,
+        "valid/reranking/ndcg@3": 1.0,
+        "valid/reranking/precision@1": 1.0,
+        "valid/reranking/precision@3": 0.6666666666666666,
+        "valid/reranking/recall@1": 0.5,
+        "valid/reranking/recall@3": 1.0
+      },
+      "name": "eval-reranking",
+      "status": "completed",
+      "steps": 0,
+      "url": "https://wandb.ai/ckgresla/representax/runs/acceptance-20260825-093931-eval-reranking"
+    },
+    {
+      "duration_seconds": 0.1040214542299509,
+      "kind": "evaluator",
+      "metrics": {
+        "valid/reward/map@1": 1.0,
+        "valid/reward/map@2": 1.0,
+        "valid/reward/mrr@1": 1.0,
+        "valid/reward/mrr@2": 1.0,
+        "valid/reward/ndcg@1": 1.0,
+        "valid/reward/ndcg@2": 1.0,
+        "valid/reward/pairwise_accuracy": 1.0,
+        "valid/reward/precision@1": 1.0,
+        "valid/reward/precision@2": 0.5,
+        "valid/reward/recall@1": 1.0,
+        "valid/reward/recall@2": 1.0,
+        "valid/reward/reward_margin": 2.0
+      },
+      "name": "eval-reward",
+      "status": "completed",
+      "steps": 0,
+      "url": "https://wandb.ai/ckgresla/representax/runs/acceptance-20260825-093931-eval-reward"
+    },
+    {
+      "duration_seconds": 0.09541566669940948,
+      "kind": "evaluator",
+      "metrics": {
+        "valid/translation/accuracy_mean": 0.75,
+        "valid/translation/source_to_target_accuracy": 1.0,
+        "valid/translation/target_to_source_accuracy": 0.5
+      },
+      "name": "eval-translation",
+      "status": "completed",
+      "steps": 0,
+      "url": "https://wandb.ai/ckgresla/representax/runs/acceptance-20260825-093931-eval-translation"
+    },
+    {
+      "duration_seconds": 0.09322796016931534,
+      "kind": "evaluator",
+      "metrics": {
+        "valid/triplet/accuracy": 1.0,
+        "valid/triplet/distance_margin": 0.9938837289810181,
+        "valid/triplet/negative_distance": 1.0,
+        "valid/triplet/positive_distance": 0.006116271018981934
+      },
+      "name": "eval-triplet",
+      "status": "completed",
+      "steps": 0,
+      "url": "https://wandb.ai/ckgresla/representax/runs/acceptance-20260825-093931-eval-triplet"
+    },
+    {
+      "duration_seconds": 3.162376943975687,
+      "final_loss": 3.637634754180908,
+      "initial_loss": 3.6533470153808594,
+      "kind": "task",
+      "name": "explicit_triplet",
+      "status": "completed",
+      "steps": 30,
+      "url": "https://wandb.ai/ckgresla/representax/runs/acceptance-20260825-093931-explicit_triplet"
+    },
+    {
+      "duration_seconds": 3.268586453050375,
+      "final_loss": 63.423362731933594,
+      "initial_loss": 64.49441528320312,
+      "kind": "task",
+      "name": "guided_retrieval",
+      "status": "completed",
+      "steps": 30,
+      "url": "https://wandb.ai/ckgresla/representax/runs/acceptance-20260825-093931-guided_retrieval"
+    },
+    {
+      "duration_seconds": 1.948088200762868,
+      "final_loss": 0.04032405465841293,
+      "initial_loss": 0.039102308452129364,
+      "kind": "task",
+      "name": "jepa",
+      "status": "completed",
+      "steps": 30,
+      "url": "https://wandb.ai/ckgresla/representax/runs/acceptance-20260825-093931-jepa"
+    },
+    {
+      "duration_seconds": 1.7267367783933878,
+      "final_loss": 5.809947967529297,
+      "initial_loss": 5.820492744445801,
+      "kind": "task",
+      "name": "labeled_examples",
+      "status": "completed",
+      "steps": 30,
+      "url": "https://wandb.ai/ckgresla/representax/runs/acceptance-20260825-093931-labeled_examples"
+    },
+    {
+      "duration_seconds": 3.675271740183234,
+      "final_loss": 179.40548706054688,
+      "initial_loss": 180.98899841308594,
+      "kind": "task",
+      "name": "late_interaction",
+      "status": "completed",
+      "steps": 30,
+      "url": "https://wandb.ai/ckgresla/representax/runs/acceptance-20260825-093931-late_interaction"
+    },
+    {
+      "duration_seconds": 3.6213664822280407,
+      "final_loss": 0.95329350233078,
+      "initial_loss": 0.9550213813781738,
+      "kind": "task",
+      "name": "listwise_ranking",
+      "status": "completed",
+      "steps": 30,
+      "url": "https://wandb.ai/ckgresla/representax/runs/acceptance-20260825-093931-listwise_ranking"
+    },
+    {
+      "duration_seconds": 1.4722379483282566,
+      "final_loss": 1.7103805541992188,
+      "initial_loss": 1.7126946449279785,
+      "kind": "task",
+      "name": "listwise_reward",
+      "status": "completed",
+      "steps": 30,
+      "url": "https://wandb.ai/ckgresla/representax/runs/acceptance-20260825-093931-listwise_reward"
+    },
+    {
+      "duration_seconds": 3.3720500227063894,
+      "final_loss": 0.5519683957099915,
+      "initial_loss": 0.5759761333465576,
+      "kind": "task",
+      "name": "margin_distillation",
+      "status": "completed",
+      "steps": 30,
+      "url": "https://wandb.ai/ckgresla/representax/runs/acceptance-20260825-093931-margin_distillation"
+    },
+    {
+      "duration_seconds": 3.245100712403655,
+      "final_loss": 0.9876996278762817,
+      "initial_loss": 1.0042803287506104,
+      "kind": "task",
+      "name": "mega_batch",
+      "status": "completed",
+      "steps": 30,
+      "url": "https://wandb.ai/ckgresla/representax/runs/acceptance-20260825-093931-mega_batch"
+    },
+    {
+      "duration_seconds": 3.164948331192136,
+      "final_loss": 1.2358781099319458,
+      "initial_loss": 1.2515528202056885,
+      "kind": "task",
+      "name": "pair_classification",
+      "status": "completed",
+      "steps": 30,
+      "url": "https://wandb.ai/ckgresla/representax/runs/acceptance-20260825-093931-pair_classification"
+    },
+    {
+      "duration_seconds": 3.235673673450947,
+      "final_loss": 0.25190502405166626,
+      "initial_loss": 0.2605340778827667,
+      "kind": "task",
+      "name": "pairwise",
+      "status": "completed",
+      "steps": 30,
+      "url": "https://wandb.ai/ckgresla/representax/runs/acceptance-20260825-093931-pairwise"
+    },
+    {
+      "duration_seconds": 3.3337747659534216,
+      "final_loss": 0.24677003920078278,
+      "initial_loss": 0.25616520643234253,
+      "kind": "task",
+      "name": "pairwise_ranking",
+      "status": "completed",
+      "steps": 30,
+      "url": "https://wandb.ai/ckgresla/representax/runs/acceptance-20260825-093931-pairwise_ranking"
+    },
+    {
+      "duration_seconds": 3.095403987914324,
+      "final_loss": 0.6903204917907715,
+      "initial_loss": 0.6927211284637451,
+      "kind": "task",
+      "name": "pairwise_reward",
+      "status": "completed",
+      "steps": 30,
+      "url": "https://wandb.ai/ckgresla/representax/runs/acceptance-20260825-093931-pairwise_reward"
+    },
+    {
+      "duration_seconds": 3.1825318410992622,
+      "final_loss": 0.7288668751716614,
+      "initial_loss": 0.7379820942878723,
+      "kind": "task",
+      "name": "pointwise_reward",
+      "status": "completed",
+      "steps": 30,
+      "url": "https://wandb.ai/ckgresla/representax/runs/acceptance-20260825-093931-pointwise_reward"
+    },
+    {
+      "duration_seconds": 3.3092985544353724,
+      "final_loss": 0.6956306099891663,
+      "initial_loss": 0.6962970495223999,
+      "kind": "task",
+      "name": "pointwise_scoring",
+      "status": "completed",
+      "steps": 30,
+      "url": "https://wandb.ai/ckgresla/representax/runs/acceptance-20260825-093931-pointwise_scoring"
+    },
+    {
+      "duration_seconds": 2.1422464195638895,
+      "final_loss": 0.6956305503845215,
+      "initial_loss": 0.6962970495223999,
+      "kind": "task",
+      "name": "pointwise_scoring-ddp-2-device",
+      "sharding": "ddp",
+      "status": "completed",
+      "steps": 30,
+      "url": "https://wandb.ai/ckgresla/representax/runs/acceptance-20260825-093931-pointwise_scoring-ddp-2-device"
+    },
+    {
+      "duration_seconds": 2.553652461618185,
+      "final_loss": 0.6956306099891663,
+      "initial_loss": 0.6962970495223999,
+      "kind": "task",
+      "name": "pointwise_scoring-fsdp-4-device",
+      "sharding": "fsdp",
+      "status": "completed",
+      "steps": 30,
+      "url": "https://wandb.ai/ckgresla/representax/runs/acceptance-20260825-093931-pointwise_scoring-fsdp-4-device"
+    },
+    {
+      "duration_seconds": 3.0072596445679665,
+      "final_loss": 0.6612527370452881,
+      "initial_loss": 0.664846658706665,
+      "kind": "task",
+      "name": "process_reward",
+      "status": "completed",
+      "steps": 30,
+      "url": "https://wandb.ai/ckgresla/representax/runs/acceptance-20260825-093931-process_reward"
+    },
+    {
+      "duration_seconds": 1.3529039416462183,
+      "final_loss": 0.23421691358089447,
+      "initial_loss": 0.24386759102344513,
+      "kind": "task",
+      "name": "representation_regularization",
+      "status": "completed",
+      "steps": 30,
+      "url": "https://wandb.ai/ckgresla/representax/runs/acceptance-20260825-093931-representation_regularization"
+    },
+    {
+      "duration_seconds": 1.6356170494109392,
+      "final_loss": 7.818013668060303,
+      "initial_loss": 7.957038879394531,
+      "kind": "task",
+      "name": "retrieval",
+      "status": "completed",
+      "steps": 30,
+      "url": "https://wandb.ai/ckgresla/representax/runs/acceptance-20260825-093931-retrieval"
+    }
+  ],
+  "schema_version": "representax-wandb-acceptance-v1",
+  "source_base_revision": "e551a031f4d676d731bed81670254e48a989f3e7",
+  "wandb": {
+    "entity": "ckgresla",
+    "group": "acceptance-20260825-093931",
+    "project": "representax",
+    "project_url": "https://wandb.ai/ckgresla/representax"
+  }
+}

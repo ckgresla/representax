@@ -1,21 +1,22 @@
 name: ci
 
 on:
+  workflow_call:
+  workflow_dispatch:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, "codex/release-*"]
 
 jobs:
-  lint:
+  static:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
-      - run: python -m pip install ".[test]"
-      - run: ruff check .
-      - run: ruff format --check .
+      - run: python -m pip install -e ".[config,hf,media,test,performance]" --group static
+      - run: python scripts/check.py
 
   test:
     runs-on: ubuntu-latest
@@ -54,8 +55,8 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
-      - run: python -m pip install ".[test]"
-      - run: pytest -q -m distributed
+      - run: python -m pip install ".[test,hf]"
+      - run: pytest -q -m "distributed and not parity and not runtime and not performance"
 
   release-artifacts:
     runs-on: ubuntu-latest

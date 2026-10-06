@@ -1,0 +1,8 @@
+{
+  "schema_version": "representax-bert-scaling-rejection-v1",
+  "status": "rejected_discovery_evidence",
+  "accepted_campaign_evidence": false,
+  "reason": "STS-B cosine regression was not the frozen dense-retrieval workload",
+  "observations": "rejected-discovery-observations.json",
+  "replacement": "../bert-scaling-ladder-msmarco-20260831/summary.json"
+}

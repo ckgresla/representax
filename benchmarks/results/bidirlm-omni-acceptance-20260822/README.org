@@ -1,0 +1,86 @@
+#+title: Native BidirLM Omni acceptance — 2026-08-22
+
+* Result
+
+Representax now owns a native Equinox implementation of
+=BidirLM/BidirLM-Omni-2.5B-Embedding= at immutable revision
+=447a6e31be61b84443144afda21374339ce408e6=.  The 2,445,009,536-parameter
+Apache-2.0 checkpoint runs text, image, video, audio, and composed inputs without
+PyTorch or checkpoint-authored Python in the Representax training runtime.
+
+The implementation combines a bidirectional Qwen3-like text tower, Q/K
+normalization and multimodal RoPE, a DeepStack vision tower, a masked
+three-stage convolutional audio frontend and bidirectional audio transformer,
+and attention-mask-aware mean pooling.  The source checkpoint declares vision
+tap 24 for a zero-based 24-block tower; both its upstream forward and the native
+executed graph use taps 8 and 16.  The six tensors belonging only to the
+unreachable third merger are excluded from the native graph and preserved at
+the Hugging Face export boundary.
+
+* Pinned numerical and preprocessing parity
+
+Sentence Transformers 5.6.1 with Transformers 5.6.0 is the upstream oracle.
+Both systems consume the same deterministic pixels, four-frame video, 16 kHz
+waveform, text, and composed image/audio/text sample.  Valid token IDs,
+attention masks, image and video pixels, and mel features match exactly before
+the compiled boundary.
+
+| input | max absolute | relative L2 | cosine |
+|-------+--------------+-------------+--------|
+| text | 0.141649 | 0.013873 | 0.99990851 |
+| image | 0.192142 | 0.017121 | 0.99985367 |
+| video | 0.149308 | 0.021006 | 0.99977964 |
+| audio | 0.153759 | 0.018070 | 0.99983746 |
+| image + audio + text | 0.211613 | 0.015268 | 0.99988347 |
+
+These are full-checkpoint BF16 comparisons at highest JAX matmul precision, not
+FP32 same-tensor tolerances.  The executable gate requires at most 0.25 absolute
+error, 0.025 relative L2 error, and at least 0.9995 cosine for every input form.
+
+The video gate caught and corrected a genuine first-draft bug: the checkpoint
+uses the Qwen3-VL video processor and timestamp expansion, not Qwen2-VL's video
+processor.  Native preprocessing now reproduces the temporally merged
+=<N.N seconds>= prompt regions while retaining finite token and patch buckets.
+The audio gate likewise masks padding after every convolutional stage; without
+that boundary, convolution bias leaked from the static bucket into valid audio
+features.
+
+* Training and export
+
+The physical training gate applies rank-4 quantized LoRA to the text stack and
+runs the ordinary Representax pairwise task, Optax AdamW, precision policy, and
+compiled train step over a mixed image/audio batch on one RTX 4090.
+
+| step | loss | update global norm |
+|------+----------------+--------------------|
+| 1 | 0.33644071 | 0.15116259 |
+| 2 | 0.31504676 | 0.18116070 |
+| 3 | 0.27515122 | 0.18027899 |
+
+All three updates are finite, accepted, and nonzero.  The loss decrease is an
+optimizer-path sanity check, not a downstream-quality claim.  The fast suite
+also differentiates a tiny native audio input and the complete tiny parameter
+PyTree, and checks finite nonzero cotangents.
+
+Native export writes all 1,016 executed tensors plus the six source-only merger
+tensors into a self-contained 4,890,136,904-byte Hugging Face checkpoint.  A
+fresh Sentence Transformers process reloads that export and reproduces the
+original composed oracle bit-for-bit: maximum absolute error 0 and exact array
+equality.
+
+* Reproduction
+
+The durable raw oracle and exported artifacts live under
+=/raid/representax/acceptance/bidirlm-omni/=.  The tracked executable contracts
+are:
+
+- =tests/models/bidirlm_omni/test_model.py=;
+- =tests/models/bidirlm_omni/sentence_transformers_oracle.py=;
+- =tests/models/bidirlm_omni/test_transformers_parity.py=;
+- =tests/models/bidirlm_omni/test_gpu_acceptance.py=;
+- =tests/models/bidirlm_omni/export_checkpoint.py=; and
+- =tests/models/bidirlm_omni/sentence_transformers_reload.py=.
+
+GPU processes use only GPUs 4 and 5.  Representax runs with the canonical 90%
+JAX preallocation pool and the latency-hiding scheduler; the upstream oracle
+and fresh-reload processes are isolated from the native process.

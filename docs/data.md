@@ -1,107 +1,279 @@
-# Data artifacts and recipes
+# Data sources, artifacts, samples, and loaders
 
-Representax separates three concerns:
+Representax uses Grain as its dataset and iterator implementation. It does not
+define or materialize a framework-specific dataset format. The public concepts
+describe reproducible configuration and the boundary between raw records and a
+model-ready task batch.
 
-1. an artifact resolver exposes immutable upstream records through random
-   access;
-2. user-owned mapping code converts each record into the example contract of a
-   task; and
-3. Grain applies lazy mapping, deterministic shuffle, and mixture sampling.
+## Sources and distributions
 
-The library does not define a materialized Representax dataset format. Mapping
-code runs only when Grain accesses a record.
+A `DataSourceConfig` identifies one immutable dataset source and the importable
+mapping code that converts each row into a task sample. `hf://` sources require
+an explicit revision and split. Local paths and `file://` sources support JSONL,
+Parquet, Arrow, and Hugging Face dataset directories.
 
-## Hugging Face datasets
-
-An `hf://` URI identifies a dataset repository. Its revision and split must be
-explicit; `subset` selects a named dataset configuration when required.
-Install `representax[hf]` to use this resolver and the built-in local
-JSONL/Parquet/Arrow resolvers backed by Hugging Face Datasets.
+`DataDistributionConfig` is the sampling policy over those sources. A single
+dataset is the one-source case; there is no separate recipe type.
 
 ```python
 from representax import data
 
-source = data.source(
-    "hf://organization/dataset",
-    revision="0123456789abcdef",
-    split="train",
-    subset="english",
-    map="my_project.mappers.to_example",
+distribution = data.mix(
+    data.source(
+        "hf://organization/dataset",
+        revision="0123456789abcdef",
+        split="train",
+        map="my_project.mappers.to_sample",
+        name="remote",
+    ),
+    data.source(
+        "file:///data/local.jsonl",
+        map="my_project.mappers.to_sample",
+        name="local",
+    ),
+    weights=(0.8, 0.2),
+    seed=17,
 )
-dataset = data.build_grain_dataset(data.mix(source, seed=17))
+dataset = data.build_dataset(distribution)
 ```
 
-The resolver delegates downloading, validation, and the memory-mapped Arrow
-cache to Hugging Face Datasets. Streaming `IterableDataset` sources are not yet
-part of this random-access `MapDataset` boundary.
+`build_dataset` returns a native Grain `MapDataset`. Grain performs lazy
+mapping, deterministic shuffle, and weighted mixing directly.
 
-## Local artifacts
+## Artifacts and samples
 
-Plain paths and `file://` URIs support:
-
-- `.jsonl` and `.ndjson` through the Hugging Face JSON loader;
-- `.parquet` through the Hugging Face Parquet loader;
-- `.arrow` through direct memory mapping with `Dataset.from_file`; and
-- local Hugging Face dataset directories.
-
-JSONL and Parquet may be prepared in the standard Hugging Face Arrow cache.
-Representax does not create another converted copy or require users to publish
-a framework-specific intermediate dataset.
-
-## Mapping code
-
-The `map` field stores a dotted path to a named, importable Python callable.
-Passing the callable itself records the same stable path. Anonymous lambdas and
-local nested functions are rejected because another process cannot import
-them. Building the Grain dataset imports the mapper automatically; an explicit
-mapper registry can override it for dependency injection and testing.
-
-Recipes execute Python imports and should therefore be reviewed like other
-source code rather than loaded from untrusted parties.
-
-## Training iterators
-
-`build_grain_iterator` adds static batching and Grain's native threaded
-prefetch to a recipe. The user-provided `batch_fn` owns collation into the
-task's model-ready batch type; the trainer does not impose a generic example
-schema.
+An `Artifact` is one raw model-input leaf. It contains either inline data or an
+immutable lazy URI reference:
 
 ```python
-from representax.data import build_grain_iterator
+from dataclasses import dataclass
 
-batches = build_grain_iterator(
-    recipe,
+from representax import data
+from representax.core import Modality
+
+
+@dataclass(frozen=True)
+class RetrievalSample:
+    query: object
+    document: object
+
+
+sample = RetrievalSample(
+    query={"instruction": data.Artifact.text("find the matching image")},
+    document=data.Artifact.ref(
+        Modality.IMAGE,
+        uri="s3://images/00042.jpg",
+        revision="dataset-v2",
+        etag='"immutable-object-etag"',
+        metadata={"width": 1024, "height": 768},
+    ),
+)
+```
+
+Lazy references preserve the identity and selectors needed to avoid an
+intermediate media dataset: URI, revision or ETag, optional archive member,
+an optional `[start, stop)` byte range, checksum, and probe metadata. The
+checksum is over the selected bytes returned to the decoder. Local files,
+ZIP/TAR members, and HTTP(S) ranges use the built-in `read_artifact()` boundary;
+additional URI schemes supply one byte reader:
+
+```python
+payload = data.read_artifact(
+    artifact,
+    readers={"s3": read_s3_object_range},
+)
+```
+
+HTTP range reads fail closed if the server ignores the requested range, and
+ETag/checksum mismatches abort preprocessing. Remote archives similarly require
+an indexed scheme reader rather than silently downloading the whole shard.
+
+A sample is one task-specific training unit. Representax deliberately does not
+impose a universal `Sample` base class: retrieval, classification, reward, and
+JEPA samples should use fields natural to their scientific contracts. A sample
+may contain one artifact or a tree of named artifacts. Text-image or other
+multimodal fusion is composition of atomic artifacts, not a `fused` modality.
+
+## Models and processors
+
+A model loader returns the native Equinox model and its host-side processor:
+
+```python
+from representax.core import Route, encode
+from representax.models import SentenceEncoder
+
+model, processor = SentenceEncoder.load_from_hf(checkpoint)
+model_inputs = processor(samples, route=Route.QUERY, seed=17)
+representations = encode(model, model_inputs, route=Route.QUERY)
+```
+
+The processor travels with the model checkpoint in the same spirit as Hugging
+Face processors, but it is native Representax code. It owns tokenization,
+media selection and decoding, model-specific normalization, padding, special
+tokens, and construction of the model's fixed-shape Equinox batch. It stays in
+the host data path and never enters `jax.jit`.
+
+Every processor implements `data_contract()` and admits a finite set of
+model-native shapes. Data-dependent work happens first; the result is then
+padded, cropped, sampled, or resampled into one admitted bucket. Consequently,
+JAX can compile only the finite set of signatures declared by the processor,
+rather than encountering an unbounded stream of media-dependent shapes. The
+contract is included in the loader fingerprint, so changing bucket policy makes
+an old data cursor incompatible with resume.
+
+For text models, bucket selection occurs after route prompts and special tokens
+are applied. Existing behavior remains one fixed maximum unless the model
+configuration opts into several lengths:
+
+```python
+model = ModelConfig(
+    target="representax.models.sentence:SentenceEncoder.load_from_hf",
+    parameters={
+        "model_name_or_path": "sentence-transformers/all-MiniLM-L6-v2",
+        "revision": "<immutable-revision>",
+        "sequence_length_buckets": [128, 256, 512],
+    },
+)
+```
+
+The sentence processor tokenizes each batch once, selects the smallest
+admissible length, and pads the NumPy output directly. Inputs beyond the largest
+bucket are deterministically truncated there. Image, audio, and video processors
+use the same admission primitive for shapes such as `(height, width)`, samples,
+or `(frames, height, width)`. The shared helper rejects incomparable choices—for
+example, more frames versus higher resolution—because that tradeoff belongs to
+the model-specific processor rather than a generic memory heuristic.
+
+Media processors use one callable-based boundary rather than a framework of
+adapter classes:
+
+```python
+from representax.models import make_image_processor
+
+processor = make_image_processor(
+    admitted_shapes=((224, 224), (336, 336)),
+    probe=probe_image_requirement,
+    prepare=decode_resize_normalize_and_pad,
+    batch_builder=ImageBatch,
+    configuration={
+        "resize": "shortest-edge-center-crop",
+        "mean": [0.5, 0.5, 0.5],
+        "std": [0.5, 0.5, 0.5],
+    },
+)
+```
+
+`probe(artifact, route=...)` inspects immutable metadata without decoding and
+returns the shape required by that model policy. Representax selects one bucket
+for the complete batch. Only then does
+`prepare(artifact, bucket=..., route=..., rng=...)` resolve bytes, decode,
+select content, transform it, and emit fixed-shape NumPy leaves. Finally,
+`batch_builder(**stacked_arrays)` constructs the model-native batch from NumPy
+arrays. Accelerator placement remains an explicit training-loop operation.
+
+The audio and video constructors use the same execution path, with conventional
+shape meanings `(samples,)` and `(frames, height, width)`. A supplied seed is
+split deterministically per artifact for reproducible audio windows or video
+frame selection. Processor contracts fingerprint the finite shapes, callable
+implementations, and the complete JSON preprocessing configuration. The actual
+resize, normalization, resampling, tiling, and sampling policy remains with the
+model integration where it can match that model's saved artifacts exactly.
+
+Task collators may accept an injected `processor` constructor argument. This lets
+them apply the model processor to the artifact fields and then assemble labels,
+relations, masks, or other task-owned batch state without duplicating processor
+configuration in `DataConfig`. For example, the native Sentence Transformers
+loader returns one model/processor pair, and the retrieval collator reuses that
+processor rather than loading a second tokenizer:
+
+```python
+from representax.config import ComponentConfig, DataConfig, ModelConfig
+
+model = ModelConfig(
+    target="representax.models.sentence:SentenceEncoder.load_from_hf",
+    parameters={
+        "model_name_or_path": "sentence-transformers/all-MiniLM-L6-v2",
+        "revision": "<immutable-revision>",
+    },
+)
+training_data = DataConfig(
+    distribution=distribution,
+    collate=ComponentConfig(
+        target="representax.tasks.retrieval.RetrievalCollator",
+        parameters={"query_field": "query", "document_field": "positive"},
+    ),
+)
+```
+
+The job builder calls `load_model()` once, passes the model through
+`prepare_model()`, and injects the processor only when the collator declares a
+`processor` parameter.
+
+## Data loaders
+
+`build_data_loader` applies Grain's native batching and read prefetch and returns
+a thin iterable carrying the exact batch-size and reproducibility contracts the
+trainer needs:
+
+```python
+loader = data.build_data_loader(
+    distribution,
     batch_size=32,
-    batch_fn=collate_retrieval_examples,
+    batch_fn=collate_samples,
     drop_remainder=True,
     num_threads=16,
     prefetch_buffer_size=2,
+    host_memory_budget_bytes=2 * 1024**3,
 )
 ```
 
-Dropping the remainder is the default because a stable batch shape avoids an
-otherwise-surprising final compilation. Exhausting a finite iterator before
-`JobConfig.training.max_steps` is a training failure, not silent early
-completion. The returned source exposes its exact `global_batch_size`, allowing
-the trainer to reject a mismatch with `JobConfig.training` before creating a
-run.
+Grain owns the only preprocessing worker pool and bounded prefetch queue.
+Representax divides `host_memory_budget_bytes` across that queue plus the batch
+currently consumed by the host loop, then rejects any model-ready batch that
+exceeds its slot before it can accumulate. Thus a two-entry prefetch queue uses
+three bounded batch slots. The accounting covers NumPy arrays, bytes, and CPU
+JAX arrays in the completed batch, counting each distinct leaf object once and
+conservatively counting shared views independently. It deliberately does not
+pretend to measure compressed source objects, transient decoder scratch space,
+or JAX transfer staging; model processors must still decode directly toward an
+admitted finite shape. Collators must emit host arrays. A worker that places an
+array on an accelerator fails before the explicit `place_batch` boundary.
 
-It also exposes a complete `data_contract` and `data_fingerprint`. The contract
-contains the artifact recipe and revisions, declared mapper paths, digests of
-the resolved mapper and resolver modules, the batch mapper implementation,
-batch size and remainder policy, and the Grain version. Checkpoint resume
-requires an exact fingerprint match, so edited preprocessing cannot interpret
-an old cursor under a different record stream.
+Each consumed batch carries timing and queue evidence which is stripped before
+device placement: aggregate probe/decode/collation time, model-ready host bytes,
+consecutive ready entries at the head of Grain's queue, queue capacity, and the
+actual wait in `next()`. The training loop publishes these under `perf/...`.
+Queue evidence is omitted when the supplied Grain iterator does not expose a
+compatible bounded-prefetch state; execution never depends on that telemetry.
 
-The Grain iterator implements `get_state` and `set_state`; Representax stores
-that native state in each training checkpoint. Restore seeks directly to the
-next record instead of iterating through or repeating earlier preprocessing,
-including when the input pipeline had prefetched ahead.
+Advanced Python callers can start from an existing Grain dataset directly:
 
-## Extension points
+```python
+loader = data.build_data_loader(
+    grain_dataset,
+    batch_size=32,
+    batch_fn=collate_samples,
+    data_contract={"name": "project-stream", "revision": "v3"},
+)
+```
 
-`build_grain_dataset(..., resolvers={"scheme": resolver})` adds or replaces a
-resolver. A resolver accepts an `ArtifactSource` and returns a random-access
-source implementing `__len__` and `__getitem__`. S3, streaming sources, media
-decoding, shape-aware batching, and distributed iterator state are deliberately
-left to later scoped work.
+The explicit contract is required because Representax cannot infer the source,
+mapping, or preprocessing semantics of an arbitrary live Python object. A
+configured distribution records these automatically.
+
+The loader fingerprint includes source revisions, distribution and sampling
+policy, mapper/resolver implementations, batch mapper, batch size, remainder
+policy, and Grain version. Grain's native `get_state` and `set_state` are stored
+in each training checkpoint, so resume seeks directly to the next logical
+batch instead of replaying preprocessing. Worker count, prefetch depth, host
+memory budget, and data-wait deadlines are execution choices rather than data
+semantics. A saved logical cursor can therefore resume under a different one of
+those configurations while producing the identical remaining batch sequence.
+
+## Extension boundary
+
+Additional URI schemes plug in as source resolvers returning a random-access
+object accepted by `grain.MapDataset.source`. Model-specific media processing
+belongs to the model-associated processor rather than the source resolver. The
+source supplies rows and lazy references; the processor determines how those
+artifacts become model inputs.

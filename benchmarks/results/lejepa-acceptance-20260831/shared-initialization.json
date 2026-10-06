@@ -1,0 +1,31 @@
+{
+  "architecture": "timm/vit_small_patch16_224",
+  "architecture_parameters": {
+    "depth": 12,
+    "heads": 6,
+    "hidden_size": 384,
+    "image_size": 224,
+    "local_image_size": 98,
+    "mlp_ratio": 4.0,
+    "patch_size": 16,
+    "projection_dimension": 512
+  },
+  "directions_fingerprint": "sha256:008371f3cc90765ac07c5b1aa21f6f09a39799155947a67e397361e5b92879f1",
+  "directions_shape": [
+    512,
+    1024
+  ],
+  "evaluation_norm": "LayerNorm(768, eps=1e-6)",
+  "file": "/raid/representax/paper-campaign-v1/preflight/lejepa-acceptance-20260831/shared-initialization.pt",
+  "file_sha256": "sha256:dea6ae5746b7df9f22372ef1276bd28dea7f9d3512d1286b556475c744a39dd6",
+  "official_commit": "c293d291ca87cd4fddee9d3fffe4e914c7272052",
+  "parameter_count": 28168576,
+  "parameter_fingerprint": "sha256:fc4eccf2d80fe4376112e913a1b3accfb8b210f07f7dfd8aeee6abe9df447f95",
+  "projector": "stable-pretraining 384->512->2048->2048->512",
+  "schema_version": "representax-lejepa-shared-initialization-v1",
+  "seed": 17,
+  "stable_pretraining_commit": "9aa93f8b6153eebb73f57d4853ccf8a13d848310",
+  "state_fingerprint": "sha256:95fc77be54599599a4edda5f5d36a65a3b4ec5ee46a95bd5a7e896d2413bdd82",
+  "status": "accepted",
+  "timm_version": "1.0.22"
+}

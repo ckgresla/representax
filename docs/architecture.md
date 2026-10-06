@@ -4,18 +4,18 @@ Representax separates four concerns that are often coupled in training
 frameworks:
 
 ```text
-upstream artifacts -> lazy data recipe -> task -> model capability
-                                              |
-scientific specification -> execution plan -> compiled training step
+upstream artifacts -> Grain distribution -> task sample -> model processor
+                                                        -> model capability
+scientific specification -> execution plan             -> compiled train step
 ```
 
 The ordinary single-device path adds a deliberately small host boundary:
 
 ```text
-Grain recipe -> mapped examples -> static task batches -> device placement
-                                                        -> compiled train step
-                                                        -> local run records
-                                                        -> async checkpoints
+Grain dataset -> mapped samples -> model-ready task batches -> device placement
+                                                            -> compiled train step
+                                                            -> local run records
+                                                            -> async checkpoints
 ```
 
 The trainer does not tokenize, decode media, interpret task examples, construct
@@ -38,9 +38,18 @@ self-supervision.
 
 ## Data
 
-A data recipe points at immutable upstream artifacts and names the mapping code
-that converts each raw record to a task example. A mixture is a sampling policy
-over sources; one source is the one-element form of the same policy.
+A `DataSourceConfig` points at immutable upstream records and names the mapping
+code that converts each raw record to a task-specific sample. A
+`DataDistributionConfig` is a sampling policy over sources; one source is the
+one-element form of the same policy. Both resolve directly into native Grain
+datasets. Existing Grain datasets can also enter the lower-level loader API
+without conversion to a Representax dataset class.
+
+Samples compose atomic `Artifact` leaves. A model integration may distribute a
+host-side `Processor` beside its Equinox model; the loader returns both while
+the processor owns model-specific tokenization, decoding, selection,
+normalization, padding, and static-shape batching. Only the resulting array
+PyTree enters JAX.
 
 Hydra-Zen composes frozen Pydantic configuration values in Python and applies
 typed CLI overrides. Grain provides lazy random access, deterministic mapping
@@ -48,9 +57,9 @@ and mixing, batching, prefetching, and native iterator checkpointing.
 Representax does not require users to materialize an intermediate
 framework-specific dataset.
 
-The run manifest records the complete recipe and source revisions plus a data
+The run manifest records the complete distribution and source revisions plus a data
 fingerprint covering resolved mapper/resolver module digests, batch collation,
-batching semantics, and the Grain version. The recipe and mapper code remain
+batching semantics, and the Grain version. The distribution and mapper code remain
 Git-tracked without duplicating source data.
 
 ## Domain configuration and parameter roles
@@ -70,10 +79,17 @@ training strategies. This keeps retrieval semantics distinct from MNR and lets
 
 Logical mesh config mirrors the serializable `jax.make_mesh` arguments: axis
 shapes and names unpack directly into JAX, while concrete topology-bound devices
-remain runtime state. Mesh names alone do not define array placement;
-actual batch and state `PartitionSpec` configs remain part of the arbitrary
-sharding roadmap. The current loop validates global batch against its model-ready
-Grain source instead of inferring it from names such as `fsdp` or `tensor`.
+remain runtime state. Mesh names alone do not define array placement. Named DDP,
+named FSDP, or ordered model-path rules resolve model-shaped parameter,
+gradient, Optax-state, batch, and output `PartitionSpec` trees through one
+`ShardingPlan`. The current loop validates global batch against the resolved
+data-axis size and its model-ready Grain source instead of inferring semantics
+from names such as `fsdp` or `tensor`.
+DDP and FSDP use the same global train program. Parameter, activation, gradient,
+and Optax-state layouts are expressed through ordinary JAX sharding annotations;
+JAX derives the communication and its autodiff transpose. There is no manual
+gradient-reduction trainer, per-model FSDP materializer, or custom collective
+VJP.
 Packing remains deferred until its segment IDs, position handling, attention
 masking, and example-boundary preservation are implemented for compatible data,
 models, and tasks.

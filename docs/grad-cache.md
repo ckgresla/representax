@@ -31,48 +31,59 @@ three bounds. Optional query and document overrides exist for asymmetric or
 multimodal towers whose encoder costs differ; `loss_row_chunk_size` is an
 orthogonal override for the shared representation-level loss.
 
-## Replicated data parallel execution
+## Named and arbitrary sharded execution
 
-`DataParallel` is the standard named sharding configuration for replicated
-model and Optax state with row-sharded examples. It is separate from GradCache:
-future fully sharded and hybrid plans may preserve the same objective and replay
-semantics while placing parameters differently.
+DDP and FSDP are named defaults over the same `ShardingPlan`; explicit
+model-path partition rules produce that same plan. Sharding is separate from
+GradCache: the task and loss keep identical scientific semantics while the plan
+changes physical parameter, Optax-state, batch, and gradient placement.
 
 ```python
 import jax
 
 from representax.tasks.retrieval import MNRTask
 from representax.train import (
-    DataParallel,
     GradCache,
-    build_data_parallel_train_step,
+    ShardingPlan,
+    build_train_step,
 )
 
-plan = DataParallel.from_devices(jax.devices("gpu"))
-step = build_data_parallel_train_step(
+mesh = jax.make_mesh((len(jax.devices("gpu")),), ("data",))
+plan = ShardingPlan.fsdp(
+    state,
+    optimizer,
+    mesh,
+    parameter_axis_name="data",
+    data_axis_name="data",
+)
+step = build_train_step(
     MNRTask(scale=20.0),
     optimizer,
-    plan,
+    plan=plan,
     execution=GradCache(query_chunk_size=16),
 )
-state = plan.place_replicated(state)
+state = plan.place_state(state)
 batch = plan.place_batch(batch)
-result = step(state, batch, plan.place_replicated(key))
+key = jax.device_put(key, plan.replicated_sharding)
+result = step(state, batch, key)
 ```
 
 The positive relation is row-sharded with its global document axis intact.
 Each rank encodes only its local query and document records; GradCache gathers
 compact representations, validity vectors, and relation rows to recover the
-exact global negative population. The model is marked data-varying only inside
-rank-local replay. Reverse-mode transposition then performs one final parameter
-gradient sum when it crosses back to replicated model state. Global loss and
-task metrics are explicitly averaged, so `shard_map(check_vma=True)` proves that
-the returned state and measurements are replicated rather than trusting an
-unchecked placement assertion.
+exact global negative population. FSDP keeps model and Optax state sharded at
+rest, AllGathers parameters for the forward, and ReduceScatters their
+cotangents. Shared model primitives request replicated matrix parameters at
+their exact use sites, while the compiled step accepts and returns model plus
+Optax state in their sharded layouts. Global JAX semantics and autodiff derive
+the required gradient communication; GradCache does not own a separate DDP or
+FSDP synchronization path. Exact 2/4-device trajectory tests and physical HLO
+profiles verify the resulting program.
 
-Two- and four-GPU acceptance against the same one-device ModernVBERT update is
-recorded in
+Two- and four-GPU DDP acceptance is recorded in
 [`distributed-grad-cache-modernvbert-20260814`](../benchmarks/results/distributed-grad-cache-modernvbert-20260814/README.org).
+The current annotation-only FSDP acceptance is recorded in
+[`fsdp-annotations-20260820`](../benchmarks/results/fsdp-annotations-20260820/README.org).
 
 ### Process-local input across JAX processes
 

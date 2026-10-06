@@ -1,0 +1,58 @@
+{
+  "schema_version": "representax-paper-image-text-preflight-summary-v1",
+  "status": "pass",
+  "artifact": "/raid/representax/paper-campaign-v1/preflight/image-text/seed-7-v4/summary.json",
+  "contract": {
+    "model_id": "sentence-transformers/clip-ViT-B-32",
+    "model_revision": "327ab6726d33c0e22f920c83f2ff9e4bd38ca37f",
+    "train_dataset": "phiyodr/coco2017",
+    "train_revision": "036f3f8291db64d17faad9b09e59dd30bb65c4d7",
+    "evaluation_dataset": "mteb/flickr30kt2i",
+    "evaluation_revision": "e819702b287bfbe084e129a61f308a802b7c108e",
+    "reference": "sentence-transformers==5.6.1",
+    "global_batch_size": 512,
+    "grad_cache_micro_batch_size": 8,
+    "steps": 4,
+    "seed": 7,
+    "gpu": 1
+  },
+  "data": {
+    "unique_coco_pairs": 512,
+    "training_presentations": 2048,
+    "flickr30k_queries": 5000,
+    "flickr30k_documents": 1000,
+    "train_jsonl_sha256": "sha256:81432cabe0ca9454aa673e7190bf2688751ab83661a6c5cc8c6e71c8b072f4e1",
+    "evaluation_jsonl_sha256": "sha256:72185885118dce26af7ab96675ff01276030a32ab44e35ff53d35ffdfa0869d1",
+    "coco_image_tree_sha256": "sha256:58794003e354ccd09c1a4eec38b92baf33c9cecfdd54dce8b7eccc5fbbf9992f",
+    "flickr_image_tree_sha256": "sha256:d917a28c0b22931f13f584b402b8a2453d47d2452c6e93a612d0d445c8e611bf"
+  },
+  "representax": {
+    "final_loss": 1.6775480508804321,
+    "initial_recall_at_10": 0.8914,
+    "final_recall_at_10": 0.9232,
+    "initial_ndcg_at_10": 0.7373484878951574,
+    "final_ndcg_at_10": 0.7859465057163512,
+    "steady_state_examples_per_second": 111.34180621577195,
+    "steady_state_samples": 2,
+    "resumed": true,
+    "native_reload_maximum_absolute_difference": 0.0,
+    "huggingface_reload_verified": true
+  },
+  "sentence_transformers": {
+    "final_loss": 1.6787285804748535,
+    "initial_recall_at_10": 0.8916,
+    "final_recall_at_10": 0.9248,
+    "initial_ndcg_at_10": 0.7360738265011818,
+    "final_ndcg_at_10": 0.7859968024021438,
+    "trainer_examples_per_second": 57.61685095879552,
+    "checkpoint_reload_maximum_absolute_difference": 0.0,
+    "export_reload_maximum_absolute_difference": 0.0
+  },
+  "comparison": {
+    "final_loss_absolute_difference": 0.0011805295944213867,
+    "final_recall_at_10_difference": -0.0016000000000000458,
+    "final_ndcg_at_10_difference": -0.00005029668579260371,
+    "formal_throughput_ratio_reported": false,
+    "timing_note": "Representax uses two post-compilation steps; reference trainer runtime includes checkpoint saves."
+  }
+}

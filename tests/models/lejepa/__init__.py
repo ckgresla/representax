@@ -1,0 +1,1 @@
+"""LeJEPA model tests."""

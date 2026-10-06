@@ -1,0 +1,435 @@
+{
+  "completed_iterations": 1,
+  "config": {
+    "checkpointing": {
+      "additional_iterations": [],
+      "asynchronous": false,
+      "every": 1,
+      "keep": 1,
+      "save_final": true
+    },
+    "data": {
+      "collate": {
+        "parameters": {
+          "image_size": 224,
+          "local_image_size": 98,
+          "seed": 17
+        },
+        "target": "representax.models.lejepa:LeJEPATrainCollator"
+      },
+      "data_wait_heartbeat_seconds": null,
+      "data_wait_timeout_seconds": null,
+      "distribution": {
+        "seed": 0,
+        "shuffle": false,
+        "sources": [
+          {
+            "mapper": "representax.data.distribution.identity",
+            "name": null,
+            "revision": null,
+            "split": null,
+            "subset": null,
+            "uri": "/raid/representax/paper-campaign-v1/preflight/lejepa-acceptance-20260831/data/train.jsonl"
+          }
+        ],
+        "weights": [
+          1.0
+        ]
+      },
+      "drop_remainder": true,
+      "host_memory_budget_bytes": null,
+      "num_threads": 0,
+      "prefetch_buffer_size": 0
+    },
+    "evaluation": {
+      "batch_size": 2,
+      "data": {
+        "collate": {
+          "parameters": {
+            "image_size": 224
+          },
+          "target": "representax.models.lejepa:LeJEPAEvaluationCollator"
+        },
+        "data_wait_heartbeat_seconds": null,
+        "data_wait_timeout_seconds": null,
+        "distribution": {
+          "seed": 0,
+          "shuffle": false,
+          "sources": [
+            {
+              "mapper": "representax.data.distribution.identity",
+              "name": null,
+              "revision": null,
+              "split": null,
+              "subset": null,
+              "uri": "/raid/representax/paper-campaign-v1/preflight/lejepa-acceptance-20260831/data/evaluation.jsonl"
+            }
+          ],
+          "weights": [
+            1.0
+          ]
+        },
+        "drop_remainder": true,
+        "host_memory_budget_bytes": null,
+        "num_threads": 0,
+        "prefetch_buffer_size": 0
+      },
+      "evaluators": [
+        {
+          "inverse_regularization": [
+            0.01,
+            0.1,
+            1.0,
+            10.0
+          ],
+          "kind": "jepa_representation",
+          "max_iterations": 1000,
+          "name": "jepa_representation",
+          "neighbors": 20,
+          "normalization": "l2",
+          "route": "generic",
+          "seed": 17
+        }
+      ],
+      "every_steps": null,
+      "keep_best": 1,
+      "max_batches": null,
+      "on_end": false,
+      "on_start": false,
+      "primary_metric": "valid/jepa_representation/linear_probe_accuracy",
+      "primary_metric_mode": "max",
+      "save_best": false
+    },
+    "export": {
+      "directory_name": "final-model",
+      "enabled": true,
+      "huggingface": null,
+      "selection": "final"
+    },
+    "logging": {
+      "accelerator": true,
+      "console_every": 1,
+      "reporter_queue_size": 16,
+      "timing": true,
+      "wandb": null
+    },
+    "loss": {
+      "global_views": 2,
+      "kind": "lejepa",
+      "knots": 17,
+      "max_frequency": 3.0,
+      "regularization_weight": 0.02,
+      "slices": 1024
+    },
+    "loss_modifiers": [],
+    "model": {
+      "parameters": {
+        "config": {
+          "depth": 12,
+          "heads": 6,
+          "hidden_size": 384,
+          "image_size": 224,
+          "local_image_size": 98,
+          "mlp_ratio": 4.0,
+          "patch_size": 16,
+          "projection_dimension": 512
+        },
+        "initialization_path": "/raid/representax/paper-campaign-v1/preflight/lejepa-acceptance-20260831/shared-initialization.pt",
+        "parameter_dtype": "float32",
+        "rematerialization": "full"
+      },
+      "target": "experiments.paper.lejepa:load_lejepa_model"
+    },
+    "name": "paper-lejepa-vit-b16-imagenet1k-readiness",
+    "optimization": {
+      "max_gradient_norm": 1.0,
+      "optimizer": {
+        "parameters": {
+          "b1": 0.9,
+          "b2": 0.999,
+          "learning_rate": 0.0005,
+          "weight_decay": 0.05
+        },
+        "target": "optax.adamw"
+      },
+      "schedule": null,
+      "schedule_parameter": "learning_rate"
+    },
+    "task": {
+      "kind": "jepa"
+    },
+    "training": {
+      "activation_rematerialization": "full",
+      "adapter": null,
+      "batch": {
+        "gradient_accumulation_steps": 1,
+        "micro_batch_size": 2
+      },
+      "donate_buffers": true,
+      "global_batch_size": 2,
+      "grad_cache": null,
+      "max_steps": 1,
+      "mega_batch_mining": null,
+      "mesh": {
+        "axis_names": [
+          "model"
+        ],
+        "axis_shapes": [
+          2
+        ]
+      },
+      "precision": {
+        "accumulation_dtype": "float32",
+        "activation_dtype": "bfloat16",
+        "compute_dtype": "bfloat16",
+        "loss_dtype": "float32",
+        "matrix_dtype": null,
+        "parameter_dtype": "float32"
+      },
+      "seed": 17,
+      "sharding": {
+        "data_axis": null,
+        "kind": "fsdp",
+        "minimum_parameter_elements": 262144,
+        "parameter_axis": "model"
+      }
+    }
+  },
+  "data_contract": {
+    "batch_size": 2,
+    "drop_remainder": true,
+    "grain_version": "0.2.18",
+    "loader": "grain",
+    "schema_version": "representax-data-loader-v3",
+    "source": {
+      "distribution": {
+        "seed": 0,
+        "shuffle": false,
+        "sources": [
+          {
+            "mapper": "representax.data.distribution.identity",
+            "name": null,
+            "revision": null,
+            "split": null,
+            "subset": null,
+            "uri": "/raid/representax/paper-campaign-v1/preflight/lejepa-acceptance-20260831/data/train.jsonl"
+          }
+        ],
+        "weights": [
+          1.0
+        ]
+      },
+      "distribution_fingerprint": "sha256:b682f388580df7e2880c8f016ba06080c3601d57f8ba916d28a773cc73477012",
+      "implementations": {
+        "batch_mapper": {
+          "declared": "representax.models.lejepa.processing.LeJEPATrainCollator",
+          "implementation": {
+            "callable": "representax.models.lejepa.processing.LeJEPATrainCollator",
+            "callable_source_sha256": "db9e57a6442547647b7923c69fdcd23ee9dd9f2bb9ec0dded41d812263eeee55"
+          }
+        },
+        "mappers": {
+          "representax.data.distribution.identity": {
+            "callable": "representax.data.distribution.identity",
+            "callable_source_sha256": "18c5f4d7bba6c41be062a8302c043ad44e4d624b629d6131796663d5132f373c"
+          }
+        },
+        "resolvers": {
+          "file": {
+            "callable": "representax.data.resolvers.resolve_local",
+            "callable_source_sha256": "815cd52ebf9e45768659f1d75a3764d163829bf5249dbf665144c2dfec94f66c"
+          }
+        }
+      },
+      "kind": "configured-distribution"
+    }
+  },
+  "data_fingerprint": "sha256:566253d05806d0a11bdbd1270e5f1b12ca9bb0f3fee20707eff4d8990840de56",
+  "execution": {
+    "data": {
+      "data_wait_heartbeat_seconds": null,
+      "data_wait_timeout_seconds": null,
+      "host_memory_budget_bytes": null,
+      "num_threads": 0,
+      "prefetch_buffer_size": 0
+    },
+    "evaluation": {
+      "data": {
+        "data_wait_heartbeat_seconds": null,
+        "data_wait_timeout_seconds": null,
+        "host_memory_budget_bytes": null,
+        "num_threads": 0,
+        "prefetch_buffer_size": 0
+      }
+    },
+    "training": {
+      "activation_rematerialization": "full",
+      "batch": {
+        "gradient_accumulation_steps": 1,
+        "micro_batch_size": 2
+      },
+      "donate_buffers": true,
+      "grad_cache": null,
+      "mega_batch_mining": null,
+      "mesh": {
+        "axis_names": [
+          "model"
+        ],
+        "axis_shapes": [
+          2
+        ]
+      },
+      "precision": {
+        "accumulation_dtype": "float32",
+        "activation_dtype": "bfloat16",
+        "compute_dtype": "bfloat16",
+        "loss_dtype": "float32",
+        "matrix_dtype": null,
+        "parameter_dtype": "float32"
+      },
+      "sharding": {
+        "data_axis": null,
+        "kind": "fsdp",
+        "minimum_parameter_elements": 262144,
+        "parameter_axis": "model"
+      }
+    }
+  },
+  "finished_at": "2026-09-01T03:25:37.279135+00:00",
+  "initial_optimizer_step": 0,
+  "kind": "train",
+  "optimizer_steps": 1,
+  "schema_version": "representax-run-v1",
+  "scientific": {
+    "data": {
+      "collate": {
+        "parameters": {
+          "image_size": 224,
+          "local_image_size": 98,
+          "seed": 17
+        },
+        "target": "representax.models.lejepa:LeJEPATrainCollator"
+      },
+      "distribution": {
+        "seed": 0,
+        "shuffle": false,
+        "sources": [
+          {
+            "mapper": "representax.data.distribution.identity",
+            "name": null,
+            "revision": null,
+            "split": null,
+            "subset": null,
+            "uri": "/raid/representax/paper-campaign-v1/preflight/lejepa-acceptance-20260831/data/train.jsonl"
+          }
+        ],
+        "weights": [
+          1.0
+        ]
+      },
+      "drop_remainder": true
+    },
+    "evaluation": {
+      "batch_size": 2,
+      "data": {
+        "collate": {
+          "parameters": {
+            "image_size": 224
+          },
+          "target": "representax.models.lejepa:LeJEPAEvaluationCollator"
+        },
+        "distribution": {
+          "seed": 0,
+          "shuffle": false,
+          "sources": [
+            {
+              "mapper": "representax.data.distribution.identity",
+              "name": null,
+              "revision": null,
+              "split": null,
+              "subset": null,
+              "uri": "/raid/representax/paper-campaign-v1/preflight/lejepa-acceptance-20260831/data/evaluation.jsonl"
+            }
+          ],
+          "weights": [
+            1.0
+          ]
+        },
+        "drop_remainder": true
+      },
+      "evaluators": [
+        {
+          "inverse_regularization": [
+            0.01,
+            0.1,
+            1.0,
+            10.0
+          ],
+          "kind": "jepa_representation",
+          "max_iterations": 1000,
+          "name": "jepa_representation",
+          "neighbors": 20,
+          "normalization": "l2",
+          "route": "generic",
+          "seed": 17
+        }
+      ],
+      "max_batches": null,
+      "primary_metric": "valid/jepa_representation/linear_probe_accuracy",
+      "primary_metric_mode": "max"
+    },
+    "loss": {
+      "global_views": 2,
+      "kind": "lejepa",
+      "knots": 17,
+      "max_frequency": 3.0,
+      "regularization_weight": 0.02,
+      "slices": 1024
+    },
+    "loss_modifiers": [],
+    "model": {
+      "parameters": {
+        "config": {
+          "depth": 12,
+          "heads": 6,
+          "hidden_size": 384,
+          "image_size": 224,
+          "local_image_size": 98,
+          "mlp_ratio": 4.0,
+          "patch_size": 16,
+          "projection_dimension": 512
+        },
+        "initialization_path": "/raid/representax/paper-campaign-v1/preflight/lejepa-acceptance-20260831/shared-initialization.pt",
+        "parameter_dtype": "float32",
+        "rematerialization": "full"
+      },
+      "target": "experiments.paper.lejepa:load_lejepa_model"
+    },
+    "optimization": {
+      "max_gradient_norm": 1.0,
+      "optimizer": {
+        "parameters": {
+          "b1": 0.9,
+          "b2": 0.999,
+          "learning_rate": 0.0005,
+          "weight_decay": 0.05
+        },
+        "target": "optax.adamw"
+      },
+      "schedule": null,
+      "schedule_parameter": "learning_rate"
+    },
+    "task": {
+      "kind": "jepa"
+    },
+    "training": {
+      "adapter": null,
+      "global_batch_size": 2,
+      "max_steps": 1,
+      "seed": 17
+    }
+  },
+  "scientific_fingerprint": "sha256:e4050e8bb6984f26fede0a16b4cddc59fac5a3aae313e2180f70f328b2f1d4de",
+  "started_at": "2026-09-01T03:25:30.774991+00:00",
+  "status": "completed"
+}

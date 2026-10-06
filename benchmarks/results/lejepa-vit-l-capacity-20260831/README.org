@@ -1,0 +1,39 @@
+#+TITLE: LeJEPA ViT-L/16 capacity canary (2026-08-31)
+
+* Status
+
+Accepted for training capacity and steady-throughput planning. This is not an
+ImageNet quality result and does not reproduce the upstream 100-epoch run.
+
+* Contract
+
+- Architecture: LeJEPA ViT-L/16, 310,134,784 parameters.
+- Objective: two 224px global views, six 98px local views, and 1,024 SIGReg
+  slices with the exact paper weighting.
+- Precision: FP32 master parameters and BF16 compute.
+- Execution: full activation rematerialization and two-device model-axis FSDP
+  on physical RTX 4090 GPUs 0 and 1.
+- Each fresh process performs three finite updates. Evaluation, checkpointing,
+  and export are disabled so this artifact measures training capacity only.
+
+* Result
+
+Global batches 1, 8, and 16 all pass. Batch 16 reaches 5.10 images/s and uses
+3.97 GB peak live HBM per GPU. The first compile/update takes 21.66 seconds;
+the median of the following two updates is 3.155 seconds.
+
+At that measured rate, 100 full ImageNet-1K epochs project to 7,017 wall-hours,
+or 14,035 logical GPU-hours, before evaluation and checkpoints. The paper must
+therefore declare a bounded exposure and must not describe it as a reproduction
+of the upstream 100-epoch quality result.
+
+* Reproduction
+
+#+begin_src sh
+python -m experiments.paper.lejepa capacity \
+  --data-directory benchmarks/results/lejepa-acceptance-20260831/data \
+  --output /raid/representax/paper-campaign-v1/preflight/lejepa-vit-l-capacity-20260831/batch-16 \
+  --gpus 0,1 --global-batch-size 16 --steps 3
+#+end_src
+
+The compact machine-readable values and content hashes are in =summary.json=.

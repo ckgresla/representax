@@ -1,0 +1,65 @@
+#+title: V-JEPA 2.1 acceptance evidence
+
+* Contract
+This is semantic acceptance evidence, not a model-quality or throughput claim.
+The oracle is the MIT-licensed =facebookresearch/vjepa2= repository at commit
+=204698b45b3712590f06245fbfba32d3be539812= and the V-JEPA 2.1 paper
+(arXiv:2603.14482).  The frozen tensor fixture has SHA-256
+=01d9601da87f785cf26c0a1416d8827165833fe6b4d186e4ce4916c1a6c86719=.
+
+* Accepted evidence
+- Official parity: image/video forwards, four-level deep supervision, target and
+  context predictions, both L1 reductions, distance weights, representative
+  encoder/predictor gradients, one AdamW update, EMA target update, official
+  checkpoint conversion, and the float32 bilinear preprocessing kernel.
+- Native lifecycle: deterministic finite image/video collation and multiblock
+  masks; two compiled disk-to-model updates; asynchronous Orbax checkpointing;
+  native export, clean reload, and inference.
+- Evaluation: the native model runs through the shared linear-probe, exact
+  bounded k-NN, effective-rank, conditioning, and feature-scale evaluator.
+- Distribution: a common train step matches the unsharded trajectory under DDP
+  and FSDP on two- and four-device meshes.
+- Reporting: one physical-GPU W&B acceptance run completed 30 updates, with
+  named V-JEPA losses, gradient/update norms, step time, finite-update state,
+  and optimizer step emitted through the ordinary asynchronous reporter.
+
+* Commands and results
+#+begin_src text
+pytest -q -m parity tests/tasks/test_vjepa2_1_parity.py
+4 passed in 48.89s
+
+pytest -q tests/models/test_vjepa2_1_processing.py tests/tasks/test_vjepa2_1.py \
+  tests/evaluation/test_representation_evaluators.py::test_vjepa_model_runs_transfer_and_geometry_evaluation
+10 passed in 25.23s
+
+pytest -q -m runtime \
+  tests/tasks/test_vjepa2_1.py::test_job_config_trains_from_disk_and_exports_reloadable_vjepa
+1 passed in 15.27s
+
+XLA_FLAGS=--xla_force_host_platform_device_count=4 pytest -q -m distributed \
+  tests/train/test_vjepa2_1_distributed.py
+4 passed in 37.29s
+
+# Physical RTX 4090 run, CUDA_VISIBLE_DEVICES=2,3,4,5
+pytest -q -m distributed tests/train/test_vjepa2_1_distributed.py
+4 passed in 80.87s
+
+python scripts/check.py
+ruff format, ruff check, and ty: passed
+
+pytest -q
+401 passed, 1 skipped, 214 deselected in 402.66s
+
+python -m build --outdir /tmp/representax-vjepa-build.uSUQao
+python -m twine check /tmp/representax-vjepa-build.uSUQao/*
+sdist and wheel: passed; all native V-JEPA model/task modules are included
+#+end_src
+
+The 30-step W&B run is [[https://wandb.ai/ckgresla/representax/runs/vjepa2-1-acceptance-20260825-vjepa2_1][vjepa2_1]]. On its fixed synthetic acceptance
+batch, loss moved from =1.1930509= to =1.1522908= over 30 accepted updates in
+=11.4861= seconds including compilation. This is a lifecycle/logging result, not
+a convergence or quality claim.
+
+The physical run used four NVIDIA GeForce RTX 4090 devices.  These tiny
+acceptance programs prove semantics and placement only; the paper campaign owns
+large-model capacity, sustained throughput, utilization, and quality evidence.

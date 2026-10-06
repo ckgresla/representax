@@ -1,0 +1,98 @@
+#+title: Paper late-interaction retrieval preflight
+
+* Contract
+
+This preflight tests one architecture in two implementations: pinned
+=lightonai/GTE-ModernColBERT-v1= against PyLate 1.6.0. Both use the first 2,048
+deterministic MS MARCO query-positive pairs, four optimizer updates, seed 7,
+global batch 512, GradCache microbatch 8, BF16 compute, FP32 master weights,
+AdamW at 3e-6, one warmup update, cosine decay, query length 32, and document
+length 256. Representax buckets those fixed maxima as query 16/32 and document
+32/64/128/256. Evaluation uses batch 256. The additional timing profile uses
+one static query shape 32 and document shape 256 in both frameworks.
+
+Initial and final transfer evaluation uses all 50 queries and 5,043 documents
+from the frozen NanoMSMARCO subset. Retrieval is exact MaxSim over an exact flat
+multivector index. This is bounded readiness evidence, not a paper result.
+
+* Results
+
+| equal-shape measurement | Representax | PyLate 1.6.0 | ratio |
+|-------------------------+--------------+--------------+-------|
+| warmed training examples/s, 9 steps | 123.436 | 53.497 | 2.31x |
+| median warmed step | 4.142 s | 9.589 s | 2.31x |
+| warmed encoder documents/s | 1,162.049 | 717.512 | 1.62x |
+| warmed end-to-end documents/s | 842.619 | 561.323 | 1.50x |
+| final NanoMSMARCO nDCG@10 | 0.714463 | 0.709005 | +0.005458 |
+| final NanoMSMARCO Recall@10 | 0.920 | 0.920 | equal |
+
+The encoding comparison uses 1,536 documents, six equal batches of 256, and
+one static 256-token shape. It reports tokenizer, placement, compiled/eager
+encoder, and host materialization separately. The first batch is excluded,
+leaving five warmed observations per framework. Representax compilation and
+its first batch take 7.122 seconds.
+
+The checkpoint-free training profile runs ten updates with static query 32 and
+document 256 shapes. It excludes Representax's 40.183-second compile/first
+step and PyLate's first eager step, leaving nine tightly grouped observations
+per framework. It writes only metrics and run metadata.
+
+The full 5,043-document transfer rerun retains Representax bucketing. It
+reaches 2,200.195 warmed encoder documents/s and 1,292.898 end-to-end
+documents/s, versus PyLate's 706.179 and 548.985. Exact MaxSim remains about
+16x faster in the corrected rerun. These are readiness measurements, not final
+multi-seed paper claims.
+
+* Diagnosis
+
+The original 0.225x document-encoding result is retained in the v3 artifact as
+diagnostic evidence. Two runner choices caused it: evaluation called the model
+outside the training precision policy, leaving compute parameters in FP32, and
+batch 32 did not occupy the GPU. Tokenization, placement, attention backend,
+weight layout, and scanned-layer execution were measured and were not the
+dominant issue.
+
+The runner now creates one BF16 compute model before evaluation, wraps the
+whole late-interaction encoder in one compiled call, and uses batch 256. The
+equal static-shape profile demonstrates that the native encoder itself is not
+slower than PyLate; bucketed production evaluation is faster again because it
+does not compute padded document tokens.
+
+* Lifecycle
+
+Both frameworks stop after update 2 and resume model, optimizer, scheduler, and
+data state before updates 3-4. Representax additionally writes and exactly
+reloads its native inference bundle, exports a Hugging Face/PyLate artifact,
+and verifies that export in the isolated PyLate environment. PyLate writes and
+exactly reloads its midpoint, final checkpoint, and exported model.
+
+The run resolved four preflight-specific measurement failures:
+
+- the resumed PyLate process now retains the original four-update cosine
+  schedule instead of restarting a two-update schedule;
+- export acceptance reloads the durable artifact in a fresh model instance;
+- Representax exact MaxSim scans the document matrix inside one compiled call
+  instead of dispatching hundreds of Python-side tiles; and
+- interrupted Representax export can resume from the completed update-4
+  checkpoint. This recovered the canonical run after =/raid= filled during the
+  first export attempt without repeating training.
+
+The v4 follow-up additionally makes inference precision explicit, records
+phase-separated encoding timings, uses equal evaluation batch sizes, and adds
+checkpoint-free fixed-shape timing profiles.
+
+* Artifacts
+
+The canonical artifact is
+=/raid/representax/paper-campaign-v1/preflight/late-interaction/seed-7-v3/=.
+Prepared data and hashes are in the sibling =data-v1/= directory. The canonical
+=summary.json= SHA-256 is
+=55c3763c9e68320049c4a4f40694fe1c3d4f15ffdd0d2b6aca83cd1fa2d1cb98=.
+The small v4 timing run is in the sibling =timing-v4/= directory and occupies
+less than 60 KiB; all six compact v4 reports are stored beside this README.
+
+Representax and PyLate were installed separately under
+=/raid/representax/envs/late-interaction-gpu1-rx= and
+=/raid/representax/envs/late-interaction-gpu1-ref=. This avoids mutating shared
+environments and is required because Representax pins Transformers 5.6.0 while
+PyLate 1.6.0 requires Transformers 5.3.0 or earlier.

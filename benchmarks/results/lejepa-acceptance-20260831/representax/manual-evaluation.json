@@ -1,0 +1,31 @@
+{
+  "batches": 35,
+  "checkpoint_metrics": {
+    "valid/jepa_representation/condition_number": 411.9317625518197,
+    "valid/jepa_representation/effective_rank": 24.17867634720916,
+    "valid/jepa_representation/feature_std_mean": 0.7936114670465381,
+    "valid/jepa_representation/feature_std_min": 0.24839386301436214,
+    "valid/jepa_representation/knn_accuracy": 0.25,
+    "valid/jepa_representation/linear_probe_accuracy": 0.35,
+    "valid/jepa_representation/linear_probe_f1_macro": 0.24666666666666667,
+    "valid/jepa_representation/linear_probe_selected_inverse_regularization": 0.01,
+    "valid/jepa_representation/linear_probe_validation_accuracy": 0.2
+  },
+  "examples": 70,
+  "exported_artifact_metrics": {
+    "valid/jepa_representation/condition_number": 411.9317625518197,
+    "valid/jepa_representation/effective_rank": 24.17867634720916,
+    "valid/jepa_representation/feature_std_mean": 0.7936114670465381,
+    "valid/jepa_representation/feature_std_min": 0.24839386301436214,
+    "valid/jepa_representation/knn_accuracy": 0.25,
+    "valid/jepa_representation/linear_probe_accuracy": 0.35,
+    "valid/jepa_representation/linear_probe_f1_macro": 0.24666666666666667,
+    "valid/jepa_representation/linear_probe_selected_inverse_regularization": 0.01,
+    "valid/jepa_representation/linear_probe_validation_accuracy": 0.2
+  },
+  "iteration": 1,
+  "metrics_reproduced_exactly": true,
+  "schema_version": "representax-lejepa-manual-evaluation-v1",
+  "source": "reloaded native inference bundle",
+  "status": "accepted"
+}

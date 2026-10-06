@@ -1,0 +1,30 @@
+{
+  "combined_value": {
+    "absolute_error": 0.0,
+    "representax": 0.977912425994873,
+    "tolerance": 1e-05,
+    "torch": 0.977912425994873
+  },
+  "contract": {
+    "batch": 3,
+    "formula": "(1-lambda)*invariance + lambda*per-view-SIGReg",
+    "global_views": 2,
+    "knots": 17,
+    "local_views": 6,
+    "projection_dimension": 5,
+    "regularization_weight": 0.02,
+    "slices": 1024,
+    "views": 8
+  },
+  "projection_gradient": {
+    "max_absolute_error": 3.725290298461914e-09,
+    "shape": [
+      3,
+      8,
+      5
+    ],
+    "tolerance": 2e-05
+  },
+  "schema_version": "representax-lejepa-objective-parity-v1",
+  "status": "accepted"
+}

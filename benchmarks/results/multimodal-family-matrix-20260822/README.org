@@ -1,0 +1,86 @@
+#+title: Multimodal family acceptance matrix
+#+date: 2026-08-22
+
+* Decision
+
+Representax has a physically accepted native implementation for every distinct
+backbone, processor, and output-graph family in the official April 2026
+Sentence Transformers multimodal checkpoint panel. This is a family-level
+claim, not a claim that every parameter-count variant was downloaded and run.
+At least one real immutable checkpoint exercises every distinct native forward;
+all checkpoint-specific processors and graph forms used by the panel have a
+physical anchor.
+
+Larger variants that reuse an accepted forward are listed separately below.
+They remain capacity points for the paper's FSDP frontier until physically
+executed. Catalogue presence, compatible configuration, and physical
+acceptance are deliberately different states.
+
+* Physical family matrix
+
+| Native family | Physical checkpoints | Inputs | Processor | Upstream parity and inference | Three updates | HF export/reload | Evidence |
+|---------------+----------------------+--------+-----------+-------------------------------+---------------+------------------+----------|
+| Qwen3-VL | Qwen3-VL Embed 2B, Reranker 2B, eager-embed-v1 | text, image, video, composition | accepted | accepted | accepted | accepted | =../qwen3-vl-2b-20260821/= and =tests/models/qwen3_vl/= |
+| Qwen2.5-Omni | LCO Omni 3B, NVIDIA Omni Embed 3B | text, image, audio, video, composition | accepted | accepted | accepted | accepted | =docs/multimodal-sentence-transformers.md= and =tests/models/qwen2_5_omni/= |
+| CLIP / BGE-VL CLIP | BGE-VL base, CLIP ViT-B/32 | text, image, composition | accepted | accepted | accepted | accepted | =docs/multimodal-sentence-transformers.md= and =tests/models/clip/= |
+| Multilingual CLIP text | clip-ViT-B-32-multilingual-v1 | text | accepted | accepted | accepted | accepted | =../distilbert-clip-acceptance-20260822/= |
+| Qwen2.5-VL / Qwen2-VL | BGE-VL-Screenshot, Nomic 3B/7B, Jina reranker-m0 | text, image, composition | accepted | accepted | accepted | accepted | =../qwen2-vl-acceptance-20260822/= |
+| LLaVA-NeXT | BGE MLLM S1/S2/v1.5-zs/v1.5-mmeb, E5-V | text, image, composition | accepted | accepted | accepted | accepted | =../llava-next-acceptance-20260822/= |
+| Llama Nemotron VL | NVIDIA embed-vl-1b-v2, rerank-vl-1b-v2 | text, image, composition | accepted | accepted | accepted | accepted | =../llama-nemotron-vl-acceptance-20260822/= |
+| BidirLM Omni | BidirLM Omni 2.5B | text, image, audio, video, composition | accepted | accepted | accepted | accepted | =../bidirlm-omni-acceptance-20260822/= |
+| Qwen2/Qwen3 text ranking | Qwen3 0.6B, mxbai base, ContextualAI 1B | text pairs | accepted | accepted | accepted | accepted | =../qwen-reranker-acceptance-20260822/= |
+
+Each =accepted= cell is backed by the detailed report named in the final column,
+including its immutable revision and numerical tolerance. The matrix does not
+collapse BF16 full-checkpoint agreement into the tighter tiny-model FP32 gate;
+both are retained in the family reports.
+
+* Same-forward capacity variants
+
+The following official variants resolve to an accepted native family but were
+not all physically executed during this closure run:
+
+- Qwen3-VL Embed and Reranker 8B;
+- LCO Omni 7B and E5-Omni 3B/7B;
+- BGE-VL large and CLIP ViT-B/16 or ViT-L/14; and
+- Qwen3 Reranker 4B/8B and mxbai-rerank-large-v2.
+
+They must not appear as physically benchmarked checkpoints in the paper until
+their capacity runs pass. No new model architecture is required for them;
+their purpose is to measure the FSDP and feasible-workload frontier.
+
+* Closure run
+
+The final closure used GPUs 4 and 5 with independent processes and clean CUDA
+library resolution.
+
+| Gate | Result |
+|------+--------|
+| canonical static gate | =ruff format=, =ruff check=, and =ty check= pass |
+| package | wheel and sdist build; strict Twine checks pass |
+| installed package | isolated CPU wheel install compiles and accepts one complete MNR update |
+| Llama Nemotron VL | =4 passed in 91.55s=; embed and rerank preprocessing/parity plus three updates |
+| LLaVA-NeXT five-checkpoint updates | =5 passed in 614.67s=; all five checkpoints complete three finite, accepted updates |
+| ordinary CPU suite | =326 passed, 1 skipped, 177 deselected in 344.30s= |
+
+The fresh Nemotron update trajectories were
+=0.284750 -> 0.249428 -> 0.181538= for embedding and
+=32.205627 -> 28.422228 -> 19.167980= for reranking. The five fresh
+LLaVA-NeXT trajectories were:
+
+| checkpoint | losses |
+|------------+--------|
+| BGE-VL-MLLM-S1 | =0.174242 -> 0.0374300 -> 0.00248622= |
+| BGE-VL-MLLM-S2 | =0.168076 -> 0.0384368 -> 0.0000230208= |
+| BGE-VL-v1.5-zs | =0.177477 -> 0.0392560 -> 0.0000162375= |
+| BGE-VL-v1.5-mmeb | =0.260619 -> 0.0424049 -> 0.000158397= |
+| E5-V | =0.121164 -> 0.0967517 -> 0.0475309= |
+
+These are optimizer-path sanity checks, not held-out quality claims.
+
+* Scope after closure
+
+This closes implementation of the official multimodal architecture families.
+It does not close the separate paper experiment matrix, the 25-checkpoint paper
+panel, full Jina v5 Omni multimodality, or future native audio/video families
+chosen independently of the official panel.

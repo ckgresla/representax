@@ -1,0 +1,518 @@
+{
+  "accepted_sizes": [
+    "bert-30m",
+    "bert-110m",
+    "bert-500m",
+    "bert-1b"
+  ],
+  "bert-4b": {
+    "admission_gate": "bert-1b-pilot-feasible",
+    "admission_limit_bytes_per_device": 21893637734,
+    "decision": "skip",
+    "device_total_bytes": [
+      25757220864,
+      25757220864
+    ],
+    "effective_estimated_peak_bytes_per_device": 39581792872,
+    "four_b_projected_peak_bytes_per_device": 39581792872,
+    "hbm_admission_fraction": 0.85,
+    "one_b_observed_peak_bytes_per_device": 9341952256,
+    "one_b_practical": true,
+    "physical_gpu_indices": [
+      2,
+      3
+    ],
+    "planning": {
+      "active_update_bytes_per_parameter": 18,
+      "estimated_peak_bytes_per_device": 37594713600
+    },
+    "reasons": [
+      "projected-active-update-hbm-exceeds-85-percent-reserve"
+    ],
+    "schema_version": "representax-bert-4b-feasibility-v1",
+    "size": "bert-4b",
+    "status": "not_run"
+  },
+  "inputs": {
+    "dataset": {
+      "repo_id": "mteb/STSBenchmarkv2",
+      "revision": "93b628c3969a75e76727db2b7ee252e53e96268d",
+      "rows": 16,
+      "score_transform": "score / 5.0",
+      "split": "train[:16]"
+    },
+    "schema_version": "representax-bert-scaling-inputs-v1",
+    "tokenizer": {
+      "path": "/home/ckg/representax-artifacts/bert-scaling-ladder-20260831/inputs/tokenizer",
+      "repo_id": "google-bert/bert-base-uncased",
+      "revision": "86b5e0934494bd15c9632b12f734a8a67f723594"
+    },
+    "train_jsonl": {
+      "path": "/home/ckg/representax-artifacts/bert-scaling-ladder-20260831/inputs/train.jsonl",
+      "sha256": "sha256:b0bbf902d96fda0dea3b547075feb19f93d329312241388228b00c79ede4e625"
+    }
+  },
+  "ladder_manifest": {
+    "path": "/home/ckg/fun/representax/benchmarks/configs/bert-scaling-v1.json",
+    "sha256": "sha256:2701bae497f6e35a7647053aaf437d387d1c6f4b1a86f4a84369fc4c1ed01add"
+  },
+  "results": {
+    "bert-110m": {
+      "architecture": {
+        "admission_gate": null,
+        "attention_dropout_probability": 0.1,
+        "expected_parameters": 109482240,
+        "hidden_activation": "gelu",
+        "hidden_dropout_probability": 0.1,
+        "hidden_size": 768,
+        "initializer_range": 0.02,
+        "intermediate_size": 3072,
+        "max_position_embeddings": 512,
+        "name": "bert-110m",
+        "norm_epsilon": 1e-12,
+        "num_attention_heads": 12,
+        "num_hidden_layers": 12,
+        "pad_token_id": 0,
+        "target_parameters": 110000000,
+        "type_vocab_size": 2,
+        "vocab_size": 30522
+      },
+      "data": {
+        "dataset": {
+          "repo_id": "mteb/STSBenchmarkv2",
+          "revision": "93b628c3969a75e76727db2b7ee252e53e96268d",
+          "rows": 16,
+          "score_transform": "score / 5.0",
+          "split": "train[:16]"
+        },
+        "schema_version": "representax-bert-scaling-inputs-v1",
+        "tokenizer": {
+          "path": "/home/ckg/representax-artifacts/bert-scaling-ladder-20260831/inputs/tokenizer",
+          "repo_id": "google-bert/bert-base-uncased",
+          "revision": "86b5e0934494bd15c9632b12f734a8a67f723594"
+        },
+        "train_jsonl": {
+          "path": "/home/ckg/representax-artifacts/bert-scaling-ladder-20260831/inputs/train.jsonl",
+          "sha256": "sha256:b0bbf902d96fda0dea3b547075feb19f93d329312241388228b00c79ede4e625"
+        }
+      },
+      "devices": {
+        "jax": [
+          {
+            "bytes_in_use": 1476242176,
+            "bytes_limit": 22725564223,
+            "device_kind": "NVIDIA GeForce RTX 4090",
+            "logical_id": 0,
+            "peak_bytes_in_use": 3449283072
+          }
+        ],
+        "physical_gpu_indices": [
+          2
+        ]
+      },
+      "elapsed_seconds": 49.05501359514892,
+      "lifecycle": {
+        "checkpoint_manifests": [
+          "checkpoints/2/checkpoint.json"
+        ],
+        "losses": [
+          0.007901954464614391,
+          0.025298377498984337,
+          0.02778046578168869
+        ],
+        "resumed": true,
+        "update_global_norms": [
+          0.09174977242946625,
+          0.06255429238080978,
+          0.053231239318847656
+        ],
+        "updates": 3
+      },
+      "parameter_validation": {
+        "after_reload": 109482240,
+        "before_reload": 109482240,
+        "manifest_expected": 109482240
+      },
+      "schema_version": "representax-bert-scaling-result-v1",
+      "size": "bert-110m",
+      "status": "accepted",
+      "timing": {
+        "compile_and_first_update": [
+          {
+            "iteration": 1,
+            "seconds": 17.426741084083915
+          },
+          {
+            "iteration": 3,
+            "seconds": 15.233715988695621
+          }
+        ],
+        "steady_median_seconds": 0.019754962995648384,
+        "steady_updates": [
+          {
+            "iteration": 2,
+            "seconds": 0.019754962995648384
+          }
+        ]
+      },
+      "training": {
+        "activation_rematerialization": "full",
+        "entrypoint": "representax.train.run_job",
+        "global_batch_size": 1,
+        "optimizer": "adamw",
+        "precision": "fp32-master-bf16-compute",
+        "sequence_length": 32,
+        "sharding": "single",
+        "steps": 3
+      }
+    },
+    "bert-1b": {
+      "architecture": {
+        "admission_gate": null,
+        "attention_dropout_probability": 0.1,
+        "expected_parameters": 985885440,
+        "hidden_activation": "gelu",
+        "hidden_dropout_probability": 0.1,
+        "hidden_size": 1280,
+        "initializer_range": 0.02,
+        "intermediate_size": 5120,
+        "max_position_embeddings": 512,
+        "name": "bert-1b",
+        "norm_epsilon": 1e-12,
+        "num_attention_heads": 20,
+        "num_hidden_layers": 48,
+        "pad_token_id": 0,
+        "target_parameters": 1000000000,
+        "type_vocab_size": 2,
+        "vocab_size": 30522
+      },
+      "data": {
+        "dataset": {
+          "repo_id": "mteb/STSBenchmarkv2",
+          "revision": "93b628c3969a75e76727db2b7ee252e53e96268d",
+          "rows": 16,
+          "score_transform": "score / 5.0",
+          "split": "train[:16]"
+        },
+        "schema_version": "representax-bert-scaling-inputs-v1",
+        "tokenizer": {
+          "path": "/home/ckg/representax-artifacts/bert-scaling-ladder-20260831/inputs/tokenizer",
+          "repo_id": "google-bert/bert-base-uncased",
+          "revision": "86b5e0934494bd15c9632b12f734a8a67f723594"
+        },
+        "train_jsonl": {
+          "path": "/home/ckg/representax-artifacts/bert-scaling-ladder-20260831/inputs/train.jsonl",
+          "sha256": "sha256:b0bbf902d96fda0dea3b547075feb19f93d329312241388228b00c79ede4e625"
+        }
+      },
+      "devices": {
+        "jax": [
+          {
+            "bytes_in_use": 6003340800,
+            "bytes_limit": 22725564223,
+            "device_kind": "NVIDIA GeForce RTX 4090",
+            "logical_id": 0,
+            "peak_bytes_in_use": 9050156544
+          },
+          {
+            "bytes_in_use": 6345676032,
+            "bytes_limit": 22725564223,
+            "device_kind": "NVIDIA GeForce RTX 4090",
+            "logical_id": 1,
+            "peak_bytes_in_use": 9341952256
+          }
+        ],
+        "physical_gpu_indices": [
+          2,
+          3
+        ]
+      },
+      "elapsed_seconds": 124.27203593961895,
+      "lifecycle": {
+        "checkpoint_manifests": [
+          "checkpoints/2/checkpoint.json"
+        ],
+        "losses": [
+          0.06984411925077438,
+          0.005465560592710972,
+          0.016166456043720245
+        ],
+        "resumed": true,
+        "update_global_norms": [
+          0.3051234185695648,
+          0.21260663866996765,
+          0.17460449039936066
+        ],
+        "updates": 3
+      },
+      "parameter_validation": {
+        "after_reload": 985885440,
+        "before_reload": 985885440,
+        "manifest_expected": 985885440
+      },
+      "schema_version": "representax-bert-scaling-result-v1",
+      "size": "bert-1b",
+      "status": "accepted",
+      "timing": {
+        "compile_and_first_update": [
+          {
+            "iteration": 1,
+            "seconds": 22.053726833313704
+          },
+          {
+            "iteration": 3,
+            "seconds": 3.693318674340844
+          }
+        ],
+        "steady_median_seconds": 1.7288248129189014,
+        "steady_updates": [
+          {
+            "iteration": 2,
+            "seconds": 1.7288248129189014
+          }
+        ]
+      },
+      "training": {
+        "activation_rematerialization": "full",
+        "entrypoint": "representax.train.run_job",
+        "global_batch_size": 1,
+        "optimizer": "adamw",
+        "precision": "fp32-master-bf16-compute",
+        "sequence_length": 32,
+        "sharding": "fsdp-model-axis",
+        "steps": 3
+      }
+    },
+    "bert-30m": {
+      "architecture": {
+        "admission_gate": null,
+        "attention_dropout_probability": 0.1,
+        "expected_parameters": 29811072,
+        "hidden_activation": "gelu",
+        "hidden_dropout_probability": 0.1,
+        "hidden_size": 384,
+        "initializer_range": 0.02,
+        "intermediate_size": 1536,
+        "max_position_embeddings": 512,
+        "name": "bert-30m",
+        "norm_epsilon": 1e-12,
+        "num_attention_heads": 6,
+        "num_hidden_layers": 10,
+        "pad_token_id": 0,
+        "target_parameters": 30000000,
+        "type_vocab_size": 2,
+        "vocab_size": 30522
+      },
+      "data": {
+        "dataset": {
+          "repo_id": "mteb/STSBenchmarkv2",
+          "revision": "93b628c3969a75e76727db2b7ee252e53e96268d",
+          "rows": 16,
+          "score_transform": "score / 5.0",
+          "split": "train[:16]"
+        },
+        "schema_version": "representax-bert-scaling-inputs-v1",
+        "tokenizer": {
+          "path": "/home/ckg/representax-artifacts/bert-scaling-ladder-20260831/inputs/tokenizer",
+          "repo_id": "google-bert/bert-base-uncased",
+          "revision": "86b5e0934494bd15c9632b12f734a8a67f723594"
+        },
+        "train_jsonl": {
+          "path": "/home/ckg/representax-artifacts/bert-scaling-ladder-20260831/inputs/train.jsonl",
+          "sha256": "sha256:b0bbf902d96fda0dea3b547075feb19f93d329312241388228b00c79ede4e625"
+        }
+      },
+      "devices": {
+        "jax": [
+          {
+            "bytes_in_use": 381955328,
+            "bytes_limit": 22725564223,
+            "device_kind": "NVIDIA GeForce RTX 4090",
+            "logical_id": 0,
+            "peak_bytes_in_use": 884726784
+          }
+        ],
+        "physical_gpu_indices": [
+          2
+        ]
+      },
+      "elapsed_seconds": 17.076875323429704,
+      "lifecycle": {
+        "checkpoint_manifests": [
+          "checkpoints/2/checkpoint.json"
+        ],
+        "losses": [
+          0.004454248119145632,
+          0.037795327603816986,
+          0.035123199224472046
+        ],
+        "resumed": true,
+        "update_global_norms": [
+          0.04178646206855774,
+          0.028649119660258293,
+          0.024895571172237396
+        ],
+        "updates": 3
+      },
+      "parameter_validation": {
+        "after_reload": 29811072,
+        "before_reload": 29811072,
+        "manifest_expected": 29811072
+      },
+      "schema_version": "representax-bert-scaling-result-v1",
+      "size": "bert-30m",
+      "status": "accepted",
+      "timing": {
+        "compile_and_first_update": [
+          {
+            "iteration": 1,
+            "seconds": 2.1816768124699593
+          },
+          {
+            "iteration": 3,
+            "seconds": 1.9751269724220037
+          }
+        ],
+        "steady_median_seconds": 0.01492534764111042,
+        "steady_updates": [
+          {
+            "iteration": 2,
+            "seconds": 0.01492534764111042
+          }
+        ]
+      },
+      "training": {
+        "activation_rematerialization": "full",
+        "entrypoint": "representax.train.run_job",
+        "global_batch_size": 1,
+        "optimizer": "adamw",
+        "precision": "fp32-master-bf16-compute",
+        "sequence_length": 32,
+        "sharding": "single",
+        "steps": 3
+      }
+    },
+    "bert-500m": {
+      "architecture": {
+        "admission_gate": null,
+        "attention_dropout_probability": 0.1,
+        "expected_parameters": 486296576,
+        "hidden_activation": "gelu",
+        "hidden_dropout_probability": 0.1,
+        "hidden_size": 1024,
+        "initializer_range": 0.02,
+        "intermediate_size": 4096,
+        "max_position_embeddings": 512,
+        "name": "bert-500m",
+        "norm_epsilon": 1e-12,
+        "num_attention_heads": 16,
+        "num_hidden_layers": 36,
+        "pad_token_id": 0,
+        "target_parameters": 500000000,
+        "type_vocab_size": 2,
+        "vocab_size": 30522
+      },
+      "data": {
+        "dataset": {
+          "repo_id": "mteb/STSBenchmarkv2",
+          "revision": "93b628c3969a75e76727db2b7ee252e53e96268d",
+          "rows": 16,
+          "score_transform": "score / 5.0",
+          "split": "train[:16]"
+        },
+        "schema_version": "representax-bert-scaling-inputs-v1",
+        "tokenizer": {
+          "path": "/home/ckg/representax-artifacts/bert-scaling-ladder-20260831/inputs/tokenizer",
+          "repo_id": "google-bert/bert-base-uncased",
+          "revision": "86b5e0934494bd15c9632b12f734a8a67f723594"
+        },
+        "train_jsonl": {
+          "path": "/home/ckg/representax-artifacts/bert-scaling-ladder-20260831/inputs/train.jsonl",
+          "sha256": "sha256:b0bbf902d96fda0dea3b547075feb19f93d329312241388228b00c79ede4e625"
+        }
+      },
+      "devices": {
+        "jax": [
+          {
+            "bytes_in_use": 2989756928,
+            "bytes_limit": 22725564223,
+            "device_kind": "NVIDIA GeForce RTX 4090",
+            "logical_id": 0,
+            "peak_bytes_in_use": 4539297792
+          },
+          {
+            "bytes_in_use": 3064103424,
+            "bytes_limit": 22725564223,
+            "device_kind": "NVIDIA GeForce RTX 4090",
+            "logical_id": 1,
+            "peak_bytes_in_use": 4563044352
+          }
+        ],
+        "physical_gpu_indices": [
+          2,
+          3
+        ]
+      },
+      "elapsed_seconds": 69.81935424357653,
+      "lifecycle": {
+        "checkpoint_manifests": [
+          "checkpoints/2/checkpoint.json"
+        ],
+        "losses": [
+          0.054977498948574066,
+          0.01517970860004425,
+          0.02099149115383625
+        ],
+        "resumed": true,
+        "update_global_norms": [
+          0.21184806525707245,
+          0.14548546075820923,
+          0.11988940834999084
+        ],
+        "updates": 3
+      },
+      "parameter_validation": {
+        "after_reload": 486296576,
+        "before_reload": 486296576,
+        "manifest_expected": 486296576
+      },
+      "schema_version": "representax-bert-scaling-result-v1",
+      "size": "bert-500m",
+      "status": "accepted",
+      "timing": {
+        "compile_and_first_update": [
+          {
+            "iteration": 1,
+            "seconds": 3.9702836964279413
+          },
+          {
+            "iteration": 3,
+            "seconds": 2.8198235388845205
+          }
+        ],
+        "steady_median_seconds": 0.8865123335272074,
+        "steady_updates": [
+          {
+            "iteration": 2,
+            "seconds": 0.8865123335272074
+          }
+        ]
+      },
+      "training": {
+        "activation_rematerialization": "full",
+        "entrypoint": "representax.train.run_job",
+        "global_batch_size": 1,
+        "optimizer": "adamw",
+        "precision": "fp32-master-bf16-compute",
+        "sequence_length": 32,
+        "sharding": "fsdp-model-axis",
+        "steps": 3
+      }
+    }
+  },
+  "runner": {
+    "path": "/home/ckg/fun/representax/experiments/paper/bert_scaling.py",
+    "sha256": "sha256:2fae1aa7991821cbe625229a40c36ab05dfee0e0e549c01fe6653bacb7d2ab62"
+  },
+  "schema_version": "representax-bert-scaling-campaign-v1"
+}

@@ -1,10 +1,16 @@
 """Compiled ModernVBERT training integration tests."""
 
+from typing import Any, cast
+
+import equinox as eqx
 import jax
 import jax.numpy as jnp
+import numpy as np
 import optax
 import pytest
 
+from representax.config import PrecisionConfig
+from representax.core import encode
 from representax.models.modernvbert import (
     ModernVBERTBatch,
     ModernVBERTConfig,
@@ -14,8 +20,14 @@ from representax.models.modernvbert import (
     ModernVBERTTextEncoder,
     ModernVBERTVisionConfig,
 )
+from representax.precision import precision_context, resolve_precision_policy
 from representax.tasks.retrieval import MNRTask, retrieval_batch
-from representax.train import GradCache, build_train_step, make_train_state
+from representax.train import (
+    GradCache,
+    ShardingPlan,
+    build_train_step,
+    init_train_state,
+)
 
 
 @pytest.mark.runtime
@@ -38,7 +50,7 @@ def test_modernvbert_runs_one_compiled_grad_cache_retrieval_update():
         key=jax.random.key(0),
     )
     optimizer = optax.adamw(learning_rate=1e-3, weight_decay=0.0)
-    state = make_train_state(model, optimizer)
+    state = init_train_state(model, optimizer)
     step = build_train_step(
         MNRTask(scale=5.0, symmetric=True),
         optimizer,
@@ -61,6 +73,156 @@ def test_modernvbert_runs_one_compiled_grad_cache_retrieval_update():
     assert int(result.state.step) == 1
     assert bool(result.metrics.numeric_finite)
     assert float(result.metrics.update_global_norm) > 0.0
+
+
+@pytest.mark.runtime
+def test_modernvbert_mixed_policy_overrides_fp32_inference_default():
+    config = ModernVBERTTextConfig(
+        vocab_size=19,
+        hidden_size=8,
+        intermediate_size=12,
+        num_hidden_layers=2,
+        num_attention_heads=2,
+        layer_types=("full_attention", "sliding_attention"),
+        local_attention=4,
+        full_attention_rope_theta=10_000.0,
+        sliding_attention_rope_theta=1_000.0,
+        norm_epsilon=1e-5,
+        max_position_embeddings=16,
+    )
+    model = ModernVBERTTextEncoder.init(
+        config,
+        key=jax.random.key(11),
+        compute_dtype=jnp.float32,
+    )
+    batch = ModernVBERTTextBatch(
+        input_ids=jnp.asarray([[1, 2, 3, 0], [4, 5, 6, 0]]),
+        attention_mask=jnp.asarray([[1, 1, 1, 0], [1, 1, 1, 0]]),
+    )
+    precision = resolve_precision_policy(PrecisionConfig.bfloat16_mixed())
+
+    @eqx.filter_jit
+    def compiled(candidate, inputs):
+        with precision_context(precision):
+            return encode(candidate, inputs)
+
+    stablehlo = cast(Any, compiled).lower(model, batch).as_text()
+    output = compiled(model, batch)
+
+    dot_lines = [
+        line for line in stablehlo.splitlines() if "stablehlo.dot_general" in line
+    ]
+    assert dot_lines
+    assert any("bf16" in line for line in dot_lines)
+    assert output.dtype == jnp.dtype(jnp.float32)
+
+
+@pytest.mark.distributed
+@pytest.mark.parametrize("world_size", [2, 4])
+def test_modernvbert_fsdp_matches_ten_one_device_grad_cache_updates(
+    world_size: int,
+):
+    devices = jax.devices()
+    if len(devices) < world_size:
+        pytest.skip(f"requires at least {world_size} JAX devices")
+    config = ModernVBERTTextConfig(
+        vocab_size=20,
+        hidden_size=8,
+        intermediate_size=16,
+        num_hidden_layers=2,
+        num_attention_heads=2,
+        layer_types=("full_attention", "sliding_attention"),
+        local_attention=4,
+        full_attention_rope_theta=10_000.0,
+        sliding_attention_rope_theta=1_000.0,
+        norm_epsilon=1e-5,
+        max_position_embeddings=16,
+    )
+    model = ModernVBERTTextEncoder.init(config, key=jax.random.key(0))
+    optimizer = optax.adamw(learning_rate=1e-3, weight_decay=0.0)
+    state = init_train_state(model, optimizer)
+    task = MNRTask(scale=5.0, symmetric=True)
+    execution = GradCache(query_chunk_size=1, document_chunk_size=1)
+    reference_step = build_train_step(task, optimizer, execution=execution)
+    mesh = jax.make_mesh(
+        (world_size,),
+        ("data",),
+        devices=devices[:world_size],
+    )
+    plan = ShardingPlan.fsdp(
+        state,
+        optimizer,
+        mesh,
+        parameter_axis_name="data",
+        data_axis_name="data",
+        minimum_parameter_elements=1,
+    )
+    distributed_step = build_train_step(
+        task,
+        optimizer,
+        plan=plan,
+        execution=execution,
+    )
+    input_ids = jnp.asarray(
+        [
+            [1, 2, 3, 0],
+            [4, 5, 6, 0],
+            [7, 8, 9, 0],
+            [10, 11, 12, 0],
+        ]
+    )
+    attention_mask = jnp.asarray(
+        [
+            [1, 1, 1, 0],
+            [1, 1, 1, 0],
+            [1, 1, 1, 0],
+            [1, 1, 1, 0],
+        ]
+    )
+    batch = retrieval_batch(
+        query=ModernVBERTTextBatch(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+        ),
+        document=ModernVBERTTextBatch(
+            input_ids=jnp.roll(input_ids, 1, axis=1),
+            attention_mask=attention_mask,
+        ),
+        positive_mask=jnp.eye(4, dtype=jnp.bool_),
+    )
+    reference_state = state
+    distributed_state = plan.place_state(state)
+    distributed_batch = plan.place_batch(batch)
+
+    with jax.default_matmul_precision("highest"):
+        for update_index in range(10):
+            key = jax.random.fold_in(jax.random.key(1), update_index)
+            reference = reference_step(reference_state, batch, key)
+            distributed = distributed_step(
+                distributed_state,
+                distributed_batch,
+                jax.device_put(key, plan.replicated_sharding),
+            )
+            jax.block_until_ready((reference, distributed))
+            assert bool(distributed.metrics.numeric_finite)
+            np.testing.assert_allclose(
+                np.asarray(distributed.metrics.loss),
+                np.asarray(reference.metrics.loss),
+                rtol=5e-5,
+                atol=5e-6,
+            )
+            reference_state = reference.state
+            distributed_state = distributed.state
+
+    assert int(distributed_state.step) == 10
+    for actual, expected in zip(
+        (leaf for leaf in jax.tree.leaves(distributed_state) if eqx.is_array(leaf)),
+        (leaf for leaf in jax.tree.leaves(reference_state) if eqx.is_array(leaf)),
+        strict=True,
+    ):
+        np.testing.assert_allclose(
+            np.asarray(actual), np.asarray(expected), rtol=5e-5, atol=5e-6
+        )
 
 
 @pytest.mark.runtime
@@ -95,7 +257,7 @@ def test_multimodal_modernvbert_updates_vision_and_connector():
     )
     model = ModernVBERTEncoder.init(config, key=jax.random.key(2))
     optimizer = optax.adamw(learning_rate=1e-3, weight_decay=0.0)
-    state = make_train_state(model, optimizer)
+    state = init_train_state(model, optimizer)
     step = build_train_step(MNRTask(scale=5.0, symmetric=True), optimizer)
     input_ids = jnp.asarray([[1, 19, 19, 19, 19, 2], [3, 19, 19, 19, 19, 4]])
     query = ModernVBERTBatch(
@@ -118,6 +280,7 @@ def test_multimodal_modernvbert_updates_vision_and_connector():
 
     assert int(result.state.step) == 1
     assert bool(result.metrics.numeric_finite)
+    assert isinstance(result.state.model, ModernVBERTEncoder)
     assert not jnp.array_equal(
         result.state.model.connector.weight,
         model.connector.weight,

@@ -1,0 +1,99 @@
+{
+  "schema_version": "representax-dense-e2e-reviewed-v1",
+  "source": {
+    "jina_small_raw_sha256": "5a6b9a4e1d264fbbba00823796eb11c202fd3eb8b9685ace59f7d4cebbdd8f10",
+    "minilm_raw_sha256": "8668aa74971147da281f5cf19d15129d1bfe53f50b22dc303545e50072b71119"
+  },
+  "dataset": {
+    "id": "sentence-transformers/stsb",
+    "revision": "ab7a5ac0e35aa22088bdcf23e7fd99b220e53308",
+    "train_rows": 5749,
+    "validation_rows": 1500,
+    "train_sha256": "f6fc385d063edf71173e1b8aa2137a010c7b7a129abfe116b42145cae665fb30",
+    "validation_sha256": "0e4d558a20c51e6aa458c97e63022e6122d55b51c28307190498295ccf9ce22e"
+  },
+  "minilm": {
+    "contract": {
+      "model": "sentence-transformers/all-MiniLM-L6-v2",
+      "revision": "1110a243fdf4706b3f48f1d95db1a4f5529b4d41",
+      "batch_size": 32,
+      "maximum_length": 128,
+      "steps": 100,
+      "precision": "float32"
+    },
+    "representax": {
+      "process_seconds": 75.23620661534369,
+      "reload_process_seconds": 57.94246219098568,
+      "disk_to_verified_reload_seconds": 133.17866880632937,
+      "training_compile_and_first_seconds": 30.983384178951383,
+      "evaluation_compile_seconds": 16.735018350183964,
+      "allocator_peak_bytes": 3632065792,
+      "process_peak_device_bytes": 5272240128,
+      "maximum_host_rss_bytes": 4174692352,
+      "initial_spearman_cosine": 0.867097775717295,
+      "final_spearman_cosine": 0.8844050196859248,
+      "final_training_loss": 0.024182062596082687,
+      "reload_max_absolute_difference": 4.470348358154297e-08
+    },
+    "sentence_transformers": {
+      "process_seconds": 14.827657271176577,
+      "reload_process_seconds": 17.982989704236388,
+      "disk_to_verified_reload_seconds": 32.810646975412965,
+      "training_seconds": 6.059643276035786,
+      "allocator_peak_bytes": 1645194752,
+      "process_peak_device_bytes": 2237661184,
+      "maximum_host_rss_bytes": 1972346880,
+      "initial_spearman_cosine": 0.867097774946541,
+      "final_spearman_cosine": 0.8859826962422515,
+      "final_training_loss": 0.022205090522766112,
+      "reload_max_absolute_difference": 0.0
+    },
+    "end_to_end_speedup": 0.24636563249574714
+  },
+  "jina_small": {
+    "contract": {
+      "model": "jinaai/jina-embeddings-v5-omni-small-retrieval",
+      "revision": "12949877f0092093f366c6450340011320152a05",
+      "batch_size": 4,
+      "maximum_length": 128,
+      "steps": 40,
+      "precision": "bfloat16",
+      "activation_rematerialization": "full",
+      "oracle_adapter": "text-only autograd-preserving forward"
+    },
+    "representax": {
+      "process_seconds": 78.61079409532249,
+      "reload_process_seconds": 20.255862332880497,
+      "disk_to_verified_reload_seconds": 98.86665642820299,
+      "training_compile_and_first_seconds": 14.41285789757967,
+      "evaluation_compile_seconds": 5.0511286202818155,
+      "initial_evaluation_seconds": 13.337651630863547,
+      "final_evaluation_seconds": 8.636403426527977,
+      "allocator_peak_bytes": 8220452608,
+      "process_peak_device_bytes": 9038725120,
+      "maximum_host_rss_bytes": 12298563584,
+      "initial_spearman_cosine": 0.886082142729596,
+      "final_spearman_cosine": 0.8841226756073733,
+      "final_training_loss": 0.019601445645093918,
+      "reload_max_absolute_difference": 0.0012164115905761719,
+      "reload_cosine_similarity": 0.9999805688858032
+    },
+    "sentence_transformers": {
+      "process_seconds": 76.45412261597812,
+      "reload_process_seconds": 9.394489059224725,
+      "disk_to_verified_reload_seconds": 85.84861167520285,
+      "training_seconds": 14.812744243070483,
+      "initial_evaluation_seconds": 25.56230217218399,
+      "final_evaluation_seconds": 24.224671306088567,
+      "allocator_peak_bytes": 6004104704,
+      "process_peak_device_bytes": 7096762368,
+      "maximum_host_rss_bytes": 4523335680,
+      "initial_spearman_cosine": 0.8860761055149678,
+      "final_spearman_cosine": 0.8843519037754386,
+      "final_training_loss": 0.020296698808670043,
+      "reload_max_absolute_difference": 0.0005215704441070557,
+      "reload_cosine_similarity": 0.9999973773956299
+    },
+    "end_to_end_speedup": 0.8683272477970988
+  }
+}

@@ -1,0 +1,84 @@
+{
+  "schema_version": "representax-paper-nq-miracl-real-data-acceptance-v1",
+  "artifact_root": "/home/ckg/representax-artifacts/nq-miracl-acceptance-20260831",
+  "execution": {
+    "jax_version": "0.10.1",
+    "maximum_length": 64,
+    "training_batch_size": 4,
+    "training_updates": 2,
+    "checkpoint_iteration": 1,
+    "evaluation_batch_size": 4
+  },
+  "natural_questions": {
+    "workload": "dense-natural-questions",
+    "physical_gpu": 0,
+    "model": "sentence-transformers/all-mpnet-base-v2",
+    "model_revision": "e8c3b32edf5434bc2275fc9bab85f82640a19130",
+    "training_dataset": "sentence-transformers/natural-questions",
+    "training_dataset_revision": "f9e894e1081e206e577b4eaa9ee6de2b06ae6f17",
+    "evaluation_dataset": "mteb/nq",
+    "evaluation_dataset_revision": "b84726e65fd226125cf7c0cbeeb5c214d49e8187",
+    "training_rows": 8,
+    "evaluation_queries": 4,
+    "evaluation_documents": 4,
+    "corpus_prefix_bytes": 4194304,
+    "corpus_prefix_documents": 7040,
+    "training_losses": [
+      0.00000667572021484375,
+      0.001125335693359375
+    ],
+    "completed_iterations": 2,
+    "resumed": true,
+    "canonical_evaluation_events": 2,
+    "exported_artifact_exact_metric_parity": true,
+    "recall_at_10": 1.0,
+    "recall_at_100": 1.0,
+    "result": "/home/ckg/representax-artifacts/nq-miracl-acceptance-20260831/nq/result.json",
+    "data_manifest": "/home/ckg/representax-artifacts/nq-miracl-acceptance-20260831/nq/data/manifest.json",
+    "inference_bundle": "/home/ckg/representax-artifacts/nq-miracl-acceptance-20260831/nq/run/final-model"
+  },
+  "miracl": {
+    "workload": "dense-multilingual",
+    "physical_gpu": 1,
+    "model": "jinaai/jina-embeddings-v5-omni-small-retrieval",
+    "model_revision": "12949877f0092093f366c6450340011320152a05",
+    "topics_qrels_dataset": "miracl/miracl",
+    "topics_qrels_dataset_revision": "5be20db9509754dadad47689368639fcec739c00",
+    "corpus_dataset": "miracl/miracl-corpus",
+    "corpus_dataset_revision": "d921ec7e349ce0d28daf30b2da9da5ee698bef0d",
+    "languages": [
+      "ar",
+      "en",
+      "hi",
+      "ja"
+    ],
+    "training_rows": 8,
+    "evaluation_queries": 4,
+    "evaluation_documents": 4,
+    "corpus_prefix_byte_limit_per_language": 16777216,
+    "corpus_documents_inspected": {
+      "ar": 2,
+      "en": 3110,
+      "hi": 130,
+      "ja": 549
+    },
+    "training_losses": [
+      0.3466041088104248,
+      0.7076723575592041
+    ],
+    "completed_iterations": 2,
+    "resumed": true,
+    "canonical_evaluation_events": 2,
+    "exported_artifact_exact_metric_parity": true,
+    "ndcg_at_10": 1.0,
+    "recall_at_100": 1.0,
+    "result": "/home/ckg/representax-artifacts/nq-miracl-acceptance-20260831/miracl/result.json",
+    "data_manifest": "/home/ckg/representax-artifacts/nq-miracl-acceptance-20260831/miracl/data/manifest.json",
+    "inference_bundle": "/home/ckg/representax-artifacts/nq-miracl-acceptance-20260831/miracl/run/final-model"
+  },
+  "validation": {
+    "ruff": "passed",
+    "pytest": "5 passed",
+    "quality_claim": false
+  }
+}

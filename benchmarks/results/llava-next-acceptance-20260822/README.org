@@ -1,0 +1,81 @@
+#+title: Native LLaVA-NeXT retrieval acceptance — 2026-08-22
+
+* Result
+
+Representax now owns one native Equinox LLaVA-NeXT retrieval family spanning
+the four MIT-licensed BGE checkpoints and Apache-2.0 E5-V.  The training runtime
+loads Hugging Face Safetensors directly and does not import PyTorch, Sentence
+Transformers, or repository remote code.
+
+| acceptance gate | evidence |
+|-----------------+----------|
+| architecture | one scanned CLIP ViT-L/14 tower, two-layer multimodal projector, host-planned any-resolution gather/newline packing, and scanned Llama or Mistral rotary decoder |
+| tiny same-tensor oracle | FP32 hidden state, pixel cotangent, every parameter cotangent, AdamW update, native export, and fresh Transformers 5.6 reload |
+| real preprocessing | text-only, image-only, and composed text-image inputs match upstream token IDs, masks, pixel tensors, and image sizes exactly for all five immutable checkpoints |
+| real inference | every complete 7B/8B checkpoint executes natively in BF16 and satisfies its pinned normalized-embedding gate |
+| real training | every checkpoint completes three finite nonzero INT4-base/LoRA AdamW updates through the ordinary Representax task and train-step path |
+
+* Real normalized-embedding agreement
+
+The source record is one deterministic =64 x 512= RGB image composed with one
+text string.  The low-precision numbers compare normalized embeddings after
+exact preprocessing; they are numerical-implementation gates, not downstream
+quality claims.
+
+| checkpoint | source oracle | maximum absolute | relative L2 | cosine |
+|------------+---------------+------------------+-------------+--------|
+| BGE-VL-MLLM-S1 | Sentence Transformers 5.6.1 / Transformers 5.6.0 | =0.00218788= | =0.0316131= | =0.9995026= |
+| BGE-VL-MLLM-S2 | Sentence Transformers 5.6.1 / Transformers 5.6.0 | =0.00240285= | =0.0239958= | =0.9997121= |
+| BGE-VL-v1.5-zs | Sentence Transformers 5.6.1 / Transformers 5.6.0 | =0.00202600= | =0.0296523= | =0.9995611= |
+| BGE-VL-v1.5-mmeb | Sentence Transformers 5.6.1 / Transformers 5.6.0 | =0.00217490= | =0.0229005= | =0.9997385= |
+| E5-V | checkpoint-authored Sentence Transformers 5.4.0 / Transformers 5.5.0 | =0.00205448= | =0.0136934= | =0.9999094= |
+
+* Three-update training evidence
+
+Each physical probe uses a packed INT4 frozen base, newly initialized rank-4
+LoRA adapters over the scanned text projections, BF16 compute, FP32 reductions,
+Optax AdamW, finite-gradient acceptance, and the generic cosine-regression task.
+
+| checkpoint | losses |
+|------------+--------|
+| BGE-VL-MLLM-S1 | =0.173744 -> 0.0388914 -> 0.00282108= |
+| BGE-VL-MLLM-S2 | =0.165824 -> 0.0380539 -> 0.0000492979= |
+| BGE-VL-v1.5-zs | =0.178105 -> 0.0396741 -> 0.0000161813= |
+| BGE-VL-v1.5-mmeb | =0.260709 -> 0.0415380 -> 0.000174876= |
+| E5-V | =0.121342 -> 0.0960228 -> 0.0469666= |
+
+Loss decrease is only a deterministic optimizer-path sanity check.  It is not
+a claim about generalization or model quality.
+
+* E5-V upstream compatibility finding
+
+E5-V records Sentence Transformers 5.4.0 and Transformers 5.5.0 in its source
+artifact.  That pair loads all 686 encoder tensors and is the numerical oracle.
+The latest Sentence Transformers 5.6.1 delegates feature extraction to the new
+Transformers 5.6 base =LlavaNextModel=.  Its renamed vision prefix reports all
+24 source vision layers as unexpected, creates 24 missing randomly initialized
+layers, and therefore cannot serve as a valid oracle.  Representax accepts both
+legacy and current Safetensors prefixes explicitly and never silently accepts a
+partially initialized model.
+
+* Reproduction contract
+
+- immutable revisions are recorded in the model-family manifest;
+- BGE artifacts are MIT and E5-V is Apache-2.0;
+- native JAX and upstream Torch execute in isolated processes on GPUs 4 and 5;
+- =XLA_PYTHON_CLIENT_PREALLOCATE=true= and
+  =XLA_PYTHON_CLIENT_MEM_FRACTION=0.90=;
+- current BGE oracle: Torch 2.8.0+cu128, cuDNN 9.10.2,
+  Transformers 5.6.0, and Sentence Transformers 5.6.1; and
+- E5-V source oracle: the same stable Torch stack with Transformers 5.5.0 and
+  Sentence Transformers 5.4.0.
+
+The immutable snapshots live under
+=/home/ckg/.cache/representax/checkpoints/llava-next/=.  Small upstream oracle
+arrays and diagnostics live under =/raid/representax/acceptance/llava-next/=.
+The tracked executable specifications are:
+
+- =tests/models/llava_next/test_model.py=;
+- =tests/models/llava_next/test_transformers_parity.py=;
+- =tests/models/llava_next/test_real_artifacts.py=; and
+- =tests/models/llava_next/test_gpu_acceptance.py=.

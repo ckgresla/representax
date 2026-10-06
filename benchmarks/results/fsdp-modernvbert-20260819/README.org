@@ -1,0 +1,162 @@
+#+title: Single-host DDP/FSDP ModernVBERT profile — 2026-08-19
+
+* Historical decision
+
+This artifact records the packed model-boundary and explicit layer-control
+experiments that led to the final design.  Those implementations were removed
+on 2026-08-20 after shared primitive annotations recovered the 1.9795B capacity
+point 9.2% faster without a per-model hook.  Current acceptance is
+=../fsdp-annotations-20260820/README.org=; the measurements below remain useful
+historical controls.
+
+* Correction to the first profile
+
+The first benchmark retained its warmup update before timing ten more updates.
+Its final loss of approximately =0.34= therefore describes eleven optimizer
+updates, whereas the corrected profiles below discard warmup state and describe
+ten. A corrected rerun established that the historical explicit-collective FSDP
+program was valid: it sustained 31.624 examples/s and reached a final loss of
+=0.530222=. It is retained as a control, not as the production implementation.
+
+The current benchmark discards warmup output, records every measured update,
+and fingerprints every model and optimizer leaf. The global-program form is
+accepted only against that complete evidence. Superseded artifacts remain under
+=/raid= for diagnosis provenance; no result below uses them.
+
+* Workload and evidentiary boundary
+
+The corrected matched workload uses the real 149M-parameter
+=ModernVBERT/modernvbert-embed= checkpoint, four physical RTX 4090s (GPUs 2--5),
+global batch 16, sequence length 128, exact GradCache chunks of 2, FP32/highest
+matmul precision, AdamW, one discarded warmup, and ten synchronized measured
+optimizer updates. Inputs are deterministic random token IDs with an identity
+query/document positive relation.
+
+This is a complete forward/backward/optimizer systems program. Model-ready
+synthetic tensors deliberately remove storage, tokenization, and semantic data
+quality as confounders. It tests numerical trajectory, placement, memory, and
+sustained-step behavior; it is not retrieval-quality evidence.
+
+* Corrected four-GPU evidence
+
+All measurements below use =XLA_PYTHON_CLIENT_PREALLOCATE=false=. The single-GPU
+row is the reference scientific trajectory, not a scaling baseline: all rows
+retain the same small global batch of 16.
+
+| measurement | one GPU | DDP, four GPUs | full-model FSDP, four GPUs |
+|-------------+---------+----------------+----------------------------|
+| model bytes / GPU | 596,179,990 | 596,179,990 | 149,049,622 |
+| Adam bytes / GPU | 1,192,359,940 | 1,192,359,940 | 298,099,204 |
+| compiler temporary bytes / GPU | 56,914,992 | 58,459,952 | 2,236,698,672 |
+| peak live JAX bytes / GPU | 5,985,621,760 | 5,987,136,512 | 3,718,931,200 |
+| peak NVML process bytes / GPU | 9,026,142,208 | 9,269,411,840 | 6,012,534,784 |
+| compilation | — | 0.863 s | 0.891 s |
+| median synchronized step | 0.3445 s | 0.3479 s | 0.5051 s |
+| examples / second | 46.44 | 45.99 | 31.68 |
+| final loss after ten updates | 0.49238 | 0.53335 | 0.53022 |
+
+The annotation-driven DDP program is effectively tied with the one-device
+reference at this deliberately fixed, small global batch. Full-model FSDP
+quarters persistent model and Adam bytes, lowers peak live JAX memory by 38%
+relative to DDP, and is 3.14x faster than the unbucketed global annotation. It
+is 31% slower than DDP on this PCIe-only node because parameter materialization
+adds unavoidable peer traffic, but it is slightly faster than the corrected
+explicit-collective control while compiling in 0.891 rather than 18.66 seconds.
+
+The ten-step loss trajectories remain close:
+
+| update | one GPU | DDP | FSDP |
+|--------+---------+-----+------|
+| 1 | 2.719318 | 2.719317 | 2.719317 |
+| 2 | 2.553217 | 2.553218 | 2.553217 |
+| 3 | 2.375181 | 2.375174 | 2.375175 |
+| 4 | 2.158229 | 2.158288 | 2.158300 |
+| 5 | 1.905782 | 1.908294 | 1.907868 |
+| 6 | 1.624685 | 1.635231 | 1.635058 |
+| 7 | 1.321892 | 1.350603 | 1.345308 |
+| 8 | 1.011955 | 1.052138 | 1.042541 |
+| 9 | 0.732007 | 0.771510 | 0.767533 |
+| 10 | 0.492385 | 0.533347 | 0.530222 |
+
+The first update agrees to approximately =1e-6= absolute loss. Floating-point
+reduction-order differences then accumulate during this deliberately rapid
+overfit, reaching =0.0410= absolute loss for DDP and =0.0378= for FSDP at update
+ten. Strict ten-update array parity is separately enforced on deterministic tiny
+ModernVBERT programs; the full-checkpoint trace records realistic topology
+drift rather than imposing a misleading relative-loss threshold near zero.
+
+The post-partition compiled HLO contains 6 AllGather, 7 AllReduce, and 2
+AllToAll instructions for DDP. Bucketed full-model FSDP contains 2 AllGather, 6
+AllReduce, and 2 ReduceScatter instructions. The earlier unbucketed trace
+contained 8/9/1 and diagnosed the fragmented materialization boundary. A fresh
+Nsight trace for the accepted program remains part of the larger capacity and
+topology frontier rather than a condition for this program-level acceptance.
+
+* Superseded gradient and axis-type annotation experiment
+
+A follow-up experiment asked where to put the annotation that recovers the
+explicit-collective control's compact schedule:
+
+| global-program variant | examples / second | compiled AG / AR / RS |
+|------------------------+-------------------+-----------------------|
+| Auto, bucketed global boundary | 31.68 | 2 / 6 / 2 |
+| Explicit, bucketed global boundary | 31.61 | 2 / 6 / 2 |
+| plan-driven explicit-collective control | 31.62 | 2 / 6 / 2 |
+| Auto, unbucketed full-model boundary | 10.09 | 8 / 9 / 1 |
+| Auto, post-backward sharded-gradient constraint | 9.56 | 8 / 10 / 1 |
+| Explicit, post-backward sharded-gradient constraint | 9.50 | 8 / 10 / 1 |
+| Auto, parameter use-site materialization | 6.00 | 19 / 4 / 7 |
+
+The post-backward constraint was too late: autodiff had already selected the
+transpose of the replicated model boundary, so it only adds synchronization.
+The then-accepted program reshaped and concatenated compatible global
+parameter leaves while retaining their sharded annotation, annotates the packed
+bucket as replicated, then slices it for the ordinary model forward. Autodiff
+transposes that identity into the matching sharded gradient bucket. No custom
+VJP or full-model explicit collective is required.
+
+=AxisType.Explicit= remains valuable as a validation lane because illegal
+sharding propagation becomes a trace-time error. It reaches the same collective
+schedule and steady-state rate, but compiled in 18.55 seconds versus 0.89 for
+=Auto=. =Auto= therefore remains the measured runtime default.
+
+* Why the packed model boundary was removed
+
+The packed boundary was fast on the four-device 149M probe, but it widened the
+materialized lifetime and required a separate layer-control path for the 1.9795B
+capacity point.  The final program instead keeps the same at-rest
+=PartitionSpec= tree and annotates shared linear and normalization operations at
+their exact use sites.  It preserves the large-model capacity frontier without
+the packed tree reconstruction, explicit collectives, or =fsdp_materialize()=.
+
+* Automated acceptance
+
+The current distributed suite exercises DDP, same-axis FSDP, parameter-only FSDP, 2x2
+hybrid data/model sharding, custom partition rules, and Orbax sharded restore on
+two- and four-device virtual topologies. ModernVBERT additionally runs ten
+optimizer updates on two- and four-device meshes, comparing every array leaf
+with the one-device state after each matched scientific program.
+
+* Raw artifacts
+
+Corrected raw profiles live under
+=/raid/representax/benchmarks/sharding-annotations-20260819/= and
+=/raid/representax/benchmarks/sharding-gradient-annotations-20260819/=:
+
+- =single-reference-10-updates-b16-s128.json=;
+- =ddp-10-updates-world4-b16-s128.json=;
+- =fsdp-10-updates-world4-b16-s128.json=;
+- =ddp-global-annotations-world4-b16-s128.json=;
+- =fsdp-global-packed-world4-b16-s128.json=;
+- =fsdp-global-packed-explicit-world4-b16-s128.json=;
+- their corresponding =.mlir= and compiled-HLO files; and
+- the corrected explicit-collective control under
+  =/raid/representax/benchmarks/sharding-manual-recheck-20260819/=.
+
+The older =ddp-auto-runtime-world4-b16-s128.nsys-rep= and
+=fsdp-auto-model-runtime-world4-b16-s128.nsys-rep= traces diagnose the
+unbucketed program and are not accepted profiles of the current implementation.
+
+The earlier =/raid/representax/benchmarks/sharding-modernvbert-20260819/=
+artifacts are retained only as superseded diagnostic evidence. Reproduce the
+current isolated measurements with =benchmarks/profile_sharding_modernvbert.py=.

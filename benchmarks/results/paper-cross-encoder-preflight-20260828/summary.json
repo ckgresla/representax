@@ -1,0 +1,53 @@
+{
+  "schema_version": "representax-paper-cross-encoder-preflight-v1",
+  "artifact_root": "/raid/representax/paper-campaign-v1/preflight/cross-encoder/seed-7-v2",
+  "supersedes": {
+    "artifact_root": "/raid/representax/paper-campaign-v1/preflight/cross-encoder/seed-7-v1",
+    "cause": "Sentence Transformers trained positionally reversed document/query columns"
+  },
+  "contract": {
+    "model": "cross-encoder/ms-marco-MiniLM-L6-v2",
+    "revision": "233902d25c440f23af6f7d6e94d2946bac0bee0a",
+    "training_data": "sentence-transformers/msmarco-msmarco-MiniLM-L6-v3",
+    "evaluation_data": "ir_datasets:msmarco-passage/trec-dl-2019/judged",
+    "seed": 7,
+    "updates": 8,
+    "global_batch": 128,
+    "micro_batch": 16,
+    "maximum_length": 512,
+    "precision": "bfloat16-compute-float32-master",
+    "reference": "sentence-transformers==5.6.1",
+    "hardware": "one NVIDIA GeForce RTX 4090 24GB"
+  },
+  "representax": {
+    "mean_training_loss": 2.889054447412491,
+    "warm_examples_per_second": 515.4488510392358,
+    "initial_ndcg_at_10": 0.6072103807442515,
+    "final_ndcg_at_10": 0.6054104817738652,
+    "checkpoint_iterations": [4, 8],
+    "resumed": true,
+    "native_reload_maximum_absolute_difference": 0.0,
+    "huggingface_export_verified": true,
+    "sentence_transformers_loaded_huggingface_export": true
+  },
+  "sentence_transformers": {
+    "mean_training_loss": 2.9160769283771515,
+    "end_to_end_examples_per_second": 240.7392576873793,
+    "initial_ndcg_at_10": 0.6072103807442515,
+    "final_ndcg_at_10": 0.6065992981233277,
+    "checkpoint_iterations": [4, 8],
+    "reload_parameters_exact": true
+  },
+  "comparison": {
+    "mean_loss_absolute_difference": 0.027022480964660645,
+    "initial_ndcg_at_10_difference": 0.0,
+    "final_ndcg_at_10_absolute_difference": 0.0011888163494624404,
+    "representax_warm_over_reference_end_to_end_throughput": 2.141108417425589,
+    "throughput_denominators_matched": false
+  },
+  "input_hashes": {
+    "data_manifest_sha256": "c5ace34e26982370b1e3e00c91b35c652e1f2bfead01117821aad17cde89d417",
+    "canonical_summary_sha256": "e186929fcab8e615144a57917bc0e3eca808323640bd40b4cbb131db74ce2d44"
+  },
+  "verdict": "operational-quality-lifecycle-pass-longer-matched-timing-run-pending"
+}

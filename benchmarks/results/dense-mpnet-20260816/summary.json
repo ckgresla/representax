@@ -1,0 +1,96 @@
+{
+  "contract": {
+    "batch_size": 16,
+    "checkpoint": "sentence-transformers/all-mpnet-base-v2",
+    "checkpoint_revision": "e8c3b32edf5434bc2275fc9bab85f82640a19130",
+    "compute_dtype": "float32",
+    "measurement_iterations": 20,
+    "probe_timeout_seconds": 180.0,
+    "sentence_transformers_version": "5.6.1",
+    "sequence_length": 128,
+    "warmup_iterations": 5,
+    "workload_fingerprint": "8edd4b1bc636fddde85d46265c2ed14b8b28632009570d475cc4648ffc9337cd"
+  },
+  "full_string_numerical": {
+    "cosine": 1.0,
+    "max_absolute": 1.1827796697616577e-07,
+    "relative_l2": 9.096302733269113e-07
+  },
+  "matched_forward_numerical": {
+    "cosine": 1.0,
+    "max_absolute": 2.905726432800293e-07,
+    "mean_absolute": 2.930761944242022e-08,
+    "relative_l2": 1.0949401030302397e-06
+  },
+  "representax": {
+    "allocator_peak_device_bytes": 818331648,
+    "backend_version": "0.10.1",
+    "compilation_seconds": 15.990693338215351,
+    "external_peak_device_bytes": 1499463680,
+    "first_execution_seconds": 0.012240109965205193,
+    "initialization_seconds": 1.647609556093812,
+    "steady_state_examples_per_second": 1445.3486369829507,
+    "steady_state_median_seconds": 0.011069993488490582,
+    "steady_state_seconds": [
+      0.011103708297014236,
+      0.011060008779168129,
+      0.01104779727756977,
+      0.011038199067115784,
+      0.011043937876820564,
+      0.011063728481531143,
+      0.011046558618545532,
+      0.01107693836092949,
+      0.011045878753066063,
+      0.01107378862798214,
+      0.01105903834104538,
+      0.011066198348999023,
+      0.011064067482948303,
+      0.011093588545918465,
+      0.01109393686056137,
+      0.011083457618951797,
+      0.011082388460636139,
+      0.011091247200965881,
+      0.011134019121527672,
+      0.01109771803021431
+    ]
+  },
+  "result": {
+    "cold_start_delta_seconds": 16.951586006209254,
+    "external_memory_ratio": 1.3364485981308412,
+    "memory_ratio": 1.2751991421568627,
+    "memory_status": "warning",
+    "speedup": 1.1526853360356006,
+    "steady_state_break_even_steps": 10029.185007598357
+  },
+  "sentence_transformers": {
+    "allocator_peak_device_bytes": 641728512,
+    "backend_version": "2.13.0+cu130",
+    "external_peak_device_bytes": 1121976320,
+    "first_execution_seconds": 0.2673357278108597,
+    "initialization_seconds": 0.43162127025425434,
+    "steady_state_examples_per_second": 1253.8969585176635,
+    "steady_state_median_seconds": 0.012760219164192677,
+    "steady_state_seconds": [
+      0.01273367926478386,
+      0.012670379132032394,
+      0.012682059779763222,
+      0.012761779129505157,
+      0.012681908905506134,
+      0.0126982182264328,
+      0.012692108750343323,
+      0.012758659198880196,
+      0.01271846890449524,
+      0.012876799330115318,
+      0.012775348499417305,
+      0.012804288417100906,
+      0.012741638347506523,
+      0.012780409306287766,
+      0.012768179178237915,
+      0.012781849130988121,
+      0.012788387015461922,
+      0.012719638645648956,
+      0.01277666911482811,
+      0.01276220940053463
+    ]
+  }
+}

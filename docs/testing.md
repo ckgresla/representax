@@ -13,8 +13,87 @@ Markers describe how a test executes:
 The default `pytest` command excludes the four environment-sensitive lanes.
 Each lane can be selected across the mirrored tree with `pytest -m <marker>`.
 
+## Task-loss acceptance
+
+The canonical Sentence Transformers loss inventory is one discoverable file:
+
+```bash
+python -m pip install -e ".[test,performance]" --group parity
+pytest -m parity tests/tasks/test_sentence_transformers_parity.py
+pytest -m performance tests/tasks/test_sentence_transformers_parity.py -s
+```
+
+The parity lane generates shared NumPy tensors, passes the same values to JAX
+and the pinned Sentence Transformers 5.6.1 class, then compares the scalar loss
+and every representation gradient. An explicit coverage assertion keeps the 29
+classes claimed as native synchronized with the paired cases. Cached MNR uses
+each runtime's chunked score-row objective; end-to-end encoder replay and
+distributed execution remain in the dedicated GradCache acceptance suites.
+
+The performance lane compiles one native forward-and-backward program per
+class, warms both runtimes, synchronizes every sample, and reports median
+latency. It is intentionally separate from parity and emits performance
+shortfalls as warnings. Small loss-only measurements show dispatch and fusion
+quality; full encoder training remains the authoritative systems benchmark.
+
+## GradCache training-step matrix
+
+The pinned ModernVBERT GradCache matrix measures one complete device-side
+optimizer step: token encoder forwards, pooling, cached MNR, representation
+cotangents, rematerialized parameter-gradient replay, gradient metrics, and one
+AdamW update. It deliberately excludes dataset opening, preprocessing,
+reporting, checkpoint publication, and final export, so it is not described as
+an end-to-end training benchmark.
+
+Run the four matched points concurrently on two isolated GPUs:
+
+```bash
+python -m benchmarks.grad_cache_matrix \
+  --checkpoint /immutable/path/to/modernvbert-snapshot \
+  --output-directory /raid/representax/benchmarks/gradcache-st56 \
+  --native-gpu 4 --upstream-gpu 5 \
+  --batches 32 128 512 1024 \
+  --source-commit "$(git rev-parse HEAD)"
+```
+
+The matrix runner requires Sentence Transformers 5.6.1, runs each matched pair
+concurrently in fresh subprocesses, removes a potentially conflicting
+`LD_LIBRARY_PATH`, disables the native persistent compilation cache for the
+cold-start measurement, and writes raw logs, reports, and one validated
+summary. Contract or numerical mismatches fail immediately. A speed shortfall
+is recorded as a warning in the artifact; the controlled repository acceptance
+test requires all four recorded points to beat the oracle.
+
+To rerun the same gate through pytest, set the checkpoint and GPU pair:
+
+```bash
+export REPRESENTAX_MODERNVBERT_CHECKPOINT=/immutable/path/to/snapshot
+export REPRESENTAX_GRAD_CACHE_PERFORMANCE_GPUS=4,5
+pytest -q -s -m performance \
+  tests/train/test_grad_cache_performance.py
+```
+
+The disk-to-final-model contract is broader and is specified separately in
+[`dense-system-audit.md`](dense-system-audit.md).
+
+## Static analysis
+
+Run the import-free development gate before pytest:
+
+```bash
+python -m pip install -e ".[config,hf,test,performance]" --group static
+python scripts/check.py
+```
+
+It checks formatting and lint rules with Ruff, then type-checks `src`, tests,
+examples, and repository scripts with ty. The tools live in the repository-only
+`static` dependency group. Optional PyTorch and Pillow imports are dynamic only
+inside their upstream-oracle files; the production source receives no relaxed
+type-checking rules.
+
 Ordinary CI runs the fast suite on CPU across Python 3.11, 3.12, and 3.13.  It
-runs the generic training/runtime tree once on Python 3.13, exercises the two-
+runs the static gate once on Python 3.13, the generic training/runtime tree once
+on Python 3.13, exercises the two-
 and four-device distributed semantics with four virtual CPU devices, and builds
 and installs the wheel in a fresh CPU-only context.  Model-family runtime,
 upstream parity, and matched systems measurements remain their explicit lanes
@@ -151,6 +230,56 @@ python -m pip install -e ".[test,performance]" --group parity-modernvbert
 export REPRESENTAX_MODERNVBERT_TRANSFORMERS_PYTHON=/path/to/tf53/bin/python
 pytest -m performance tests/models
 ```
+
+The dense Sentence Transformers cases use the repository-only `parity` group
+and immutable local snapshots:
+
+```bash
+python -m pip install -e ".[test,performance]" --group parity
+export REPRESENTAX_SENTENCE_TRANSFORMERS_PYTHON=/path/to/parity/bin/python
+export REPRESENTAX_MINILM_CHECKPOINT=/path/to/all-MiniLM-L6-v2
+export REPRESENTAX_MPNET_CHECKPOINT=/path/to/all-mpnet-base-v2
+pytest -m parity tests/models/sentence_transformers
+pytest -m performance tests/models/test_implementations.py
+```
+
+Native MPNet parameter, input-gradient, optimizer-update, and export parity use
+the same Transformers 5.3.0 environment through
+`REPRESENTAX_MPNET_TRANSFORMERS_PYTHON`.
+
+LLaVA-NeXT acceptance uses current Sentence Transformers 5.6.1 for the four
+BGE checkpoints. E5-V records Sentence Transformers 5.4.0 and Transformers
+5.5.0 in its own artifact metadata, so its upstream oracle lives in a separate
+repository-only environment:
+
+```bash
+python -m pip install -e ".[test,performance]" --group parity-llava-next-legacy
+export REPRESENTAX_E5_SENTENCE_TRANSFORMERS_PYTHON=/path/to/legacy/bin/python
+export REPRESENTAX_E5_SENTENCE_TRANSFORMERS_VERSION=5.4.0
+```
+
+This split is intentional. Sentence Transformers 5.6.1 delegates E5-V to the
+new Transformers 5.6 base `LlavaNextModel`, whose renamed vision prefix leaves
+all 24 source vision layers missing and randomly initialized. The legacy oracle
+loads all 686 encoder tensors; Representax's native loader accepts both layouts
+without executing repository code.
+
+The pinned Jina v5 Omni Small text path has its own BF16 forward gate. The
+checkpoint is optional, non-redistributed test data and remains governed by its
+CC BY-NC 4.0 artifact license:
+
+```bash
+export REPRESENTAX_JINA_V5_SMALL_CHECKPOINT=/path/to/pinned/snapshot
+export REPRESENTAX_JINA_V5_SMALL_ORACLE=/path/to/jina-v5-small-text-st56.npz
+python -m tests.models.jina_v5.transformers_oracle \
+  "$REPRESENTAX_JINA_V5_SMALL_CHECKPOINT" \
+  "$REPRESENTAX_JINA_V5_SMALL_ORACLE"
+pytest -q -m parity tests/models/jina_v5/test_transformers_parity.py
+```
+
+The complete raw-JSONL-to-fresh-reload comparison for MiniLM and Jina Small is
+replayed with `python -m benchmarks.dense_end_to_end`; the reviewed baseline is
+in [`benchmarks/results/dense-e2e-20260817`](../benchmarks/results/dense-e2e-20260817/README.org).
 
 Each comparison also checks its final output numerically before applying the
 speed and memory thresholds. A faster program doing different work cannot pass.

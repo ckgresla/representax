@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 import equinox as eqx
 import jax
@@ -10,10 +10,11 @@ import jax.numpy as jnp
 import optax
 import pytest
 
-from representax.core import EncoderMetadata, Modality, Route, encode
+from representax.core import BUILTIN_MODALITIES, EncoderMetadata, Route, encode
 from representax.models import DenseEncoder
+from representax.tasks.modifiers import MatryoshkaTask
 from representax.tasks.retrieval import MNRTask, retrieval_batch
-from representax.train import GradCache, build_train_step, make_train_state
+from representax.train import GradCache, build_train_step, init_train_state
 
 
 def _assert_array_trees_close(actual: Any, expected: Any) -> None:
@@ -69,16 +70,17 @@ def _nontrivial_batch():
 
 @pytest.mark.runtime
 @pytest.mark.parametrize("symmetric", [False, True])
-def test_grad_cache_matches_direct_full_optimizer_update(symmetric: bool):
+def test_grad_cache_matches_direct_full_optimizer_update(
+    symmetric: bool,
+):
     model = DenseEncoder(4, 3, key=jax.random.key(0), normalize=False)
-    task = MNRTask(
-        scale=7.0,
-        symmetric=symmetric,
-        dimensions=(2, 3),
-        dimension_weights=(1.0, 2.0),
+    task = MatryoshkaTask(
+        MNRTask(scale=7.0, symmetric=symmetric),
+        (2, 3),
+        weights=(1.0, 2.0),
     )
     optimizer = optax.adamw(learning_rate=1e-3, weight_decay=1e-2)
-    state = make_train_state(model, optimizer)
+    state = init_train_state(model, optimizer)
     batch = _nontrivial_batch()
     direct = build_train_step(
         task,
@@ -90,7 +92,54 @@ def test_grad_cache_matches_direct_full_optimizer_update(symmetric: bool):
         task,
         optimizer,
         max_grad_norm=0.7,
-        execution=GradCache(query_chunk_size=2, document_chunk_size=3),
+        execution=GradCache(
+            query_chunk_size=2,
+            document_chunk_size=3,
+        ),
+        donate_state=False,
+    )
+
+    direct_result = direct(state, batch, jax.random.key(17))
+    cached_result = cached(state, batch, jax.random.key(17))
+
+    _assert_array_trees_close(cached_result.metrics, direct_result.metrics)
+    _assert_array_trees_close(cached_result.state, direct_result.state)
+
+
+@pytest.mark.runtime
+@pytest.mark.parametrize("symmetric", [False, True])
+@pytest.mark.parametrize("dimensions_per_step", [None, -1, 1])
+def test_custom_vjp_grad_cache_matches_direct_full_optimizer_update(
+    symmetric: bool,
+    dimensions_per_step: int | None,
+):
+    model = DenseEncoder(4, 3, key=jax.random.key(0), normalize=False)
+    task = MNRTask(scale=7.0, symmetric=symmetric)
+    if dimensions_per_step is not None:
+        task = MatryoshkaTask(
+            task,
+            (2, 3),
+            weights=(1.0, 2.0),
+            dimensions_per_step=dimensions_per_step,
+        )
+    optimizer = optax.adamw(learning_rate=1e-3, weight_decay=1e-2)
+    state = init_train_state(model, optimizer)
+    batch = _nontrivial_batch()
+    direct = build_train_step(
+        task,
+        optimizer,
+        max_grad_norm=0.7,
+        donate_state=False,
+    )
+    cached = build_train_step(
+        task,
+        optimizer,
+        max_grad_norm=0.7,
+        execution=GradCache(
+            query_chunk_size=2,
+            document_chunk_size=3,
+            implementation="custom_vjp",
+        ),
         donate_state=False,
     )
 
@@ -113,7 +162,7 @@ class _StochasticEncoder(eqx.Module):
             revision="1",
             output_dimension=3,
             routes=frozenset(Route),
-            modalities=frozenset(Modality),
+            modalities=BUILTIN_MODALITIES,
         )
         self.keep_probability = keep_probability
 
@@ -154,13 +203,27 @@ def _explicit_chunked_encode(
     return jnp.concatenate(embeddings, axis=0)[:batch_size]
 
 
-def test_grad_cache_rematerialization_replays_stochastic_chunks_exactly():
+@pytest.mark.parametrize("implementation", ["rematerialized", "custom_vjp"])
+@pytest.mark.parametrize("matryoshka", [False, True])
+def test_grad_cache_replays_stochastic_chunks_exactly(
+    implementation: Literal["rematerialized", "custom_vjp"],
+    matryoshka: bool,
+):
     model = _StochasticEncoder(key=jax.random.key(1))
     batch = _nontrivial_batch()
     task = MNRTask(scale=3.0, symmetric=True)
-    execution = GradCache(query_chunk_size=2, document_chunk_size=3)
+    if matryoshka:
+        task = MatryoshkaTask(task, (2, 3), weights=(1.0, 2.0), dimensions_per_step=1)
+    execution = GradCache(
+        query_chunk_size=2,
+        document_chunk_size=3,
+        implementation=implementation,
+    )
     key = jax.random.key(29)
-    query_key, document_key = jax.random.split(key)
+    representation_key, modifier_key = (
+        jax.random.split(key) if matryoshka else (key, None)
+    )
+    query_key, document_key = jax.random.split(representation_key)
 
     def explicit_loss(candidate: _StochasticEncoder) -> jax.Array:
         queries = _explicit_chunked_encode(
@@ -177,6 +240,13 @@ def test_grad_cache_rematerialization_replays_stochastic_chunks_exactly():
             chunk_size=3,
             key=document_key,
         )
+        if matryoshka:
+            return task.loss_from_representations(
+                (queries, documents),
+                batch,
+                key=modifier_key,
+            ).loss
+        assert isinstance(task, MNRTask)
         return task.loss_from_embeddings(queries, documents, batch).loss
 
     def cached_loss(candidate: _StochasticEncoder) -> jax.Array:
@@ -187,7 +257,8 @@ def test_grad_cache_rematerialization_replays_stochastic_chunks_exactly():
 
     assert jnp.array_equal(cached_value, explicit_value)
     _assert_array_trees_close(cached_gradients, explicit_gradients)
-    assert "remat" in str(jax.make_jaxpr(cached_loss)(model))
+    if implementation == "rematerialized":
+        assert "remat" in str(jax.make_jaxpr(cached_loss)(model))
 
 
 @pytest.mark.parametrize(
@@ -212,3 +283,16 @@ def test_grad_cache_rejects_nonpositive_chunk_sizes(
             document_chunk_size=document_chunk_size,
             loss_row_chunk_size=loss_row_chunk_size,
         )
+
+
+def test_grad_cache_rejects_unknown_implementation():
+    with pytest.raises(ValueError, match="implementation must be"):
+        GradCache(query_chunk_size=2, implementation="unknown")  # ty: ignore[invalid-argument-type]
+
+
+def test_custom_vjp_grad_cache_rejects_non_mnr_modifier():
+    from representax.tasks.late_interaction import LateInteractionTask
+
+    execution = GradCache(query_chunk_size=2, implementation="custom_vjp")
+    with pytest.raises(TypeError, match="custom-VJP GradCache requires"):
+        execution.validate(LateInteractionTask())

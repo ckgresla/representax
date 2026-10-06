@@ -1,6 +1,12 @@
 """Generic training state and compiled update construction."""
 
-from representax.config import CheckpointConfig, LoggingConfig
+from representax.config import (
+    CheckpointConfig,
+    LoggingConfig,
+    MegaBatchMiningConfig,
+    WandbConfig,
+)
+from representax.precision import PrecisionPolicy, resolve_precision_policy
 
 from .checkpoint import (
     CheckpointError,
@@ -15,19 +21,40 @@ from .checkpoint import (
     validate_complete_checkpoint,
 )
 from .config import build_loss_execution
+from .evaluation import EvaluationResult, EvaluationRunner, evaluate
 from .execution import Direct, ExecutionContext, LossExecution
 from .grad_cache import GradCache
+from .job import (
+    build_batches,
+    build_collate,
+    build_component,
+    load_model,
+    prepare_model,
+    resolve_target,
+    run_job,
+)
 from .logging import MetricRecord, Reporter, RunLogger
-from .loop import TrainingRunResult, run_training
-from .sharding import DataParallel, build_data_parallel_train_step
+from .loop import DataStarvationError, TrainingRunResult
+from .mega_batch import MegaBatchMining
+from .optimizer import build_optimizer, build_schedule
+from .sharding import (
+    ProcessLocalBatch,
+    ShardingPlan,
+    fsdp_parameter_specs,
+    fsdp_partition_spec,
+    parameter_specs_from_rules,
+    place_model,
+)
 from .state import StepMetrics, StepResult, TrainState
 from .step import (
     TrainStep,
     build_train_step,
+    init_train_state,
     make_train_state,
     tree_all_finite,
     tree_global_norm,
 )
+from .wandb import WandbReporter
 
 __all__ = [
     "CheckpointConfig",
@@ -37,11 +64,18 @@ __all__ = [
     "CheckpointTicket",
     "CheckpointWriteError",
     "Direct",
-    "DataParallel",
+    "DataStarvationError",
+    "ShardingPlan",
     "ExecutionContext",
+    "EvaluationResult",
+    "EvaluationRunner",
     "GradCache",
     "IncompleteCheckpointError",
     "LossExecution",
+    "MegaBatchMining",
+    "MegaBatchMiningConfig",
+    "PrecisionPolicy",
+    "ProcessLocalBatch",
     "MetricRecord",
     "Reporter",
     "RestoredTrainingState",
@@ -52,11 +86,27 @@ __all__ = [
     "TrainStep",
     "LoggingConfig",
     "TrainingRunResult",
+    "WandbConfig",
+    "WandbReporter",
     "build_train_step",
     "build_loss_execution",
-    "build_data_parallel_train_step",
+    "build_batches",
+    "build_collate",
+    "build_component",
+    "load_model",
+    "prepare_model",
+    "build_optimizer",
+    "build_schedule",
+    "evaluate",
+    "fsdp_partition_spec",
+    "fsdp_parameter_specs",
+    "parameter_specs_from_rules",
+    "place_model",
+    "init_train_state",
     "make_train_state",
-    "run_training",
+    "run_job",
+    "resolve_target",
+    "resolve_precision_policy",
     "scientific_fingerprint",
     "training_checkpointables",
     "tree_all_finite",

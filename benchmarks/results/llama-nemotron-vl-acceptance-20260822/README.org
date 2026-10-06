@@ -1,0 +1,99 @@
+#+TITLE: Llama Nemotron VL acceptance — 2026-08-22
+#+OPTIONS: toc:2 num:nil
+
+* Decision
+
+Representax natively accepts both NVIDIA Llama Nemotron VL v2 checkpoints with
+one Equinox architecture: a SigLIP vision tower, exact dynamic tiling and pixel
+unshuffle projector, scanned bidirectional Llama decoder with Llama 3 rotary
+scaling, and either a 2,048-dimensional mean-pooled embedding output or an FP32
+linear relevance score.
+
+The implementation is Torch-free. It reads the standard fast tokenizer and
+checkpoint artifacts without executing the source's remote processor or model
+code. Native Hugging Face exports reload in the pinned upstream Transformers
+runtime with exactly the original output.
+
+* Immutable sources
+
+| mode | checkpoint | revision |
+|------+------------+----------|
+| embedding | =nvidia/llama-nemotron-embed-vl-1b-v2= | =582e3bf72aee355e3c59ed89de53543c5b0657ee= |
+| reranking | =nvidia/llama-nemotron-rerank-vl-1b-v2= | =9e95da054312436dfc703319dd2b793a3bee2465= |
+
+The embedding graph maps 589 executed tensors; the reranking graph maps those
+plus =score.weight=. The source checkpoints' 11 SigLIP classification-pooler
+tensors are intentionally omitted because the multimodal forward consumes only
+patch hidden states. Exported configuration sets =vision_use_head=false= so the
+upstream loader requires exactly the executed graph.
+
+* Preprocessing acceptance
+
+For a deterministic =64 x 512= image, native preprocessing exactly matches the
+source =AutoProcessor(trust_remote_code=True)= contract:
+
+- dynamic aspect-ratio tiling and thumbnail selection produce seven tiles;
+- every normalized BF16 pixel is exact after conversion to FP32 for comparison;
+- query, passage, image-only, composed image-text, and reranking prompt token IDs
+  and attention masks are exact; and
+- the runtime admits only configured finite sequence- and tile-count buckets.
+
+* BF16 inference parity
+
+The upstream oracle uses Transformers 5.6, Torch BF16 SDPA, and the checkpoint's
+authored remote model. Representax uses BF16 parameters and compute with highest
+JAX matmul precision on an RTX 4090. Values below compare final outputs.
+
+| mode | route | max abs | relative L2 | cosine |
+|------+-------+---------+-------------+--------|
+| embed | query | 0.0636804 | 0.0145558 | 0.99989462 |
+| embed | text passage | 0.0885134 | 0.0117175 | 0.99993175 |
+| embed | image passage | 0.0577317 | 0.0090175 | 0.99995941 |
+| embed | composed passage | 0.0872984 | 0.0128258 | 0.99991852 |
+| rerank | text pair | 0.0126181 | 0.0023461 | 1.0 |
+| rerank | image pair | 0.0045996 | 0.0008007 | 1.0 |
+| rerank | composed pair | 0.0025578 | 0.0005531 | 1.0 |
+
+A layerwise audit starts bit-exact at token embedding and retains >0.99999
+cosine through the decoder layers. The residual is BF16 backend accumulation
+order, not a different attention mask, rotary policy, pooling rule, or processor.
+
+* Three-update training acceptance
+
+Both real checkpoints use the ordinary =build_train_step= path with a packed
+BF16 base, FP32 LoRA-4 adapters over the scanned text stack, AdamW at =1e-4=,
+global-norm clipping at 1.0, full activation rematerialization, and a composed
+image-text input. Every update is finite, accepted, and has nonzero update norm.
+
+| mode | objective | losses |
+|------+-----------+--------|
+| embedding | query/document cosine regression | =0.284750 -> 0.249428 -> 0.181538= |
+| reranking | scalar score regression | =32.2056 -> 28.4222 -> 19.1680= |
+
+The decrease is an optimizer-path acceptance gate, not a downstream-quality
+claim. A fast contract separately verifies finite nonzero image cotangents.
+
+* Export and reload
+
+Each native BF16 model was exported with its original tokenizer, processor,
+prompt, and remote-code assets plus a newly serialized safetensors graph. A
+fresh Transformers 5.6 process loaded the export on GPU and reproduced the
+original composed output exactly:
+
+| mode | exported tensors | max abs | relative L2 |
+|------+------------------+---------+-------------|
+| embedding | 589 | 0.0 | 0.0 |
+| reranking | 590 | 0.0 | 0.0 |
+
+* Evidence
+
+Tracked executable gates:
+
+- =tests/models/nemotron_vl/test_model.py=
+- =tests/models/nemotron_vl/test_transformers_parity.py=
+- =tests/models/nemotron_vl/test_gpu_acceptance.py=
+- =tests/models/nemotron_vl/transformers_reload.py=
+
+Raw oracle arrays, clean exports, and reload outputs remain outside Git at
+=/raid/representax/acceptance/nemotron-vl/=. GPUs 4 and 5 were isolated for all
+accelerator work.

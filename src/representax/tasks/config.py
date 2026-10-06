@@ -17,4 +17,10 @@ class LossConfig(FrozenConfig):
     kind: NonEmptyString
 
 
-__all__ = ["LossConfig", "TaskConfig"]
+class LossModifierConfig(FrozenConfig):
+    """Serializable loss-composition identity resolved by a modifier registry."""
+
+    kind: NonEmptyString
+
+
+__all__ = ["LossConfig", "LossModifierConfig", "TaskConfig"]

@@ -12,7 +12,7 @@ import statistics
 import time
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
@@ -42,7 +42,7 @@ def _arguments() -> argparse.Namespace:
 
 def _fingerprint(inputs: dict[str, np.ndarray]) -> str:
     digest = hashlib.sha256()
-    workload = b"fused" if "pixel_values" in inputs else b"text"
+    workload = b"text_image" if "pixel_values" in inputs else b"text"
     digest.update(b"modernvbert-forward-fp32-v2-")
     digest.update(workload)
     for name in sorted(inputs):
@@ -160,10 +160,13 @@ def _transformers(
 
     started = time.perf_counter()
     with transformers_tacet():
-        model = ModernVBertModel.from_pretrained(
-            arguments.checkpoint,
-            dtype=torch.float32,
-            local_files_only=True,
+        model = cast(
+            Any,
+            ModernVBertModel.from_pretrained(
+                arguments.checkpoint,
+                dtype=torch.float32,
+                local_files_only=True,
+            ),
         ).to("cuda")
     model.eval()
     input_ids = torch.as_tensor(inputs["input_ids"], device="cuda", dtype=torch.long)

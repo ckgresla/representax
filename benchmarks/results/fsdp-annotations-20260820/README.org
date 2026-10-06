@@ -1,0 +1,61 @@
+#+title: Annotation-only FSDP acceptance — 2026-08-20
+
+* Decision
+
+Representax now expresses DDP, FSDP, and custom sharding as one global JAX
+training program.  =ShardingPlan= declares persistent parameter, Optax-state,
+batch, and result layouts.  Shared model primitives annotate exact parameter-use
+and activation layouts; JAX/Shardy inserts forward communication and derives its
+autodiff transpose.  There is no separate FSDP trainer, per-model materializer,
+custom VJP, manual gradient synchronization, or configurable layer boundary.
+
+=AxisType.Explicit= is the trace-time correctness lane.  =AxisType.Auto= remains
+the measured execution default.  Tiny ModernVBERT programs match the one-device
+loss and every model/optimizer leaf for ten updates on both two- and four-device
+meshes.
+
+* Physical acceptance
+
+All physical rows use GPUs 4 and 5, FP32 parameters and compute, highest matmul
+precision, AdamW at =1e-5= without clipping or weight decay, exact MNR GradCache,
+full activation rematerialization, deterministic synthetic token tensors, and
+one warmup plus three synchronized measured updates.
+
+| implementation | parameters | batch / sequence | median step | peak live JAX / GPU | peak process | result |
+|----------------+------------+------------------+-------------+---------------------+--------------+--------|
+| shared primitive annotations | 149,044,992 | 8 / 128 | 1.477 s | 3.042 GB | 4.937 GB | completed |
+| superseded explicit layer control | 149,044,992 | 8 / 128 | 1.333 s | 3.467 GB | 4.941 GB | completed |
+| shared primitive annotations | 1,979,520,768 | 2 / 128 | 11.373 s | 21.492 GB | 22.387 GB | completed |
+| superseded explicit layer control | 1,979,520,768 | 2 / 128 | 12.524 s | 20.995 GB | — | completed |
+
+At the capacity point, the generic program is 9.2% faster while using 0.497 GB
+(2.4%) more peak live memory.  Both GPUs retain exactly 3.959 GB of model state
+and 7.918 GB of Adam state, reach 100% sampled utilization, and complete three
+finite, accepted updates.  The direct annotations therefore recover the old
+layer path's demonstrated capacity without an architecture hook.  The old
+1.9105B DDP program still OOMs before this larger FSDP point.
+
+At 149M, exact primitive annotations use less live JAX memory but are 10.8%
+slower than the superseded layer control on this PCIe-only topology.  This is a
+real schedule-optimization target, not a correctness exception.  Compilation
+times are not compared against the old capacity artifact because its executable
+was served from a warm persistent cache; the new 1.9795B cold compile took
+26.0 seconds.
+
+* Rejected alternatives
+
+- Replicating the complete embedding table reduced collective count but
+  regressed the 149M step from 1.477 to 1.730 seconds; distributed gather/scatter
+  is cheaper for vocabulary lookup.
+- Packing a sliced scan layer and applying a global =jax.reshard= preserved the
+  tiny explicit-sharding trajectory, but produced 17 AllGathers, 10 AllReduces,
+  6 CollectivePermutes, and a 3.051-second physical step.  It did not recover the
+  old schedule and was removed.
+- JAX's new reduced/unreduced placement vocabulary did not improve an isolated
+  linear transpose and remains absent from public documentation.  Representax
+  does not depend on it.
+
+Raw JSON, StableHLO, and compiled HLO are retained at
+=/raid/representax/benchmarks/fsdp-annotation-20260820/=.  The tracked result is
+the reviewable decision record; raw local artifacts preserve allocator, layout,
+collective, memory, utilization, and metric details.

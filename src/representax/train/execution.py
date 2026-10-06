@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 import equinox as eqx
-import jax
+from jaxtyping import PRNGKeyArray
 
 from representax.core import LossOutput, Task, evaluate_loss
 
@@ -16,6 +16,8 @@ class ExecutionContext:
     """Named collective axes available while evaluating a loss."""
 
     data_axis_name: str | None = None
+    data_mesh: Any | None = None
+    data_partition_axis: str | None = None
 
 
 _LOCAL_EXECUTION_CONTEXT = ExecutionContext()
@@ -32,7 +34,7 @@ class LossExecution(Protocol):
         model: eqx.Module,
         batch: Any,
         *,
-        key: jax.Array | None,
+        key: PRNGKeyArray | None,
         context: ExecutionContext = _LOCAL_EXECUTION_CONTEXT,
     ) -> LossOutput: ...
 
@@ -50,7 +52,7 @@ class Direct:
         model: eqx.Module,
         batch: Any,
         *,
-        key: jax.Array | None,
+        key: PRNGKeyArray | None,
         context: ExecutionContext = _LOCAL_EXECUTION_CONTEXT,
     ) -> LossOutput:
         if context.data_axis_name is not None:

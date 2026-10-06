@@ -1,0 +1,67 @@
+#+title: Multilingual CLIP-aligned DistilBERT acceptance — 2026-08-22
+
+* Scope
+
+Representax now owns a Torch-free scanned Equinox DistilBERT family and can
+compose it with the standard Sentence Transformers =Pooling= and =Dense=
+modules.  The physical anchor is the Apache-2.0
+=sentence-transformers/clip-ViT-B-32-multilingual-v1@58edf8c= artifact: 100
+backbone tensors plus one bias-free 768-to-512 projection, or 135,127,296
+parameters.  It is the multilingual text student aligned to the existing
+CLIP-B/32 image representation space; it is not another image encoder.
+
+* Contract
+
+The generic Sentence Transformers graph importer reads
+=Transformer -> Pooling(mean) -> Dense(identity)= without importing PyTorch or
+Sentence Transformers.  The checkpoint-associated Hugging Face tokenizer emits
+one admitted finite sequence bucket and the native DistilBERT batch deliberately
+omits token-type embeddings while accepting the tokenizer's legacy all-zero
+segment array.  The compiled forward is one =lax.scan= over six native attention
+and MLP layers, followed by native mean pooling and projection.
+
+* Numerical, preprocessing, and export acceptance
+
+The same English, German, and French records were encoded by Sentence
+Transformers 5.6.1 and Representax on an RTX 4090.  The resulting 512-dimensional
+representations match with maximum absolute error =9.5367e-7=, relative L2
+=1.9024e-7=, and cosine >= =0.999999=.  Source and exported token IDs and masks
+are bit-identical. All 100 native backbone tensors are also bit-identical after
+export/reload.
+
+Tiny same-tensor Transformers 5.6 gates cover hidden states, embedded-input
+cotangents, every parameter cotangent, one AdamW update, and a fresh upstream
+reload.  The full graph exporter preserves the tokenizer, Pooling/Dense graph,
+and non-architectural Hugging Face compatibility metadata while replacing the
+weights and structural configuration from the native model. Both a fresh
+Representax loader and a fresh Sentence Transformers process accept the result.
+
+* Training acceptance
+
+The real artifact completed three ordinary Representax cosine-regression
+updates with BF16 compute, a packed INT4 frozen transformer base, FP32 rank-4
+LoRA parameters, AdamW, and clipping. All updates were finite, accepted, and
+nonzero:
+
+| update | loss | update norm |
+|-
+| 1 | 0.274803 | 0.040706 |
+| 2 | 0.267612 | 0.050414 |
+| 3 | 0.260234 | 0.052319 |
+
+The trained adapter then merged into an ordinary native graph, exported to the
+same Hugging Face/Sentence Transformers layout, and reloaded through the public
+loader without consulting the source weights.
+
+* Acceptance evidence
+
+- =tests/models/distilbert/test_model.py=: native configuration, forward,
+  gradients, token contract, and exact checkpoint round trip;
+- =test_transformers_parity.py=: tiny same-tensor Transformer gates plus real
+  preprocessing, graph, numerical, native reload, and fresh upstream reload;
+  and
+- =test_gpu_acceptance.py=: real three-step adapter training and trained-artifact
+  merge/export/reload.
+
+Repository static, fast, package, and installed-smoke gates are rerun before the
+implementation commit lands.

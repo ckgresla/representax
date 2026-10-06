@@ -19,7 +19,17 @@ from representax.train import build_train_step, make_train_state
 def main() -> None:
     package_metadata = importlib.metadata.metadata("representax")
     extras = sorted(package_metadata.get_all("Provides-Extra", []))
-    assert extras == ["config", "cuda12", "cuda13", "hf", "performance", "test"]
+    assert extras == [
+        "config",
+        "cuda12",
+        "cuda13",
+        "hf",
+        "media",
+        "performance",
+        "test",
+        "tpu",
+        "wandb",
+    ]
     model = DenseEncoder(4, 3, key=jax.random.key(0))
     optimizer = optax.adamw(learning_rate=1e-3)
     state = make_train_state(model, optimizer)

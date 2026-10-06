@@ -1,0 +1,209 @@
+{
+  "commands": {
+    "facebookresearch-vjepa2": [
+      "/opt/miniconda/bin/python",
+      "-m",
+      "experiments.paper.vjepa",
+      "worker",
+      "--framework",
+      "facebookresearch-vjepa2",
+      "--reference",
+      "/raid/representax/paper-vjepa-preflight-20260831/reference/vjepa2",
+      "--data-directory",
+      "/raid/representax/paper-vjepa-preflight-20260831/data",
+      "--run-directory",
+      "/raid/representax/paper-vjepa-preflight-20260831/run-v5/facebookresearch-vjepa2",
+      "--report",
+      "/raid/representax/paper-vjepa-preflight-20260831/run-v5/facebookresearch-vjepa2.json",
+      "--steps",
+      "4",
+      "--seed",
+      "7"
+    ],
+    "representax": [
+      "/opt/miniconda/bin/python",
+      "-m",
+      "experiments.paper.vjepa",
+      "worker",
+      "--framework",
+      "representax",
+      "--reference",
+      "/raid/representax/paper-vjepa-preflight-20260831/reference/vjepa2",
+      "--data-directory",
+      "/raid/representax/paper-vjepa-preflight-20260831/data",
+      "--run-directory",
+      "/raid/representax/paper-vjepa-preflight-20260831/run-v5/representax",
+      "--report",
+      "/raid/representax/paper-vjepa-preflight-20260831/run-v5/representax.json",
+      "--steps",
+      "4",
+      "--seed",
+      "7"
+    ]
+  },
+  "contract": {
+    "data_manifest": {
+      "available_dataset_splits": [
+        "train"
+      ],
+      "contract": {
+        "dataset": {
+          "evaluate_split": "validation",
+          "license": "upstream-restricted",
+          "repo_id": "jxie/something_something_v2",
+          "revision": "86851581ad645fbce86488d474604ea2021ab3cc",
+          "train_split": "train"
+        },
+        "global_batch_size": 128,
+        "image_resolution": 256,
+        "reference_commit": "204698b45b3712590f06245fbfba32d3be539812",
+        "reference_config": "configs/train_2_1/vitb16/pretrain-256px-16f.yaml",
+        "video_frames": 16
+      },
+      "evaluation_split_deviation": {
+        "actual": "train",
+        "policy": "disjoint deterministic SSV2 holdout for readiness only",
+        "reason": "pinned Hugging Face revision exposes only the train split",
+        "requested": "validation"
+      },
+      "evaluation_videos": 4,
+      "files": {
+        "evaluation.jsonl": "sha256:c950728ccc2378ef711ce97d4fbfc747b21f021bae9473ed68691e9ae7cc217d",
+        "masks.npz": "sha256:4206b50f751bbcdb345bdbfdd52ad423201b1b21fddbea746fd6bd4951bb3c61",
+        "official-initialization.pth.tar": "sha256:82c390b94cf168ce640b0b6b34fd2bff11ce020071b3d9361f5b1829a3bd1c74",
+        "train.jsonl": "sha256:a265cf59c857bf95847ad87b6a6616d268ee59914f422a3e2143f862322828a5"
+      },
+      "mask_patterns": [
+        {
+          "aspect_ratio": [
+            0.75,
+            1.5
+          ],
+          "num_blocks": 8,
+          "spatial_scale": [
+            0.15,
+            0.15
+          ],
+          "temporal_scale": [
+            1,
+            1
+          ]
+        },
+        {
+          "aspect_ratio": [
+            0.75,
+            1.5
+          ],
+          "num_blocks": 2,
+          "spatial_scale": [
+            0.7,
+            0.7
+          ],
+          "temporal_scale": [
+            1,
+            1
+          ]
+        }
+      ],
+      "reference_checkout": "/raid/representax/paper-vjepa-preflight-20260831/reference/vjepa2",
+      "schema_version": "representax-vjepa-preflight-data-v1",
+      "seed": 7,
+      "training_videos": 4
+    },
+    "dataset": {
+      "evaluate_split": "validation",
+      "license": "upstream-restricted",
+      "repo_id": "jxie/something_something_v2",
+      "revision": "86851581ad645fbce86488d474604ea2021ab3cc",
+      "train_split": "train"
+    },
+    "global_batch_size": 128,
+    "gpu": 4,
+    "image_resolution": 256,
+    "reference_commit": "204698b45b3712590f06245fbfba32d3be539812",
+    "reference_config": "configs/train_2_1/vitb16/pretrain-256px-16f.yaml",
+    "seed": 7,
+    "steps": 4,
+    "video_frames": 16
+  },
+  "facebookresearch-vjepa2": {
+    "checkpoint": "/raid/representax/paper-vjepa-preflight-20260831/run-v5/facebookresearch-vjepa2/checkpoints/checkpoint-2.pt",
+    "device": "NVIDIA GeForce RTX 4090",
+    "elapsed_seconds": 10.233469353988767,
+    "final_evaluation": {
+      "condition_number": 2273501163292960,
+      "effective_rank": 2.3523262590037457,
+      "feature_std_mean": 0.5801953637105511,
+      "feature_std_min": 0.0063308188454330155
+    },
+    "framework": "facebookresearch-vjepa2",
+    "global_batch_size": 1,
+    "imagenet_probe": "gated-not-run-in-bounded-preflight",
+    "inference_bundle": "/raid/representax/paper-vjepa-preflight-20260831/run-v5/facebookresearch-vjepa2/final-model.pt",
+    "initial_evaluation": {
+      "condition_number": 3700994374478860,
+      "effective_rank": 2.352364272932505,
+      "feature_std_mean": 0.5801930750017714,
+      "feature_std_min": 0.006973727279932932
+    },
+    "losses": [
+      1.23311448097229,
+      1.2229595184326172,
+      1.2082746028900146,
+      1.264009714126587
+    ],
+    "peak_device_bytes": 5525812736,
+    "reference_commit": "204698b45b3712590f06245fbfba32d3be539812",
+    "reload_maximum_absolute_difference": 0,
+    "resumed": true,
+    "schema_version": "representax-vjepa-worker-v1",
+    "steps": 4,
+    "timing": {
+      "compilation_events": 0,
+      "compilation_seconds": 0,
+      "examples_per_second": 1.3140528049241296,
+      "measured_steps": 3,
+      "median_step_seconds": 0.7529129795730114
+    },
+    "torch_version": "2.10.0+cu128"
+  },
+  "representax": {
+    "checkpoint": "/raid/representax/paper-vjepa-preflight-20260831/run-v5/representax/checkpoints/2",
+    "device": "NVIDIA GeForce RTX 4090",
+    "elapsed_seconds": 140.88107152283192,
+    "final_evaluation": {
+      "condition_number": 2380866543699461,
+      "effective_rank": 2.352304176583255,
+      "feature_std_mean": 0.5802226458251795,
+      "feature_std_min": 0.006852904583866302
+    },
+    "framework": "representax",
+    "global_batch_size": 1,
+    "imagenet_probe": "gated-not-run-in-bounded-preflight",
+    "inference_bundle": "/raid/representax/paper-vjepa-preflight-20260831/run-v5/representax/final-model",
+    "initial_evaluation": {
+      "condition_number": 4179418799215457.5,
+      "effective_rank": 2.352426552193508,
+      "feature_std_mean": 0.5802192005161612,
+      "feature_std_min": 0.007754305100227544
+    },
+    "losses": [
+      1.2331515550613403,
+      1.2230019569396973,
+      1.2085834741592407,
+      1.2640407085418701
+    ],
+    "reload_maximum_absolute_difference": 0,
+    "resumed": true,
+    "schema_version": "representax-vjepa-worker-v1",
+    "steps": 4,
+    "timing": {
+      "compilation_events": 2,
+      "compilation_seconds": 44.03170157968998,
+      "examples_per_second": 6.161073473909703,
+      "measured_steps": 2,
+      "median_step_seconds": 0.16230937745422125
+    }
+  },
+  "schema_version": "representax-vjepa-preflight-v1"
+}

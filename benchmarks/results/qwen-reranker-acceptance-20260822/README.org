@@ -1,0 +1,74 @@
+#+title: Native Qwen text-reranker acceptance — 2026-08-22
+
+* Scope
+
+Representax now owns one Torch-free Equinox scoring family for the Qwen2 and
+Qwen3 causal decoder layouts used by the official Sentence Transformers
+multimodal release.  The accepted physical anchors are:
+
+- =Qwen/Qwen3-Reranker-0.6B@e61197e= (Apache-2.0, tied score rows);
+- =mixedbread-ai/mxbai-rerank-base-v2@3ea9d4d= (Apache-2.0, tied score rows);
+  and
+- =ContextualAI/ctxl-rerank-v2-instruct-multilingual-1b@8fd1edf= as a
+  CC-BY-NC-SA-4.0 external compatibility oracle (untied language-model head).
+
+The same reviewed family manifest owns the pinned Qwen3 4B/8B and mixedbread
+large architecture metadata.  Those larger capacity points reuse this forward;
+they are not misreported here as physically executed checkpoints.
+
+* Contract
+
+The model-associated processor reads each checkpoint's tokenizer, chat
+template, default prompt, and left-padding semantics and emits one admitted
+finite sequence bucket.  The native forward computes only the final hidden
+state and the one or two vocabulary rows consumed by =LogitScore=.  It exposes
+raw training logits separately from the checkpoint-configured inference score:
+Qwen3 and ContextualAI use identity; mixedbread inherits CrossEncoder's
+single-label sigmoid default.
+
+* Numerical and preprocessing parity
+
+The same two query/document records are preprocessed independently by Sentence
+Transformers 5.6.1 and Representax. Token IDs and attention masks are exactly
+equal for every checkpoint. Full-checkpoint BF16 results on RTX 4090 GPUs are:
+
+| Checkpoint | Output | max abs | relative L2 | cosine |
+|-
+| Qwen3 0.6B | raw and identity score | 0.134216 | 0.029113 | 0.999577 |
+| mixedbread base | raw logit | 0.022205 | 0.002648 | 0.999997 |
+| mixedbread base | sigmoid score | 0.003569 | 0.003050 | 0.999996 |
+| ContextualAI 1B | raw and identity score | 0.038036 | 0.006174 | 0.999982 |
+
+The BF16 tolerances cover backend reduction order, not a semantic exception:
+the tests assert the processor tensors and the raw-versus-activated score stages
+separately.
+
+* Training and export
+
+Each physical anchor runs three generic trainer updates with BF16 compute, a
+packed INT4 frozen base, FP32 rank-4 LoRA parameters, AdamW, clipping, and a
+binary relevance objective over raw logits. All updates are finite and nonzero:
+
+| Checkpoint | losses | update norms |
+|-
+| Qwen3 0.6B | 0.108025, 0.013862, 0.003361 | 0.117175, 0.129802, 0.103259 |
+| mixedbread base | 1.435308, 0.380857, 0.019607 | 0.110094, 0.123625, 0.119469 |
+| ContextualAI 1B | 0.017595, 0.011930, 0.005312 | 0.107028, 0.119718, 0.114459 |
+
+For all three anchors, the native adapter exports the exact source Hugging Face
+layout plus processor assets, reloads every represented tensor bit-for-bit in
+Representax, and reloads in a fresh Sentence Transformers process with exact
+preprocessing and accepted logits/scores. The CC-BY-NC-SA weights remain an
+external oracle and are never redistributed by Representax.
+
+* Acceptance evidence
+
+- =tests/models/qwen_reranker/test_model.py=: configuration, both generations,
+  tied/untied heads, reduced-vocabulary scoring, gradients, and round trip;
+- =test_sentence_transformers_parity.py=: exact preprocessing and BF16
+  raw/inference parity for three real artifacts;
+- =test_gpu_acceptance.py=: three real generic-trainer updates per anchor; and
+- =test_real_artifacts.py=: native plus fresh upstream export/reload.
+
+The repository static, fast, package, and installed-smoke gates are rerun before
+the implementation commit lands.

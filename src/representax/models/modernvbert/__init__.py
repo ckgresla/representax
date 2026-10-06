@@ -13,6 +13,7 @@ from .config import (
     ModernVBERTTextConfig,
     ModernVBERTVisionConfig,
 )
+from .mlm import ModernBERTMaskedLM
 from .model import (
     ModernVBERTTextBatch,
     ModernVBERTTextBlock,
@@ -24,6 +25,7 @@ from .multimodal import ModernVBERTBatch, ModernVBERTEncoder, merge_image_featur
 from .vision import SigLIPVisionTower, pixel_shuffle
 
 __all__ = [
+    "ModernBERTMaskedLM",
     "MODERNVBERT_MODEL_ID",
     "MODERNVBERT_REVISION",
     "ModernVBERTBatch",

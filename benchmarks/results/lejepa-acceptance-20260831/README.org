@@ -1,0 +1,94 @@
+#+TITLE: LeJEPA canonical readiness acceptance (2026-08-31)
+
+* Status
+
+Accepted for bounded lifecycle and cross-framework pipeline readiness only.
+This is not an ImageNet-1K quality result and no quality-trajectory parity is
+claimed.
+
+* Pinned contract
+
+- LeJEPA source: =c293d291ca87cd4fddee9d3fffe4e914c7272052=
+- stable-pretraining source: =9aa93f8b6153eebb73f57d4853ccf8a13d848310=
+- Exact paper objective: =(1-lambda)*invariance + lambda*per-view-SIGReg=
+- Views: 2 global at 224px and 6 local at 98px.
+- SIGReg: 1024 slices, 17 knots, maximum frequency 3.0.
+- Training projector: =hidden -> 512 -> 2048 -> 2048 -> 512=.
+- Public evaluation representation: final-two-block CLS concatenation followed
+  by LayerNorm; the projector is not on this path.
+- The paper's 98px local choice is authoritative. The pinned stable-pretraining
+  Imagenette example's 96px choice is not used. For patch-16, both workers use
+  unpadded Conv2d floor semantics, so 98px produces a 6x6 local patch grid.
+
+The bounded GPU model is the exactly matched timm ViT-S/16 profile. The native
+model also exposes ViT-B/16 and the paper ViT-L/16 304M-class profile; ViT-L has
+a 512-dimensional projector output and 2048-dimensional evaluation output.
+
+* Real data scope
+
+The runner consumed real images from =/raid/datasets/imagenet/train=, which has
+1000 extracted class directories. The bounded manifests contain 10 classes and
+deterministic disjoint train/probe/test subsets drawn from train images.
+
+Official validation is accepted for quality through the separately reproduced
+devkit and archive verification in
+=benchmarks/results/imagenet-validation-provenance-20260831/=. This bounded
+lifecycle still uses disjoint train subsets and therefore makes no quality claim.
+
+* Fair comparison
+
+Both workers loaded the same materialized timm backbone, pinned
+stable-pretraining projector, and evaluation LayerNorm state:
+
+- Parameters: 28,168,576 in both frameworks.
+- Initial state fingerprint:
+  =sha256:95fc77be54599599a4edda5f5d36a65a3b4ec5ee46a95bd5a7e896d2413bdd82=
+- Native pre-update loss: 0.1665240824.
+- PyTorch pre-update loss: 0.1665245593.
+- Pre-update component agreement passed at =rtol=1e-4, atol=1e-5=.
+- Standalone eight-view combined-objective values were bit-equal at
+  0.9779124260; projection-gradient maximum absolute error was 3.73e-09.
+
+Framework kernels, mixed-precision details, and stochastic-depth masks are not
+claimed to produce identical training trajectories. Post-update quality metric
+comparisons are diagnostic only.
+
+* Native lifecycle
+
+- GPUs: physical 4 and 5, model-sharded.
+- Real-image update 1: loss 0.1625788659, update norm 2.6493730545.
+- Checkpoint model and optimizer state restored exactly at update 1.
+- Resume probe restored the data cursor and RNG, then executed finite update 2
+  with loss 0.1415852755 and update norm 1.8661760092. It was not persisted.
+- Final native export remained the update-1 artifact and loaded through
+  =load_inference_bundle=.
+- The manual =JEPARepresentationEvaluator= ran over 70 readiness examples.
+  Reloaded-export metrics reproduced checkpoint metrics exactly.
+- Readiness-only exported metrics: linear probe 0.35, 20-NN 0.25, effective
+  rank 24.17867635, mean feature std 0.79361147, minimum feature std
+  0.24839386, condition number 411.93176255.
+
+* PyTorch reference lifecycle
+
+- GPU: physical 5.
+- Exact matched ViT-S/16, pinned projector implementation, paper 98px locals,
+  and corrected 1024-slice paper objective.
+- Real-image update 1: loss 0.1652138680, gradient norm 1.4760593176.
+- Checkpoint model and optimizer state restored exactly.
+- Frozen last-two-CLS evaluation ran over the same 70 readiness examples.
+
+* Artifacts
+
+The complete 797 MB lifecycle tree lives at
+=/raid/representax/paper-campaign-v1/preflight/lejepa-acceptance-20260831/=. Git
+retains the compact reports, raw metric stream and exact hashes only.
+
+- Paired acceptance: =result.json=
+- Native lifecycle: =representax/result.json=
+- Native manual evaluator: =representax/manual-evaluation.json=
+- Native inference artifact: under the full =/raid= tree
+- PyTorch lifecycle: =timm-reference/result.json=
+- Objective value/gradient parity: =objective-parity/result.json=
+- Shared initialization metadata: =shared-initialization.json=; tensor under
+  the full =/raid= tree
+- Real-data manifest: =data/manifest.json=

@@ -5,8 +5,10 @@ explicit:
 
 1. `build_train_step` closes over a task and Optax transformation and returns
    one compiled, model-neutral Equinox update;
-2. `run_training` owns Grain iteration, device-placement dispatch, reporting,
-   checkpointing, and failure cleanup on the host.
+2. the internal host loop owns Grain iteration, device-placement dispatch,
+   reporting, checkpointing, and failure cleanup;
+3. `run_job` is the sole public end-to-end entry point and builds both layers,
+   validation, model selection, and inference export from one `JobConfig`.
 
 This is the ordinary JAX boundary. Python is useful for I/O and lifecycle work;
 the repeated forward, backward, finite-update gate, and optimizer update belong
@@ -23,10 +25,29 @@ than enqueueing incidental `jax.numpy` work outside the train step.
 
 User-facing configurations are frozen Pydantic models organized by the domains
 users actually configure. `JobConfig` owns model, task, loss, optimization,
-data, training, logging, and checkpointing configs. `TrainingConfig` combines
+data, training, logging, checkpointing, evaluation, and export configs.
+`TrainingConfig` combines
 the scientific training values and their efficiency-only realization: global
 batch, maximum steps, seed, logical mesh, physical batch decomposition,
-optional GradCache, activation rematerialization, donation, and input prefetch.
+optional GradCache, activation rematerialization, and donation. Input threading
+and prefetch live in each `DataConfig`, because training and validation sources
+may need different host-side execution plans.
+
+`training.precision` explicitly separates FP32 master/checkpoint/Optax state
+from transient compute and activation dtypes. The BF16 mixed preset restores
+representations, reductions, gradients, losses, and metrics to FP32. Training
+and validation consume the same policy. See the
+[mixed-precision contract](precision.md) for model-use boundaries, GradCache,
+FSDP communication, and numerical acceptance.
+
+`training.adapter` is an optional scientific model transformation. The first
+accepted recipe, `QuantizedLoRAConfig`, replaces selected native linear
+projections with packed INT4 frozen bases and FP32 low-rank adapters before the
+optimizer and compiled step are constructed. A model-shaped trainable filter
+then drives ordinary Optax initialization, differentiation, DDP/FSDP planning,
+checkpointing, and export; there is no adapter-specific trainer. See
+[low-bit adapters](adapters.md) for the representation, export contract, and
+physical acceptance evidence.
 
 Scientific and execution are field roles rather than parallel configuration
 trees. `Scientific[T]` and `Execution[T]` metadata can mark one value or a whole
@@ -43,14 +64,30 @@ compatible tasks and training strategies. A populated `training.grad_cache`
 therefore selects exact cached differentiation only when the configured loss
 advertises that capability; `None` selects direct differentiation.
 
-`MeshConfig` stores the portable logical axis shapes and names accepted by
-`jax.make_mesh(**config.model_dump())`. Concrete JAX `Device` objects are never
-serialized. Mesh axis names do not themselves assign array sharding semantics;
-a future sharding config will store the actual batch and state partition specs.
-Until then, the host loop validates the scientific global batch against the
-model-ready Grain source rather than guessing a replica count. Packing remains
-absent until a task-, data-, and model-compatible segment/masking contract is
-implemented.
+For losses that reduce independently over examples, configured gradient
+accumulation reshapes one logical batch into equal microbatches, evaluates them
+with one compiled `lax.scan`, averages their gradients, clips once, and performs
+one Optax update. The loss registry capability-gates this path. Cross-example
+objectives such as MNR reject ordinary accumulation because it would change the
+negative population; exact GradCache remains their bounded-memory execution.
+
+`MeshConfig` stores portable logical axis shapes and names; concrete JAX
+`Device` objects are never serialized. The runtime materializes an automatic
+JAX mesh from those values and the devices assigned to the job.
+`training.sharding` is a discriminated union of named DDP, named FSDP, and exact
+custom partition rules. All three resolve to one model-shaped `ShardingPlan`
+containing batch, parameter, gradient, Optax-state, and output layouts. The host
+loop validates the scientific global batch against the resolved data-axis size
+and the model-ready Grain source. Packing remains absent until a task-, data-,
+and model-compatible segment/masking contract is implemented.
+
+Named DDP, FSDP, and custom layouts execute as global JAX programs whose
+communication follows from declared state, input, output, and primitive-use
+shardings. Shared linear and normalization primitives request replicated
+parameters only at their exact use sites; reverse-mode derives the matching
+sharded gradient communication. These are execution choices: they do not change
+the task, loss, global batch, or optimizer semantics, and no model-specific FSDP
+hook is required.
 
 These models are declarative, validated, serializable, and compatible with
 Hydra-Zen composition and CLI overrides. They contain no live JAX mesh, Equinox model,
@@ -76,9 +113,24 @@ worker requests all metric leaves for an iteration in one `jax.device_get` while
 the host continues dispatching later work. This follows JAX's asynchronous
 execution model and lets host reporting overlap accelerator work.
 
+Data execution is fail-closed when configured. While `next()` is blocked,
+`data_wait_heartbeat_seconds` emits repeated `data_wait_heartbeat` lifecycle
+events; `data_wait_timeout_seconds` raises `DataStarvationError`, closes the
+iterator, and records the failed run. Fatal deadlines use POSIX main-thread
+signals so they can interrupt the blocked call rather than merely notice it
+afterward.
+
+`perf/data_wait_seconds`, `perf/preprocess_seconds`,
+`perf/host_batch_bytes`, `perf/prefetch_ready_batches`, and
+`perf/prefetch_capacity` describe the host input path.
 `perf/placement_enqueue_seconds` and `perf/step_dispatch_seconds` measure host
-enqueue cost, not device execution. Exact steady-state throughput and memory are
-measured by the dedicated performance lane with explicit synchronization.
+enqueue cost, not device execution. One bounded asynchronous completion
+observer emits `perf/device_input_idle_seconds_lower_bound` only when the
+immediately preceding update is known complete before the next batch arrives;
+zero is deliberately inconclusive. It adds neither a per-step barrier nor an
+unbounded queue of retained states. Exact steady-state throughput, utilization,
+and memory remain dedicated performance-lane measurements with explicit
+synchronization and profiler evidence.
 
 An attempted iteration and an accepted optimizer update are distinct. The
 compiled step forms one ordinary Equinox/Optax proposed state, then uses Optax's
@@ -95,17 +147,20 @@ Local files are the source of truth:
 - `events.jsonl` is the complete ordered lifecycle and metric stream; and
 - `metrics.jsonl` is the exact metric-row projection of that stream.
 
-Metric values use service-neutral W&B-style namespaces: `train/loss`,
-`valid/loss`, and `perf/...`. A metric row contains `iteration`,
-`optimizer_step`, and a `metrics` mapping, so a future W&B reporter can call
-`wandb.log(row["metrics"], step=row["optimizer_step"])` without renaming fields.
+Metric values use service-neutral W&B-style namespaces: `train/loss` for
+optimization, `valid/loss` for validation coupled to training, `eval/loss` for
+standalone or test evaluation, and `perf/...` for systems measurements. Every
+metric row contains `iteration` and a `metrics` mapping; training rows also
+contain `optimizer_step`. Downstream reporters consume these without renaming
+fields.
 
 `RunLogger` owns one bounded, ordered worker queue. That worker materializes
 device metrics once, appends the local JSONL source of truth, and fans the same
-row out through the small `Reporter` protocol. Disk reporting is implemented;
-tests exercise another reporter; W&B and TensorBoard adapters are deferred. A
-full queue applies bounded backpressure instead of allowing unbounded host
-memory growth.
+row out through the small `Reporter` protocol. Disk reporting is always
+available. The optional W&B reporter is initialized and driven on this worker,
+records terminal success or failure, and requires `representax[wandb]`; it does
+not enter the task, evaluator, or compiled-step APIs. A full queue applies
+bounded backpressure instead of allowing unbounded host memory growth.
 
 At a checkpoint boundary, `RunLogger.cursor()` drains the queue, flushes and
 fsyncs both local streams, flushes downstream reporters, and returns byte and
@@ -145,23 +200,63 @@ projection, the data contract, and model/optimizer structures; restores training
 and iterator state; truncates post-checkpoint log rows; and continues with the
 same next batch and random key as an uninterrupted run.
 
+## Evaluation, model selection, and inference publication
+
+`EvaluationRunner` is the shared offline and in-training evaluation boundary.
+It caches JAX executables by batch structure and shape and keeps exact host-side
+reducers for corpus metrics. In-training runners emit `valid/...`; standalone
+runners remap the same reducer outputs to `eval/...` without changing their
+values.
+Compatible evaluators share one compiled traversal; a one-output pipeline can
+overlap device inference with reduction of the preceding batch. The inventory
+covers loss, similarity, classification, regression/MSE, triplet, reranking,
+reward, paraphrase mining, information retrieval, and LeJEPA collapse
+diagnostics. BEIR-format query, corpus, and qrel sources map into the generic
+information-retrieval evaluator; NanoBEIR is a revision-pinned example rather
+than a separate evaluator. `EvaluationConfig`
+controls start/end and periodic cadence, a bounded number of batches, the
+primary metric, and min/max selection. Training performs evaluation on a
+separate Grain iterator, leaving the resumable training cursor untouched.
+
+Representax computes the metric; Orbax receives the scalar mapping and composes
+latest-N with best-N preservation. Representax publishes an additional durable
+`best` pointer only after the checkpoint is complete. At the end of a successful
+job it restores only the selected model when necessary and atomically publishes
+`final-model/`:
+
+- `native/job.json` plus `native/model.eqx` reconstruct any configured Equinox
+  model without optimizer or loader state;
+- the optional `huggingface/` directory retains source tokenizer/config assets,
+  writes the trained adapter state, and must reload with exact tensors before
+  publication; and
+- `manifest.json` plus `REPRESENTAX_COMPLETE` fingerprint the complete bundle.
+
+The same `EvaluationRunner` is available through `representax.train.evaluate`
+for offline evaluation of a loaded inference bundle.
+
+W&B uses its native step axis rather than logging iteration as a metric.
+Training rows additionally expose `train/optimizer_step`; standalone evaluation
+rows do not invent an optimizer coordinate and instead report elapsed work under
+`perf/...`. Static run configuration records the JAX backend, process index and
+world size, local and global device counts, visible accelerator models, and the
+configured training mesh/sharding policy. W&B's system monitor remains
+responsible for time-varying accelerator utilization and memory telemetry.
+
 ## Deliberately deferred
 
-The current host loop does not yet construct arbitrary named sharding plans,
-run validation, or provide concrete W&B/TensorBoard adapters. Grain owns lazy
-reading, mapping, batching, prefetch, and iterator state. Task-owned collation
-is the bridge from data examples to the compiled batch contract.
+TensorBoard and additional reporter adapters remain optional future additions.
+Grain owns lazy reading, mapping, batching, prefetch, and iterator state.
+Task-owned collation is the bridge from data examples to the compiled batch
+contract.
 
-MNR can use exact GradCache execution through the single-device
-`build_train_step` boundary or the accepted two- and four-device data-parallel
-boundary. Physical multi-host execution, FSDP-style model-state sharding, and
-arbitrary sharding configurations remain separately scoped roadmap work.
+Single-host DDP, FSDP, hybrid data/model meshes, and arbitrary model-path
+partition rules execute through the same `build_train_step` boundary.
+Two- and four-device topology gates cover exact updates, StableHLO collectives,
+and asynchronous Orbax restore; physical GPUs additionally cover complete
+ModernVBERT updates, memory placement, NCCL execution, and a 1.9795B-parameter
+two-GPU capacity point. Physical multi-host acceptance remains deferred until
+suitable hardware is available.
 
-The existing `DataParallel` plan already uses a named mesh, replicated state,
-batch-axis sharding, `jax.make_array_from_process_local_data` for process-local
-rows, and explicit collective semantics. Completing the cookbook's high-
-performance sharding picture means wiring the annotated training mesh and batch
-fields into placement and step construction, initializing state directly into its declared sharding, and
-adding measured FSDP and tensor/hybrid plans. Representax will also benchmark
-JAX `Ref`-based state mutation against canonical functional Equinox/Optax plus
-buffer donation before changing the model-state contract.
+Representax will also benchmark JAX `Ref`-based state mutation against canonical
+functional Equinox/Optax plus buffer donation before changing the model-state
+contract.

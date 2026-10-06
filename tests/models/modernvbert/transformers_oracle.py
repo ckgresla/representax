@@ -7,6 +7,7 @@ training never imports PyTorch or Transformers model definitions.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, cast
 
 import numpy as np
 
@@ -33,10 +34,13 @@ def generate_oracle(
     checkpoint = Path(checkpoint)
     with transformers_tacet():
         processor = Idefics3Processor.from_pretrained(checkpoint, local_files_only=True)
-        model = ModernVBertModel.from_pretrained(
-            checkpoint,
-            dtype=torch.float32,
-            local_files_only=True,
+        model = cast(
+            Any,
+            ModernVBertModel.from_pretrained(
+                checkpoint,
+                dtype=torch.float32,
+                local_files_only=True,
+            ),
         ).to(device)
     model.eval()
     encoded = processor(
@@ -106,10 +110,13 @@ def generate_multimodal_oracle(
     checkpoint = Path(checkpoint)
     with transformers_tacet():
         processor = Idefics3Processor.from_pretrained(checkpoint, local_files_only=True)
-        model = ModernVBertModel.from_pretrained(
-            checkpoint,
-            dtype=torch.float32,
-            local_files_only=True,
+        model = cast(
+            Any,
+            ModernVBertModel.from_pretrained(
+                checkpoint,
+                dtype=torch.float32,
+                local_files_only=True,
+            ),
         ).to(device)
     model.eval()
     encoded = processor(
